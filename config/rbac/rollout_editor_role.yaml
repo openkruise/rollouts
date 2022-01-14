@@ -1,0 +1,24 @@
+# permissions for end users to edit rollouts.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rollout-editor-role
+rules:
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - rollouts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - rollouts/status
+  verbs:
+  - get

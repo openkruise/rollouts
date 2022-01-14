@@ -1,0 +1,7 @@
+apiVersion: rollouts.kruise.io/v1alpha1
+kind: Rollout
+metadata:
+  name: rollout-sample
+spec:
+  # Add fields here
+  foo: bar

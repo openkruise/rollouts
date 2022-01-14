@@ -1,0 +1,20 @@
+# permissions for end users to view batchreleases.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: batchrelease-viewer-role
+rules:
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - batchreleases
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - batchreleases/status
+  verbs:
+  - get
