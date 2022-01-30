@@ -1,0 +1,29 @@
+apiVersion: rollouts.kruise.io/v1alpha1
+kind: Rollout
+metadata:
+  name: rollouts-demo
+spec:
+  objectRef:
+    type: workloadRef
+    workloadRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: echoserver
+  strategy:
+    canaryPlan:
+      steps:
+        - weight: 20
+          pause: {}
+        - weight: 40
+          pause: {duration: 5}
+        - weight: 60
+          pause: {duration: 5}
+        - weight: 80
+          pause: {duration: 5}
+        - weight: 100
+          pause: {}
+      trafficRouting:
+        service: echoserver
+        type: nginx
+        nginx:
+          ingress: echoserver

@@ -1,0 +1,19 @@
+apiVersion: rollouts.kruise.io/v1alpha1
+kind: BatchRelease
+metadata:
+  name: release-deployment-percentage-100
+spec:
+  targetReference:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sample
+  releasePlan:
+    batches:
+      - canaryReplicas: 20%
+        pauseSeconds: 30
+      - canaryReplicas: 40%
+        pauseSeconds: 30
+      - canaryReplicas: 60%
+        pauseSeconds: 30
+      - canaryReplicas: 100%
+        pauseSeconds: 30
