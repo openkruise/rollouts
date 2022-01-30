@@ -1,11 +1,18 @@
 package matchers
 
 import (
+<<<<<<< HEAD
 	"errors"
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 	"fmt"
 	"reflect"
 
 	"github.com/onsi/gomega/format"
+<<<<<<< HEAD
+=======
+	"golang.org/x/xerrors"
+>>>>>>> 33cbc1d (add batchrelease controller)
 )
 
 type MatchErrorMatcher struct {
@@ -25,7 +32,11 @@ func (matcher *MatchErrorMatcher) Match(actual interface{}) (success bool, err e
 	expected := matcher.Expected
 
 	if isError(expected) {
+<<<<<<< HEAD
 		return reflect.DeepEqual(actualErr, expected) || errors.Is(actualErr, expected.(error)), nil
+=======
+		return reflect.DeepEqual(actualErr, expected) || xerrors.Is(actualErr, expected.(error)), nil
+>>>>>>> 33cbc1d (add batchrelease controller)
 	}
 
 	if isString(expected) {

@@ -1,5 +1,6 @@
 ![Ginkgo: A Go BDD Testing Framework](https://onsi.github.io/ginkgo/images/ginkgo.png)
 
+<<<<<<< HEAD
 [![test](https://github.com/onsi/ginkgo/workflows/test/badge.svg?branch=master)](https://github.com/onsi/ginkgo/actions?query=workflow%3Atest+branch%3Amaster)
 
 Jump to the [docs](https://onsi.github.io/ginkgo/) | [中文文档](https://ke-chain.github.io/ginkgodoc) to learn more.  To start rolling your Ginkgo tests *now* [keep reading](#set-me-up)!
@@ -14,6 +15,14 @@ As described in the [changelog](https://github.com/onsi/ginkgo/blob/ver2/docs/MI
 
 Please start exploring and using the V2 release!  To get started follow the [Using the Release Candidate](https://github.com/onsi/ginkgo/blob/ver2/docs/MIGRATING_TO_V2.md#using-the-beta) directions in the migration guide.
 
+=======
+[![Build Status](https://travis-ci.org/onsi/ginkgo.svg?branch=master)](https://travis-ci.org/onsi/ginkgo)
+
+Jump to the [docs](https://onsi.github.io/ginkgo/) to learn more.  To start rolling your Ginkgo tests *now* [keep reading](#set-me-up)!
+
+If you have a question, comment, bug report, feature request, etc. please open a GitHub issue, or visit the [Ginkgo Slack channel](https://app.slack.com/client/T029RQSE6/CQQ50BBNW).
+
+>>>>>>> 33cbc1d (add batchrelease controller)
 ## TLDR
 Ginkgo builds on Go's `testing` package, allowing expressive [Behavior-Driven Development](https://en.wikipedia.org/wiki/Behavior-driven_development) ("BDD") style tests.
 It is typically (and optionally) paired with the [Gomega](https://github.com/onsi/gomega) matcher library.
@@ -69,8 +78,11 @@ Describe("the strings package", func() {
 
 - [Completions for VSCode](https://github.com/onsi/vscode-ginkgo): just use VSCode's extension installer to install `vscode-ginkgo`.
 
+<<<<<<< HEAD
 - [Ginkgo tools for VSCode](https://marketplace.visualstudio.com/items?itemName=joselitofilho.ginkgotestexplorer): just use VSCode's extension installer to install `ginkgoTestExplorer`.
 
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 - Straightforward support for third-party testing libraries such as [Gomock](https://code.google.com/p/gomock/) and [Testify](https://github.com/stretchr/testify).  Check out the [docs](https://onsi.github.io/ginkgo/#third-party-integrations) for details.
 
 - A modular architecture that lets you easily:

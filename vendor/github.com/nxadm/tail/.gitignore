@@ -1,3 +1,7 @@
 .idea/
+<<<<<<< HEAD
 .test/
 examples/_*
+=======
+.test/
+>>>>>>> 33cbc1d (add batchrelease controller)

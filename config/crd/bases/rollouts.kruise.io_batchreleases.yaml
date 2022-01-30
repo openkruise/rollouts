@@ -109,6 +109,7 @@ spec:
                 description: TargetRevisionName contains the name of the componentRevisionName
                   that we need to upgrade to.
                 properties:
+<<<<<<< HEAD
                   type:
                     description: workloadRef, revisionRef default is workloadRef
                     type: string
@@ -132,6 +133,21 @@ spec:
                     type: object
                 required:
                 - type
+=======
+                  apiVersion:
+                    description: API Version of the referent
+                    type: string
+                  kind:
+                    description: Kind of the referent
+                    type: string
+                  name:
+                    description: Name of the referent
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                - name
+>>>>>>> 33cbc1d (add batchrelease controller)
                 type: object
             required:
             - releasePlan
@@ -145,8 +161,11 @@ spec:
                 description: Canary describes the state of the canary rollout
                 properties:
                   batchState:
+<<<<<<< HEAD
                     description: ReleasingBatchState indicates the state of the current
                       batch.
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
                     type: string
                   currentBatch:
                     description: The current batch the rollout is working on/blocked,

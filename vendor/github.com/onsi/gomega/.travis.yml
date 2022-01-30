@@ -1,4 +1,5 @@
 language: go
+<<<<<<< HEAD
 arch:
   - amd64
   - ppc64le
@@ -7,12 +8,29 @@ go:
   - gotip
   - 1.16.x
   - 1.15.x
+=======
+
+go:
+  - 1.13.x
+  - 1.14.x
+  - gotip
+>>>>>>> 33cbc1d (add batchrelease controller)
 
 env:
   - GO111MODULE=on
 
+<<<<<<< HEAD
 install: skip
 
 script:
   - go mod tidy && git diff --exit-code go.mod go.sum
   - make test
+=======
+install:
+  - go get -v ./...
+  - go build ./...
+  - go get github.com/onsi/ginkgo
+  - go install github.com/onsi/ginkgo/ginkgo
+
+script: make test
+>>>>>>> 33cbc1d (add batchrelease controller)

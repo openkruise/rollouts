@@ -20,14 +20,23 @@ import (
 	"fmt"
 )
 
+<<<<<<< HEAD
 const VERSION = "1.16.5"
+=======
+const VERSION = "1.14.1"
+>>>>>>> 33cbc1d (add batchrelease controller)
 
 type GinkgoConfigType struct {
 	RandomSeed         int64
 	RandomizeAllSpecs  bool
 	RegexScansFilePath bool
+<<<<<<< HEAD
 	FocusStrings       []string
 	SkipStrings        []string
+=======
+	FocusString        string
+	SkipString         string
+>>>>>>> 33cbc1d (add batchrelease controller)
 	SkipMeasurements   bool
 	FailOnPending      bool
 	FailFast           bool
@@ -65,11 +74,14 @@ func processPrefix(prefix string) string {
 	return prefix
 }
 
+<<<<<<< HEAD
 type flagFunc func(string)
 
 func (f flagFunc) String() string     { return "" }
 func (f flagFunc) Set(s string) error { f(s); return nil }
 
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 func Flags(flagSet *flag.FlagSet, prefix string, includeParallelFlags bool) {
 	prefix = processPrefix(prefix)
 	flagSet.Int64Var(&(GinkgoConfig.RandomSeed), prefix+"seed", time.Now().Unix(), "The seed used to randomize the spec suite.")
@@ -80,8 +92,13 @@ func Flags(flagSet *flag.FlagSet, prefix string, includeParallelFlags bool) {
 
 	flagSet.BoolVar(&(GinkgoConfig.DryRun), prefix+"dryRun", false, "If set, ginkgo will walk the test hierarchy without actually running anything.  Best paired with -v.")
 
+<<<<<<< HEAD
 	flagSet.Var(flagFunc(flagFocus), prefix+"focus", "If set, ginkgo will only run specs that match this regular expression. Can be specified multiple times, values are ORed.")
 	flagSet.Var(flagFunc(flagSkip), prefix+"skip", "If set, ginkgo will only run specs that do not match this regular expression. Can be specified multiple times, values are ORed.")
+=======
+	flagSet.StringVar(&(GinkgoConfig.FocusString), prefix+"focus", "", "If set, ginkgo will only run specs that match this regular expression.")
+	flagSet.StringVar(&(GinkgoConfig.SkipString), prefix+"skip", "", "If set, ginkgo will only run specs that do not match this regular expression.")
+>>>>>>> 33cbc1d (add batchrelease controller)
 
 	flagSet.BoolVar(&(GinkgoConfig.RegexScansFilePath), prefix+"regexScansFilePath", false, "If set, ginkgo regex matching also will look at the file path (code location).")
 
@@ -138,12 +155,21 @@ func BuildFlagArgs(prefix string, ginkgo GinkgoConfigType, reporter DefaultRepor
 		result = append(result, fmt.Sprintf("--%sdryRun", prefix))
 	}
 
+<<<<<<< HEAD
 	for _, s := range ginkgo.FocusStrings {
 		result = append(result, fmt.Sprintf("--%sfocus=%s", prefix, s))
 	}
 
 	for _, s := range ginkgo.SkipStrings {
 		result = append(result, fmt.Sprintf("--%sskip=%s", prefix, s))
+=======
+	if ginkgo.FocusString != "" {
+		result = append(result, fmt.Sprintf("--%sfocus=%s", prefix, ginkgo.FocusString))
+	}
+
+	if ginkgo.SkipString != "" {
+		result = append(result, fmt.Sprintf("--%sskip=%s", prefix, ginkgo.SkipString))
+>>>>>>> 33cbc1d (add batchrelease controller)
 	}
 
 	if ginkgo.FlakeAttempts > 1 {
@@ -216,6 +242,7 @@ func BuildFlagArgs(prefix string, ginkgo GinkgoConfigType, reporter DefaultRepor
 
 	return result
 }
+<<<<<<< HEAD
 
 // flagFocus implements the -focus flag.
 func flagFocus(arg string) {
@@ -230,3 +257,5 @@ func flagSkip(arg string) {
 		GinkgoConfig.SkipStrings = append(GinkgoConfig.SkipStrings, arg)
 	}
 }
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)

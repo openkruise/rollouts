@@ -45,7 +45,11 @@ func (matcher *BeNumericallyMatcher) Match(actual interface{}) (success bool, er
 		return false, fmt.Errorf("Expected a number.  Got:\n%s", format.Object(matcher.CompareTo[0], 1))
 	}
 	if len(matcher.CompareTo) == 2 && !isNumber(matcher.CompareTo[1]) {
+<<<<<<< HEAD
 		return false, fmt.Errorf("Expected a number.  Got:\n%s", format.Object(matcher.CompareTo[1], 1))
+=======
+		return false, fmt.Errorf("Expected a number.  Got:\n%s", format.Object(matcher.CompareTo[0], 1))
+>>>>>>> 33cbc1d (add batchrelease controller)
 	}
 
 	switch matcher.Comparator {

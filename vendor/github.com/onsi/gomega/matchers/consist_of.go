@@ -57,6 +57,7 @@ func equalMatchersToElements(matchers []interface{}) (elements []interface{}) {
 	return
 }
 
+<<<<<<< HEAD
 func flatten(elems []interface{}) []interface{} {
 	if len(elems) != 1 || !isArrayOrSlice(elems[0]) {
 		return elems
@@ -72,6 +73,19 @@ func flatten(elems []interface{}) []interface{} {
 
 func matchers(expectedElems []interface{}) (matchers []interface{}) {
 	for _, e := range flatten(expectedElems) {
+=======
+func matchers(expectedElems []interface{}) (matchers []interface{}) {
+	elems := expectedElems
+	if len(expectedElems) == 1 && isArrayOrSlice(expectedElems[0]) {
+		elems = []interface{}{}
+		value := reflect.ValueOf(expectedElems[0])
+		for i := 0; i < value.Len(); i++ {
+			elems = append(elems, value.Index(i).Interface())
+		}
+	}
+
+	for _, e := range elems {
+>>>>>>> 33cbc1d (add batchrelease controller)
 		matcher, isMatcher := e.(omegaMatcher)
 		if !isMatcher {
 			matcher = &EqualMatcher{Expected: e}
@@ -81,6 +95,7 @@ func matchers(expectedElems []interface{}) (matchers []interface{}) {
 	return
 }
 
+<<<<<<< HEAD
 func presentable(elems []interface{}) interface{} {
 	elems = flatten(elems)
 
@@ -104,6 +119,8 @@ func presentable(elems []interface{}) interface{} {
 	return ss.Interface()
 }
 
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 func valuesOf(actual interface{}) []interface{} {
 	value := reflect.ValueOf(actual)
 	values := []interface{}{}
@@ -122,11 +139,19 @@ func valuesOf(actual interface{}) []interface{} {
 }
 
 func (matcher *ConsistOfMatcher) FailureMessage(actual interface{}) (message string) {
+<<<<<<< HEAD
 	message = format.Message(actual, "to consist of", presentable(matcher.Elements))
 	message = appendMissingElements(message, matcher.missingElements)
 	if len(matcher.extraElements) > 0 {
 		message = fmt.Sprintf("%s\nthe extra elements were\n%s", message,
 			format.Object(presentable(matcher.extraElements), 1))
+=======
+	message = format.Message(actual, "to consist of", matcher.Elements)
+	message = appendMissingElements(message, matcher.missingElements)
+	if len(matcher.extraElements) > 0 {
+		message = fmt.Sprintf("%s\nthe extra elements were\n%s", message,
+			format.Object(matcher.extraElements, 1))
+>>>>>>> 33cbc1d (add batchrelease controller)
 	}
 	return
 }
@@ -136,9 +161,17 @@ func appendMissingElements(message string, missingElements []interface{}) string
 		return message
 	}
 	return fmt.Sprintf("%s\nthe missing elements were\n%s", message,
+<<<<<<< HEAD
 		format.Object(presentable(missingElements), 1))
 }
 
 func (matcher *ConsistOfMatcher) NegatedFailureMessage(actual interface{}) (message string) {
 	return format.Message(actual, "not to consist of", presentable(matcher.Elements))
+=======
+		format.Object(missingElements, 1))
+}
+
+func (matcher *ConsistOfMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+	return format.Message(actual, "not to consist of", matcher.Elements)
+>>>>>>> 33cbc1d (add batchrelease controller)
 }

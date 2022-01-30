@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // Copyright (c) 2019 FOSS contributors of https://github.com/nxadm/tail
 // Copyright (c) 2015 HPE Software Inc. All rights reserved.
 // Copyright (c) 2013 ActiveState Software Inc. All rights reserved.
@@ -7,6 +8,11 @@
 //it is designed to work with log rotation tools. The library works on all
 //operating systems supported by Go, including POSIX systems like Linux and
 //*BSD, and MS Windows. Go 1.9 is the oldest compiler release supported.
+=======
+// Copyright (c) 2015 HPE Software Inc. All rights reserved.
+// Copyright (c) 2013 ActiveState Software Inc. All rights reserved.
+
+>>>>>>> 33cbc1d (add batchrelease controller)
 package tail
 
 import (
@@ -28,11 +34,15 @@ import (
 )
 
 var (
+<<<<<<< HEAD
 	// ErrStop is returned when the tail of a file has been marked to be stopped.
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 	ErrStop = errors.New("tail should now stop")
 )
 
 type Line struct {
+<<<<<<< HEAD
 	Text     string    // The contents of the file
 	Num      int       // The line number
 	SeekInfo SeekInfo  // SeekInfo
@@ -45,14 +55,31 @@ type Line struct {
 // release.
 //
 // NewLine returns a * pointer to a Line struct.
+=======
+	Text     string
+	Num      int
+	SeekInfo SeekInfo
+	Time     time.Time
+	Err      error // Error from tail
+}
+
+// NewLine returns a Line with present time.
+>>>>>>> 33cbc1d (add batchrelease controller)
 func NewLine(text string, lineNum int) *Line {
 	return &Line{text, lineNum, SeekInfo{}, time.Now(), nil}
 }
 
+<<<<<<< HEAD
 // SeekInfo represents arguments to io.Seek. See: https://golang.org/pkg/io/#SectionReader.Seek
 type SeekInfo struct {
 	Offset int64
 	Whence int
+=======
+// SeekInfo represents arguments to `io.Seek`
+type SeekInfo struct {
+	Offset int64
+	Whence int // io.Seek*
+>>>>>>> 33cbc1d (add batchrelease controller)
 }
 
 type logger interface {
@@ -70,28 +97,48 @@ type logger interface {
 // Config is used to specify how a file must be tailed.
 type Config struct {
 	// File-specifc
+<<<<<<< HEAD
 	Location  *SeekInfo // Tail from this location. If nil, start at the beginning of the file
 	ReOpen    bool      // Reopen recreated files (tail -F)
 	MustExist bool      // Fail early if the file does not exist
 	Poll      bool      // Poll for file changes instead of using the default inotify
 	Pipe      bool      // The file is a named pipe (mkfifo)
+=======
+	Location    *SeekInfo // Seek to this location before tailing
+	ReOpen      bool      // Reopen recreated files (tail -F)
+	MustExist   bool      // Fail early if the file does not exist
+	Poll        bool      // Poll for file changes instead of using inotify
+	Pipe        bool      // Is a named pipe (mkfifo)
+	RateLimiter *ratelimiter.LeakyBucket
+>>>>>>> 33cbc1d (add batchrelease controller)
 
 	// Generic IO
 	Follow      bool // Continue looking for new lines (tail -f)
 	MaxLineSize int  // If non-zero, split longer lines into multiple lines
 
+<<<<<<< HEAD
 	// Optionally, use a ratelimiter (e.g. created by the ratelimiter/NewLeakyBucket function)
 	RateLimiter *ratelimiter.LeakyBucket
 
 	// Optionally use a Logger. When nil, the Logger is set to tail.DefaultLogger.
 	// To disable logging, set it to tail.DiscardingLogger
+=======
+	// Logger, when nil, is set to tail.DefaultLogger
+	// To disable logging: set field to tail.DiscardingLogger
+>>>>>>> 33cbc1d (add batchrelease controller)
 	Logger logger
 }
 
 type Tail struct {
+<<<<<<< HEAD
 	Filename string     // The filename
 	Lines    chan *Line // A consumable channel of *Line
 	Config              // Tail.Configuration
+=======
+	Filename string
+	Lines    chan *Line
+	Config
+>>>>>>> 33cbc1d (add batchrelease controller)
 
 	file    *os.File
 	reader  *bufio.Reader
@@ -106,17 +153,28 @@ type Tail struct {
 }
 
 var (
+<<<<<<< HEAD
 	// DefaultLogger logs to os.Stderr and it is used when Config.Logger == nil
+=======
+	// DefaultLogger is used when Config.Logger == nil
+>>>>>>> 33cbc1d (add batchrelease controller)
 	DefaultLogger = log.New(os.Stderr, "", log.LstdFlags)
 	// DiscardingLogger can be used to disable logging output
 	DiscardingLogger = log.New(ioutil.Discard, "", 0)
 )
 
+<<<<<<< HEAD
 // TailFile begins tailing the file. And returns a pointer to a Tail struct
 // and an error. An output stream is made available via the Tail.Lines
 // channel (e.g. to be looped and printed). To handle errors during tailing,
 // after finishing reading from the Lines channel, invoke the `Wait` or `Err`
 // method on the returned *Tail.
+=======
+// TailFile begins tailing the file. Output stream is made available
+// via the `Tail.Lines` channel. To handle errors during tailing,
+// invoke the `Wait` or `Err` method after finishing reading from the
+// `Lines` channel.
+>>>>>>> 33cbc1d (add batchrelease controller)
 func TailFile(filename string, config Config) (*Tail, error) {
 	if config.ReOpen && !config.Follow {
 		util.Fatal("cannot set ReOpen without Follow.")
@@ -152,9 +210,16 @@ func TailFile(filename string, config Config) (*Tail, error) {
 	return t, nil
 }
 
+<<<<<<< HEAD
 // Tell returns the file's current position, like stdio's ftell() and an error.
 // Beware that this value may not be completely accurate because one line from
 // the chan(tail.Lines) may have been read already.
+=======
+// Tell returns the file's current position, like stdio's ftell().
+// But this value is not very accurate.
+// One line from the chan(tail.Lines) may have been read,
+// so it may have lost one line.
+>>>>>>> 33cbc1d (add batchrelease controller)
 func (tail *Tail) Tell() (offset int64, err error) {
 	if tail.file == nil {
 		return
@@ -180,8 +245,12 @@ func (tail *Tail) Stop() error {
 	return tail.Wait()
 }
 
+<<<<<<< HEAD
 // StopAtEOF stops tailing as soon as the end of the file is reached. The function
 // returns an error,
+=======
+// StopAtEOF stops tailing as soon as the end of the file is reached.
+>>>>>>> 33cbc1d (add batchrelease controller)
 func (tail *Tail) StopAtEOF() error {
 	tail.Kill(errStopAtEOF)
 	return tail.Wait()
@@ -449,7 +518,10 @@ func (tail *Tail) sendLine(line string) bool {
 // Cleanup removes inotify watches added by the tail package. This function is
 // meant to be invoked from a process's exit handler. Linux kernel may not
 // automatically remove inotify watches after the process exits.
+<<<<<<< HEAD
 // If you plan to re-read a file, don't call Cleanup in between.
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 func (tail *Tail) Cleanup() {
 	watch.Cleanup(tail.Filename)
 }

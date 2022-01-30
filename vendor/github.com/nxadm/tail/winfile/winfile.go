@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 // Copyright (c) 2019 FOSS contributors of https://github.com/nxadm/tail
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 // +build windows
 
 package winfile

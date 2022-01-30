@@ -7,7 +7,10 @@ Gomega's format package pretty-prints objects.  It explores input objects recurs
 package format
 
 import (
+<<<<<<< HEAD
 	"context"
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 	"fmt"
 	"reflect"
 	"strconv"
@@ -18,10 +21,13 @@ import (
 // Use MaxDepth to set the maximum recursion depth when printing deeply nested objects
 var MaxDepth = uint(10)
 
+<<<<<<< HEAD
 // MaxLength of the string representation of an object.
 // If MaxLength is set to 0, the Object will not be truncated.
 var MaxLength = 4000
 
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 /*
 By default, all objects (even those that implement fmt.Stringer and fmt.GoStringer) are recursively inspected to generate output.
 
@@ -49,7 +55,20 @@ var TruncateThreshold uint = 50
 // after the first diff location in a truncated string assertion error message.
 var CharactersAroundMismatchToInclude uint = 5
 
+<<<<<<< HEAD
 var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
+=======
+// Ctx interface defined here to keep backwards compatibility with go < 1.7
+// It matches the context.Context interface
+type Ctx interface {
+	Deadline() (deadline time.Time, ok bool)
+	Done() <-chan struct{}
+	Err() error
+	Value(key interface{}) interface{}
+}
+
+var contextType = reflect.TypeOf((*Ctx)(nil)).Elem()
+>>>>>>> 33cbc1d (add batchrelease controller)
 var timeType = reflect.TypeOf(time.Time{})
 
 //The default indentation string emitted by the format package
@@ -57,6 +76,7 @@ var Indent = "    "
 
 var longFormThreshold = 20
 
+<<<<<<< HEAD
 // GomegaStringer allows for custom formating of objects for gomega.
 type GomegaStringer interface {
 	// GomegaString will be used to custom format an object.
@@ -65,6 +85,8 @@ type GomegaStringer interface {
 	GomegaString() string
 }
 
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 /*
 Generates a formatted matcher success/failure message of the form:
 
@@ -109,6 +131,7 @@ func MessageWithDiff(actual, message, expected string) string {
 
 		tabLength := 4
 		spaceFromMessageToActual := tabLength + len("<string>: ") - len(message)
+<<<<<<< HEAD
 
 		paddingCount := spaceFromMessageToActual + spacesBeforeFormattedMismatch
 		if paddingCount < 0 {
@@ -116,6 +139,9 @@ func MessageWithDiff(actual, message, expected string) string {
 		}
 
 		padding := strings.Repeat(" ", paddingCount) + "|"
+=======
+		padding := strings.Repeat(" ", spaceFromMessageToActual+spacesBeforeFormattedMismatch) + "|"
+>>>>>>> 33cbc1d (add batchrelease controller)
 		return Message(formattedActual, message+padding, formattedExpected)
 	}
 
@@ -171,6 +197,7 @@ func findFirstMismatch(a, b string) int {
 	return 0
 }
 
+<<<<<<< HEAD
 const truncateHelpText = `
 Gomega truncated this representation as it exceeds 'format.MaxLength'.
 Consider having the object provide a custom 'GomegaStringer' representation
@@ -198,6 +225,8 @@ func truncateLongStrings(s string) string {
 	return s
 }
 
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 /*
 Pretty prints the passed in object at the passed in indentation level.
 
@@ -212,7 +241,11 @@ Set PrintContextObjects to true to print the content of objects implementing con
 func Object(object interface{}, indentation uint) string {
 	indent := strings.Repeat(Indent, int(indentation))
 	value := reflect.ValueOf(object)
+<<<<<<< HEAD
 	return fmt.Sprintf("%s<%s>: %s", indent, formatType(value), formatValue(value, indentation))
+=======
+	return fmt.Sprintf("%s<%s>: %s", indent, formatType(object), formatValue(value, indentation))
+>>>>>>> 33cbc1d (add batchrelease controller)
 }
 
 /*
@@ -232,6 +265,7 @@ func IndentString(s string, indentation uint) string {
 	return result
 }
 
+<<<<<<< HEAD
 func formatType(v reflect.Value) string {
 	switch v.Kind() {
 	case reflect.Invalid:
@@ -246,6 +280,27 @@ func formatType(v reflect.Value) string {
 		return fmt.Sprintf("%s | len:%d", v.Type(), v.Len())
 	default:
 		return fmt.Sprintf("%s", v.Type())
+=======
+func formatType(object interface{}) string {
+	t := reflect.TypeOf(object)
+	if t == nil {
+		return "nil"
+	}
+	switch t.Kind() {
+	case reflect.Chan:
+		v := reflect.ValueOf(object)
+		return fmt.Sprintf("%T | len:%d, cap:%d", object, v.Len(), v.Cap())
+	case reflect.Ptr:
+		return fmt.Sprintf("%T | %p", object, object)
+	case reflect.Slice:
+		v := reflect.ValueOf(object)
+		return fmt.Sprintf("%T | len:%d, cap:%d", object, v.Len(), v.Cap())
+	case reflect.Map:
+		v := reflect.ValueOf(object)
+		return fmt.Sprintf("%T | len:%d", object, v.Len())
+	default:
+		return fmt.Sprintf("%T", object)
+>>>>>>> 33cbc1d (add batchrelease controller)
 	}
 }
 
@@ -258,6 +313,7 @@ func formatValue(value reflect.Value, indentation uint) string {
 		return "nil"
 	}
 
+<<<<<<< HEAD
 	if value.CanInterface() {
 		obj := value.Interface()
 
@@ -273,6 +329,16 @@ func formatValue(value reflect.Value, indentation uint) string {
 				return truncateLongStrings(x.GoString())
 			case fmt.Stringer:
 				return truncateLongStrings(x.String())
+=======
+	if UseStringerRepresentation {
+		if value.CanInterface() {
+			obj := value.Interface()
+			switch x := obj.(type) {
+			case fmt.GoStringer:
+				return x.GoString()
+			case fmt.Stringer:
+				return x.String()
+>>>>>>> 33cbc1d (add batchrelease controller)
 			}
 		}
 	}
@@ -303,6 +369,7 @@ func formatValue(value reflect.Value, indentation uint) string {
 	case reflect.Ptr:
 		return formatValue(value.Elem(), indentation)
 	case reflect.Slice:
+<<<<<<< HEAD
 		return truncateLongStrings(formatSlice(value, indentation))
 	case reflect.String:
 		return truncateLongStrings(formatString(value.String(), indentation))
@@ -310,11 +377,21 @@ func formatValue(value reflect.Value, indentation uint) string {
 		return truncateLongStrings(formatSlice(value, indentation))
 	case reflect.Map:
 		return truncateLongStrings(formatMap(value, indentation))
+=======
+		return formatSlice(value, indentation)
+	case reflect.String:
+		return formatString(value.String(), indentation)
+	case reflect.Array:
+		return formatSlice(value, indentation)
+	case reflect.Map:
+		return formatMap(value, indentation)
+>>>>>>> 33cbc1d (add batchrelease controller)
 	case reflect.Struct:
 		if value.Type() == timeType && value.CanInterface() {
 			t, _ := value.Interface().(time.Time)
 			return t.Format(time.RFC3339Nano)
 		}
+<<<<<<< HEAD
 		return truncateLongStrings(formatStruct(value, indentation))
 	case reflect.Interface:
 		return formatInterface(value, indentation)
@@ -323,6 +400,16 @@ func formatValue(value reflect.Value, indentation uint) string {
 			return truncateLongStrings(fmt.Sprintf("%#v", value.Interface()))
 		}
 		return truncateLongStrings(fmt.Sprintf("%#v", value))
+=======
+		return formatStruct(value, indentation)
+	case reflect.Interface:
+		return formatValue(value.Elem(), indentation)
+	default:
+		if value.CanInterface() {
+			return fmt.Sprintf("%#v", value.Interface())
+		}
+		return fmt.Sprintf("%#v", value)
+>>>>>>> 33cbc1d (add batchrelease controller)
 	}
 }
 
@@ -412,10 +499,13 @@ func formatStruct(v reflect.Value, indentation uint) string {
 	return fmt.Sprintf("{%s}", strings.Join(result, ", "))
 }
 
+<<<<<<< HEAD
 func formatInterface(v reflect.Value, indentation uint) string {
 	return fmt.Sprintf("<%s>%s", formatType(v.Elem()), formatValue(v.Elem(), indentation))
 }
 
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 func isNilValue(a reflect.Value) bool {
 	switch a.Kind() {
 	case reflect.Invalid:

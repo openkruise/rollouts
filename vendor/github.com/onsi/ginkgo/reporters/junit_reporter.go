@@ -33,12 +33,23 @@ type JUnitTestSuite struct {
 type JUnitTestCase struct {
 	Name           string               `xml:"name,attr"`
 	ClassName      string               `xml:"classname,attr"`
+<<<<<<< HEAD
+=======
+	PassedMessage  *JUnitPassedMessage  `xml:"passed,omitempty"`
+>>>>>>> 33cbc1d (add batchrelease controller)
 	FailureMessage *JUnitFailureMessage `xml:"failure,omitempty"`
 	Skipped        *JUnitSkipped        `xml:"skipped,omitempty"`
 	Time           float64              `xml:"time,attr"`
 	SystemOut      string               `xml:"system-out,omitempty"`
 }
 
+<<<<<<< HEAD
+=======
+type JUnitPassedMessage struct {
+	Message string `xml:",chardata"`
+}
+
+>>>>>>> 33cbc1d (add batchrelease controller)
 type JUnitFailureMessage struct {
 	Type    string `xml:"type,attr"`
 	Message string `xml:",chardata"`
@@ -109,7 +120,13 @@ func (reporter *JUnitReporter) SpecDidComplete(specSummary *types.SpecSummary) {
 		ClassName: reporter.testSuiteName,
 	}
 	if reporter.ReporterConfig.ReportPassed && specSummary.State == types.SpecStatePassed {
+<<<<<<< HEAD
 		testCase.SystemOut = specSummary.CapturedOutput
+=======
+		testCase.PassedMessage = &JUnitPassedMessage{
+			Message: specSummary.CapturedOutput,
+		}
+>>>>>>> 33cbc1d (add batchrelease controller)
 	}
 	if specSummary.State == types.SpecStateFailed || specSummary.State == types.SpecStateTimedOut || specSummary.State == types.SpecStatePanicked {
 		testCase.FailureMessage = &JUnitFailureMessage{

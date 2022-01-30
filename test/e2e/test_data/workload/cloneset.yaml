@@ -1,0 +1,25 @@
+apiVersion: apps.kruise.io/v1alpha1
+kind: CloneSet
+metadata:
+  labels:
+    app: busybox
+  name: sample
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: busybox
+  template:
+    metadata:
+      labels:
+        app: busybox
+    spec:
+      containers:
+        - name: busybox
+          image: busybox:1.32
+          imagePullPolicy: IfNotPresent
+          command: ["bin/sh", "-c", "sleep 10000000"]
+          resources:
+            limits:
+              memory: "10Mi"
+              cpu: "50m"

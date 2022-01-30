@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ## 1.17.0
 
 ### Features
@@ -96,6 +97,8 @@ In addition, 1.15.0 cleans up some of Gomega's internals.  Most users shouldn't 
 ### Fixes
 - updates golang/x/net to fix vulnerability detected by snyk (#394) [c479356]
 
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 ## 1.10.2
 
 ### Fixes

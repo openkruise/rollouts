@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ## 1.16.5
 
 Ginkgo 2.0 now has a Release Candidate.  1.16.5 advertises the existence of the RC.
@@ -65,6 +66,8 @@ You can silence the RC advertisement by setting an `ACK_GINKG_RC=true` environme
 - correct handling windows backslash in import path (#721) [97f3d51]
 - Add additional methods to GinkgoT() to improve compatibility with the testing.TB interface [b5fe44d]
 
+=======
+>>>>>>> 33cbc1d (add batchrelease controller)
 ## 1.14.1
 
 ### Fixes

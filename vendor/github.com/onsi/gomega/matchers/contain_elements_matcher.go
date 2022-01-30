@@ -35,10 +35,18 @@ func (matcher *ContainElementsMatcher) Match(actual interface{}) (success bool, 
 }
 
 func (matcher *ContainElementsMatcher) FailureMessage(actual interface{}) (message string) {
+<<<<<<< HEAD
 	message = format.Message(actual, "to contain elements", presentable(matcher.Elements))
+=======
+	message = format.Message(actual, "to contain elements", matcher.Elements)
+>>>>>>> 33cbc1d (add batchrelease controller)
 	return appendMissingElements(message, matcher.missingElements)
 }
 
 func (matcher *ContainElementsMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+<<<<<<< HEAD
 	return format.Message(actual, "not to contain elements", presentable(matcher.Elements))
+=======
+	return format.Message(actual, "not to contain elements", matcher.Elements)
+>>>>>>> 33cbc1d (add batchrelease controller)
 }

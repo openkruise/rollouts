@@ -1,6 +1,10 @@
 package matchers
 
 import (
+<<<<<<< HEAD
+=======
+	"github.com/onsi/gomega/internal/oraclematcher"
+>>>>>>> 33cbc1d (add batchrelease controller)
 	"github.com/onsi/gomega/types"
 )
 
@@ -25,5 +29,9 @@ func (m *NotMatcher) NegatedFailureMessage(actual interface{}) (message string) 
 }
 
 func (m *NotMatcher) MatchMayChangeInTheFuture(actual interface{}) bool {
+<<<<<<< HEAD
 	return types.MatchMayChangeInTheFuture(m.Matcher, actual) // just return m.Matcher's value
+=======
+	return oraclematcher.MatchMayChangeInTheFuture(m.Matcher, actual) // just return m.Matcher's value
+>>>>>>> 33cbc1d (add batchrelease controller)
 }

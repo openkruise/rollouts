@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Version v1.4.7-v1.4.8
 * Documentation updates.
 * Small linter cleanups.
@@ -9,6 +10,9 @@
 * Add example directories with example and tests for issues.
 
 # Version v1.4.4-v1.4.5
+=======
+# Version v1.4.4
+>>>>>>> 33cbc1d (add batchrelease controller)
 
 * Fix of checksum problem because of forced tag. No changes to the code.
 

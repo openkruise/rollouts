@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ###### Help ###################################################################
 
 .DEFAULT_GOAL = help
@@ -31,3 +32,11 @@ docker_test: ## Run tests in a container via docker-compose
 
 version: ## Display the version of Go
 	@@go version
+=======
+test:
+	[ -z "`gofmt -s -w -l -e .`" ]
+	go vet
+	ginkgo -p -r --randomizeAllSpecs --failOnPending --randomizeSuites --race
+
+.PHONY: test
+>>>>>>> 33cbc1d (add batchrelease controller)
