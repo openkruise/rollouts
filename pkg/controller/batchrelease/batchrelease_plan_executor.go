@@ -52,7 +52,7 @@ func (r *Executor) SetReleaseInfo(release *v1alpha1.BatchRelease) {
 // Do execute the release plan
 func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
 	klog.V(3).InfoS("Reconcile the release plan",
-		"target-workload", r.release.Spec.TargetRef.Name)
+		"target-workload", r.release.Spec.TargetRef.WorkloadRef.Name)
 
 	klog.V(3).InfoS("release-status:",
 		"release-phase", r.releaseStatus.Phase,
@@ -77,34 +77,29 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 	retryDuration := reconcile.Result{}
 
 	switch status.Phase {
-	case v1alpha1.RolloutPhaseHealthy:
-		r.releaseStatus.Phase = v1alpha1.RolloutPhaseVerify
-		fallthrough
+	case v1alpha1.RolloutPhaseInitial:
+		// if this batchRelease was created but workload doest not exist,
+		// should keep this phase and do nothing util workload is created.
 
-	case v1alpha1.RolloutPhaseVerify:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseVerify)
+	case v1alpha1.RolloutPhaseHealthy:
+		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseHealthy)
 		// verify whether the workload is ready to execute the release plan in this state.
-		verified, err := workloadController.VerifySpec()
+		needed, err := workloadController.IfNeedToProgress()
 		switch {
 		case err != nil:
 			setCondition(r.releaseStatus, "VerifyWorkloadError", err.Error(), v1.ConditionFalse)
-		case verified:
+		case needed:
 			setCondition(r.releaseStatus, "VerifyWorkloadSuccessfully", "", v1.ConditionTrue)
-			status.Phase = v1alpha1.RolloutPhaseInitial
+			status.Phase = v1alpha1.RolloutPhasePreparing
 			fallthrough
 		default:
 			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
 		}
 
-	case v1alpha1.RolloutPhaseInitial:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseInitial)
-		r.releaseStatus.Phase = v1alpha1.RolloutPhasePreparing
-		fallthrough
-
 	case v1alpha1.RolloutPhasePreparing:
 		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhasePreparing)
 		// prepare and initialize something before progressing in this state.
-		initialized, err := workloadController.Initialize()
+		initialized, err := workloadController.Prepare()
 		switch {
 		case err != nil:
 			setCondition(r.releaseStatus, "InitializeError", err.Error(), v1.ConditionFalse)
@@ -120,8 +115,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseProgressing)
 		// progress the release plan in this state.
 		var progressDone bool
-		progressDone, retryDuration = r.progressBatches(workloadController)
-		if progressDone {
+		if progressDone, retryDuration = r.progressBatches(workloadController); progressDone {
 			setCondition(r.releaseStatus, "ProgressSuccessfully", "", v1.ConditionTrue)
 			status.Phase = v1alpha1.RolloutPhaseFinalizing
 		}
@@ -132,33 +126,39 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		if succeed := workloadController.Finalize(false, false); succeed {
 			cleanupConditions(status)
 			status.Phase = v1alpha1.RolloutPhaseCompleted
+		} else {
+			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
 		}
-		retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
 
-	case v1alpha1.RolloutPhaseRollingBack:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseRollingBack)
+	case v1alpha1.RolloutPhaseRollback:
+		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseRollback)
 		// restore the workload in this state
-		cleanup := metav1.GetControllerOf(r.release) == nil
-		if succeed := workloadController.Finalize(false, cleanup); succeed {
+		pause, clean := false, true
+		if workloads.IsControlledByRollout(r.release) {
+			pause, clean = true, false
+		}
+		if succeed := workloadController.Finalize(pause, clean); succeed {
 			cleanupConditions(status)
 			status.Phase = v1alpha1.RolloutPhaseCancelled
+		} else {
+			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
 		}
-		retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
-
-	case v1alpha1.RolloutPhaseCompleted:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseCompleted)
-		// this state indicates that the plan is executed successfully, should do nothing in this state.
 
 	case v1alpha1.RolloutPhaseTerminating:
 		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseTerminating)
-		if succeed := workloadController.Finalize(true, true); succeed {
+		if succeed := workloadController.Finalize(false, true); succeed {
 			if r.release.DeletionTimestamp != nil {
 				setCondition(status, v1alpha1.TerminatingReasonInTerminating, "Release plan was cancelled or deleted", v1.ConditionTrue)
 			} else {
 				status.Phase = v1alpha1.RolloutPhaseCancelled
 			}
+		} else {
+			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
 		}
-		retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
+
+	case v1alpha1.RolloutPhaseCompleted:
+		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseCompleted)
+		// this state indicates that the plan is executed successfully, should do nothing in this state.
 
 	case v1alpha1.RolloutPhaseCancelled:
 		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseCancelled)
@@ -231,7 +231,7 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 
 // GetWorkloadController pick the right workload controller to work on the workload
 func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error) {
-	targetRef := r.release.Spec.TargetRef
+	targetRef := r.release.Spec.TargetRef.WorkloadRef
 	targetKey := types.NamespacedName{
 		Namespace: r.release.Namespace,
 		Name:      targetRef.Name,

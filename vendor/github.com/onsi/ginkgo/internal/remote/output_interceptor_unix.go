@@ -8,10 +8,7 @@ import (
 	"os"
 
 	"github.com/nxadm/tail"
-<<<<<<< HEAD
 	"golang.org/x/sys/unix"
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 )
 
 func NewOutputInterceptor() OutputInterceptor {
@@ -39,15 +36,10 @@ func (interceptor *outputInterceptor) StartInterceptingOutput() error {
 		return err
 	}
 
-<<<<<<< HEAD
 	// This might call Dup3 if the dup2 syscall is not available, e.g. on
 	// linux/arm64 or linux/riscv64
 	unix.Dup2(int(interceptor.redirectFile.Fd()), 1)
 	unix.Dup2(int(interceptor.redirectFile.Fd()), 2)
-=======
-	interceptorDupx(int(interceptor.redirectFile.Fd()), 1)
-	interceptorDupx(int(interceptor.redirectFile.Fd()), 2)
->>>>>>> 33cbc1d (add batchrelease controller)
 
 	if interceptor.streamTarget != nil {
 		interceptor.tailer, _ = tail.TailFile(interceptor.redirectFile.Name(), tail.Config{Follow: true})

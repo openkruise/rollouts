@@ -59,7 +59,7 @@ func (w workloadEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimi
 }
 
 func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
-	var oldAccessor, newAccessor *workloads.Accessor
+	var oldAccessor, newAccessor *workloads.WorkloadAccessor
 	var gvk schema.GroupVersionKind
 
 	switch evt.ObjectNew.(type) {
@@ -76,7 +76,7 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			newReplicas = *newClone.Spec.Replicas
 		}
 
-		oldAccessor = &workloads.Accessor{
+		oldAccessor = &workloads.WorkloadAccessor{
 			Replicas: &oldReplicas,
 			Paused:   oldClone.Spec.UpdateStrategy.Paused,
 			Status: &workloads.Status{
@@ -89,7 +89,7 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			Metadata: &oldClone.ObjectMeta,
 		}
 
-		newAccessor = &workloads.Accessor{
+		newAccessor = &workloads.WorkloadAccessor{
 			Replicas: &newReplicas,
 			Paused:   newClone.Spec.UpdateStrategy.Paused,
 			Status: &workloads.Status{
@@ -115,7 +115,7 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			newReplicas = *newDeploy.Spec.Replicas
 		}
 
-		oldAccessor = &workloads.Accessor{
+		oldAccessor = &workloads.WorkloadAccessor{
 			Replicas: &oldReplicas,
 			Paused:   oldDeploy.Spec.Paused,
 			Status: &workloads.Status{
@@ -127,7 +127,7 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			Metadata: &oldDeploy.ObjectMeta,
 		}
 
-		newAccessor = &workloads.Accessor{
+		newAccessor = &workloads.WorkloadAccessor{
 			Replicas: &newReplicas,
 			Paused:   newDeploy.Spec.Paused,
 			Status: &workloads.Status{
@@ -153,29 +153,17 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			Name:      newAccessor.Metadata.Name,
 		}
 
-		controllerInfo, controlled := newAccessor.Metadata.Annotations[workloads.BatchReleaseControlAnnotation]
-		if controlled && len(controllerInfo) > 0 {
-			br := &metav1.OwnerReference{}
-			if err := json.Unmarshal([]byte(controllerInfo), br); err == nil {
-				klog.V(3).Infof("%s (%v) is managed by BatchRelease (%s), append queue", gvk.Kind, workloadNsn, br.Name)
-				nsn := types.NamespacedName{Namespace: workloadNsn.Namespace, Name: br.Name}
-				q.Add(reconcile.Request{NamespacedName: nsn})
-				return
-			}
-		}
-
-		br, err := w.getBatchRelease(workloadNsn, gvk)
+		brNsn, err := w.getBatchRelease(workloadNsn, gvk, newAccessor.Metadata.Annotations[workloads.BatchReleaseControlAnnotation])
 		if err != nil {
 			klog.Errorf("unable to get BatchRelease related with %s (%s/%s), err: %v",
 				gvk.Kind, workloadNsn.Namespace, workloadNsn.Name, err)
 			return
 		}
 
-		if br != nil {
-			klog.V(3).Infof("%s (%s/%s) changed generation from %d to %d managed by BatchRelease (%s/%s)",
-				gvk.Kind, workloadNsn.Namespace, workloadNsn.Name, oldAccessor.Metadata.Generation, newAccessor.Metadata.Generation, br.GetNamespace(), br.GetName())
-			nsn := types.NamespacedName{Namespace: br.GetNamespace(), Name: br.GetName()}
-			q.Add(reconcile.Request{NamespacedName: nsn})
+		if len(brNsn.Name) != 0 {
+			klog.V(3).Infof("%s (%s/%s) changed generation from %d to %d managed by BatchRelease (%v)",
+				gvk.Kind, workloadNsn.Namespace, workloadNsn.Name, oldAccessor.Metadata.Generation, newAccessor.Metadata.Generation, brNsn)
+			q.Add(reconcile.Request{NamespacedName: brNsn})
 		}
 	}
 }
@@ -189,12 +177,15 @@ func (w workloadEventHandler) Generic(evt event.GenericEvent, q workqueue.RateLi
 
 func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 	obj client.Object, action EventAction) {
+	var controlInfo string
 	var gvk schema.GroupVersionKind
 	switch obj.(type) {
 	case *kruiseappsv1alpha1.CloneSet:
 		gvk = controllerKruiseKindCS
+		controlInfo = obj.(*kruiseappsv1alpha1.CloneSet).Annotations[workloads.BatchReleaseControlAnnotation]
 	case *appsv1.Deployment:
 		gvk = controllerKindDep
+		controlInfo = obj.(*appsv1.Deployment).Annotations[workloads.BatchReleaseControlAnnotation]
 	default:
 		return
 	}
@@ -203,78 +194,89 @@ func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 		Namespace: obj.GetNamespace(),
 		Name:      obj.GetName(),
 	}
-	ws, err := w.getBatchRelease(workloadNsn, gvk)
+	brNsn, err := w.getBatchRelease(workloadNsn, gvk, controlInfo)
 	if err != nil {
 		klog.Errorf("unable to get BatchRelease related with %s (%s/%s), err: %v",
 			gvk.Kind, workloadNsn.Namespace, workloadNsn.Name, err)
 		return
 	}
-	if ws != nil {
-		klog.V(5).Infof("%s %s (%s/%s) and reconcile BatchRelease (%s/%s)",
-			action, gvk.Kind, workloadNsn.Namespace, workloadNsn.Namespace, ws.Namespace, ws.Name)
-		nsn := types.NamespacedName{Namespace: ws.GetNamespace(), Name: ws.GetName()}
-		q.Add(reconcile.Request{NamespacedName: nsn})
+	if len(brNsn.Name) != 0 {
+		klog.V(5).Infof("%s %s (%s/%s) and reconcile BatchRelease (%v)",
+			action, gvk.Kind, workloadNsn.Namespace, workloadNsn.Namespace, brNsn)
+		q.Add(reconcile.Request{NamespacedName: brNsn})
 	}
 }
 
-func (w *workloadEventHandler) getBatchRelease(workloadNamespaceName types.NamespacedName, gvk schema.GroupVersionKind) (*v1alpha1.BatchRelease, error) {
-	bsList := &v1alpha1.BatchReleaseList{}
-	listOptions := &client.ListOptions{Namespace: workloadNamespaceName.Namespace}
-	if err := w.List(context.TODO(), bsList, listOptions); err != nil {
-		klog.Errorf("List BatchRelease failed: %s", err.Error())
-		return nil, err
-	}
-
-	for _, bs := range bsList.Items {
-		if bs.DeletionTimestamp != nil {
-			continue
-		}
-
-		targetRef := bs.Spec.TargetRef
-		targetGV, err := schema.ParseGroupVersion(targetRef.APIVersion)
+func (w *workloadEventHandler) getBatchRelease(workloadNamespaceName types.NamespacedName, gvk schema.GroupVersionKind, controlInfo string) (nsn types.NamespacedName, err error) {
+	if len(controlInfo) > 0 {
+		br := &metav1.OwnerReference{}
+		err = json.Unmarshal([]byte(controlInfo), br)
 		if err != nil {
-			klog.Errorf("failed to parse targetRef's group version: %s", targetRef.APIVersion)
-			continue
+			klog.Errorf("Failed to unmarshal controller info annotations for %v(%v)", gvk, workloadNamespaceName)
 		}
 
-		if targetRef.Kind == gvk.Kind && targetGV.Group == gvk.Group && targetRef.Name == workloadNamespaceName.Name {
-			return &bs, nil
+		if br.APIVersion == v1alpha1.GroupVersion.String() && br.Kind == "BatchRelease" {
+			klog.V(3).Infof("%s (%v) is managed by BatchRelease (%s), append queue", gvk.Kind, workloadNamespaceName, br.Name)
+			nsn = types.NamespacedName{Namespace: workloadNamespaceName.Namespace, Name: br.Name}
+			return
 		}
 	}
 
-	return nil, nil
+	brList := &v1alpha1.BatchReleaseList{}
+	listOptions := &client.ListOptions{Namespace: workloadNamespaceName.Namespace}
+	if err = w.List(context.TODO(), brList, listOptions); err != nil {
+		klog.Errorf("List BatchRelease failed: %s", err.Error())
+		return
+	}
+
+	for i := range brList.Items {
+		br := &brList.Items[i]
+		targetRef := br.Spec.TargetRef
+		targetGV, err := schema.ParseGroupVersion(targetRef.WorkloadRef.APIVersion)
+		if err != nil {
+			klog.Errorf("failed to parse targetRef's group version: %s", targetRef.WorkloadRef.APIVersion)
+			continue
+		}
+
+		if targetRef.WorkloadRef.Kind == gvk.Kind && targetGV.Group == gvk.Group && targetRef.WorkloadRef.Name == workloadNamespaceName.Name {
+			nsn = client.ObjectKeyFromObject(br)
+		}
+	}
+
+	return
 }
 
-func observeGenerationChanged(newOne, oldOne *workloads.Accessor) bool {
+func observeGenerationChanged(newOne, oldOne *workloads.WorkloadAccessor) bool {
 	return newOne.Metadata.Generation != oldOne.Metadata.Generation
 }
 
-func observeLatestGeneration(newOne, oldOne *workloads.Accessor) bool {
+func observeLatestGeneration(newOne, oldOne *workloads.WorkloadAccessor) bool {
 	oldNot := oldOne.Metadata.Generation != oldOne.Status.ObservedGeneration
 	newDid := newOne.Metadata.Generation == newOne.Status.ObservedGeneration
 	return oldNot && newDid
 }
 
-func observeScaleEventDone(newOne, oldOne *workloads.Accessor) bool {
+func observeScaleEventDone(newOne, oldOne *workloads.WorkloadAccessor) bool {
 	_, controlled := newOne.Metadata.Annotations[workloads.BatchReleaseControlAnnotation]
 	if !controlled {
 		return false
 	}
 
-	oldScaling := oldOne.Replicas != newOne.Replicas ||
+	oldScaling := *oldOne.Replicas != *newOne.Replicas ||
 		*oldOne.Replicas != oldOne.Status.Replicas
 	newDone := newOne.Metadata.Generation == newOne.Status.ObservedGeneration &&
-		*oldOne.Replicas == oldOne.Status.Replicas
+		*newOne.Replicas == newOne.Status.Replicas
 	return oldScaling && newDone
 }
 
-func observeReplicasChanged(newOne, oldOne *workloads.Accessor) bool {
+func observeReplicasChanged(newOne, oldOne *workloads.WorkloadAccessor) bool {
 	_, controlled := newOne.Metadata.Annotations[workloads.BatchReleaseControlAnnotation]
 	if !controlled {
 		return false
 	}
 
-	return oldOne.Status.Replicas != newOne.Status.Replicas ||
+	return *oldOne.Replicas != *newOne.Replicas ||
+		oldOne.Status.Replicas != newOne.Status.Replicas ||
 		oldOne.Status.ReadyReplicas != newOne.Status.ReadyReplicas ||
 		oldOne.Status.UpdatedReplicas != newOne.Status.UpdatedReplicas ||
 		oldOne.Status.UpdatedReadyReplicas != newOne.Status.UpdatedReadyReplicas

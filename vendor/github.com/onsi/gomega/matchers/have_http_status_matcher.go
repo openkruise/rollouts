@@ -2,26 +2,17 @@ package matchers
 
 import (
 	"fmt"
-<<<<<<< HEAD
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
-=======
-	"net/http"
-	"net/http/httptest"
->>>>>>> 33cbc1d (add batchrelease controller)
 
 	"github.com/onsi/gomega/format"
 )
 
 type HaveHTTPStatusMatcher struct {
-<<<<<<< HEAD
 	Expected []interface{}
-=======
-	Expected interface{}
->>>>>>> 33cbc1d (add batchrelease controller)
 }
 
 func (matcher *HaveHTTPStatusMatcher) Match(actual interface{}) (success bool, err error) {
@@ -35,7 +26,6 @@ func (matcher *HaveHTTPStatusMatcher) Match(actual interface{}) (success bool, e
 		return false, fmt.Errorf("HaveHTTPStatus matcher expects *http.Response or *httptest.ResponseRecorder. Got:\n%s", format.Object(actual, 1))
 	}
 
-<<<<<<< HEAD
 	if len(matcher.Expected) == 0 {
 		return false, fmt.Errorf("HaveHTTPStatus matcher must be passed an int or a string. Got nothing")
 	}
@@ -103,22 +93,4 @@ func formatHttpResponse(input interface{}) string {
 	s.WriteString(fmt.Sprintf("%s}", format.Indent))
 
 	return s.String()
-=======
-	switch e := matcher.Expected.(type) {
-	case int:
-		return resp.StatusCode == e, nil
-	case string:
-		return resp.Status == e, nil
-	}
-
-	return false, fmt.Errorf("HaveHTTPStatus matcher must be passed an int or a string. Got:\n%s", format.Object(matcher.Expected, 1))
-}
-
-func (matcher *HaveHTTPStatusMatcher) FailureMessage(actual interface{}) (message string) {
-	return format.Message(actual, "to have HTTP status", matcher.Expected)
-}
-
-func (matcher *HaveHTTPStatusMatcher) NegatedFailureMessage(actual interface{}) (message string) {
-	return format.Message(actual, "not to have HTTP status", matcher.Expected)
->>>>>>> 33cbc1d (add batchrelease controller)
 }

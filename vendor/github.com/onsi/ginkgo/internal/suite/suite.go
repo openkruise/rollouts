@@ -97,11 +97,7 @@ func (suite *Suite) generateSpecsIterator(description string, config config.Gink
 		specs.Shuffle(rand.New(rand.NewSource(config.RandomSeed)))
 	}
 
-<<<<<<< HEAD
 	specs.ApplyFocus(description, config.FocusStrings, config.SkipStrings)
-=======
-	specs.ApplyFocus(description, config.FocusString, config.SkipString)
->>>>>>> 33cbc1d (add batchrelease controller)
 
 	if config.SkipMeasurements {
 		specs.SkipMeasurements()

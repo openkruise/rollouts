@@ -32,8 +32,8 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 		ref := &metav1.OwnerReference{}
 		err := json.Unmarshal([]byte(controlInfo), ref)
 		if err == nil && ref.UID == c.parentController.UID {
-			klog.V(3).Info("CloneSet has been controlled by this BatchRelease, no need to claim again")
 			controlled = true
+			klog.V(3).Info("CloneSet has been controlled by this BatchRelease, no need to claim again")
 		} else {
 			klog.Error("Failed to parse controller info from cloneset annotation, error: %v, controller info: %+v", err, *ref)
 		}
@@ -84,7 +84,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 	}
 
 	klog.V(3).Info("Claim CloneSet Successfully")
-	return false, nil
+	return true, nil
 }
 
 // remove the parent controller from the deployment's owner list
@@ -116,6 +116,15 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 			"paused":    pause,
 		},
 	}
+
+	if len(clone.Annotations[StashCloneSetPartition]) > 0 {
+		restoredPartition := &intstr.IntOrString{}
+		if err := json.Unmarshal([]byte(clone.Annotations[StashCloneSetPartition]), restoredPartition); err == nil {
+			updateStrategy := patchSpec["updateStrategy"].(map[string]interface{})
+			updateStrategy["partition"] = restoredPartition
+		}
+	}
+
 	patchSpecByte, _ := json.Marshal(patchSpec)
 	patchByte := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null, "%s":null}},"spec":%s}`,
 		BatchReleaseControlAnnotation, StashCloneSetPartition, string(patchSpecByte))
@@ -126,7 +135,7 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 	}
 
 	klog.V(3).Info("Release CloneSet Successfully")
-	return false, nil
+	return true, nil
 }
 
 // scale the deployment
@@ -141,8 +150,8 @@ func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.Cl
 
 	patchByte, _ := json.Marshal(patch)
 	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
-		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "PatchPartitionFailed", "Failed to update the CloneSet to the correct target partition %d, error: %v", partition, err)
-		//c.releaseStatus.RolloutRetry(err.Error())
+		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "PatchPartitionFailed",
+			"Failed to update the CloneSet to the correct target partition %d, error: %v", partition, err)
 		return err
 	}
 

@@ -70,10 +70,10 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Watch for changes to BatchRelease
 	err = c.Watch(&source.Kind{Type: &v1alpha1.BatchRelease{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			old := e.ObjectOld.(*v1alpha1.BatchRelease)
-			new := e.ObjectNew.(*v1alpha1.BatchRelease)
-			if old.Generation != new.Generation {
-				klog.V(3).Infof("Observed updated Spec for BatchRelease: %s/%s", new.Namespace, new.Name)
+			oldObject := e.ObjectOld.(*v1alpha1.BatchRelease)
+			newObject := e.ObjectNew.(*v1alpha1.BatchRelease)
+			if oldObject.Generation != newObject.Generation || newObject.DeletionTimestamp != nil {
+				klog.V(3).Infof("Observed updated Spec for BatchRelease: %s/%s", newObject.Namespace, newObject.Name)
 				return true
 			}
 			return false

@@ -40,8 +40,8 @@ func NewCloneSetRolloutController(client client.Client, recorder record.EventRec
 	}
 }
 
-// VerifySpec verifies that the rollout resource is consistent with the rollout spec
-func (c *CloneSetRolloutController) VerifySpec() (bool, error) {
+// IfNeedToProgress verifies that the workload is ready to execute release plan
+func (c *CloneSetRolloutController) IfNeedToProgress() (bool, error) {
 	var verifyErr error
 	defer func() {
 		if verifyErr != nil {
@@ -76,8 +76,8 @@ func (c *CloneSetRolloutController) VerifySpec() (bool, error) {
 	return true, nil
 }
 
-// Initialize makes sure that the source and target CloneSet is under our control
-func (c *CloneSetRolloutController) Initialize() (bool, error) {
+// Prepare makes sure that the source and target CloneSet is under our control
+func (c *CloneSetRolloutController) Prepare() (bool, error) {
 	if err := c.fetchCloneSet(); err != nil {
 		//c.releaseStatus.RolloutRetry(err.Error())
 		return false, nil
@@ -185,16 +185,16 @@ func (c *CloneSetRolloutController) Finalize(pause, cleanup bool) bool {
 }
 
 // WatchWorkload return change type if workload was changed during release
-func (c *CloneSetRolloutController) WatchWorkload() (WorkloadChangeEventType, *Accessor, error) {
+func (c *CloneSetRolloutController) WatchWorkload() (WorkloadChangeEventType, *WorkloadAccessor, error) {
 	if c.parentController.Spec.Cancelled ||
 		c.parentController.DeletionTimestamp != nil ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseFinalizing ||
-		c.releaseStatus.Phase == v1alpha1.RolloutPhaseRollingBack ||
+		c.releaseStatus.Phase == v1alpha1.RolloutPhaseRollback ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseTerminating {
 		return IgnoreWorkloadEvent, nil, nil
 	}
 
-	workloadInfo := &Accessor{}
+	workloadInfo := &WorkloadAccessor{}
 	err := c.fetchCloneSet()
 	if client.IgnoreNotFound(err) != nil {
 		return "", nil, err
@@ -219,15 +219,12 @@ func (c *CloneSetRolloutController) WatchWorkload() (WorkloadChangeEventType, *A
 	}
 
 	switch c.releaseStatus.Phase {
-	case v1alpha1.RolloutPhaseHealthy, v1alpha1.RolloutPhaseVerify:
-		return IgnoreWorkloadEvent, workloadInfo, nil
-
 	default:
 		if c.clone.Status.CurrentRevision == c.clone.Status.UpdateRevision &&
 			c.parentController.Status.UpdateRevision != c.clone.Status.UpdateRevision {
 			workloadInfo.UpdateRevision = &c.clone.Status.UpdateRevision
 			klog.Warning("CloneSet is stable or is rolling back, release plan should stop")
-			return WorkloadStableOrRollback, workloadInfo, nil
+			return WorkloadRollback, workloadInfo, nil
 		}
 		if *c.clone.Spec.Replicas != c.releaseStatus.ObservedWorkloadReplicas {
 			workloadInfo.Replicas = c.clone.Spec.Replicas
@@ -244,6 +241,9 @@ func (c *CloneSetRolloutController) WatchWorkload() (WorkloadChangeEventType, *A
 				c.releaseStatus.UpdateRevision, c.clone.Status.UpdateRevision)
 			return WorkloadPodTemplateChanged, workloadInfo, nil
 		}
+
+	case v1alpha1.RolloutPhaseHealthy, v1alpha1.RolloutPhaseInitial:
+		return IgnoreWorkloadEvent, workloadInfo, nil
 	}
 
 	return IgnoreWorkloadEvent, workloadInfo, nil

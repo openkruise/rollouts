@@ -104,11 +104,7 @@ func (in *BatchReleaseList) DeepCopyObject() runtime.Object {
 func (in *BatchReleaseSpec) DeepCopyInto(out *BatchReleaseSpec) {
 	*out = *in
 	out.Strategy = in.Strategy
-<<<<<<< HEAD
 	in.TargetRef.DeepCopyInto(&out.TargetRef)
-=======
-	out.TargetRef = in.TargetRef
->>>>>>> 33cbc1d (add batchrelease controller)
 	in.ReleasePlan.DeepCopyInto(&out.ReleasePlan)
 }
 

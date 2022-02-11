@@ -342,7 +342,6 @@ func HaveKeyWithValue(key interface{}, value interface{}) types.GomegaMatcher {
 	}
 }
 
-<<<<<<< HEAD
 //HaveField succeeds if actual is a struct and the value at the passed in field
 //matches the passed in matcher.  By default HaveField used Equal() to perform the match,
 //however a matcher can be passed in in stead.
@@ -371,8 +370,6 @@ func HaveField(field string, expected interface{}) types.GomegaMatcher {
 	}
 }
 
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 //BeNumerically performs numerical assertions in a type-agnostic way.
 //Actual and expected should be numbers, though the specific type of
 //number is irrelevant (float32, float64, uint8, etc...).
@@ -454,7 +451,6 @@ func BeADirectory() types.GomegaMatcher {
 //Expected must be either an int or a string.
 //  Expect(resp).Should(HaveHTTPStatus(http.StatusOK))   // asserts that resp.StatusCode == 200
 //  Expect(resp).Should(HaveHTTPStatus("404 Not Found")) // asserts that resp.Status == "404 Not Found"
-<<<<<<< HEAD
 //  Expect(resp).Should(HaveHTTPStatus(http.StatusOK, http.StatusNoContent))   // asserts that resp.StatusCode == 200 || resp.StatusCode == 204
 func HaveHTTPStatus(expected ...interface{}) types.GomegaMatcher {
 	return &matchers.HaveHTTPStatusMatcher{Expected: expected}
@@ -478,12 +474,6 @@ func HaveHTTPBody(expected interface{}) types.GomegaMatcher {
 	return &matchers.HaveHTTPBodyMatcher{Expected: expected}
 }
 
-=======
-func HaveHTTPStatus(expected interface{}) types.GomegaMatcher {
-	return &matchers.HaveHTTPStatusMatcher{Expected: expected}
-}
-
->>>>>>> 33cbc1d (add batchrelease controller)
 //And succeeds only if all of the given matchers succeed.
 //The matchers are tried in order, and will fail-fast if one doesn't succeed.
 //  Expect("hi").To(And(HaveLen(2), Equal("hi"))
@@ -523,7 +513,6 @@ func Not(matcher types.GomegaMatcher) types.GomegaMatcher {
 }
 
 //WithTransform applies the `transform` to the actual value and matches it against `matcher`.
-<<<<<<< HEAD
 //The given transform must be either a function of one parameter that returns one value or a
 // function of one parameter that returns two values, where the second value must be of the
 // error type.
@@ -533,17 +522,10 @@ func Not(matcher types.GomegaMatcher) types.GomegaMatcher {
 //   var failingplus1 = func(i int) (int, error) { return 42, "this does not compute" }
 //   Expect(1).To(WithTransform(failingplus1, Equal(2)))
 //
-=======
-//The given transform must be a function of one parameter that returns one value.
-//  var plus1 = func(i int) int { return i + 1 }
-//  Expect(1).To(WithTransform(plus1, Equal(2))
-//
->>>>>>> 33cbc1d (add batchrelease controller)
 //And(), Or(), Not() and WithTransform() allow matchers to be composed into complex expressions.
 func WithTransform(transform interface{}, matcher types.GomegaMatcher) types.GomegaMatcher {
 	return matchers.NewWithTransformMatcher(transform, matcher)
 }
-<<<<<<< HEAD
 
 //Satisfy matches the actual value against the `predicate` function.
 //The given predicate must be a function of one paramter that returns bool.
@@ -552,5 +534,3 @@ func WithTransform(transform interface{}, matcher types.GomegaMatcher) types.Gom
 func Satisfy(predicate interface{}) types.GomegaMatcher {
 	return matchers.NewSatisfyMatcher(predicate)
 }
-=======
->>>>>>> 33cbc1d (add batchrelease controller)

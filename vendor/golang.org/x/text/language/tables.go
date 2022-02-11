@@ -47,11 +47,7 @@ const (
 	_Zzzz = 251
 )
 
-<<<<<<< HEAD
 var regionToGroups = []uint8{ // 358 elements
-=======
-var regionToGroups = []uint8{ // 357 elements
->>>>>>> 33cbc1d (add batchrelease controller)
 	// Entry 0 - 3F
 	0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x04,
 	0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x04, 0x00,
@@ -102,13 +98,8 @@ var regionToGroups = []uint8{ // 357 elements
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-<<<<<<< HEAD
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 } // Size: 382 bytes
-=======
-	0x00, 0x00, 0x00, 0x00, 0x00,
-} // Size: 381 bytes
->>>>>>> 33cbc1d (add batchrelease controller)
 
 var paradigmLocales = [][3]uint16{ // 3 elements
 	0: [3]uint16{0x139, 0x0, 0x7b},
@@ -304,8 +295,4 @@ var matchRegion = []regionIntelligibility{ // 15 elements
 	14: {lang: 0x529, script: 0x3c, group: 0x80, distance: 0x5},
 } // Size: 114 bytes
 
-<<<<<<< HEAD
 // Total table size 1472 bytes (1KiB); checksum: F86C669
-=======
-// Total table size 1471 bytes (1KiB); checksum: 4CB1CD46
->>>>>>> 33cbc1d (add batchrelease controller)

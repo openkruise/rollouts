@@ -22,6 +22,9 @@ import (
 )
 
 const (
+	CanaryDeploymentLabelKey  = "rollouts.kruise.io/canary-deployment"
+	CanaryDeploymentFinalizer = "finalizer.rollouts.kruise.io/batch-release"
+
 	// We omit vowels from the set of available characters to reduce the chances
 	// of "bad words" being formed.
 	alphanums = "bcdfghjklmnpqrstvwxz2456789"
@@ -113,4 +116,12 @@ func PatchFinalizer(c client.Client, object client.Object, finalizers []string) 
 		},
 	})
 	return c.Patch(context.TODO(), object, client.RawPatch(types.MergePatchType, patchByte))
+}
+
+func IsControlledByRollout(release *v1alpha1.BatchRelease) bool {
+	owner := metav1.GetControllerOf(release)
+	if owner != nil && owner.APIVersion == v1alpha1.GroupVersion.String() && owner.Kind == "Rollout" {
+		return true
+	}
+	return false
 }

@@ -3,9 +3,6 @@ package workloads
 import (
 	"context"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sort"
-
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -16,6 +13,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sort"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 )
@@ -50,8 +49,8 @@ func NewDeploymentRolloutController(client client.Client, recorder record.EventR
 	}
 }
 
-// VerifySpec verifies that the rollout resource is consistent with the rollout spec
-func (c *DeploymentsRolloutController) VerifySpec() (bool, error) {
+// IfNeedToProgress verifies that the workload is ready to execute release plan
+func (c *DeploymentsRolloutController) IfNeedToProgress() (bool, error) {
 	var verifyErr error
 
 	defer func() {
@@ -90,8 +89,8 @@ func (c *DeploymentsRolloutController) VerifySpec() (bool, error) {
 	return true, nil
 }
 
-// Initialize makes sure that the source and target Deployment is under our control
-func (c *DeploymentsRolloutController) Initialize() (bool, error) {
+// Prepare makes sure that the source and target Deployment is under our control
+func (c *DeploymentsRolloutController) Prepare() (bool, error) {
 	if err := c.fetchStableDeployment(); err != nil {
 		//c.releaseStatus.RolloutRetry(err.Error())
 		return false, nil
@@ -201,17 +200,17 @@ func (c *DeploymentsRolloutController) Finalize(pause, cleanup bool) bool {
 }
 
 // WatchWorkload return change type if workload was changed during release
-func (c *DeploymentsRolloutController) WatchWorkload() (WorkloadChangeEventType, *Accessor, error) {
+func (c *DeploymentsRolloutController) WatchWorkload() (WorkloadChangeEventType, *WorkloadAccessor, error) {
 	if c.parentController.Spec.Cancelled ||
 		c.parentController.DeletionTimestamp != nil ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseFinalizing ||
-		c.releaseStatus.Phase == v1alpha1.RolloutPhaseRollingBack ||
+		c.releaseStatus.Phase == v1alpha1.RolloutPhaseRollback ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseTerminating {
 		return IgnoreWorkloadEvent, nil, nil
 	}
 
 	var err error
-	workloadInfo := &Accessor{}
+	workloadInfo := &WorkloadAccessor{}
 	err = c.fetchStableDeployment()
 	if err != nil {
 		return "", nil, err
@@ -247,7 +246,7 @@ func (c *DeploymentsRolloutController) WatchWorkload() (WorkloadChangeEventType,
 
 	var updateRevision string
 	switch c.releaseStatus.Phase {
-	case v1alpha1.RolloutPhaseHealthy, v1alpha1.RolloutPhaseVerify:
+	case v1alpha1.RolloutPhaseInitial, v1alpha1.RolloutPhaseHealthy:
 		return IgnoreWorkloadEvent, workloadInfo, nil
 
 	default:
@@ -255,7 +254,7 @@ func (c *DeploymentsRolloutController) WatchWorkload() (WorkloadChangeEventType,
 			return "", workloadInfo, err
 		} else if isRollingBack {
 			workloadInfo.UpdateRevision = &updateRevision
-			return WorkloadStableOrRollback, workloadInfo, nil
+			return WorkloadRollback, workloadInfo, nil
 		}
 		if *c.stable.Spec.Replicas != c.releaseStatus.ObservedWorkloadReplicas {
 			workloadInfo.Replicas = c.stable.Spec.Replicas
@@ -266,12 +265,8 @@ func (c *DeploymentsRolloutController) WatchWorkload() (WorkloadChangeEventType,
 		fallthrough
 
 	case v1alpha1.RolloutPhaseCompleted, v1alpha1.RolloutPhaseCancelled:
-		realStableRevision, err := c.GetPodTemplateHash(c.stable, "stable")
-		if err != nil {
-			return "", workloadInfo, err
-		}
-		if (c.canary == nil || !EqualIgnoreHash(&c.stable.Spec.Template, &c.canary.Spec.Template)) &&
-			c.releaseStatus.UpdateRevision != realStableRevision {
+		_, err = c.GetPodTemplateHash(c.stable, Latest)
+		if (c.canary == nil || !EqualIgnoreHash(&c.stable.Spec.Template, &c.canary.Spec.Template)) && apierrors.IsNotFound(err) {
 			workloadInfo.UpdateRevision = &updateRevision
 			klog.Warning("Deployment updateRevision changed during releasing, should try to restart the release plan")
 			return WorkloadPodTemplateChanged, workloadInfo, nil
@@ -374,11 +369,11 @@ func (c *DeploymentsRolloutController) recordDeploymentRevisionAndReplicas() err
 		return claimErr
 	}
 
-	c.releaseStatus.StableRevision, err = c.GetPodTemplateHash(c.stable, "stable")
+	c.releaseStatus.StableRevision, err = c.GetPodTemplateHash(c.stable, Stable)
 	if err != nil {
 		return err
 	}
-	c.releaseStatus.UpdateRevision, err = c.GetPodTemplateHash(c.canary, "canary")
+	c.releaseStatus.UpdateRevision, err = c.GetPodTemplateHash(c.canary, Latest)
 	if err != nil {
 		return err
 	}
@@ -386,9 +381,16 @@ func (c *DeploymentsRolloutController) recordDeploymentRevisionAndReplicas() err
 	return nil
 }
 
-func (c *DeploymentsRolloutController) GetPodTemplateHash(deploy *apps.Deployment, kind string) (string, error) {
+type PodTemplateHashType string
+
+const (
+	Latest PodTemplateHashType = "Latest"
+	Stable PodTemplateHashType = "Stable"
+)
+
+func (c *DeploymentsRolloutController) GetPodTemplateHash(deploy *apps.Deployment, kind PodTemplateHashType) (string, error) {
 	switch kind {
-	case "stable", "canary":
+	case Latest, Stable:
 		if deploy == nil {
 			return "", fmt.Errorf("workload cannot be found, may be deleted or not be created yet")
 		}
@@ -407,18 +409,23 @@ func (c *DeploymentsRolloutController) GetPodTemplateHash(deploy *apps.Deploymen
 
 	for _, rs := range rss {
 		switch kind {
-		case "stable":
+		case Stable:
 			if rs.Spec.Replicas != nil && *rs.Spec.Replicas > 0 {
 				return rs.Labels[apps.DefaultDeploymentUniqueLabelKey], nil
 			}
-		case "canary":
+		case Latest:
 			if EqualIgnoreHash(&deploy.Spec.Template, &rs.Spec.Template) {
 				return rs.Labels[apps.DefaultDeploymentUniqueLabelKey], nil
 			}
 		}
 	}
 
-	return "", fmt.Errorf("cannot find the suitable replicaset pod template hash, kind: %v", kind)
+	notFoundErr := apierrors.NewNotFound(schema.GroupResource{
+		Group:    apps.SchemeGroupVersion.Group,
+		Resource: fmt.Sprintf("%v-ReplicaSet", kind),
+	}, c.canaryNamespacedName.Name)
+
+	return "", notFoundErr
 }
 
 func (c *DeploymentsRolloutController) listReplicaSetsFor(deploy *apps.Deployment) ([]*apps.ReplicaSet, error) {

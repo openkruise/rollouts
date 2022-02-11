@@ -17,10 +17,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-<<<<<<< HEAD
 	"reflect"
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	"strings"
 	"time"
 
@@ -36,11 +33,8 @@ import (
 	"github.com/onsi/ginkgo/types"
 )
 
-<<<<<<< HEAD
 var deprecationTracker = types.NewDeprecationTracker()
 
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 const GINKGO_VERSION = config.VERSION
 const GINKGO_PANIC = `
 Your test failed.
@@ -79,7 +73,6 @@ func GinkgoRandomSeed() int64 {
 	return config.GinkgoConfig.RandomSeed
 }
 
-<<<<<<< HEAD
 //GinkgoParallelNode is deprecated, use GinkgoParallelProcess instead
 func GinkgoParallelNode() int {
 	deprecationTracker.TrackDeprecation(types.Deprecations.ParallelNode(), codelocation.New(1))
@@ -89,11 +82,6 @@ func GinkgoParallelNode() int {
 //GinkgoParallelProcess returns the parallel process number for the current ginkgo process
 //The process number is 1-indexed
 func GinkgoParallelProcess() int {
-=======
-//GinkgoParallelNode returns the parallel node number for the current ginkgo process
-//The node number is 1-indexed
-func GinkgoParallelNode() int {
->>>>>>> 33cbc1d (add batchrelease controller)
 	return config.GinkgoConfig.ParallelNode
 }
 
@@ -114,7 +102,6 @@ func GinkgoT(optionalOffset ...int) GinkgoTInterface {
 	if len(optionalOffset) > 0 {
 		offset = optionalOffset[0]
 	}
-<<<<<<< HEAD
 	failedFunc := func() bool {
 		return CurrentGinkgoTestDescription().Failed
 	}
@@ -122,15 +109,11 @@ func GinkgoT(optionalOffset ...int) GinkgoTInterface {
 		return CurrentGinkgoTestDescription().FullTestText
 	}
 	return testingtproxy.New(GinkgoWriter, Fail, Skip, failedFunc, nameFunc, offset)
-=======
-	return testingtproxy.New(GinkgoWriter, Fail, offset)
->>>>>>> 33cbc1d (add batchrelease controller)
 }
 
 //The interface returned by GinkgoT().  This covers most of the methods
 //in the testing package's T.
 type GinkgoTInterface interface {
-<<<<<<< HEAD
 	Cleanup(func())
 	Setenv(key, value string)
 	Error(args ...interface{})
@@ -150,22 +133,6 @@ type GinkgoTInterface interface {
 	Skipf(format string, args ...interface{})
 	Skipped() bool
 	TempDir() string
-=======
-	Fail()
-	Error(args ...interface{})
-	Errorf(format string, args ...interface{})
-	FailNow()
-	Fatal(args ...interface{})
-	Fatalf(format string, args ...interface{})
-	Log(args ...interface{})
-	Logf(format string, args ...interface{})
-	Failed() bool
-	Parallel()
-	Skip(args ...interface{})
-	Skipf(format string, args ...interface{})
-	SkipNow()
-	Skipped() bool
->>>>>>> 33cbc1d (add batchrelease controller)
 }
 
 //Custom Ginkgo test reporters must implement the Reporter interface.
@@ -248,41 +215,27 @@ func RunSpecs(t GinkgoTestingT, description string) bool {
 	if config.DefaultReporterConfig.ReportFile != "" {
 		reportFile := config.DefaultReporterConfig.ReportFile
 		specReporters[0] = reporters.NewJUnitReporter(reportFile)
-<<<<<<< HEAD
 		specReporters = append(specReporters, buildDefaultReporter())
 	}
 	return runSpecsWithCustomReporters(t, description, specReporters)
-=======
-		return RunSpecsWithDefaultAndCustomReporters(t, description, specReporters)
-	}
-	return RunSpecsWithCustomReporters(t, description, specReporters)
->>>>>>> 33cbc1d (add batchrelease controller)
 }
 
 //To run your tests with Ginkgo's default reporter and your custom reporter(s), replace
 //RunSpecs() with this method.
 func RunSpecsWithDefaultAndCustomReporters(t GinkgoTestingT, description string, specReporters []Reporter) bool {
-<<<<<<< HEAD
 	deprecationTracker.TrackDeprecation(types.Deprecations.CustomReporter())
 	specReporters = append(specReporters, buildDefaultReporter())
 	return runSpecsWithCustomReporters(t, description, specReporters)
-=======
-	specReporters = append(specReporters, buildDefaultReporter())
-	return RunSpecsWithCustomReporters(t, description, specReporters)
->>>>>>> 33cbc1d (add batchrelease controller)
 }
 
 //To run your tests with your custom reporter(s) (and *not* Ginkgo's default reporter), replace
 //RunSpecs() with this method.  Note that parallel tests will not work correctly without the default reporter
 func RunSpecsWithCustomReporters(t GinkgoTestingT, description string, specReporters []Reporter) bool {
-<<<<<<< HEAD
 	deprecationTracker.TrackDeprecation(types.Deprecations.CustomReporter())
 	return runSpecsWithCustomReporters(t, description, specReporters)
 }
 
 func runSpecsWithCustomReporters(t GinkgoTestingT, description string, specReporters []Reporter) bool {
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	writer := GinkgoWriter.(*writer.Writer)
 	writer.SetStream(config.DefaultReporterConfig.Verbose)
 	reporters := make([]reporters.Reporter, len(specReporters))
@@ -290,14 +243,11 @@ func runSpecsWithCustomReporters(t GinkgoTestingT, description string, specRepor
 		reporters[i] = reporter
 	}
 	passed, hasFocusedTests := global.Suite.Run(t, description, reporters, writer, config.GinkgoConfig)
-<<<<<<< HEAD
 
 	if deprecationTracker.DidTrackDeprecations() {
 		fmt.Fprintln(colorable.NewColorableStderr(), deprecationTracker.DeprecationsReport())
 	}
 
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	if passed && hasFocusedTests && strings.TrimSpace(os.Getenv("GINKGO_EDITOR_INTEGRATION")) == "" {
 		fmt.Println("PASS | FOCUSED")
 		os.Exit(types.GINKGO_FOCUS_EXIT_CODE)
@@ -451,20 +401,14 @@ func XWhen(text string, body func()) bool {
 //Ginkgo will normally run It blocks synchronously.  To perform asynchronous tests, pass a
 //function that accepts a Done channel.  When you do this, you can also provide an optional timeout.
 func It(text string, body interface{}, timeout ...float64) bool {
-<<<<<<< HEAD
 	validateBodyFunc(body, codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushItNode(text, body, types.FlagTypeNone, codelocation.New(1), parseTimeout(timeout...))
 	return true
 }
 
 //You can focus individual Its using FIt
 func FIt(text string, body interface{}, timeout ...float64) bool {
-<<<<<<< HEAD
 	validateBodyFunc(body, codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushItNode(text, body, types.FlagTypeFocused, codelocation.New(1), parseTimeout(timeout...))
 	return true
 }
@@ -485,20 +429,14 @@ func XIt(text string, _ ...interface{}) bool {
 //which "It" does not fit into a natural sentence flow. All the same protocols apply for Specify blocks
 //which apply to It blocks.
 func Specify(text string, body interface{}, timeout ...float64) bool {
-<<<<<<< HEAD
 	validateBodyFunc(body, codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushItNode(text, body, types.FlagTypeNone, codelocation.New(1), parseTimeout(timeout...))
 	return true
 }
 
 //You can focus individual Specifys using FSpecify
 func FSpecify(text string, body interface{}, timeout ...float64) bool {
-<<<<<<< HEAD
 	validateBodyFunc(body, codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushItNode(text, body, types.FlagTypeFocused, codelocation.New(1), parseTimeout(timeout...))
 	return true
 }
@@ -542,40 +480,28 @@ func By(text string, callbacks ...func()) {
 //The body function must have the signature:
 //	func(b Benchmarker)
 func Measure(text string, body interface{}, samples int) bool {
-<<<<<<< HEAD
 	deprecationTracker.TrackDeprecation(types.Deprecations.Measure(), codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushMeasureNode(text, body, types.FlagTypeNone, codelocation.New(1), samples)
 	return true
 }
 
 //You can focus individual Measures using FMeasure
 func FMeasure(text string, body interface{}, samples int) bool {
-<<<<<<< HEAD
 	deprecationTracker.TrackDeprecation(types.Deprecations.Measure(), codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushMeasureNode(text, body, types.FlagTypeFocused, codelocation.New(1), samples)
 	return true
 }
 
 //You can mark Measurements as pending using PMeasure
 func PMeasure(text string, _ ...interface{}) bool {
-<<<<<<< HEAD
 	deprecationTracker.TrackDeprecation(types.Deprecations.Measure(), codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushMeasureNode(text, func(b Benchmarker) {}, types.FlagTypePending, codelocation.New(1), 0)
 	return true
 }
 
 //You can mark Measurements as pending using XMeasure
 func XMeasure(text string, _ ...interface{}) bool {
-<<<<<<< HEAD
 	deprecationTracker.TrackDeprecation(types.Deprecations.Measure(), codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushMeasureNode(text, func(b Benchmarker) {}, types.FlagTypePending, codelocation.New(1), 0)
 	return true
 }
@@ -587,10 +513,7 @@ func XMeasure(text string, _ ...interface{}) bool {
 //
 //You may only register *one* BeforeSuite handler per test suite.  You typically do so in your bootstrap file at the top level.
 func BeforeSuite(body interface{}, timeout ...float64) bool {
-<<<<<<< HEAD
 	validateBodyFunc(body, codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.SetBeforeSuiteNode(body, codelocation.New(1), parseTimeout(timeout...))
 	return true
 }
@@ -604,10 +527,7 @@ func BeforeSuite(body interface{}, timeout ...float64) bool {
 //
 //You may only register *one* AfterSuite handler per test suite.  You typically do so in your bootstrap file at the top level.
 func AfterSuite(body interface{}, timeout ...float64) bool {
-<<<<<<< HEAD
 	validateBodyFunc(body, codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.SetAfterSuiteNode(body, codelocation.New(1), parseTimeout(timeout...))
 	return true
 }
@@ -695,10 +615,7 @@ func SynchronizedAfterSuite(allNodesBody interface{}, node1Body interface{}, tim
 //Like It blocks, BeforeEach blocks can be made asynchronous by providing a body function that accepts
 //a Done channel
 func BeforeEach(body interface{}, timeout ...float64) bool {
-<<<<<<< HEAD
 	validateBodyFunc(body, codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushBeforeEachNode(body, codelocation.New(1), parseTimeout(timeout...))
 	return true
 }
@@ -709,10 +626,7 @@ func BeforeEach(body interface{}, timeout ...float64) bool {
 //Like It blocks, BeforeEach blocks can be made asynchronous by providing a body function that accepts
 //a Done channel
 func JustBeforeEach(body interface{}, timeout ...float64) bool {
-<<<<<<< HEAD
 	validateBodyFunc(body, codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushJustBeforeEachNode(body, codelocation.New(1), parseTimeout(timeout...))
 	return true
 }
@@ -723,10 +637,7 @@ func JustBeforeEach(body interface{}, timeout ...float64) bool {
 //Like It blocks, JustAfterEach blocks can be made asynchronous by providing a body function that accepts
 //a Done channel
 func JustAfterEach(body interface{}, timeout ...float64) bool {
-<<<<<<< HEAD
 	validateBodyFunc(body, codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushJustAfterEachNode(body, codelocation.New(1), parseTimeout(timeout...))
 	return true
 }
@@ -737,15 +648,11 @@ func JustAfterEach(body interface{}, timeout ...float64) bool {
 //Like It blocks, AfterEach blocks can be made asynchronous by providing a body function that accepts
 //a Done channel
 func AfterEach(body interface{}, timeout ...float64) bool {
-<<<<<<< HEAD
 	validateBodyFunc(body, codelocation.New(1))
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 	global.Suite.PushAfterEachNode(body, codelocation.New(1), parseTimeout(timeout...))
 	return true
 }
 
-<<<<<<< HEAD
 func validateBodyFunc(body interface{}, cl types.CodeLocation) {
 	t := reflect.TypeOf(body)
 	if t.Kind() != reflect.Func {
@@ -765,8 +672,6 @@ func validateBodyFunc(body interface{}, cl types.CodeLocation) {
 	}
 }
 
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
 func parseTimeout(timeout ...float64) time.Duration {
 	if len(timeout) == 0 {
 		return global.DefaultTimeout

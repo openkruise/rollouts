@@ -37,6 +37,9 @@ spec:
             description: RolloutSpec defines the desired state of Rollout
             properties:
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 42b951e (completed-v1)
               objectRef:
                 properties:
                   type:
@@ -63,12 +66,16 @@ spec:
                 required:
                 - type
                 type: object
+<<<<<<< HEAD
 =======
 >>>>>>> 33cbc1d (add batchrelease controller)
+=======
+>>>>>>> 42b951e (completed-v1)
               strategy:
                 description: The deployment strategy to use to replace existing pods
                   with new ones.
                 properties:
+<<<<<<< HEAD
 <<<<<<< HEAD
                   canaryPlan:
                     description: CanaryStrategy defines parameters for a Replica Based
@@ -88,6 +95,12 @@ spec:
                           canary version.
                         type: string
 >>>>>>> 33cbc1d (add batchrelease controller)
+=======
+                  canaryPlan:
+                    description: CanaryStrategy defines parameters for a Replica Based
+                      Canary
+                    properties:
+>>>>>>> 42b951e (completed-v1)
                       steps:
                         description: Steps define the order of phases to execute the
                           canary deployment
@@ -95,6 +108,9 @@ spec:
                           description: CanaryStep defines a step of a canary workload.
                           properties:
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 42b951e (completed-v1)
                             canaryReplicas:
                               anyOf:
                               - type: integer
@@ -104,8 +120,11 @@ spec:
                                 5) or a percentage of total pods. it is mutually exclusive
                                 with the PodList field'
                               x-kubernetes-int-or-string: true
+<<<<<<< HEAD
 =======
 >>>>>>> 33cbc1d (add batchrelease controller)
+=======
+>>>>>>> 42b951e (completed-v1)
                             pause:
                               description: Pause freezes the rollout by setting spec.Paused
                                 to true. A Rollout will resume when spec.Paused is
@@ -118,10 +137,14 @@ spec:
                                   type: integer
                               type: object
 <<<<<<< HEAD
+<<<<<<< HEAD
                             weight:
 =======
                             setWeight:
 >>>>>>> 33cbc1d (add batchrelease controller)
+=======
+                            weight:
+>>>>>>> 42b951e (completed-v1)
                               description: SetWeight sets what percentage of the canary
                                 pods should receive
                               format: int32
@@ -132,6 +155,7 @@ spec:
                         description: TrafficRouting hosts all the supported service
                           meshes supported to enable more fine-grained traffic routing
                         properties:
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
                           alb:
@@ -158,6 +182,8 @@ spec:
                             - ingress
                             type: object
 >>>>>>> 33cbc1d (add batchrelease controller)
+=======
+>>>>>>> 42b951e (completed-v1)
                           nginx:
                             description: Nginx holds Nginx Ingress specific configuration
                               to route traffic
@@ -166,6 +192,7 @@ spec:
                                 description: Ingress refers to the name of an `Ingress`
                                   resource in the same namespace as the `Rollout`
                                 type: string
+<<<<<<< HEAD
 <<<<<<< HEAD
                             required:
                             - ingress
@@ -208,46 +235,57 @@ spec:
                                       type: string
                                     type: object
                                 type: object
+=======
+>>>>>>> 42b951e (completed-v1)
                             required:
                             - ingress
                             type: object
-                          type:
+                          service:
+                            description: Service holds the name of a service which
+                              selects pods with stable version and don't select any
+                              pods with canary version.
                             type: string
+                          type:
+                            description: Nginx, Alb, Istio etc.
+                            type: string
+                        required:
+                        - type
                         type: object
                     type: object
-                type: object
-              targetRef:
-                description: TargetRef contains enough information to let you identify
-                  a workload for Rollout
-                properties:
-                  apiVersion:
-                    description: API Version of the referent
-                    type: string
-                  kind:
-                    description: Kind of the referent
-                    type: string
-                  name:
-                    description: Name of the referent
+                  paused:
+                    description: Paused indicates that the Rollout is paused. Default
+                      value is false
+                    type: boolean
+                  type:
+                    description: canaryPlan, BlueGreenPlan Default value is canaryPlan
                     type: string
                 required:
-                - apiVersion
-                - kind
-                - name
+                - type
                 type: object
             required:
+            - objectRef
             - strategy
+<<<<<<< HEAD
             - targetRef
 >>>>>>> 33cbc1d (add batchrelease controller)
+=======
+>>>>>>> 42b951e (completed-v1)
             type: object
           status:
             description: RolloutStatus defines the observed state of Rollout
             properties:
+<<<<<<< HEAD
 <<<<<<< HEAD
               canaryRevision:
                 description: CanaryRevision the hash of the canary pod template
                 type: string
 =======
 >>>>>>> 33cbc1d (add batchrelease controller)
+=======
+              canaryRevision:
+                description: CanaryRevision the hash of the canary pod template
+                type: string
+>>>>>>> 42b951e (completed-v1)
               canaryStatus:
                 description: Canary describes the state of the canary rollout
                 properties:
@@ -340,11 +378,14 @@ spec:
                   rolled out
                 type: string
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
               updateRevision:
                 description: UpdateRevision the hash of the current pod template
                 type: string
 >>>>>>> 33cbc1d (add batchrelease controller)
+=======
+>>>>>>> 42b951e (completed-v1)
             type: object
         type: object
     served: true

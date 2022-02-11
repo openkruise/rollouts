@@ -181,7 +181,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 					clone := &kruiseappsv1alpha1.CloneSet{}
 					Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 					return clone.Status.UpdatedReplicas
-				}, time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
+				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
 				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
@@ -190,7 +190,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2: Percentage, 50%, Succeeded", func() {
@@ -227,7 +227,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 					clone := &kruiseappsv1alpha1.CloneSet{}
 					Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 					return clone.Status.UpdatedReplicas
-				}, time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
+				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
 				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
@@ -236,14 +236,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() int32 {
 				clone := &kruiseappsv1alpha1.CloneSet{}
 				Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas
-			}, 5*time.Minute, time.Second).Should(Equal(*cloneset.Spec.Replicas))
+			}, 15*time.Minute, time.Second).Should(Equal(*cloneset.Spec.Replicas))
 		})
 
 		It("V1->V2(Completed)->V3: Percentage, 100%, Succeeded", func() {
@@ -284,7 +284,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 					clone := &kruiseappsv1alpha1.CloneSet{}
 					Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 					return clone.Status.UpdatedReplicas
-				}, time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
+				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
 				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
@@ -293,7 +293,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			/*************************************************************************************
 							V1->V2 Succeeded, Start to release V2->V3
@@ -318,7 +318,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 					clone := &kruiseappsv1alpha1.CloneSet{}
 					Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 					return clone.Status.UpdatedReplicas
-				}, 20*time.Second, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
+				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
 				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
@@ -327,7 +327,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2(UnCompleted)->V3: Percentage, 100%, Succeeded", func() {
@@ -368,7 +368,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 					clone := &kruiseappsv1alpha1.CloneSet{}
 					Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 					return clone.Status.UpdatedReplicas
-				}, time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
+				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
 				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
@@ -400,7 +400,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 					clone := &kruiseappsv1alpha1.CloneSet{}
 					Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 					return clone.Status.UpdatedReplicas
-				}, time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
+				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
 				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
@@ -409,7 +409,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2: ScalingUp, Percentage, 100%, Succeeded", func() {
@@ -463,14 +463,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
 				clone := &kruiseappsv1alpha1.CloneSet{}
 				Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas == *clone.Spec.Replicas
-			}, 10*time.Minute, time.Second).Should(BeTrue())
+			}, 15*time.Minute, time.Second).Should(BeTrue())
 		})
 
 		It("V1->V2: ScalingDown, Percentage, 100%, Succeeded", func() {
@@ -524,14 +524,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
 				clone := &kruiseappsv1alpha1.CloneSet{}
 				Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas == *clone.Spec.Replicas
-			}, 10*time.Minute, time.Second).Should(BeTrue())
+			}, 15*time.Minute, time.Second).Should(BeTrue())
 		})
 
 		It("V1->V2: ScalingUp, Number, 100%, Succeeded", func() {
@@ -585,14 +585,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
 				clone := &kruiseappsv1alpha1.CloneSet{}
 				Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas == *clone.Spec.Replicas
-			}, 10*time.Minute, time.Second).Should(BeTrue())
+			}, 15*time.Minute, time.Second).Should(BeTrue())
 		})
 
 		It("V1->V2: ScalingDown, Number, 100%, Succeeded", func() {
@@ -647,14 +647,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
 				clone := &kruiseappsv1alpha1.CloneSet{}
 				Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas == *clone.Spec.Replicas
-			}, 10*time.Minute, time.Second).Should(BeTrue())
+			}, 15*time.Minute, time.Second).Should(BeTrue())
 		})
 
 		It("Rollback V1->V2->V1: Percentage, 100%, Succeeded", func() {
@@ -700,14 +700,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &kruiseappsv1alpha1.CloneSet{}
 				Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas == *clone.Spec.Replicas
-			}, 10*time.Minute, time.Second).Should(BeTrue())
+			}, 15*time.Minute, time.Second).Should(BeTrue())
 
 			By("Checking BatchRelease completed status phase...")
 			Eventually(func() rolloutsv1alpha1.RolloutPhase {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCancelled))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCancelled))
 		})
 	})
 
@@ -755,7 +755,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2: Percentage, 50%, Succeeded", func() {
@@ -807,7 +807,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &apps.Deployment{}
 				Expect(GetObject(deployment.Namespace, deployment.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas
-			}, 10*time.Minute, time.Second).Should(Equal(*deployment.Spec.Replicas))
+			}, 15*time.Minute, time.Second).Should(Equal(*deployment.Spec.Replicas))
 		})
 
 		It("V1->V2(Completed)->V3: Percentage, 100%, Succeeded", func() {
@@ -856,7 +856,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			/*************************************************************************************
 							V1->V2 Succeeded, Start to release V2->V3
@@ -889,7 +889,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2(UnCompleted)->V3: Percentage, 100%, Succeeded", func() {
@@ -969,7 +969,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2: ScalingUp, Percentage, 100%, Succeeded", func() {
@@ -1023,14 +1023,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() int32 {
 				clone := &apps.Deployment{}
 				Expect(GetObject(deployment.Namespace, deployment.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas
-			}, 10*time.Minute, time.Second).Should(Equal(*deployment.Spec.Replicas))
+			}, 15*time.Minute, time.Second).Should(Equal(*deployment.Spec.Replicas))
 		})
 
 		It("V1->V2: ScalingDown, Percentage, 100%, Succeeded", func() {
@@ -1084,14 +1084,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
 				clone := &apps.Deployment{}
 				Expect(GetObject(deployment.Namespace, deployment.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas == *clone.Spec.Replicas
-			}, 10*time.Minute, time.Second).Should(BeTrue())
+			}, 15*time.Minute, time.Second).Should(BeTrue())
 		})
 
 		It("V1->V2: ScalingUp, Number, 100%, Succeeded", func() {
@@ -1144,14 +1144,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
 				clone := &apps.Deployment{}
 				Expect(GetObject(deployment.Namespace, deployment.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas == *clone.Spec.Replicas
-			}, 10*time.Minute, time.Second).Should(BeTrue())
+			}, 15*time.Minute, time.Second).Should(BeTrue())
 		})
 
 		It("V1->V2: ScalingDown, Number, 100%, Succeeded", func() {
@@ -1205,14 +1205,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
 				clone := &apps.Deployment{}
 				Expect(GetObject(deployment.Namespace, deployment.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas == *clone.Spec.Replicas
-			}, 10*time.Minute, time.Second).Should(BeTrue())
+			}, 15*time.Minute, time.Second).Should(BeTrue())
 		})
 
 		It("Rollback V1->V2->V1: Percentage, 100%, Succeeded", func() {
@@ -1262,14 +1262,14 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &apps.Deployment{}
 				Expect(GetObject(deployment.Namespace, deployment.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas
-			}, 100*time.Second, time.Second).Should(Equal(*deployment.Spec.Replicas))
+			}, 15*time.Minute, time.Second).Should(Equal(*deployment.Spec.Replicas))
 
 			By("Checking BatchRelease completed status phase...")
 			Eventually(func() rolloutsv1alpha1.RolloutPhase {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 100*time.Second, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCancelled))
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCancelled))
 		})
 
 		It("Rollback V1->V2: Delete BatchRelease, Percentage, 100%, Succeeded", func() {
@@ -1318,7 +1318,6 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 			By("Updating cloneset to V1...")
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			UpdateDeployment(deployment)
-			// record canary revision --> v2
 			canaryRevisionV3 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 			Expect(canaryRevisionV3).Should(Equal(stableRevisionV1))
 
@@ -1327,7 +1326,7 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				clone := &apps.Deployment{}
 				Expect(GetObject(deployment.Namespace, deployment.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas
-			}, 100*time.Second, time.Second).Should(Equal(*deployment.Spec.Replicas))
+			}, 15*time.Minute, time.Second).Should(Equal(*deployment.Spec.Replicas))
 		})
 	})
 })

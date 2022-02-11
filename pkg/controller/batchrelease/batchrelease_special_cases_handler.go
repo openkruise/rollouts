@@ -1,10 +1,10 @@
 package batchrelease
 
 import (
-	"k8s.io/apimachinery/pkg/api/errors"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -15,6 +15,7 @@ import (
 
 const (
 	Keep        = "Keep"
+	Start       = "Start"
 	Restart     = "Restart"
 	RollingBack = "RollingBack"
 	Terminating = "Terminating"
@@ -32,8 +33,8 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 	// Note: must keep the order of the following cases
 	switch {
 	case r.releasePlanTerminating():
-		reason = "PlanCancelled"
-		message = "release plan is cancelled, clean up and stop reconcile"
+		reason = "PlanTerminating"
+		message = "release plan is terminating, clean up and stop reconcile"
 		needStopThisRound = false
 		action = Terminating
 
@@ -59,16 +60,20 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 	case r.releasePlanUnhealthy():
 		reason = "PlanStatusUnhealthy"
 		message = "release plan status is unhealthy, try to restart release plan"
-		needStopThisRound = false
+		needStopThisRound = true
 		action = Restart
 
 	case r.releasePlanChanged():
 		reason = "PlanChanged"
 		message = "release plan was changed, try to recalculate canary status"
-		needStopThisRound = false
+		needStopThisRound = true
 		action = Recalculate
 
-	case workloadEvent == workloads.WorkloadStableOrRollback:
+	case r.locatedWorkloadAndStart(err):
+		needStopThisRound = false
+		action = Start
+
+	case workloadEvent == workloads.WorkloadRollback:
 		reason = "StableOrRollback"
 		message = "workload is table or rolling back, stop the release plan"
 		needStopThisRound = false
@@ -83,7 +88,7 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 	case workloadEvent == workloads.WorkloadPodTemplateChanged:
 		reason = "RevisionChanged"
 		message = "workload revision was changed, try to restart release plan"
-		needStopThisRound = false
+		needStopThisRound = true
 		action = Restart
 
 	case workloadEvent == workloads.WorkloadUnHealthy:
@@ -140,14 +145,18 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 	switch action {
 	case Keep:
 		// keep current status, do nothing
-	case Restart:
-		signalRestart(r.releaseStatus)
-	case Recalculate:
-		signalRecalculate(r.releaseStatus)
+	case Start:
+		signalStart(r.releaseStatus)
 	case RollingBack:
 		signalRollingBack(r.releaseStatus)
 	case Terminating:
 		signalTerminating(r.releaseStatus)
+	case Restart:
+		signalRestart(r.releaseStatus)
+		result = reconcile.Result{RequeueAfter: DefaultShortDuration}
+	case Recalculate:
+		signalRecalculate(r.releaseStatus)
+		result = reconcile.Result{RequeueAfter: DefaultShortDuration}
 	}
 
 	return needStopThisRound, result
@@ -165,8 +174,12 @@ func (r *Executor) releasePlanChanged() bool {
 	return r.isProgressing() && r.releaseStatus.ObservedReleasePlanHash != hashReleasePlanBatches(r.releasePlan)
 }
 
+func (r *Executor) locatedWorkloadAndStart(err error) bool {
+	return err == nil && r.releaseStatus.Phase == v1alpha1.RolloutPhaseInitial
+}
+
 func (r *Executor) workloadHasGone(err error) bool {
-	return !r.isTerminating() && errors.IsNotFound(err)
+	return !r.isTerminating() && r.releaseStatus.Phase != v1alpha1.RolloutPhaseInitial && errors.IsNotFound(err)
 }
 
 func (r *Executor) releasePlanPaused() bool {
@@ -178,9 +191,10 @@ func (r *Executor) releasePlanPaused() bool {
 }
 
 func (r *Executor) isTerminating() bool {
-	return r.release.Spec.Cancelled ||
-		r.release.DeletionTimestamp != nil ||
-		r.release.Status.Phase == v1alpha1.RolloutPhaseTerminating
+	return r.release.DeletionTimestamp != nil ||
+		r.release.Status.Phase == v1alpha1.RolloutPhaseTerminating ||
+		(r.release.Spec.Cancelled && r.releaseStatus.Phase != v1alpha1.RolloutPhaseCancelled)
+
 }
 
 func (r *Executor) isProgressing() bool {

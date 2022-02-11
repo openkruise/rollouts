@@ -4,10 +4,6 @@ import (
 	"fmt"
 
 	"github.com/onsi/gomega/format"
-<<<<<<< HEAD
-=======
-	"github.com/onsi/gomega/internal/oraclematcher"
->>>>>>> 33cbc1d (add batchrelease controller)
 	"github.com/onsi/gomega/types"
 )
 
@@ -55,20 +51,12 @@ func (m *AndMatcher) MatchMayChangeInTheFuture(actual interface{}) bool {
 	if m.firstFailedMatcher == nil {
 		// so all matchers succeeded.. Any one of them changing would change the result.
 		for _, matcher := range m.Matchers {
-<<<<<<< HEAD
 			if types.MatchMayChangeInTheFuture(matcher, actual) {
-=======
-			if oraclematcher.MatchMayChangeInTheFuture(matcher, actual) {
->>>>>>> 33cbc1d (add batchrelease controller)
 				return true
 			}
 		}
 		return false // none of were going to change
 	}
 	// one of the matchers failed.. it must be able to change in order to affect the result
-<<<<<<< HEAD
 	return types.MatchMayChangeInTheFuture(m.firstFailedMatcher, actual)
-=======
-	return oraclematcher.MatchMayChangeInTheFuture(m.firstFailedMatcher, actual)
->>>>>>> 33cbc1d (add batchrelease controller)
 }

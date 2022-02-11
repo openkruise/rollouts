@@ -57,11 +57,7 @@ loop:
 					err = transform.ErrShortSrc
 					break loop
 				}
-<<<<<<< HEAD
 				r, size = utf8.RuneError, 1
-=======
-				r = utf8.RuneError
->>>>>>> 33cbc1d (add batchrelease controller)
 				goto write
 			}
 			size = 2

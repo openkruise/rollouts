@@ -34,6 +34,10 @@ func initializeStatusIfNeeds(status *v1alpha1.BatchReleaseStatus) {
 	}
 }
 
+func signalStart(status *v1alpha1.BatchReleaseStatus) {
+	status.Phase = v1alpha1.RolloutPhaseHealthy
+}
+
 func signalRestart(status *v1alpha1.BatchReleaseStatus) {
 	resetStatus(status)
 }
@@ -47,11 +51,11 @@ func signalTerminating(status *v1alpha1.BatchReleaseStatus) {
 }
 
 func signalRollingBack(status *v1alpha1.BatchReleaseStatus) {
-	status.Phase = v1alpha1.RolloutPhaseRollingBack
+	status.Phase = v1alpha1.RolloutPhaseRollback
 }
 
 func resetStatus(status *v1alpha1.BatchReleaseStatus) {
-	status.Phase = v1alpha1.RolloutPhaseHealthy
+	status.Phase = v1alpha1.RolloutPhaseInitial
 	status.StableRevision = ""
 	status.UpdateRevision = ""
 	status.ObservedReleasePlanHash = ""

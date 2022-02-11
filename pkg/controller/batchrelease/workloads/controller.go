@@ -12,7 +12,7 @@ type WorkloadChangeEventType string
 
 const (
 	IgnoreWorkloadEvent        WorkloadChangeEventType = "workload-not-cared"
-	WorkloadStableOrRollback   WorkloadChangeEventType = "workload-rollback"
+	WorkloadRollback           WorkloadChangeEventType = "workload-rollback"
 	WorkloadPodTemplateChanged WorkloadChangeEventType = "workload-pod-template-changed"
 	WorkloadReplicasChanged    WorkloadChangeEventType = "workload-replicas-changed"
 	WorkloadStillReconciling   WorkloadChangeEventType = "workload-is-reconciling"
@@ -21,14 +21,14 @@ const (
 
 // WorkloadController is the interface that all type of cloneSet controller implements
 type WorkloadController interface {
-	// VerifySpec makes sure that the resources can be upgraded according to the rollout plan
+	// IfNeedToProgress makes sure that the resources can be upgraded according to the rollout plan
 	// it returns if the verification succeeded/failed or should retry
-	VerifySpec() (bool, error)
+	IfNeedToProgress() (bool, error)
 
-	// Initialize make sure that the resource is ready to be upgraded
+	// Prepare make sure that the resource is ready to be upgraded
 	// this function is tasked to do any initialization work on the resources
 	// it returns if the initialization succeeded/failed or should retry
-	Initialize() (bool, error)
+	Prepare() (bool, error)
 
 	// RolloutOneBatchPods tries to upgrade pods in the resources following the rollout plan
 	// it will upgrade pods as the rollout plan allows at once
@@ -52,7 +52,7 @@ type WorkloadController interface {
 	// WatchWorkload will observe and compare the status recorded in release.status and the real-time
 	// workload status. If workload status is inconsistent with that recorded in release.status,
 	// will return the corresponding WorkloadChangeEventType and info.
-	WatchWorkload() (WorkloadChangeEventType, *Accessor, error)
+	WatchWorkload() (WorkloadChangeEventType, *WorkloadAccessor, error)
 }
 
 type Status struct {
@@ -63,7 +63,7 @@ type Status struct {
 	ObservedGeneration   int64
 }
 
-type Accessor struct {
+type WorkloadAccessor struct {
 	Replicas       *int32
 	Paused         bool
 	Status         *Status
