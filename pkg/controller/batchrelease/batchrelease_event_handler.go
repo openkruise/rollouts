@@ -143,6 +143,10 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 		return
 	}
 
+	if newAccessor.Metadata.ResourceVersion == oldAccessor.Metadata.ResourceVersion {
+		return
+	}
+
 	if observeGenerationChanged(newAccessor, oldAccessor) ||
 		observeLatestGeneration(newAccessor, oldAccessor) ||
 		observeScaleEventDone(newAccessor, oldAccessor) ||
