@@ -35,10 +35,10 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		ref := &metav1.OwnerReference{}
 		err := json.Unmarshal([]byte(controlInfo), ref)
 		if err == nil && ref.UID == c.parentController.UID {
-			klog.V(3).Info("CloneSet has been controlled by this BatchRelease, no need to claim again")
+			klog.V(3).Info("Deployment has been controlled by this BatchRelease, no need to claim again")
 			controlled = true
 		} else {
-			klog.Error("Failed to parse controller info from cloneset annotation, error: %v, controller info: %+v", err, *ref)
+			klog.Error("Failed to parse controller info from deployment annotation, error: %v, controller info: %+v", err, *ref)
 		}
 	}
 
@@ -85,10 +85,11 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 }
 
 func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deployment, collisionCount *int32) (*apps.Deployment, error) {
-	suffix := ComputeHash(&stableDeploy.Spec.Template, collisionCount)
+	// TODO: reduce the len(canary-deployment.Name) to avoid too long name
+	suffix := ShortRandomStr(collisionCount)
 	canaryDeploy := &apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("%v-%v", c.canaryNamespacedName.Name, suffix),
+			Name:        fmt.Sprintf("%v%v", c.canaryNamespacedName.Name, suffix),
 			Namespace:   c.stableNamespacedName.Namespace,
 			Labels:      map[string]string{},
 			Annotations: map[string]string{},
@@ -133,7 +134,7 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	}
 
 	canaryDeployInfo, _ := json.Marshal(canaryDeploy)
-	klog.V(3).Infof("Create canary deployment successfully, details: %+v", canaryDeployInfo)
+	klog.V(3).Infof("Create canary deployment successfully, details: %v", string(canaryDeployInfo))
 
 	// fetch the canary Deployment
 	var fetchedCanary *apps.Deployment
@@ -151,7 +152,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 	}
 
 	var patchErr, deleteErr error
-	{
+	if len(stableDeploy.Annotations[BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause {
 		patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, BatchReleaseControlAnnotation, pause))
 		patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 		if patchErr != nil {
@@ -235,9 +236,6 @@ func (c *deploymentController) listCanaryDeployment(options ...client.ListOption
 	var ds []*apps.Deployment
 	for i := range dList.Items {
 		d := &dList.Items[i]
-		if d.DeletionTimestamp != nil {
-			continue
-		}
 		ds = append(ds, d)
 	}
 

@@ -599,7 +599,7 @@ func TestReconcile_Deployment(t *testing.T) {
 				return setPhase(releaseDeploy, v1alpha1.RolloutPhaseHealthy)
 			},
 			GetDeployments: func() []client.Object {
-				stable := getStableWithReady(stableDeploy, "v2")
+				stable := getStableWithReady(stableDeploy, "v2").(*apps.Deployment)
 				canary := getCanaryWithStage(stable, "v2", -1, true)
 				return []client.Object{
 					stable, canary,
@@ -819,8 +819,14 @@ func TestReconcile_Deployment(t *testing.T) {
 			release := cs.GetRelease()
 			deployments := cs.GetDeployments()
 			rec := record.NewFakeRecorder(100)
-			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).
-				WithObjects(deployments...).WithObjects(makeReplicaSets(deployments...)...).Build()
+			cliBuilder := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).
+				WithObjects(deployments...).WithObjects(makeStableReplicaSets(deployments[0])...)
+
+			if len(deployments) > 1 {
+				cliBuilder = cliBuilder.WithObjects(makeCanaryReplicaSets(deployments[1:]...)...)
+			}
+
+			cli := cliBuilder.Build()
 			reconciler := &BatchReleaseReconciler{
 				Client:   cli,
 				recorder: rec,
@@ -962,7 +968,7 @@ func getCanaryWithStage(workload client.Object, version string, stage int, ready
 	return nil
 }
 
-func makeReplicaSets(deploys ...client.Object) []client.Object {
+func makeCanaryReplicaSets(deploys ...client.Object) []client.Object {
 	var rss []client.Object
 	for _, d := range deploys {
 		deploy := d.(*apps.Deployment)
@@ -986,6 +992,38 @@ func makeReplicaSets(deploys ...client.Object) []client.Object {
 				Replicas: deploy.Spec.Replicas,
 				Selector: deploy.Spec.Selector.DeepCopy(),
 				Template: *deploy.Spec.Template.DeepCopy(),
+			},
+		})
+	}
+	return rss
+}
+
+func makeStableReplicaSets(deploys ...client.Object) []client.Object {
+	var rss []client.Object
+	stableTemplate := stableDeploy.Spec.Template.DeepCopy()
+	stableTemplate.Spec.Containers = containers("v1")
+	for _, d := range deploys {
+		deploy := d.(*apps.Deployment)
+		labels := deploy.Spec.Selector.DeepCopy().MatchLabels
+		labels[apps.DefaultDeploymentUniqueLabelKey] = workloads.ComputeHash(stableTemplate, nil)
+		rss = append(rss, &apps.ReplicaSet{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: apps.SchemeGroupVersion.String(),
+				Kind:       "ReplicaSet",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      deploy.Name + rand.String(5),
+				Namespace: deploy.Namespace,
+				UID:       uuid.NewUUID(),
+				Labels:    labels,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(deploy, deploy.GroupVersionKind()),
+				},
+			},
+			Spec: apps.ReplicaSetSpec{
+				Replicas: deploy.Spec.Replicas,
+				Selector: deploy.Spec.Selector.DeepCopy(),
+				Template: *stableTemplate,
 			},
 		})
 	}

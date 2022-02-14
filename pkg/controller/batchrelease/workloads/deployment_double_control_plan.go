@@ -30,10 +30,6 @@ type DeploymentsRolloutController struct {
 
 // NewDeploymentRolloutController creates a new Deployment rollout controller
 func NewDeploymentRolloutController(client client.Client, recorder record.EventRecorder, release *v1alpha1.BatchRelease, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus, stableNamespacedName types.NamespacedName) *DeploymentsRolloutController {
-	canaryNamespacedName := types.NamespacedName{
-		Namespace: stableNamespacedName.Namespace,
-		Name:      fmt.Sprintf("%v-canary", stableNamespacedName.Name),
-	}
 	return &DeploymentsRolloutController{
 		deploymentController: deploymentController{
 			workloadController: workloadController{
@@ -44,7 +40,7 @@ func NewDeploymentRolloutController(client client.Client, recorder record.EventR
 				releaseStatus:    status,
 			},
 			stableNamespacedName: stableNamespacedName,
-			canaryNamespacedName: canaryNamespacedName,
+			canaryNamespacedName: stableNamespacedName,
 		},
 	}
 }
@@ -190,10 +186,12 @@ func (c *DeploymentsRolloutController) Finalize(pause, cleanup bool) bool {
 		return false
 	}
 
-	if _, err := c.releaseDeployment(c.stable, pause, cleanup); err != nil {
+	succeed, err := c.releaseDeployment(c.stable, pause, cleanup)
+	if !succeed || err != nil {
 		return false
 	}
 
+	klog.Errorf("Failed to finalize deployment, error: %v", err)
 	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "Finalized", "Finalized: "+
 		"paused=%v, cleanup=%v", pause, cleanup)
 	return true
@@ -319,6 +317,7 @@ func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
 		return err
 	}
 
+	ds = filterActiveDeployment(ds)
 	sort.Slice(ds, func(i, j int) bool {
 		return ds[j].CreationTimestamp.Before(&ds[i].CreationTimestamp)
 	})

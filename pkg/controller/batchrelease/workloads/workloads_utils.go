@@ -5,18 +5,18 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"hash"
 	"hash/fnv"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/davecgh/go-spew/spew"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 )
@@ -124,4 +124,24 @@ func IsControlledByRollout(release *v1alpha1.BatchRelease) bool {
 		return true
 	}
 	return false
+}
+
+func filterActiveDeployment(ds []*apps.Deployment) []*apps.Deployment {
+	var activeDs []*apps.Deployment
+	for i := range ds {
+		if ds[i].DeletionTimestamp == nil {
+			activeDs = append(activeDs, ds[i])
+		}
+	}
+	return activeDs
+}
+
+func ShortRandomStr(collisionCount *int32) string {
+	randStr := rand.String(3)
+	if collisionCount != nil {
+		for i := int32(0); i < *collisionCount; i++ {
+			randStr = rand.String(3)
+		}
+	}
+	return randStr
 }

@@ -41,7 +41,7 @@ const (
 	nginxIngressAnnotationDefaultPrefix = "nginx.ingress.kubernetes.io"
 )
 
-var _ = SIGDescribe("Test Rollout Controller", func() {
+var _ = SIGDescribe("Rollout", func() {
 	var namespace string
 
 	CreateObject := func(object client.Object, options ...client.CreateOption) {

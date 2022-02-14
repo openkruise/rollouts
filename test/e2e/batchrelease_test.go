@@ -3,11 +3,15 @@ package e2e
 import (
 	"context"
 	"fmt"
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
+	"sort"
+	"time"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+
 	"github.com/openkruise/rollouts/test/images"
 	apps "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -15,16 +19,14 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/integer"
 	"k8s.io/utils/pointer"
-	"sort"
-	"time"
-
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
 )
 
-var _ = SIGDescribe("Test BatchRelease Controller", func() {
+var _ = SIGDescribe("BatchRelease", func() {
 	var namespace string
 
 	CreateObject := func(object client.Object, options ...client.CreateOption) {
@@ -1307,6 +1309,12 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				time.Sleep(time.Second)
 			}
 
+			By("Updating cloneset to V1...")
+			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
+			UpdateDeployment(deployment)
+			canaryRevisionV3 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
+			Expect(canaryRevisionV3).Should(Equal(stableRevisionV1))
+
 			By("Deleting BatchReleasing...")
 			DeleteObject(release)
 			Eventually(func() bool {
@@ -1314,12 +1322,6 @@ var _ = SIGDescribe("Test BatchRelease Controller", func() {
 				err := GetObject(release.Namespace, release.Name, objectCopy)
 				return errors.IsNotFound(err)
 			}, time.Minute, time.Second).Should(BeTrue())
-
-			By("Updating cloneset to V1...")
-			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
-			UpdateDeployment(deployment)
-			canaryRevisionV3 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
-			Expect(canaryRevisionV3).Should(Equal(stableRevisionV1))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() int32 {
