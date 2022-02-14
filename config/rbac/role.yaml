@@ -7,7 +7,14 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-<<<<<<< HEAD
+  - '*'
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - update
+- apiGroups:
   - admissionregistration.k8s.io
   resources:
   - mutatingwebhookconfigurations
@@ -37,15 +44,6 @@ rules:
   - patch
   - update
   - watch
-=======
-  - '*'
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-  - update
->>>>>>> 33cbc1d (add batchrelease controller)
 - apiGroups:
   - apps
   resources:
@@ -107,7 +105,6 @@ rules:
   - patch
   - update
 - apiGroups:
-<<<<<<< HEAD
   - ""
   resources:
   - pods
@@ -186,8 +183,6 @@ rules:
   - patch
   - update
 - apiGroups:
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
   - rollouts.kruise.io
   resources:
   - batchreleases
@@ -207,7 +202,6 @@ rules:
   - get
   - patch
   - update
-<<<<<<< HEAD
 - apiGroups:
   - rollouts.kruise.io
   resources:
@@ -234,5 +228,3 @@ rules:
   - get
   - patch
   - update
-=======
->>>>>>> 33cbc1d (add batchrelease controller)

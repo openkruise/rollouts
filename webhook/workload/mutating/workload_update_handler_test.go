@@ -117,6 +117,40 @@ var (
 		},
 	}
 
+	cloneSetDemo = &kruisev1aplphal.CloneSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps.kruise.io/v1alpha1",
+			Kind:       "CloneSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "echoserver",
+			Labels:      map[string]string{},
+			Annotations: map[string]string{},
+		},
+		Spec: kruisev1aplphal.CloneSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "echoserver",
+				},
+			},
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "echoserver",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "echoserver",
+							Image: "echoserver:v1",
+						},
+					},
+				},
+			},
+		},
+	}
+
 	rolloutDemo = &appsv1alpha1.Rollout{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rollout-demo",
@@ -172,6 +206,33 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 			getRollout: func() *appsv1alpha1.Rollout {
 				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
+			name: "deployment image v1->v2, no matched rollout",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+					Name:       "other",
+				}
+				return obj
 			},
 		},
 		{
@@ -252,7 +313,8 @@ func TestHandlerDeployment(t *testing.T) {
 				return []*apps.ReplicaSet{rs}
 			},
 			getRollout: func() *appsv1alpha1.Rollout {
-				return rolloutDemo.DeepCopy()
+				obj := rolloutDemo.DeepCopy()
+				return obj
 			},
 		},
 	}
@@ -286,6 +348,70 @@ func TestHandlerDeployment(t *testing.T) {
 			if !reflect.DeepEqual(newObj, cs.expectObj()) {
 				by, _ := json.Marshal(newObj)
 				t.Fatalf("handlerDeployment failed, and new(%s)", string(by))
+			}
+		})
+	}
+}
+
+func TestHandlerCloneSet(t *testing.T) {
+	cases := []struct {
+		name       string
+		getObjs    func() (*kruisev1aplphal.CloneSet, *kruisev1aplphal.CloneSet)
+		expectObj  func() *kruisev1aplphal.CloneSet
+		getRollout func() *appsv1alpha1.Rollout
+		isError    bool
+	}{
+		{
+			name: "cloneSet image v1->v2, matched rollout",
+			getObjs: func() (*kruisev1aplphal.CloneSet, *kruisev1aplphal.CloneSet) {
+				oldObj := cloneSetDemo.DeepCopy()
+				newObj := cloneSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *kruisev1aplphal.CloneSet {
+				obj := cloneSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"RolloutName":"rollout-demo","RolloutDone":false}`
+				obj.Spec.UpdateStrategy.Paused = true
+				return obj
+			},
+			getRollout: func() *appsv1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{
+					APIVersion: "apps.kruise.io/v1alpha1",
+					Kind:       "CloneSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+	}
+
+	decoder, _ := admission.NewDecoder(scheme)
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			client := fake.NewClientBuilder().WithScheme(scheme).Build()
+			h := WorkloadHandler{
+				Client:  client,
+				Decoder: decoder,
+				Finder:  util.NewControllerFinder(client),
+			}
+			rollout := cs.getRollout()
+			if err := client.Create(context.TODO(), rollout); err != nil {
+				t.Errorf(err.Error())
+			}
+
+			oldObj, newObj := cs.getObjs()
+			err := h.handlerCloneSet(newObj, oldObj)
+			if cs.isError && err == nil {
+				t.Fatal("handlerCloneSet failed")
+			} else if !cs.isError && err != nil {
+				t.Fatalf(err.Error())
+			}
+			if !reflect.DeepEqual(newObj, cs.expectObj()) {
+				by, _ := json.Marshal(newObj)
+				t.Fatalf("handlerCloneSet failed, and new(%s)", string(by))
 			}
 		})
 	}

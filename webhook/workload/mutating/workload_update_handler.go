@@ -19,6 +19,9 @@ package mutating
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"reflect"
+
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -26,9 +29,6 @@ import (
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
-	"net/http"
-	"reflect"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -50,6 +50,11 @@ type WorkloadHandler struct {
 var _ admission.Handler = &WorkloadHandler{}
 
 // Handle handles admission requests.
+//  TODO
+//  Currently there is an implicit condition for rollout: the workload must be currently in a stable version (only one version of Pods),
+//  if not, it will not enter the rollout process. There is an additional problem here, the user may not be aware of this.
+//  when user does a release and thinks it enters the rollout process, but due to the implicit condition above,
+//  it actually goes through the normal release process. No good idea to solve this problem has been found yet.
 func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
 	// if subResources, then ignore
 	if req.Operation != admissionv1.Update || req.SubResource != "" {
@@ -57,18 +62,40 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 	}
 
 	switch req.Kind.Group {
-	// kruise workload
+	// kruise cloneSet
 	case kruiseappsv1alpha1.GroupVersion.Group:
 		if req.Kind.Kind != util.ControllerKruiseKindCS.Kind {
 			return admission.Allowed("")
 		}
-		// todo
+		// check deployment
+		newObj := &kruiseappsv1alpha1.CloneSet{}
+		if err := h.Decoder.Decode(req, newObj); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
+		}
+		copy := newObj.DeepCopy()
+		oldObj := &kruiseappsv1alpha1.CloneSet{}
+		if err := h.Decoder.Decode(
+			admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
+			oldObj); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
+		}
+		if err := h.handlerCloneSet(newObj, oldObj); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
+		}
+		if reflect.DeepEqual(newObj, copy) {
+			return admission.Allowed("")
+		}
+		marshalled, err := json.Marshal(newObj)
+		if err != nil {
+			return admission.Errored(http.StatusInternalServerError, err)
+		}
+		return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
 	// native k8s deloyment
 	case apps.SchemeGroupVersion.Group:
 		if req.Kind.Kind != util.ControllerKindDep.Kind {
 			return admission.Allowed("")
 		}
-		// only check deployment
+		// check deployment
 		newObj := &apps.Deployment{}
 		if err := h.Decoder.Decode(req, newObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
@@ -105,7 +132,24 @@ func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) err
 		return nil
 	}
 
-	rollout, err := h.isCanInRolloutProgressing(newObj, oldObj)
+	// indicate whether the workload can enter the rollout process
+	// 1. replicas > 0
+	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
+		return nil
+	}
+	// 2. deployment.spec.PodTemplate is changed
+	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
+		return nil
+	}
+	// 3. the deployment must be in a stable version (only one version of rs)
+	stableRs, err := h.Finder.GetDeploymentStableRs(newObj)
+	if err != nil {
+		return err
+	} else if stableRs == nil {
+		return nil
+	}
+	// 4. have matched rollout crd
+	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
 		return err
 	} else if rollout == nil {
@@ -120,34 +164,10 @@ func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) err
 	return nil
 }
 
-func (h *WorkloadHandler) isCanInRolloutProgressing(new, old *apps.Deployment) (*appsv1alpha1.Rollout, error) {
-	// indicate whether the workload can enter the rollout process
-	// 1. replicas > 0
-	if new.Spec.Replicas != nil && *new.Spec.Replicas == 0 {
-		return nil, nil
-	}
-	// 2. deployment.spec.PodTemplate is changed
-	if util.EqualIgnoreHash(&old.Spec.Template, &new.Spec.Template) {
-		return nil, nil
-	}
-	// 3. the deployment must be in a stable version (only one version of rs)
-	stableRs, err := h.Finder.GetDeploymentStableRs(new)
-	if err != nil || stableRs == nil {
-		return nil, err
-	}
-	// 4. have matched rollout crd
-	return h.fetchMatchedRollout(new)
-}
-
-func (h *WorkloadHandler) fetchMatchedRollout(obj *apps.Deployment) (*appsv1alpha1.Rollout, error) {
-	oGv, err := schema.ParseGroupVersion(obj.APIVersion)
-	if err != nil {
-		klog.Warningf("ParseGroupVersion deployment(%s/%s) failed: %s", obj.Namespace, obj.Name, err.Error())
-		return nil, nil
-	}
-
+func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.Rollout, error) {
+	oGv := obj.GetObjectKind().GroupVersionKind()
 	rolloutList := &appsv1alpha1.RolloutList{}
-	if err := h.Client.List(context.TODO(), rolloutList, &client.ListOptions{Namespace: obj.Namespace}); err != nil {
+	if err := h.Client.List(context.TODO(), rolloutList, &client.ListOptions{Namespace: obj.GetNamespace()}); err != nil {
 		klog.Errorf("WorkloadHandler List rollout failed: %s", err.Error())
 		return nil, err
 	}
@@ -162,11 +182,50 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj *apps.Deployment) (*appsv1alph
 			klog.Warningf("ParseGroupVersion rollout(%s/%s) ref failed: %s", rollout.Namespace, rollout.Name, err.Error())
 			continue
 		}
-		if oGv.Group == gv.Group && obj.Kind == ref.Kind && obj.Name == ref.Name {
+		if oGv.Group == gv.Group && oGv.Kind == ref.Kind && obj.GetName() == ref.Name {
 			return rollout, nil
 		}
 	}
 	return nil, nil
+}
+
+func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) error {
+	// in rollout progressing
+	if state, _ := util.GetRolloutState(newObj.Annotations); state != nil {
+		if !state.RolloutDone && newObj.Spec.UpdateStrategy.Paused == false {
+			newObj.Spec.UpdateStrategy.Paused = true
+			klog.Warningf("cloneSet(%s/%s) is in rollout(%s) progressing, and set paused=true", newObj.Namespace, newObj.Name, state.RolloutName)
+		}
+		return nil
+	}
+
+	// indicate whether the workload can enter the rollout process
+	// 1. replicas > 0
+	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
+		return nil
+	}
+	// 2. cloneSet.spec.PodTemplate is changed
+	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
+		return nil
+	}
+	// 3. the cloneSet must be in a stable version (only one version of pods)
+	if newObj.Status.UpdatedReplicas != newObj.Status.Replicas {
+		return nil
+	}
+	// 4. have matched rollout crd
+	rollout, err := h.fetchMatchedRollout(newObj)
+	if err != nil {
+		return err
+	} else if rollout == nil {
+		return nil
+	}
+	klog.Infof("cloneSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
+	// need set workload paused = true
+	newObj.Spec.UpdateStrategy.Paused = true
+	state := &util.RolloutState{RolloutDone: false, RolloutName: rollout.Name}
+	by, _ := json.Marshal(state)
+	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
+	return nil
 }
 
 var _ inject.Client = &WorkloadHandler{}

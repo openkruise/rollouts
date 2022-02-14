@@ -19,6 +19,7 @@ package util
 import (
 	"context"
 	"sort"
+	"strings"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -36,8 +37,6 @@ type Workload struct {
 	metav1.TypeMeta
 	metav1.ObjectMeta
 
-	// workload.spec.replicas
-	WorkloadReplicas int32
 	// stable revision
 	StableRevision string
 	// canary revision
@@ -110,25 +109,21 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *appsv1alpha1
 		}
 		return nil, err
 	}
-	var targetReplicas int32 = 1
-	if cloneSet.Spec.Replicas != nil {
-		targetReplicas = *cloneSet.Spec.Replicas
-	}
 	workload := &Workload{
-		StableRevision:      cloneSet.Status.CurrentRevision,
-		CanaryRevision:      cloneSet.Status.UpdateRevision,
+		// echoserver-68966d4654 -> 68966d4654
+		StableRevision:      cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
+		CanaryRevision:      cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
 		CanaryReplicas:      cloneSet.Status.UpdatedReplicas,
 		CanaryReadyReplicas: cloneSet.Status.UpdatedReadyReplicas,
-		WorkloadReplicas:    targetReplicas,
 		ObjectMeta:          cloneSet.ObjectMeta,
 		TypeMeta:            cloneSet.TypeMeta,
-		//PodRevisionLabelKey:  CloneSetPodRevisionLabelKey,
 	}
-
-	if cloneSet.Spec.UpdateStrategy.Paused && cloneSet.Generation == cloneSet.Status.ObservedGeneration &&
-		cloneSet.Status.UpdateRevision != cloneSet.Status.CurrentRevision && cloneSet.Status.UpdatedReplicas == 0 {
-		workload.InRolloutProgressing = true
+	// not in rollout progressing
+	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
+		return workload, nil
 	}
+	// in rollout progressing
+	workload.InRolloutProgressing = true
 	return workload, nil
 }
 
@@ -149,11 +144,8 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *appsv1alpha1.Wor
 		return nil, err
 	}
 	workload := &Workload{
-		// deployment name
-		//CurrentRevision: obj.Name,
-		WorkloadReplicas: *stable.Spec.Replicas,
-		ObjectMeta:       stable.ObjectMeta,
-		TypeMeta:         stable.TypeMeta,
+		ObjectMeta: stable.ObjectMeta,
+		TypeMeta:   stable.TypeMeta,
 	}
 	stableRs, err := r.GetDeploymentStableRs(stable)
 	if err != nil || stableRs == nil {
@@ -169,6 +161,8 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *appsv1alpha1.Wor
 	// in rollout progressing
 	workload.InRolloutProgressing = true
 	// in rollback
+	// delete auto-generated labels
+	delete(stableRs.Spec.Template.Labels, RsPodRevisionLabelKey)
 	if EqualIgnoreHash(&stableRs.Spec.Template, &stable.Spec.Template) {
 		workload.CanaryRevision = workload.StableRevision
 		return workload, nil

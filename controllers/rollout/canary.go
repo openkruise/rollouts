@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
 	"time"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -32,7 +31,6 @@ import (
 	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 )
 
@@ -249,12 +247,6 @@ func (r *rolloutContext) doCanaryFinalising(isPromote bool) (bool, error) {
 	}
 	klog.Infof("rollout(%s/%s) DoFinalising batchRelease success", r.rollout.Namespace, r.rollout.Name)
 	return true, nil
-}
-
-func (r *rolloutContext) getDesiredAvailableForCanary() (int, error) {
-	currentStep := r.rollout.Spec.Strategy.CanaryPlan.Steps[r.newStatus.CanaryStatus.CurrentStepIndex]
-	weight := intstr.FromString(strconv.Itoa(int(currentStep.Weight)) + "%")
-	return intstr.GetScaledValueFromIntOrPercent(&weight, int(r.workload.WorkloadReplicas), true)
 }
 
 func (r *rolloutContext) podRevisionLabelKey() string {

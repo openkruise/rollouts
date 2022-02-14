@@ -73,20 +73,7 @@ func (r *RolloutReconciler) checkRolloutStatus(rollout *appsv1alpha1.Rollout) er
 		}
 	case appsv1alpha1.RolloutPhaseProgressing:
 		cond := util.GetRolloutCondition(newStatus, appsv1alpha1.RolloutConditionProgressing)
-		if cond == nil || cond.Reason == appsv1alpha1.ProgressingReasonSucceeded {
-			newStatus.Phase = appsv1alpha1.RolloutPhaseHealthy
-			// whether workload is in rollback phase
-		} else if workload.StableRevision == workload.CanaryRevision {
-			newStatus.Phase = appsv1alpha1.RolloutPhaseRollback
-			cond.Reason = appsv1alpha1.ProgressingReasonCanceled
-			cond.Message = "workload has been rollback"
-			util.SetRolloutCondition(&newStatus, *cond)
-			condR := util.NewRolloutCondition(appsv1alpha1.RolloutConditionRollback, corev1.ConditionFalse, appsv1alpha1.RollbackReasonInRollback, "")
-			util.SetRolloutCondition(&newStatus, condR)
-		}
-	case appsv1alpha1.RolloutPhaseRollback:
-		cond := util.GetRolloutCondition(newStatus, appsv1alpha1.RolloutConditionRollback)
-		if cond == nil || cond.Reason == appsv1alpha1.RollbackReasonCompleted {
+		if cond == nil || cond.Reason == appsv1alpha1.ProgressingReasonSucceeded || cond.Reason == appsv1alpha1.ProgressingReasonCanceled {
 			newStatus.Phase = appsv1alpha1.RolloutPhaseHealthy
 		}
 	}

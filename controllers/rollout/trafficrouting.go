@@ -122,6 +122,12 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 		klog.Errorf("rollout(%s/%s) get stable service(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, sName, err.Error())
 		return false, err
 	}
+	cond := util.GetRolloutCondition(*r.newStatus, appsv1alpha1.RolloutConditionProgressing)
+	if cond == nil {
+		klog.Warningf("rollout(%s/%s) Progressing condition is nil, then create new", r.rollout.Namespace, r.rollout.Name)
+		obj := util.NewRolloutCondition(appsv1alpha1.RolloutConditionProgressing, corev1.ConditionTrue, appsv1alpha1.ProgressingReasonFinalising, "")
+		cond = &obj
+	}
 
 	//restore stable service configuration，remove hash revision selector
 	if r.stableService.Spec.Selector != nil && r.stableService.Spec.Selector[r.podRevisionLabelKey()] != "" {
@@ -129,20 +135,17 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 		if err := r.retryUpdateService(r.stableService); err != nil {
 			return false, err
 		}
+		klog.Infof("remove rollout(%s/%s) stable service(%s) pod revision selector success, and retry later", r.rollout.Namespace, r.rollout.Name, r.stableService.Name)
 		// update Progressing Condition LastUpdateTime = time.Now()
-		progressingStateTransition(r.newStatus, corev1.ConditionTrue, appsv1alpha1.ProgressingReasonFinalising, "")
-		klog.Infof("remove rollout(%s/%s) stable service(%s) pod revision selector(%s) success",
-			r.rollout.Namespace, r.rollout.Name, r.stableService.Name, r.podRevisionLabelKey())
+		cond.LastUpdateTime = metav1.Now()
 		return false, nil
 	}
-	cond := util.GetRolloutCondition(*r.newStatus, appsv1alpha1.RolloutConditionProgressing)
-	if cond != nil {
-		// After restore stable service configuration, give the ingress provider 5 seconds to take effect
-		if verifyTime := cond.LastUpdateTime.Add(time.Second * 5); !verifyTime.Before(time.Now()) {
-			return false, nil
-		}
-		klog.Infof("rollout(%s/%s) doFinalising restore stable service(%s) success", r.rollout.Namespace, r.rollout.Name, r.stableService.Name)
+	// After restore stable service configuration, give the ingress provider 5 seconds to take effect
+	if verifyTime := cond.LastUpdateTime.Add(time.Second * 5); verifyTime.After(time.Now()) {
+		klog.Infof("restore rollout(%s/%s) stable service(%s) done, and retry later", r.rollout.Namespace, r.rollout.Name, r.stableService.Name)
+		return false, nil
 	}
+	klog.Infof("rollout(%s/%s) doFinalising restore stable service(%s) success", r.rollout.Namespace, r.rollout.Name, r.stableService.Name)
 	return true, nil
 }
 

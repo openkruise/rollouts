@@ -57,8 +57,12 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 		}
 
 	case appsv1alpha1.ProgressingReasonInRolling:
-		// pause rollout
-		if rollout.Spec.Strategy.Paused {
+		// rollout canceled, indicates rollback(v1 -> v2 -> v1)
+		if rollout.Status.StableRevision == rollout.Status.CanaryRevision {
+			klog.Infof("rollout(%s/%s) workload has been rollback, then rollout canceled", rollout.Namespace, rollout.Name)
+			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonCancelling, "workload has been rollback, then rollout canceled")
+			// pause rollout
+		} else if rollout.Spec.Strategy.Paused {
 			klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
 			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonPaused, "rollout is paused")
 		} else {
@@ -75,7 +79,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 				}
 			}
 		}
-
+	// after the normal completion of rollout, enter into the Finalising process
 	case appsv1alpha1.ProgressingReasonFinalising:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		var done bool
@@ -84,13 +88,24 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 			return nil, err
 			// finalizer is finished
 		} else if done {
-			progressingStateTransition(newStatus, corev1.ConditionTrue, appsv1alpha1.ProgressingReasonSucceeded, "")
+			progressingStateTransition(newStatus, corev1.ConditionTrue, appsv1alpha1.ProgressingReasonSucceeded, "rollout is success")
 		}
 
 	case appsv1alpha1.ProgressingReasonPaused:
 		if !rollout.Spec.Strategy.Paused {
 			klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
 			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInRolling, "rollout is InRolling")
+		}
+
+	case appsv1alpha1.ProgressingReasonCancelling:
+		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
+		var done bool
+		done, recheckTime, err = r.doFinalising(rollout, newStatus, false)
+		if err != nil {
+			return nil, err
+			// finalizer is finished
+		} else if done {
+			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonCanceled, "workload has been rollback, then rollout canceled")
 		}
 
 	case appsv1alpha1.ProgressingReasonSucceeded, appsv1alpha1.ProgressingReasonCanceled:

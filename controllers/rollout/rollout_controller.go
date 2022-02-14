@@ -96,8 +96,6 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	switch rollout.Status.Phase {
 	case appsv1alpha1.RolloutPhaseProgressing:
 		recheckTime, err = r.reconcileRolloutProgressing(rollout)
-	case appsv1alpha1.RolloutPhaseRollback:
-		recheckTime, err = r.reconcileRolloutRollback(rollout)
 	case appsv1alpha1.RolloutPhaseTerminating:
 		recheckTime, err = r.reconcileRolloutTerminating(rollout)
 	}

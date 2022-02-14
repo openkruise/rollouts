@@ -53,31 +53,6 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *appsv1alpha1.Ro
 	return recheckTime, nil
 }
 
-func (r *RolloutReconciler) reconcileRolloutRollback(rollout *appsv1alpha1.Rollout) (*time.Time, error) {
-	cond := util.GetRolloutCondition(rollout.Status, appsv1alpha1.RolloutConditionRollback)
-	klog.Infof("reconcile rollout(%s/%s) Rollback action", rollout.Namespace, rollout.Name)
-	if cond.Reason == appsv1alpha1.RollbackReasonCompleted {
-		return nil, nil
-	}
-
-	newStatus := rollout.Status.DeepCopy()
-	done, recheckTime, err := r.doFinalising(rollout, newStatus, false)
-	if err != nil {
-		return nil, err
-	} else if done {
-		klog.Infof("rollout(%s/%s) is terminating, and state from(%s) -> to(%s)", rollout.Namespace, rollout.Name, cond.Reason, appsv1alpha1.TerminatingReasonCompleted)
-		cond.Reason = appsv1alpha1.TerminatingReasonCompleted
-		cond.Status = corev1.ConditionTrue
-		util.SetRolloutCondition(newStatus, *cond)
-	}
-	err = r.updateRolloutStatus(rollout, *newStatus)
-	if err != nil {
-		klog.Errorf("update rollout(%s/%s) status failed: %s", rollout.Namespace, rollout.Name, err.Error())
-		return nil, err
-	}
-	return recheckTime, nil
-}
-
 func (r *RolloutReconciler) doFinalising(rollout *appsv1alpha1.Rollout, newStatus *appsv1alpha1.RolloutStatus, isPromote bool) (bool, *time.Time, error) {
 	// fetch target workload
 	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)

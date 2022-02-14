@@ -156,14 +156,14 @@ func New(cfg *rest.Config, handlers map[string]admission.Handler) (*Controller, 
 	c.crdInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			crd := obj.(*apiextensionsv1.CustomResourceDefinition)
-			if crd.Spec.Group == "apps.kruise.io" {
+			if crd.Spec.Group == "rollouts.kruise.io" {
 				klog.Infof("CustomResourceDefinition %s added", crd.Name)
 				c.queue.Add("")
 			}
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			crd := cur.(*apiextensionsv1.CustomResourceDefinition)
-			if crd.Spec.Group == "apps.kruise.io" {
+			if crd.Spec.Group == "rollouts.kruise.io" {
 				klog.Infof("CustomResourceDefinition %s updated", crd.Name)
 				c.queue.Add("")
 			}

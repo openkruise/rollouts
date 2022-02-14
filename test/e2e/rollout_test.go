@@ -123,6 +123,23 @@ var _ = SIGDescribe("Test Rollout Controller", func() {
 		return &canaryList.Items[0], nil
 	}
 
+	GetPodsOfDeployment := func(obj *apps.Deployment) ([]*v1.Pod, error) {
+		appList := &v1.PodList{}
+		selector, _ := metav1.LabelSelectorAsSelector(obj.Spec.Selector)
+		err := k8sClient.List(context.TODO(), appList, &client.ListOptions{LabelSelector: selector})
+		if err != nil {
+			return nil, err
+		}
+		apps := make([]*v1.Pod, 0)
+		for i := range appList.Items {
+			pod := &appList.Items[i]
+			if pod.DeletionTimestamp.IsZero() {
+				apps = append(apps, pod)
+			}
+		}
+		return apps, nil
+	}
+
 	BeforeEach(func() {
 		namespace = randomNamespaceName("rollout")
 		ns := v1.Namespace{
@@ -249,6 +266,84 @@ var _ = SIGDescribe("Test Rollout Controller", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(cond.Status).Should(Equal(metav1.ConditionTrue))
+		})
+
+		It("V1->V2: Percentage, 20%, and rollback(v1)", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			// service
+			service := &v1.Service{}
+			Expect(ReadYamlToObject("./test_data/rollout/service.yaml", service)).ToNot(HaveOccurred())
+			CreateObject(service)
+			// ingress
+			ingress := &netv1.Ingress{}
+			Expect(ReadYamlToObject("./test_data/rollout/nginx_ingress.yaml", ingress)).ToNot(HaveOccurred())
+			CreateObject(ingress)
+			// workload
+			workload := &apps.Deployment{}
+			Expect(ReadYamlToObject("./test_data/rollout/deployment.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitDeploymentAllPodsReady(workload)
+			time.Sleep(time.Second * 3)
+			apps, err := GetPodsOfDeployment(workload)
+			appNames := make(map[string]struct{})
+			for _, app := range apps {
+				appNames[app.Name] = struct{}{}
+			}
+			Expect(err).NotTo(HaveOccurred())
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(rollout.Status.StableRevision).ShouldNot(Equal(""))
+			//stableRevision := rollout.Status.StableRevision
+			By("check rollout status & paused success")
+
+			// v1 -> v2, start rollout action
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDeployment(workload)
+			By("Update deployment env NODE_NAME from(version1) -> to(version2)")
+			time.Sleep(time.Second * 2)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeTrue())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 0))
+			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			By("check deployment status & paused success")
+			// wait step 0 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 0)
+
+			// rollback -> v1
+			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDeployment(workload)
+			By("Rollback deployment env NODE_NAME from(version1) -> to(version2)")
+			time.Sleep(time.Second * 2)
+
+			By("wait rollout rollback complete, and healthy")
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
+			// check progressing canceled
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonCanceled))
+			Expect(cond.Status).Should(Equal(metav1.ConditionFalse))
+
+			// deployment pods not changed
+			capps, err := GetPodsOfDeployment(workload)
+			Expect(err).NotTo(HaveOccurred())
+			cappNames := make(map[string]struct{})
+			for _, app := range capps {
+				cappNames[app.Name] = struct{}{}
+			}
+			Expect(cappNames).Should(Equal(appNames))
 		})
 	})
 })

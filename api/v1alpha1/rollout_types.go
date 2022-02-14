@@ -198,23 +198,20 @@ const (
 	// considered when a new replica set is created or adopted, when pods scale
 	// up or old pods scale down, or when the services are updated. Progress is not estimated
 	// for paused rollouts.
-	RolloutConditionProgressing   RolloutConditionType = "Progressing"
-	ProgressingReasonInitializing                      = "Initializing"
-	ProgressingReasonInRolling                         = "InRolling"
-	ProgressingReasonFinalising                        = "Finalising"
-	ProgressingReasonSucceeded                         = "Succeeded"
-	ProgressingReasonCanceled                          = "Canceled"
-	ProgressingReasonPaused                            = "Paused"
+	RolloutConditionProgressing RolloutConditionType = "Progressing"
+	// Progressing Reason
+	ProgressingReasonInitializing = "Initializing"
+	ProgressingReasonInRolling    = "InRolling"
+	ProgressingReasonFinalising   = "Finalising"
+	ProgressingReasonSucceeded    = "Succeeded"
+	ProgressingReasonCancelling   = "Cancelling"
+	ProgressingReasonCanceled     = "Canceled"
+	ProgressingReasonPaused       = "Paused"
 
 	// Terminating condition
 	RolloutConditionTerminating    RolloutConditionType = "Terminating"
 	TerminatingReasonInTerminating                      = "InTerminating"
 	TerminatingReasonCompleted                          = "Completed"
-
-	// Rollback condition
-	RolloutConditionRollback RolloutConditionType = "Rollback"
-	RollbackReasonInRollback                      = "InRollback"
-	RollbackReasonCompleted                       = "Completed"
 )
 
 // CanaryStatus status fields that only pertain to the canary rollout
@@ -259,18 +256,16 @@ const (
 	RolloutPhasePreparing RolloutPhase = "Preparing"
 	// RolloutPhaseProgressing indicates a rollout is not yet healthy but still making progress towards a healthy state
 	RolloutPhaseProgressing RolloutPhase = "Progressing"
-	// RolloutPhasePaused indicates a rollout is not yet healthy and will not make progress until unpaused
-	RolloutPhasePaused RolloutPhase = "Paused"
 	// RolloutPhaseFinalizing indicates a rollout is finalizing
 	RolloutPhaseFinalizing RolloutPhase = "Finalizing"
 	// RolloutPhaseTerminating indicates a rollout is terminated
 	RolloutPhaseTerminating RolloutPhase = "Terminating"
-	// RolloutPhaseRollback indicates rollback
-	RolloutPhaseRollback RolloutPhase = "Rollback"
 	// RolloutPhaseCompleted indicates a rollout is completed
 	RolloutPhaseCompleted RolloutPhase = "Completed"
 	// RolloutPhaseCancelled indicates a rollout is cancelled
 	RolloutPhaseCancelled RolloutPhase = "Cancelled"
+	// RolloutPhaseRollback indicates workload has been rollback
+	RolloutPhaseRollback RolloutPhase = "Rollback"
 )
 
 // +genclient
