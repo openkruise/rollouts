@@ -109,8 +109,6 @@ spec:
                 description: TargetRevisionName contains the name of the componentRevisionName
                   that we need to upgrade to.
                 properties:
-<<<<<<< HEAD
-<<<<<<< HEAD
                   type:
                     description: workloadRef, revisionRef default is workloadRef
                     type: string
@@ -134,47 +132,6 @@ spec:
                     type: object
                 required:
                 - type
-=======
-                  apiVersion:
-                    description: API Version of the referent
-                    type: string
-                  kind:
-                    description: Kind of the referent
-                    type: string
-                  name:
-                    description: Name of the referent
-=======
-                  type:
-                    description: workloadRef, revisionRef default is workloadRef
->>>>>>> 42b951e (completed-v1)
-                    type: string
-                  workloadRef:
-                    description: WorkloadRef contains enough information to let you
-                      identify a workload for Rollout Batch release of the bypass
-                    properties:
-                      apiVersion:
-                        description: API Version of the referent
-                        type: string
-                      kind:
-                        description: Kind of the referent
-                        type: string
-                      name:
-                        description: Name of the referent
-                        type: string
-                    required:
-                    - apiVersion
-                    - kind
-                    - name
-                    type: object
-                required:
-<<<<<<< HEAD
-                - apiVersion
-                - kind
-                - name
->>>>>>> 33cbc1d (add batchrelease controller)
-=======
-                - type
->>>>>>> 42b951e (completed-v1)
                 type: object
             required:
             - releasePlan
@@ -188,16 +145,8 @@ spec:
                 description: Canary describes the state of the canary rollout
                 properties:
                   batchState:
-<<<<<<< HEAD
-<<<<<<< HEAD
                     description: ReleasingBatchState indicates the state of the current
                       batch.
-=======
->>>>>>> 33cbc1d (add batchrelease controller)
-=======
-                    description: ReleasingBatchState indicates the state of the current
-                      batch.
->>>>>>> 42b951e (completed-v1)
                     type: string
                   currentBatch:
                     description: The current batch the rollout is working on/blocked,
