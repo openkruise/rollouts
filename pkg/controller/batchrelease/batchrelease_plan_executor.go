@@ -133,7 +133,12 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 	case v1alpha1.RolloutPhaseFinalizing:
 		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseFinalizing)
 		// restore the workload in this state
-		if succeed := workloadController.Finalize(false, false); succeed {
+		pause, clean := false, false
+		if util.IsControlledByRollout(r.release) {
+			pause, clean = true, false
+		}
+
+		if succeed := workloadController.Finalize(pause, clean); succeed {
 			cleanupConditions(status)
 			status.Phase = v1alpha1.RolloutPhaseCompleted
 		} else {
@@ -156,7 +161,11 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 
 	case v1alpha1.RolloutPhaseTerminating:
 		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseTerminating)
-		if succeed := workloadController.Finalize(true, true); succeed {
+		pause, clean := false, true
+		if util.IsControlledByRollout(r.release) {
+			pause, clean = true, true
+		}
+		if succeed := workloadController.Finalize(pause, clean); succeed {
 			if r.release.DeletionTimestamp != nil {
 				setCondition(status, v1alpha1.TerminatingReasonInTerminating, "Release plan was cancelled or deleted", v1.ConditionTrue)
 			} else {

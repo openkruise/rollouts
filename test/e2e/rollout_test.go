@@ -428,3 +428,7 @@ func mergeEnvVar(original []v1.EnvVar, add v1.EnvVar) []v1.EnvVar {
 	newEnvs = append(newEnvs, add)
 	return newEnvs
 }
+
+func skip() bool {
+	return true
+}

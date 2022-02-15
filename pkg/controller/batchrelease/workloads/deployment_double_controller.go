@@ -157,16 +157,16 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 
 	switch {
 	/*
-	case util.IsControlledByRollout(c.parentController):
-		if len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
-			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
-			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
-			if patchErr != nil {
-				klog.Error("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
-				return false, patchErr
+		case util.IsControlledByRollout(c.parentController):
+			if len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
+				patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
+				patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
+				if patchErr != nil {
+					klog.Error("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
+					return false, patchErr
+				}
 			}
-		}
-	 */
+	*/
 
 	default:
 		if len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause {

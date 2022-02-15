@@ -18,6 +18,7 @@ const (
 	Keep        = "Keep"
 	Start       = "Start"
 	Restart     = "Restart"
+	Finalize    = "Finalize"
 	RollingBack = "RollingBack"
 	Terminating = "Terminating"
 	Recalculate = "Recalculate"
@@ -94,8 +95,8 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 			action = Restart
 		} else {
 			message = "workload revision was changed, stop the release plan"
-			needStopThisRound = true
-			//action = Terminating
+			needStopThisRound = false
+			action = Finalize
 		}
 
 	case workloadEvent == workloads.WorkloadUnHealthy:
@@ -157,7 +158,9 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 	case RollingBack:
 		signalRollingBack(r.releaseStatus)
 	case Terminating:
-		signalTerminating(r.releaseStatus)
+		signalFinalize(r.releaseStatus)
+	case Finalize:
+		signalRecalculate(r.releaseStatus)
 	case Restart:
 		signalRestart(r.releaseStatus)
 		result = reconcile.Result{RequeueAfter: DefaultShortDuration}
