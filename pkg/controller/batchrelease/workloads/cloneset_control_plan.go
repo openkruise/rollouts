@@ -25,16 +25,17 @@ type CloneSetRolloutController struct {
 //TODO: scale during releasing: workload replicas changed -> Finalising CloneSet with Paused=true
 
 // NewCloneSetRolloutController creates a new CloneSet rollout controller
-func NewCloneSetRolloutController(client client.Client, recorder record.EventRecorder, release *v1alpha1.BatchRelease, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus, targetNamespacedName types.NamespacedName) *CloneSetRolloutController {
+func NewCloneSetRolloutController(cli client.Client, recorder record.EventRecorder, release *v1alpha1.BatchRelease, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus, targetNamespacedName types.NamespacedName) *CloneSetRolloutController {
 	return &CloneSetRolloutController{
 		cloneSetController: cloneSetController{
 			workloadController: workloadController{
-				client:           client,
+				client:           cli,
 				recorder:         recorder,
 				parentController: release,
 				releasePlan:      plan,
 				releaseStatus:    status,
 			},
+			releasePlanKey:       client.ObjectKeyFromObject(release),
 			targetNamespacedName: targetNamespacedName,
 		},
 	}
@@ -56,22 +57,22 @@ func (c *CloneSetRolloutController) IfNeedToProgress() (bool, error) {
 	}
 
 	if c.clone.Status.ObservedGeneration != c.clone.Generation {
-		klog.Warningf("CloneSet is still reconciling, wait for it to be done")
+		klog.Warningf("CloneSet(%v) is still reconciling, wait for it to be done", c.targetNamespacedName)
 		return false, nil
 	}
 
 	if c.clone.Status.UpdatedReplicas == *c.clone.Spec.Replicas {
-		verifyErr = fmt.Errorf("update revision has been promoted, no need to reconcile")
+		verifyErr = fmt.Errorf("CloneSet(%v) update revision has been promoted, no need to reconcile", c.targetNamespacedName)
 		return false, verifyErr
 	}
 
 	if !c.clone.Spec.UpdateStrategy.Paused && !IsControlledBy(c.clone, c.parentController) {
-		verifyErr = fmt.Errorf("cloneSet should be paused before execute the release plan")
+		verifyErr = fmt.Errorf("cloneSet(%v) should be paused before execute the release plan", c.targetNamespacedName)
 		return false, verifyErr
 	}
 
 	c.recordCloneSetRevisionAndReplicas()
-	klog.V(3).Infof("Verified Successfully, Status %+v", c.releaseStatus)
+	klog.V(3).Infof("Verified CloneSet Successfully, Status %+v", c.targetNamespacedName, c.releaseStatus)
 	c.recorder.Event(c.parentController, v1.EventTypeNormal, "VerifiedSuccessfully", "ReleasePlan and the CloneSet resource are verified")
 	return true, nil
 }
@@ -104,8 +105,8 @@ func (c *CloneSetRolloutController) RolloutOneBatchPods() (bool, error) {
 		int(c.releaseStatus.ObservedWorkloadReplicas), true)
 
 	if c.clone.Status.UpdatedReplicas >= updateSize && int32(workloadPartition) <= stableSize {
-		klog.V(3).InfoS("upgraded one batch, but no need to update partition of cloneset", "current batch",
-			c.releaseStatus.CanaryStatus.CurrentBatch, "real updateRevision replicas", c.clone.Status.UpdatedReplicas)
+		klog.V(3).InfoS("upgraded one batch, but no need to update partition of cloneset", "BatchRelease", c.releasePlanKey,
+			"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "real updateRevision replicas", c.clone.Status.UpdatedReplicas)
 		return true, nil
 	}
 
@@ -113,8 +114,10 @@ func (c *CloneSetRolloutController) RolloutOneBatchPods() (bool, error) {
 		return false, nil
 	}
 
-	klog.V(3).InfoS("upgraded one batch", "current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "updateRevision size", updateSize)
-	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "SetBatchDone", "Finished submitting all upgrade quests for batch %d", c.releaseStatus.CanaryStatus.CurrentBatch)
+	klog.V(3).InfoS("upgraded one batch", "BatchRelease", c.releasePlanKey,
+		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "updateRevision size", updateSize)
+	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "SetBatchDone",
+		"Finished submitting all upgrade quests for batch %d", c.releaseStatus.CanaryStatus.CurrentBatch)
 	return true, nil
 }
 
@@ -143,23 +146,25 @@ func (c *CloneSetRolloutController) CheckOneBatchPods() (bool, error) {
 		maxUnavailable, _ = intstr.GetValueFromIntOrPercent(c.clone.Spec.UpdateStrategy.MaxUnavailable, int(c.releaseStatus.ObservedWorkloadReplicas), true)
 	}
 
-	klog.InfoS("checking the batch releasing progress", "current-batch", c.releaseStatus.CanaryStatus.CurrentBatch,
-		"target-pod-ready-count", readyUpdatePodCount, "source-pod-count", stablePodCount,
-		"max-unavailable-pod-allowed", maxUnavailable, "target-goal", updateGoal, "source-goal", stableGoal)
+	klog.InfoS("checking the batch releasing progress", "BatchRelease", c.releasePlanKey,
+		"current-batch", c.releaseStatus.CanaryStatus.CurrentBatch, "target-pod-ready-count", readyUpdatePodCount,
+		"source-pod-count", stablePodCount, "max-unavailable-pod-allowed", maxUnavailable, "target-goal", updateGoal, "source-goal", stableGoal)
 
 	if c.clone.Status.Replicas != c.releaseStatus.ObservedWorkloadReplicas {
-		err := fmt.Errorf("CloneSet replicas don't match ObservedWorkloadReplicas, sourceTarget = %d, targetTarget = %d, "+
-			"rolloutTargetSize = %d", stablePodCount, updatePodCount, c.releaseStatus.ObservedWorkloadReplicas)
+		err := fmt.Errorf("CloneSet(%v) replicas don't match ObservedWorkloadReplicas, sourceTarget = %d, targetTarget = %d, "+
+			"rolloutTargetSize = %d", c.targetNamespacedName, stablePodCount, updatePodCount, c.releaseStatus.ObservedWorkloadReplicas)
 		klog.ErrorS(err, "the batch is not valid", "current-batch", c.releaseStatus.CanaryStatus.CurrentBatch)
 		return false, nil
 	}
 
 	if updateGoal > updatePodCount || stableGoal < stablePodCount || readyUpdatePodCount+int32(maxUnavailable) < updateGoal {
-		klog.InfoS("the batch is not ready yet", "current-batch", c.releaseStatus.CanaryStatus.CurrentBatch)
+		klog.InfoS("the batch is not ready yet", "CloneSet", c.targetNamespacedName,
+			"ReleasePlan", c.releasePlanKey, "current-batch", c.releaseStatus.CanaryStatus.CurrentBatch)
 		return false, nil
 	}
 
-	klog.InfoS("All pods in current batch are ready", "current-batch", c.releaseStatus.CanaryStatus.CurrentBatch)
+	klog.Infof("All pods of CloneSet(%v) in current batch are ready, BatchRelease(%v), current-batch=%v",
+		c.targetNamespacedName, c.releasePlanKey, c.releaseStatus.CanaryStatus.CurrentBatch)
 	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "BatchAvailable", "Batch %d is available", c.releaseStatus.CanaryStatus.CurrentBatch)
 	return true, nil
 }
@@ -180,7 +185,7 @@ func (c *CloneSetRolloutController) Finalize(pause, cleanup bool) bool {
 	}
 
 	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "FinalizedSuccessfully", "Rollout resource are finalized, "+
-		"pause = %v, cleanup = %v", pause, cleanup)
+		"pause=%v, cleanup=%v", pause, cleanup)
 	return true
 }
 
@@ -204,8 +209,8 @@ func (c *CloneSetRolloutController) WatchWorkload() (WorkloadChangeEventType, *W
 	}
 
 	if c.clone.Status.ObservedGeneration != c.clone.Generation {
-		klog.Warningf("CloneSet is still reconciling, waiting for it to complete, generation: %v, observed: %v",
-			c.clone.Generation, c.clone.Status.ObservedGeneration)
+		klog.Warningf("CloneSet(%v) is still reconciling, waiting for it to complete, generation: %v, observed: %v",
+			c.targetNamespacedName, c.clone.Generation, c.clone.Status.ObservedGeneration)
 		return WorkloadStillReconciling, nil, nil
 	}
 
@@ -223,13 +228,13 @@ func (c *CloneSetRolloutController) WatchWorkload() (WorkloadChangeEventType, *W
 		if c.clone.Status.CurrentRevision == c.clone.Status.UpdateRevision &&
 			c.parentController.Status.UpdateRevision != c.clone.Status.UpdateRevision {
 			workloadInfo.UpdateRevision = &c.clone.Status.UpdateRevision
-			klog.Warning("CloneSet is stable or is rolling back, release plan should stop")
+			klog.Warningf("CloneSet(%v) is stable or is rolling back", c.targetNamespacedName)
 			return WorkloadRollback, workloadInfo, nil
 		}
 		if *c.clone.Spec.Replicas != c.releaseStatus.ObservedWorkloadReplicas {
 			workloadInfo.Replicas = c.clone.Spec.Replicas
-			klog.Warningf("CloneSet replicas changed during releasing, should pause and wait for it to complete, replicas from: %v -> %v",
-				c.releaseStatus.ObservedWorkloadReplicas, *c.clone.Spec.Replicas)
+			klog.Warningf("CloneSet(%v) replicas changed during releasing, should pause and wait for it to complete, replicas from: %v -> %v",
+				c.targetNamespacedName, c.releaseStatus.ObservedWorkloadReplicas, *c.clone.Spec.Replicas)
 			return WorkloadReplicasChanged, workloadInfo, nil
 		}
 		fallthrough
@@ -237,8 +242,8 @@ func (c *CloneSetRolloutController) WatchWorkload() (WorkloadChangeEventType, *W
 	case v1alpha1.RolloutPhaseCompleted, v1alpha1.RolloutPhaseCancelled:
 		if c.clone.Status.UpdateRevision != c.releaseStatus.UpdateRevision {
 			workloadInfo.UpdateRevision = &c.clone.Status.UpdateRevision
-			klog.Warningf("CloneSet updateRevision changed during releasing, should try to restart the release plan, updateRevision from: %v -> %v",
-				c.releaseStatus.UpdateRevision, c.clone.Status.UpdateRevision)
+			klog.Warningf("CloneSet(%v) updateRevision changed during releasing, should try to restart the release plan, updateRevision from: %v -> %v",
+				c.targetNamespacedName, c.releaseStatus.UpdateRevision, c.clone.Status.UpdateRevision)
 			return WorkloadPodTemplateChanged, workloadInfo, nil
 		}
 
@@ -265,6 +270,7 @@ func (c *CloneSetRolloutController) fetchCloneSet() error {
 func (c *CloneSetRolloutController) calculateCurrentTarget(totalSize int32) int32 {
 	targetSize := int32(calculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
 	klog.InfoS("Calculated the number of pods in the target CloneSet after current batch",
+		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
 		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
 	return targetSize
 }
@@ -273,6 +279,7 @@ func (c *CloneSetRolloutController) calculateCurrentTarget(totalSize int32) int3
 func (c *CloneSetRolloutController) calculateCurrentSource(totalSize int32) int32 {
 	sourceSize := totalSize - c.calculateCurrentTarget(totalSize)
 	klog.InfoS("Calculated the number of pods in the source CloneSet after current batch",
+		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
 		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
 	return sourceSize
 }

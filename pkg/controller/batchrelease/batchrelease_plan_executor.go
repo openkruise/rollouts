@@ -32,6 +32,8 @@ type Executor struct {
 	release       *v1alpha1.BatchRelease
 	releasePlan   *v1alpha1.ReleasePlan
 	releaseStatus *v1alpha1.BatchReleaseStatus
+	releaseKey    types.NamespacedName
+	workloadKey   types.NamespacedName
 }
 
 // NewReleasePlanExecutor creates a RolloutPlanController
@@ -47,11 +49,18 @@ func (r *Executor) SetReleaseInfo(release *v1alpha1.BatchRelease) {
 	r.releaseStatus = release.Status.DeepCopy()
 	r.releasePlan = release.Spec.ReleasePlan.DeepCopy()
 	initializeStatusIfNeeds(r.releaseStatus)
+	r.releaseKey = client.ObjectKeyFromObject(release)
+	if release.Spec.TargetRef.WorkloadRef != nil {
+		r.workloadKey = types.NamespacedName{
+			Namespace: release.Namespace,
+			Name:      release.Spec.TargetRef.WorkloadRef.Name,
+		}
+	}
 }
 
 // Do execute the release plan
 func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
-	klog.V(3).InfoS("Reconcile the release plan",
+	klog.V(3).InfoS("Reconcile the BatchRelease",
 		"target-workload", r.release.Spec.TargetRef.WorkloadRef.Name)
 
 	klog.V(3).InfoS("release-status:",
@@ -60,7 +69,7 @@ func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
 		"current-batch", r.releaseStatus.CanaryStatus.CurrentBatch)
 
 	workloadController, err := r.GetWorkloadController()
-	if err != nil {
+	if err != nil || workloadController == nil {
 		return reconcile.Result{}, r.releaseStatus
 	}
 
@@ -82,7 +91,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		// should keep this phase and do nothing util workload is created.
 
 	case v1alpha1.RolloutPhaseHealthy:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseHealthy)
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseHealthy)
 		// verify whether the workload is ready to execute the release plan in this state.
 		needed, err := workloadController.IfNeedToProgress()
 		switch {
@@ -97,7 +106,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		}
 
 	case v1alpha1.RolloutPhasePreparing:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhasePreparing)
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhasePreparing)
 		// prepare and initialize something before progressing in this state.
 		initialized, err := workloadController.Prepare()
 		switch {
@@ -112,7 +121,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		}
 
 	case v1alpha1.RolloutPhaseProgressing:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseProgressing)
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseProgressing)
 		// progress the release plan in this state.
 		var progressDone bool
 		if progressDone, retryDuration = r.progressBatches(workloadController); progressDone {
@@ -121,7 +130,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		}
 
 	case v1alpha1.RolloutPhaseFinalizing:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseFinalizing)
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseFinalizing)
 		// restore the workload in this state
 		if succeed := workloadController.Finalize(false, false); succeed {
 			cleanupConditions(status)
@@ -131,7 +140,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		}
 
 	case v1alpha1.RolloutPhaseRollback:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseRollback)
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseRollback)
 		// restore the workload in this state
 		pause, clean := false, true
 		if workloads.IsControlledByRollout(r.release) {
@@ -145,7 +154,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		}
 
 	case v1alpha1.RolloutPhaseTerminating:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseTerminating)
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseTerminating)
 		if succeed := workloadController.Finalize(false, true); succeed {
 			if r.release.DeletionTimestamp != nil {
 				setCondition(status, v1alpha1.TerminatingReasonInTerminating, "Release plan was cancelled or deleted", v1.ConditionTrue)
@@ -157,15 +166,15 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		}
 
 	case v1alpha1.RolloutPhaseCompleted:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseCompleted)
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseCompleted)
 		// this state indicates that the plan is executed successfully, should do nothing in this state.
 
 	case v1alpha1.RolloutPhaseCancelled:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", v1alpha1.RolloutPhaseCancelled)
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseCancelled)
 		// this state indicates that the plan is cancelled successfully, should do nothing in this state.
 
 	default:
-		klog.V(3).Infof("ReleasePlan State Machine into %s state", "Unknown")
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, "Unknown")
 		panic(fmt.Sprintf("illegal release status %+v", status))
 	}
 
@@ -179,13 +188,13 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 
 	switch r.releaseStatus.CanaryStatus.ReleasingBatchState {
 	case "", v1alpha1.InitializeBatchState:
-		klog.V(3).Infof("ReleaseBatch State Machine into %s state", v1alpha1.InitializeBatchState)
+		klog.V(3).Infof("BatchRelease(%v) Batch State Machine into %s state", r.releaseKey, v1alpha1.InitializeBatchState)
 		// prepare something before do canary to modify workload, such as calculating suitable batch index.
 		r.releaseStatus.CanaryStatus.ReleasingBatchState = v1alpha1.DoCanaryBatchState
 		fallthrough
 
 	case v1alpha1.DoCanaryBatchState:
-		klog.V(3).Infof("ReleaseBatch State Machine into %s state", v1alpha1.DoCanaryBatchState)
+		klog.V(3).Infof("BatchRelease(%v) Batch State Machine into %s state", r.releaseKey, v1alpha1.DoCanaryBatchState)
 		// modify workload replicas/partition based on release plan in this state.
 		upgradeDone, err := workloadController.RolloutOneBatchPods()
 		switch {
@@ -199,7 +208,7 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 		}
 
 	case v1alpha1.VerifyBatchState:
-		klog.V(3).Infof("ReleaseBatch State Machine into %s state", v1alpha1.VerifyBatchState)
+		klog.V(3).Infof("BatchRelease(%v) Batch State Machine into %s state", r.releaseKey, v1alpha1.VerifyBatchState)
 		// TODO: metrics analysis
 		// replicas/partition has been modified, should wait pod ready in this state.
 		verified, err := workloadController.CheckOneBatchPods()
@@ -215,14 +224,14 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 		}
 
 	case v1alpha1.ReadyBatchState:
-		klog.V(3).Infof("ReleaseBatch State Machine into %s state", v1alpha1.ReadyBatchState)
+		klog.V(3).Infof("BatchRelease(%v) Batch State Machine into %s state", r.releaseKey, v1alpha1.ReadyBatchState)
 		// all the pods in the batch are upgraded and their state are ready
 		// wait to move to the next batch if there are any
 		progressDone = r.moveToNextBatch()
 		retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
 
 	default:
-		klog.V(3).Infof("ReleaseBatch State Machine into %s state", "Unknown")
+		klog.V(3).Infof("ReleasePlan(%v) Batch State Machine into %s state", "Unknown")
 		panic(fmt.Sprintf("illegal status %+v", r.releaseStatus))
 	}
 
@@ -232,6 +241,10 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 // GetWorkloadController pick the right workload controller to work on the workload
 func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error) {
 	targetRef := r.release.Spec.TargetRef.WorkloadRef
+	if targetRef == nil {
+		return nil, nil
+	}
+
 	targetKey := types.NamespacedName{
 		Namespace: r.release.Namespace,
 		Name:      targetRef.Name,
@@ -250,7 +263,7 @@ func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error)
 			return workloads.NewDeploymentRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
 		}
 	}
-	message := fmt.Sprintf("the workload `%v/%v` is not supported", targetRef.APIVersion, targetRef.Kind)
+	message := fmt.Sprintf("the workload `%v.%v/%v` is not supported", targetRef.APIVersion, targetRef.Kind, targetRef.Name)
 	r.recorder.Event(r.release, v1.EventTypeWarning, "UnsupportedWorkload", message)
 	return nil, fmt.Errorf(message)
 }
@@ -258,7 +271,7 @@ func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error)
 func (r *Executor) moveToNextBatch() bool {
 	currentBatch := int(r.releaseStatus.CanaryStatus.CurrentBatch)
 	if currentBatch >= len(r.releasePlan.Batches)-1 {
-		klog.V(3).InfoS("Finished all batch release", "current batch", r.releaseStatus.CanaryStatus.CurrentBatch)
+		klog.V(3).Infof("BatchRelease(%v) finished all batch, release current batch: %v", r.releasePlan, r.releaseStatus.CanaryStatus.CurrentBatch)
 		return true
 	} else {
 		if r.releasePlan.BatchPartition == nil ||
@@ -266,7 +279,7 @@ func (r *Executor) moveToNextBatch() bool {
 			r.releaseStatus.CanaryStatus.CurrentBatch++
 		}
 		r.releaseStatus.CanaryStatus.ReleasingBatchState = v1alpha1.InitializeBatchState
-		klog.V(3).InfoS("Finished one batch release", "current batch", r.releaseStatus.CanaryStatus.CurrentBatch)
+		klog.V(3).Infof("BatchRelease(%v) finished one batch, release current batch: %v", r.releasePlan, r.releaseStatus.CanaryStatus.CurrentBatch)
 		return false
 	}
 }

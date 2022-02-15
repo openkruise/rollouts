@@ -34,13 +34,13 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 	switch {
 	case r.releasePlanTerminating():
 		reason = "PlanTerminating"
-		message = "release plan is terminating, clean up and stop reconcile"
+		message = "release plan is terminating, stop the release plan"
 		needStopThisRound = false
 		action = Terminating
 
 	case r.workloadHasGone(err):
 		reason = "WorkloadGone"
-		message = "target workload has gone, clean up and stop reconcile"
+		message = "target workload has gone, stop the release plan"
 		needStopThisRound = false
 		action = Terminating
 
@@ -59,13 +59,13 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 
 	case r.releasePlanUnhealthy():
 		reason = "PlanStatusUnhealthy"
-		message = "release plan status is unhealthy, try to restart release plan"
+		message = "release plan status is unhealthy, try to restart the release plan"
 		needStopThisRound = true
 		action = Restart
 
 	case r.releasePlanChanged():
 		reason = "PlanChanged"
-		message = "release plan was changed, try to recalculate canary status"
+		message = "release plan was changed, try to recalculate the canary status"
 		needStopThisRound = true
 		action = Recalculate
 
@@ -87,9 +87,15 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 
 	case workloadEvent == workloads.WorkloadPodTemplateChanged:
 		reason = "RevisionChanged"
-		message = "workload revision was changed, try to restart release plan"
-		needStopThisRound = true
-		action = Restart
+		if !workloads.IsControlledByRollout(r.release) {
+			message = "workload revision was changed, try to restart the release plan"
+			needStopThisRound = true
+			action = Restart
+		} else {
+			message = "workload revision was changed, stop the release plan"
+			needStopThisRound = false
+			action = Terminating
+		}
 
 	case workloadEvent == workloads.WorkloadUnHealthy:
 		reason = "WorkloadUnHealthy"
@@ -123,9 +129,9 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 	}
 
 	if len(message) > 0 {
-		klog.Warning(message)
 		setCondition(r.releaseStatus, reason, message, v1.ConditionFalse)
 		r.recorder.Eventf(r.release, v1.EventTypeWarning, reason, message)
+		klog.Warningf("Special case occurred in BatchRelease(%v), message: %v", r.releaseKey, message)
 	}
 
 	// refresh workload info

@@ -21,6 +21,7 @@ const StashCloneSetPartition = "batchrelease.rollouts.kruise.io/stash-partition"
 // cloneSetController is the place to hold fields needed for handle CloneSet type of workloads
 type cloneSetController struct {
 	workloadController
+	releasePlanKey       types.NamespacedName
 	targetNamespacedName types.NamespacedName
 }
 
@@ -33,9 +34,11 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 		err := json.Unmarshal([]byte(controlInfo), ref)
 		if err == nil && ref.UID == c.parentController.UID {
 			controlled = true
-			klog.V(3).Info("CloneSet has been controlled by this BatchRelease, no need to claim again")
+			klog.V(3).Info("CloneSet(%v) has been controlled by this BatchRelease(%v), no need to claim again",
+				c.targetNamespacedName, c.releasePlanKey)
 		} else {
-			klog.Error("Failed to parse controller info from cloneset annotation, error: %v, controller info: %+v", err, *ref)
+			klog.Error("Failed to parse controller info from CloneSet(%v) annotation, error: %v, controller info: %+v",
+				c.targetNamespacedName, err, *ref)
 		}
 	}
 
@@ -83,7 +86,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 		return false, err
 	}
 
-	klog.V(3).Info("Claim CloneSet Successfully")
+	klog.V(3).Info("Claim CloneSet(%v) Successfully", c.targetNamespacedName)
 	return true, nil
 }
 
@@ -107,7 +110,7 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 	}
 
 	if !found {
-		klog.V(3).InfoS("the cloneset is already released", "CloneSet", clone.Name)
+		klog.V(3).Infof("the CloneSet(%v) is already released", c.targetNamespacedName)
 		return true, nil
 	}
 
@@ -117,7 +120,7 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, BatchReleaseControlAnnotation))
 			patchErr = c.client.Patch(context.TODO(), clone, client.RawPatch(types.StrategicMergePatchType, patchByte))
 			if patchErr != nil {
-				klog.Error("Error occurred when patching CloneSet, error: %v", patchErr)
+				klog.Error("Error occurred when patching CloneSet(%v), error: %v", c.targetNamespacedName, patchErr)
 				return false, patchErr
 			}
 		}
@@ -165,11 +168,13 @@ func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.Cl
 	patchByte, _ := json.Marshal(patch)
 	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "PatchPartitionFailed",
-			"Failed to update the CloneSet to the correct target partition %d, error: %v", partition, err)
+			"Failed to update the CloneSet(%v) to the correct target partition %d, error: %v",
+			c.targetNamespacedName, partition, err)
 		return err
 	}
 
-	klog.InfoS("Submitted modified partition quest for cloneset", "CloneSet",
-		clone.GetName(), "target partition size", partition, "batch", c.releaseStatus.CanaryStatus.CurrentBatch)
+	klog.InfoS("Submitted modified partition quest for CloneSet", "CloneSet", c.targetNamespacedName,
+		"target partition size", partition, "batch", c.releaseStatus.CanaryStatus.CurrentBatch)
+
 	return nil
 }

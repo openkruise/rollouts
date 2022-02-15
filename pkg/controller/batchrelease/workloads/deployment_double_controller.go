@@ -21,6 +21,7 @@ import (
 // deploymentController is the place to hold fields needed for handle Deployment type of workloads
 type deploymentController struct {
 	workloadController
+	releaseKey           types.NamespacedName
 	stableNamespacedName types.NamespacedName
 	canaryNamespacedName types.NamespacedName
 }
@@ -33,10 +34,12 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		ref := &metav1.OwnerReference{}
 		err := json.Unmarshal([]byte(controlInfo), ref)
 		if err == nil && ref.UID == c.parentController.UID {
-			klog.V(3).Info("Deployment has been controlled by this BatchRelease, no need to claim again")
+			klog.V(3).Info("Deployment(%v) has been controlled by this BatchRelease(%v), no need to claim again",
+				c.stableNamespacedName, c.releaseKey)
 			controlled = true
 		} else {
-			klog.Error("Failed to parse controller info from deployment annotation, error: %v, controller info: %+v", err, *ref)
+			klog.Error("Failed to parse controller info from Deployment(%v) annotation, error: %v, controller info: %+v",
+				c.stableNamespacedName, err, *ref)
 		}
 	}
 
@@ -132,7 +135,7 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	}
 
 	canaryDeployInfo, _ := json.Marshal(canaryDeploy)
-	klog.V(3).Infof("Create canary deployment successfully, details: %v", string(canaryDeployInfo))
+	klog.V(3).Infof("Create canary Deployment(%v) successfully, details: %v", canaryKey, string(canaryDeployInfo))
 
 	// fetch the canary Deployment
 	var fetchedCanary *apps.Deployment
@@ -157,7 +160,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, BatchReleaseControlAnnotation))
 			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 			if patchErr != nil {
-				klog.Error("Error occurred when patching Deployment, error: %v", patchErr)
+				klog.Error("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
 				return false, patchErr
 			}
 		}
@@ -167,7 +170,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, BatchReleaseControlAnnotation, pause))
 			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 			if patchErr != nil {
-				klog.Error("Error occurred when patching Deployment, error: %v", patchErr)
+				klog.Error("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
 				return false, patchErr
 			}
 		}
@@ -192,7 +195,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 					finalizers := sets.NewString(d.Finalizers...).Delete(CanaryDeploymentFinalizer).List()
 					patchErr = PatchFinalizer(c.client, d, finalizers)
 					if patchErr != nil && !errors.IsNotFound(patchErr) {
-						klog.Error("Error occurred when patching Deployment, error: %v", patchErr)
+						klog.Error("Error occurred when patching Deployment(%v), error: %v", client.ObjectKeyFromObject(d), patchErr)
 						return false, patchErr
 					}
 					return false, nil
@@ -201,7 +204,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 				// delete the deployment
 				deleteErr = c.client.Delete(context.TODO(), d)
 				if deleteErr != nil && !errors.IsNotFound(deleteErr) {
-					klog.Error("Error occurred when deleting Deployment, error: %v", deleteErr)
+					klog.Error("Error occurred when deleting Deployment(%v), error: %v", client.ObjectKeyFromObject(d), deleteErr)
 					return false, deleteErr
 				}
 			}
@@ -228,7 +231,7 @@ func (c *deploymentController) patchCanaryReplicas(canaryDeploy *apps.Deployment
 	}
 
 	klog.InfoS("Submitted modified partition quest for canary Deployment", "Deployment",
-		canaryDeploy.GetName(), "target canary replicas size", replicas, "batch", c.releaseStatus.CanaryStatus.CurrentBatch)
+		client.ObjectKeyFromObject(canaryDeploy), "target canary replicas size", replicas, "batch", c.releaseStatus.CanaryStatus.CurrentBatch)
 	return nil
 }
 

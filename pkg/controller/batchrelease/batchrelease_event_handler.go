@@ -159,7 +159,7 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 
 		brNsn, err := w.getBatchRelease(workloadNsn, gvk, newAccessor.Metadata.Annotations[workloads.BatchReleaseControlAnnotation])
 		if err != nil {
-			klog.Errorf("unable to get BatchRelease related with %s (%s/%s), err: %v",
+			klog.Errorf("unable to get BatchRelease related with %s (%s/%s), error: %v",
 				gvk.Kind, workloadNsn.Namespace, workloadNsn.Name, err)
 			return
 		}
@@ -200,12 +200,12 @@ func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 	}
 	brNsn, err := w.getBatchRelease(workloadNsn, gvk, controlInfo)
 	if err != nil {
-		klog.Errorf("unable to get BatchRelease related with %s (%s/%s), err: %v",
+		klog.Errorf("Unable to get BatchRelease related with %s (%s/%s), err: %v",
 			gvk.Kind, workloadNsn.Namespace, workloadNsn.Name, err)
 		return
 	}
 	if len(brNsn.Name) != 0 {
-		klog.V(5).Infof("%s %s (%s/%s) and reconcile BatchRelease (%v)",
+		klog.V(5).Infof("Something related %s %s (%s/%s) happen and will reconcile BatchRelease (%v)",
 			action, gvk.Kind, workloadNsn.Namespace, workloadNsn.Namespace, brNsn)
 		q.Add(reconcile.Request{NamespacedName: brNsn})
 	}
@@ -220,7 +220,7 @@ func (w *workloadEventHandler) getBatchRelease(workloadNamespaceName types.Names
 		}
 
 		if br.APIVersion == v1alpha1.GroupVersion.String() && br.Kind == "BatchRelease" {
-			klog.V(3).Infof("%s (%v) is managed by BatchRelease (%s), append queue", gvk.Kind, workloadNamespaceName, br.Name)
+			klog.V(3).Infof("%s (%v) is managed by BatchRelease (%s), append queue and will reconcile BatchRelease", gvk.Kind, workloadNamespaceName, br.Name)
 			nsn = types.NamespacedName{Namespace: workloadNamespaceName.Namespace, Name: br.Name}
 			return
 		}
@@ -238,7 +238,7 @@ func (w *workloadEventHandler) getBatchRelease(workloadNamespaceName types.Names
 		targetRef := br.Spec.TargetRef
 		targetGV, err := schema.ParseGroupVersion(targetRef.WorkloadRef.APIVersion)
 		if err != nil {
-			klog.Errorf("failed to parse targetRef's group version: %s", targetRef.WorkloadRef.APIVersion)
+			klog.Errorf("Failed to parse targetRef's group version: %s for BatchRelease(%v)", targetRef.WorkloadRef.APIVersion, client.ObjectKeyFromObject(br))
 			continue
 		}
 

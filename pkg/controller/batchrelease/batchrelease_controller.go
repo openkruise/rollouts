@@ -132,7 +132,7 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	klog.V(3).Infof("begin to reconcile batch-release(%v/%v), release-phase: %v", release.Namespace, release.Name, release.Status.Phase)
+	klog.V(3).Infof("Begin to reconcile BatchRelease(%v/%v), release-phase: %v", release.Namespace, release.Name, release.Status.Phase)
 
 	// finalizer will block the deletion of batchRelease
 	// util all canary resources and settings are cleaned up.
@@ -149,7 +149,8 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	result, currentStatus := r.executor.Do()
 
 	defer func() {
-		klog.V(3).InfoS("Finished one round of reconciling release plan", "release-phase", currentStatus.Phase,
+		klog.V(3).InfoS("Finished one round of reconciling release plan",
+			"BatchRelease", client.ObjectKeyFromObject(release), "release-phase", currentStatus.Phase,
 			"batch-state", currentStatus.CanaryStatus.ReleasingBatchState, "current-batch", currentStatus.CanaryStatus.CurrentBatch,
 			"reconcile-result ", result, "time-cost", time.Since(startTimestamp))
 	}()
@@ -157,7 +158,14 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return result, r.updateStatus(ctx, release, currentStatus)
 }
 
-func (r *BatchReleaseReconciler) updateStatus(ctx context.Context, release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) (err error) {
+func (r *BatchReleaseReconciler) updateStatus(ctx context.Context, release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) error {
+	var err error
+	defer func() {
+		if err != nil {
+			klog.Errorf("Failed to update status for BatchRelease(%v), error: %v", client.ObjectKeyFromObject(release), err)
+		}
+	}()
+
 	// observe and record the latest changes for generation and release plan
 	newStatus.ObservedGeneration = release.Generation
 	newStatus.ObservedReleasePlanHash = hashReleasePlanBatches(&release.Spec.ReleasePlan)
@@ -173,18 +181,16 @@ func (r *BatchReleaseReconciler) updateStatus(ctx context.Context, release *v1al
 			fetchedRelease.Status = *newStatus
 			return r.Status().Update(ctx, fetchedRelease)
 		})
-		if err != nil {
-			klog.Errorf("Failed to update status for BatchRelease(%v/%v), error: %v", release.Namespace, release.Name, err)
-		}
 	}
-	return
+
+	return err
 }
 
 func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease) (bool, error) {
 	var err error
 	defer func() {
 		if err != nil {
-			klog.Errorf("Failed to patch finalizer to BatchRelease (%v/%v)", release.Namespace, release.Name)
+			klog.Errorf("Failed to handle finalizer for BatchRelease(%v), error: %v", client.ObjectKeyFromObject(release), err)
 		}
 	}()
 
