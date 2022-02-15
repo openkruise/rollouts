@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/openkruise/rollouts/pkg/util"
 	netv1 "k8s.io/api/networking/v1"
@@ -162,7 +163,6 @@ var _ = SIGDescribe("Rollout", func() {
 	KruiseDescribe("Deployment rollout canary nginx", func() {
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded", func() {
-			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -271,7 +271,6 @@ var _ = SIGDescribe("Rollout", func() {
 		})
 
 		It("V1->V2: Percentage, 20%, and rollback(v1)", func() {
-			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -368,6 +367,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/deployment.yaml", workload)).ToNot(HaveOccurred())
 			CreateObject(workload)
 			WaitDeploymentAllPodsReady(workload)
+			time.Sleep(time.Second * 3)
 
 			// check rollout status
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
@@ -386,6 +386,8 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// check workload status & paused
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			by,_ := json.Marshal(workload)
+			fmt.Println(string(by))
 			Expect(workload.Spec.Paused).Should(BeTrue())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 0))
 			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))

@@ -18,6 +18,7 @@ package batchrelease
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -176,16 +177,9 @@ func (r *innerBatchController) Finalize() (bool, error) {
 		klog.Errorf("rollout(%s/%s) fetch batch failed: %s", r.rollout.Namespace, r.rollout.Name, r.batchName)
 		return false, err
 	}
-
-	// delete canary deployment
-	err = r.deleteCanaryDeployment(batch)
-	if err != nil {
-		return false, err
-	}
-	klog.Infof("rollout(%s/%s) delete all canary deployment success, and next delete batchRelease", r.rollout.Namespace, r.rollout.Name)
-
+	by,_ := json.Marshal(batch)
 	if !batch.DeletionTimestamp.IsZero() {
-		klog.Infof("rollout(%s/%s) batch(%s) is terminating, and wait a moment", r.rollout.Namespace, r.rollout.Name, r.batchName)
+		klog.Infof("rollout(%s/%s) batch(%s) is terminating, and wait a moment", r.rollout.Namespace, r.rollout.Name, string(by))
 		return false, nil
 	}
 

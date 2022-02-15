@@ -91,6 +91,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// todo 卸载kruise之后，是否能独立部署
 	//+kubebuilder:scaffold:builder
 	setupLog.Info("setup webhook")
 	if err = webhook.SetupWithManager(mgr); err != nil {
