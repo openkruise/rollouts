@@ -162,7 +162,9 @@ var _ = SIGDescribe("Rollout", func() {
 	KruiseDescribe("Deployment rollout canary nginx", func() {
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded", func() {
-			return
+			if skip() {
+				return
+			}
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -271,7 +273,9 @@ var _ = SIGDescribe("Rollout", func() {
 		})
 
 		It("V1->V2: Percentage, 20%, and rollback(v1)", func() {
-			return
+			if skip() {
+				return
+			}
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -425,4 +429,8 @@ func mergeEnvVar(original []v1.EnvVar, add v1.EnvVar) []v1.EnvVar {
 	}
 	newEnvs = append(newEnvs, add)
 	return newEnvs
+}
+
+func skip() bool {
+	return true
 }

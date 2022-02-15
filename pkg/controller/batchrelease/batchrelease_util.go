@@ -50,6 +50,10 @@ func signalTerminating(status *v1alpha1.BatchReleaseStatus) {
 	status.Phase = v1alpha1.RolloutPhaseTerminating
 }
 
+func signalFinalize(status *v1alpha1.BatchReleaseStatus) {
+	status.Phase = v1alpha1.RolloutPhaseFinalizing
+}
+
 func signalRollingBack(status *v1alpha1.BatchReleaseStatus) {
 	status.Phase = v1alpha1.RolloutPhaseRollback
 }
