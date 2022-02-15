@@ -4,20 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sort"
-	"time"
-
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sort"
 )
 
 // deploymentController is the place to hold fields needed for handle Deployment type of workloads
@@ -89,7 +87,7 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	suffix := ShortRandomStr(collisionCount)
 	canaryDeploy := &apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("%v%v", c.canaryNamespacedName.Name, suffix),
+			Name:        fmt.Sprintf("%v-%v", c.canaryNamespacedName.Name, suffix),
 			Namespace:   c.stableNamespacedName.Namespace,
 			Labels:      map[string]string{},
 			Annotations: map[string]string{},
@@ -152,58 +150,65 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 	}
 
 	var patchErr, deleteErr error
-	if len(stableDeploy.Annotations[BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause {
-		patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, BatchReleaseControlAnnotation, pause))
-		patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
-		if patchErr != nil {
-			klog.Error("Error occurred when patching Deployment, error: %v", patchErr)
-			return false, patchErr
-		}
-	}
 
-	if cleanup {
-		ds, err := c.listCanaryDeployment(client.InNamespace(stableDeploy.Namespace),
-			client.MatchingLabels(map[string]string{CanaryDeploymentLabelKey: string(stableDeploy.UID)}))
-		if err != nil {
-			return false, err
+	switch {
+	case IsControlledByRollout(c.parentController):
+		if len(stableDeploy.Annotations[BatchReleaseControlAnnotation]) > 0 {
+			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, BatchReleaseControlAnnotation))
+			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
+			if patchErr != nil {
+				klog.Error("Error occurred when patching Deployment, error: %v", patchErr)
+				return false, patchErr
+			}
 		}
 
-		// must make sure the older is deleted firstly
-		sort.Slice(ds, func(i, j int) bool {
-			return ds[i].CreationTimestamp.Before(&ds[j].CreationTimestamp)
-		})
+	default:
+		if len(stableDeploy.Annotations[BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause {
+			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, BatchReleaseControlAnnotation, pause))
+			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
+			if patchErr != nil {
+				klog.Error("Error occurred when patching Deployment, error: %v", patchErr)
+				return false, patchErr
+			}
+		}
 
-		// delete all the canary deployments
-		for _, d := range ds {
-			// clean up finalizers first
-			if controllerutil.ContainsFinalizer(d, CanaryDeploymentFinalizer) {
-				finalizers := sets.NewString(d.Finalizers...).Delete(CanaryDeploymentFinalizer).List()
-				patchErr = PatchFinalizer(c.client, d, finalizers)
-				if patchErr != nil && !errors.IsNotFound(patchErr) {
-					klog.Error("Error occurred when patching Deployment, error: %v", patchErr)
-					return false, patchErr
+		// TODO: canary-deployment cannot be deleted when e2e testing
+		if cleanup {
+			ds, err := c.listCanaryDeployment(client.InNamespace(stableDeploy.Namespace),
+				client.MatchingLabels(map[string]string{CanaryDeploymentLabelKey: string(stableDeploy.UID)}))
+			if err != nil {
+				return false, err
+			}
+
+			// must make sure the older is deleted firstly
+			sort.Slice(ds, func(i, j int) bool {
+				return ds[i].CreationTimestamp.Before(&ds[j].CreationTimestamp)
+			})
+
+			// delete all the canary deployments
+			for _, d := range ds {
+				// clean up finalizers first
+				if controllerutil.ContainsFinalizer(d, CanaryDeploymentFinalizer) {
+					finalizers := sets.NewString(d.Finalizers...).Delete(CanaryDeploymentFinalizer).List()
+					patchErr = PatchFinalizer(c.client, d, finalizers)
+					if patchErr != nil && !errors.IsNotFound(patchErr) {
+						klog.Error("Error occurred when patching Deployment, error: %v", patchErr)
+						return false, patchErr
+					}
+					return false, nil
 				}
-				time.Sleep(time.Second)
-			}
-			// delete the deployment
-			deleteErr = c.client.Delete(context.TODO(), d)
-			if deleteErr != nil && !errors.IsNotFound(deleteErr) {
-				klog.Error("Error occurred when deleting Deployment, error: %v", deleteErr)
-				return false, deleteErr
-			}
-			time.Sleep(time.Second)
-		}
 
-		// make sure that all canary deployments has been deleted
-		ds, err = c.listCanaryDeployment(client.InNamespace(stableDeploy.Namespace),
-			client.MatchingLabels(map[string]string{CanaryDeploymentLabelKey: string(stableDeploy.UID)}))
-		if err != nil {
-			return false, err
+				// delete the deployment
+				deleteErr = c.client.Delete(context.TODO(), d)
+				if deleteErr != nil && !errors.IsNotFound(deleteErr) {
+					klog.Error("Error occurred when deleting Deployment, error: %v", deleteErr)
+					return false, deleteErr
+				}
+			}
 		}
-
-		return len(ds) == 0, nil
 	}
 
+	klog.V(3).Infof("Release Deployment(%v) Successfully", client.ObjectKeyFromObject(stableDeploy))
 	return true, nil
 }
 

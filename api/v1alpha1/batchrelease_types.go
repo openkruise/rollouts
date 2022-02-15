@@ -24,7 +24,7 @@ import (
 // +k8s:openapi-gen=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="KIND",type=string,JSONPath=`.spec.targetReference.kind`
+// +kubebuilder:printcolumn:name="KIND",type=string,JSONPath=`.spec.targetReference.workloadRef.kind`
 // +kubebuilder:printcolumn:name="PHASE",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="BATCH",type=integer,JSONPath=`.status.canaryStatus.currentBatch`
 // +kubebuilder:printcolumn:name="BATCH-STATE",type=string,JSONPath=`.status.canaryStatus.batchState`

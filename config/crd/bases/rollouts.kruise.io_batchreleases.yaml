@@ -17,7 +17,7 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.targetReference.kind
+    - jsonPath: .spec.targetReference.workloadRef.kind
       name: KIND
       type: string
     - jsonPath: .status.phase
