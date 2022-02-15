@@ -17,11 +17,21 @@ limitations under the License.
 package batchrelease
 
 type BatchController interface {
+	// VerifyBatchInitial create batchRelease beyond rollout crd
 	VerifyBatchInitial() (bool, string, error)
 
+	// PromoteBatch release workload in step(index)
 	PromoteBatch(index int32) error
 
+	// BatchReleaseState fetch batchRelease status
 	BatchReleaseState() (*BatchReleaseState, error)
 
+	// PromoteStableWorkload in multi-deployment scenarios, upgrade the stable deployment to the latest version after rollout complete
+	// and wait pods are ready
+	PromoteStableWorkload() (bool, error)
+
+	// Finalize clean up batchRelease
+	// 1. delete canary deployments
+	// 2. delete batchRelease CRD
 	Finalize() (bool, error)
 }

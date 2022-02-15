@@ -15,11 +15,11 @@ spec:
         - weight: 20
           pause: {}
         - weight: 40
-          pause: {duration: 5}
+          pause: {duration: 10}
         - weight: 60
-          pause: {duration: 5}
+          pause: {duration: 10}
         - weight: 80
-          pause: {duration: 5}
+          pause: {duration: 10}
         - weight: 100
           pause: {}
       trafficRouting:

@@ -19,22 +19,28 @@ package batchrelease
 import (
 	"context"
 	"fmt"
-	"strconv"
-
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
+	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"strconv"
 )
 
 const (
 	// rollouts.kruise.io
 	BatchReleaseOwnerRefAnnotation = "rollouts.kruise.io/owner-ref"
+
+	CanaryDeploymentLabelKey  = "rollouts.kruise.io/canary-deployment"
+	CanaryDeploymentFinalizer = "finalizer.rollouts.kruise.io/batch-release"
 )
 
 type innerBatchController struct {
@@ -129,6 +135,37 @@ func (r *innerBatchController) PromoteBatch(index int32) error {
 	return nil
 }
 
+func (r *innerBatchController) PromoteStableWorkload() (bool, error) {
+	// if cloneSet, do nothing
+	if r.rollout.Spec.ObjectRef.WorkloadRef.Kind == util.ControllerKruiseKindCS.Kind {
+		return true, nil
+	}
+
+	obj := &apps.Deployment{}
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: r.rollout.Spec.ObjectRef.WorkloadRef.Name}, obj); err != nil {
+			return err
+		}
+		if obj.Spec.Paused == true {
+			return nil
+		}
+		obj.Spec.Paused = false
+		return r.Update(context.TODO(), obj)
+	})
+	if err != nil {
+		klog.Errorf("update rollout(%s/%s) stable deployment failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
+		return false, err
+	}
+	maxUnavailable, _ := intstr.GetValueFromIntOrPercent(obj.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*obj.Spec.Replicas), true)
+	if obj.Status.ObservedGeneration != obj.Generation || obj.Status.UpdatedReplicas != *obj.Spec.Replicas &&
+		*obj.Spec.Replicas-obj.Status.AvailableReplicas > int32(maxUnavailable) {
+		klog.Infof("rollout(%s/%s) stable deployment AvailableReplicas(%d), and wait a moment", r.rollout.Namespace, r.rollout.Name, obj.Status.AvailableReplicas)
+		return false, nil
+	}
+	klog.Infof("promote rollout(%s/%s) stable deployment AvailableReplicas(%d) success", r.rollout.Namespace, r.rollout.Name, obj.Status.AvailableReplicas)
+	return true, nil
+}
+
 func (r *innerBatchController) Finalize() (bool, error) {
 	batch := &appsv1alpha1.BatchRelease{}
 	err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: r.batchName}, batch)
@@ -139,6 +176,13 @@ func (r *innerBatchController) Finalize() (bool, error) {
 		klog.Errorf("rollout(%s/%s) fetch batch failed: %s", r.rollout.Namespace, r.rollout.Name, r.batchName)
 		return false, err
 	}
+
+	// delete canary deployment
+	err = r.deleteCanaryDeployment(batch)
+	if err != nil {
+		return false, err
+	}
+	klog.Infof("rollout(%s/%s) delete all canary deployment success, and next delete batchRelease", r.rollout.Namespace, r.rollout.Name)
 
 	if !batch.DeletionTimestamp.IsZero() {
 		klog.Infof("rollout(%s/%s) batch(%s) is terminating, and wait a moment", r.rollout.Namespace, r.rollout.Name, r.batchName)
@@ -153,6 +197,44 @@ func (r *innerBatchController) Finalize() (bool, error) {
 	}
 	klog.Infof("rollout(%s/%s) delete batch(%s), and wait a moment", r.rollout.Namespace, r.rollout.Name, r.batchName)
 	return false, nil
+}
+
+func (r *innerBatchController) deleteCanaryDeployment(batch *appsv1alpha1.BatchRelease) error {
+	dList := &apps.DeploymentList{}
+	if err := r.List(context.TODO(), dList, client.InNamespace(batch.Namespace),
+		client.MatchingLabels(map[string]string{CanaryDeploymentLabelKey: string(batch.UID)})); err != nil {
+		return err
+	} else if len(dList.Items) == 0 {
+		return nil
+	}
+
+	// delete all the canary deployments
+	for i := range dList.Items {
+		obj := &dList.Items[i]
+		// clean up finalizers first
+		if controllerutil.ContainsFinalizer(obj, CanaryDeploymentFinalizer) {
+			newObj := obj.DeepCopy()
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				if err := r.Get(context.TODO(), types.NamespacedName{Name: obj.Name, Namespace: obj.Namespace}, newObj); err != nil {
+					return err
+				}
+				controllerutil.RemoveFinalizer(newObj, CanaryDeploymentFinalizer)
+				return r.Update(context.TODO(), newObj)
+			})
+			if err != nil {
+				klog.Errorf("remove rollout(%s/%s) canary deployment finalizer failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
+				return err
+			}
+			klog.Infof("remove rollout(%s/%s) canary deployment(%s) finalizer success", r.rollout.Namespace, r.rollout.Name, obj.Name)
+		}
+
+		// delete deployment
+		if err := r.Delete(context.TODO(), obj); err != nil {
+			return err
+		}
+		klog.Infof("delete rollout(%s/%s) canary deployment(%s) success", r.rollout.Namespace, r.rollout.Name, obj.Name)
+	}
+	return nil
 }
 
 func createBatchRelease(rollout *appsv1alpha1.Rollout, batchName string) *appsv1alpha1.BatchRelease {
