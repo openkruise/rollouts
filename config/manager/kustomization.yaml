@@ -13,4 +13,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: minchou/kruiserollout
-  newTag: br-2
+  newTag: br
