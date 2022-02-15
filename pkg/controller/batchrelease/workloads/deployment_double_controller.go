@@ -165,7 +165,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 	*/
 
 	default:
-		if stableDeploy != nil && len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause {
+		if stableDeploy != nil && (len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause) {
 			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, util.BatchReleaseControlAnnotation, pause))
 			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 			if patchErr != nil {
@@ -210,7 +210,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 		}
 	}
 
-	klog.V(3).Infof("Release Deployment(%v) Successfully", client.ObjectKeyFromObject(stableDeploy))
+	klog.V(3).Infof("Release Deployment(%v) Successfully", c.stableNamespacedName)
 	return true, nil
 }
 
