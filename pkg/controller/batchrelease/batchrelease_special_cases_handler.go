@@ -158,9 +158,9 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 	case RollingBack:
 		signalRollingBack(r.releaseStatus)
 	case Terminating:
-		signalFinalize(r.releaseStatus)
+		signalTerminating(r.releaseStatus)
 	case Finalize:
-		signalRecalculate(r.releaseStatus)
+		signalFinalize(r.releaseStatus)
 	case Restart:
 		signalRestart(r.releaseStatus)
 		result = reconcile.Result{RequeueAfter: DefaultShortDuration}
