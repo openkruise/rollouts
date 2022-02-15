@@ -94,7 +94,7 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 			action = Restart
 		} else {
 			message = "workload revision was changed, stop the release plan"
-			needStopThisRound = false
+			needStopThisRound = true
 			//action = Terminating
 		}
 
