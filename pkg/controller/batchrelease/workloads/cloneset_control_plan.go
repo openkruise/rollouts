@@ -3,6 +3,7 @@ package workloads
 import (
 	"context"
 	"fmt"
+	"github.com/openkruise/rollouts/pkg/util"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -66,7 +67,7 @@ func (c *CloneSetRolloutController) IfNeedToProgress() (bool, error) {
 		return false, verifyErr
 	}
 
-	if !c.clone.Spec.UpdateStrategy.Paused && !IsControlledBy(c.clone, c.parentController) {
+	if !c.clone.Spec.UpdateStrategy.Paused && !util.IsControlledBy(c.clone, c.parentController) {
 		verifyErr = fmt.Errorf("cloneSet(%v) should be paused before execute the release plan", c.targetNamespacedName)
 		return false, verifyErr
 	}
@@ -268,7 +269,7 @@ func (c *CloneSetRolloutController) fetchCloneSet() error {
 
 // the target workload size for the current batch
 func (c *CloneSetRolloutController) calculateCurrentTarget(totalSize int32) int32 {
-	targetSize := int32(calculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
+	targetSize := int32(util.CalculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
 	klog.InfoS("Calculated the number of pods in the target CloneSet after current batch",
 		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
 		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)

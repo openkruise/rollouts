@@ -1,6 +1,7 @@
 package batchrelease
 
 import (
+	"github.com/openkruise/rollouts/pkg/util"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -87,14 +88,14 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 
 	case workloadEvent == workloads.WorkloadPodTemplateChanged:
 		reason = "RevisionChanged"
-		if !workloads.IsControlledByRollout(r.release) {
+		if !util.IsControlledByRollout(r.release) {
 			message = "workload revision was changed, try to restart the release plan"
 			needStopThisRound = true
 			action = Restart
 		} else {
 			message = "workload revision was changed, stop the release plan"
 			needStopThisRound = false
-			action = Terminating
+			//action = Terminating
 		}
 
 	case workloadEvent == workloads.WorkloadUnHealthy:

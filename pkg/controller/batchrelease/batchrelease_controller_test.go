@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/openkruise/rollouts/pkg/util"
 	"testing"
 	"time"
 
@@ -26,7 +27,6 @@ import (
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
 )
 
 const TIME_LAYOUT = "2006-01-02 15:04:05"
@@ -41,7 +41,7 @@ var (
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "release",
 			Namespace: "application",
-			UID:       uuid.NewUUID(),
+			UID:       types.UID("87076677"),
 		},
 		Spec: v1alpha1.BatchReleaseSpec{
 			TargetRef: v1alpha1.ObjectRef{
@@ -123,7 +123,7 @@ var (
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "release",
 			Namespace: "application",
-			UID:       uuid.NewUUID(),
+			UID:       types.UID("87076677"),
 		},
 		Spec: v1alpha1.BatchReleaseSpec{
 			TargetRef: v1alpha1.ObjectRef{
@@ -202,17 +202,17 @@ func init() {
 
 	controlInfo, _ := json.Marshal(metav1.NewControllerRef(releaseDeploy, releaseDeploy.GroupVersionKind()))
 	stableDeploy.Annotations = map[string]string{
-		workloads.BatchReleaseControlAnnotation: string(controlInfo),
+		util.BatchReleaseControlAnnotation: string(controlInfo),
 	}
 	stableClone.Annotations = map[string]string{
-		workloads.BatchReleaseControlAnnotation: string(controlInfo),
+		util.BatchReleaseControlAnnotation: string(controlInfo),
 	}
 
 	canaryTemplate := stableClone.Spec.Template.DeepCopy()
 	stableTemplate := canaryTemplate.DeepCopy()
 	stableTemplate.Spec.Containers = containers("v1")
-	stableClone.Status.CurrentRevision = workloads.ComputeHash(stableTemplate, nil)
-	stableClone.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+	stableClone.Status.CurrentRevision = util.ComputeHash(stableTemplate, nil)
+	stableClone.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 }
 
 func TestReconcile_CloneSet(t *testing.T) {
@@ -273,8 +273,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -294,8 +294,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -316,8 +316,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -338,8 +338,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -361,8 +361,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -385,8 +385,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -408,8 +408,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -432,8 +432,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -441,8 +441,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canary := getCanaryWithStage(stable, "v1", 0, true).(*kruiseappsv1alpha1.CloneSet)
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
-				canary.Status.CurrentRevision = workloads.ComputeHash(stableTemplate, nil)
-				canary.Status.UpdateRevision = workloads.ComputeHash(stableTemplate, nil)
+				canary.Status.CurrentRevision = util.ComputeHash(stableTemplate, nil)
+				canary.Status.UpdateRevision = util.ComputeHash(stableTemplate, nil)
 				return []client.Object{
 					canary,
 				}
@@ -459,8 +459,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				release.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 				return release
 			},
@@ -483,8 +483,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				release.Spec.Cancelled = true
 				return release
 			},
@@ -507,8 +507,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -518,8 +518,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v3")
-				canary.Status.CurrentRevision = workloads.ComputeHash(stableTemplate, nil)
-				canary.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				canary.Status.CurrentRevision = util.ComputeHash(stableTemplate, nil)
+				canary.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return []client.Object{
 					canary,
 				}
@@ -728,8 +728,8 @@ func TestReconcile_Deployment(t *testing.T) {
 				canaryTemplate := stableDeploy.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetDeployments: func() []client.Object {
@@ -751,8 +751,8 @@ func TestReconcile_Deployment(t *testing.T) {
 				canaryTemplate := stableDeploy.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				release.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 				return release
 			},
@@ -775,8 +775,8 @@ func TestReconcile_Deployment(t *testing.T) {
 				canaryTemplate := stableDeploy.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				release.Spec.Cancelled = true
 				return release
 			},
@@ -799,8 +799,8 @@ func TestReconcile_Deployment(t *testing.T) {
 				canaryTemplate := stableDeploy.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
 				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = workloads.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = workloads.ComputeHash(canaryTemplate, nil)
+				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
+				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				return release
 			},
 			GetDeployments: func() []client.Object {
@@ -922,7 +922,7 @@ func getCanaryWithStage(workload client.Object, version string, stage int, ready
 		d.Name += "-canary-324785678"
 		d.UID = uuid.NewUUID()
 		d.Spec.Paused = false
-		d.Labels[workloads.CanaryDeploymentLabelKey] = string(deploy.UID)
+		d.Labels[util.CanaryDeploymentLabelKey] = "87076677"
 		d.Spec.Replicas = pointer.Int32Ptr(int32(stageReplicas))
 		d.Spec.Template.Spec.Containers = containers(version)
 		d.Status.Replicas = int32(stageReplicas)
@@ -933,7 +933,7 @@ func getCanaryWithStage(workload client.Object, version string, stage int, ready
 		d.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(releaseDeploy, releaseDeploy.GroupVersionKind())}
 		controlInfo, _ := json.Marshal(metav1.NewControllerRef(releaseDeploy, releaseDeploy.GroupVersionKind()))
 		d.Annotations = map[string]string{
-			workloads.BatchReleaseControlAnnotation: string(controlInfo),
+			util.BatchReleaseControlAnnotation: string(controlInfo),
 		}
 		return d
 
@@ -960,7 +960,7 @@ func getCanaryWithStage(workload client.Object, version string, stage int, ready
 		c.Status.ObservedGeneration = clone.Generation
 		controlInfo, _ := json.Marshal(metav1.NewControllerRef(releaseClone, releaseClone.GroupVersionKind()))
 		c.Annotations = map[string]string{
-			workloads.BatchReleaseControlAnnotation: string(controlInfo),
+			util.BatchReleaseControlAnnotation: string(controlInfo),
 		}
 		return c
 	}
@@ -973,7 +973,7 @@ func makeCanaryReplicaSets(deploys ...client.Object) []client.Object {
 	for _, d := range deploys {
 		deploy := d.(*apps.Deployment)
 		labels := deploy.Spec.Selector.DeepCopy().MatchLabels
-		labels[apps.DefaultDeploymentUniqueLabelKey] = workloads.ComputeHash(&deploy.Spec.Template, nil)
+		labels[apps.DefaultDeploymentUniqueLabelKey] = util.ComputeHash(&deploy.Spec.Template, nil)
 		rss = append(rss, &apps.ReplicaSet{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: apps.SchemeGroupVersion.String(),
@@ -1005,7 +1005,7 @@ func makeStableReplicaSets(deploys ...client.Object) []client.Object {
 	for _, d := range deploys {
 		deploy := d.(*apps.Deployment)
 		labels := deploy.Spec.Selector.DeepCopy().MatchLabels
-		labels[apps.DefaultDeploymentUniqueLabelKey] = workloads.ComputeHash(stableTemplate, nil)
+		labels[apps.DefaultDeploymentUniqueLabelKey] = util.ComputeHash(stableTemplate, nil)
 		rss = append(rss, &apps.ReplicaSet{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: apps.SchemeGroupVersion.String(),

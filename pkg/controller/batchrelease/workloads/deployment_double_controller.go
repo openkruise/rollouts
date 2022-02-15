@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -30,7 +31,7 @@ type deploymentController struct {
 // before kicking start the update and start from every pod in the old version
 func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.Deployment) (*apps.Deployment, error) {
 	var controlled bool
-	if controlInfo, ok := stableDeploy.Annotations[BatchReleaseControlAnnotation]; ok && controlInfo != "" {
+	if controlInfo, ok := stableDeploy.Annotations[util.BatchReleaseControlAnnotation]; ok && controlInfo != "" {
 		ref := &metav1.OwnerReference{}
 		err := json.Unmarshal([]byte(controlInfo), ref)
 		if err == nil && ref.UID == c.parentController.UID {
@@ -48,7 +49,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		patchedInfo := map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"annotations": map[string]string{
-					BatchReleaseControlAnnotation: string(controlInfo),
+					util.BatchReleaseControlAnnotation: string(controlInfo),
 				},
 			},
 		}
@@ -59,7 +60,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		}
 	}
 
-	if canaryDeploy == nil || !EqualIgnoreHash(&stableDeploy.Spec.Template, &canaryDeploy.Spec.Template) {
+	if canaryDeploy == nil || !util.EqualIgnoreHash(&stableDeploy.Spec.Template, &canaryDeploy.Spec.Template) {
 		var err error
 		var collisionCount int32
 		if c.releaseStatus.CollisionCount != nil {
@@ -87,7 +88,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 
 func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deployment, collisionCount *int32) (*apps.Deployment, error) {
 	// TODO: reduce the len(canary-deployment.Name) to avoid too long name
-	suffix := ShortRandomStr(collisionCount)
+	suffix := util.ShortRandomStr(collisionCount)
 	canaryDeploy := &apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        fmt.Sprintf("%v-%v", c.canaryNamespacedName.Name, suffix),
@@ -109,16 +110,16 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 		canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *o.DeepCopy())
 	}
 
-	canaryDeploy.Finalizers = append(canaryDeploy.Finalizers, CanaryDeploymentFinalizer)
+	canaryDeploy.Finalizers = append(canaryDeploy.Finalizers, util.CanaryDeploymentFinalizer)
 	canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *metav1.NewControllerRef(
 		stableDeploy, stableDeploy.GroupVersionKind()))
 
 	// set labels & annotations
-	canaryDeploy.Labels[CanaryDeploymentLabelKey] = string(stableDeploy.UID)
+	canaryDeploy.Labels[util.CanaryDeploymentLabelKey] = string(c.parentController.UID)
 	owner := metav1.NewControllerRef(c.parentController, c.parentController.GroupVersionKind())
 	if owner != nil {
 		ownerInfo, _ := json.Marshal(owner)
-		canaryDeploy.Annotations[BatchReleaseControlAnnotation] = string(ownerInfo)
+		canaryDeploy.Annotations[util.BatchReleaseControlAnnotation] = string(ownerInfo)
 	}
 
 	// copy spec
@@ -155,19 +156,21 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 	var patchErr, deleteErr error
 
 	switch {
-	case IsControlledByRollout(c.parentController):
-		if len(stableDeploy.Annotations[BatchReleaseControlAnnotation]) > 0 {
-			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, BatchReleaseControlAnnotation))
+	/*
+	case util.IsControlledByRollout(c.parentController):
+		if len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
+			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
 			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 			if patchErr != nil {
 				klog.Error("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
 				return false, patchErr
 			}
 		}
+	 */
 
 	default:
-		if len(stableDeploy.Annotations[BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause {
-			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, BatchReleaseControlAnnotation, pause))
+		if len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause {
+			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, util.BatchReleaseControlAnnotation, pause))
 			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 			if patchErr != nil {
 				klog.Error("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
@@ -178,7 +181,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 		// TODO: canary-deployment cannot be deleted when e2e testing
 		if cleanup {
 			ds, err := c.listCanaryDeployment(client.InNamespace(stableDeploy.Namespace),
-				client.MatchingLabels(map[string]string{CanaryDeploymentLabelKey: string(stableDeploy.UID)}))
+				client.MatchingLabels(map[string]string{util.CanaryDeploymentLabelKey: string(c.parentController.UID)}))
 			if err != nil {
 				return false, err
 			}
@@ -191,9 +194,9 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 			// delete all the canary deployments
 			for _, d := range ds {
 				// clean up finalizers first
-				if controllerutil.ContainsFinalizer(d, CanaryDeploymentFinalizer) {
-					finalizers := sets.NewString(d.Finalizers...).Delete(CanaryDeploymentFinalizer).List()
-					patchErr = PatchFinalizer(c.client, d, finalizers)
+				if controllerutil.ContainsFinalizer(d, util.CanaryDeploymentFinalizer) {
+					finalizers := sets.NewString(d.Finalizers...).Delete(util.CanaryDeploymentFinalizer).List()
+					patchErr = util.PatchFinalizer(c.client, d, finalizers)
 					if patchErr != nil && !errors.IsNotFound(patchErr) {
 						klog.Error("Error occurred when patching Deployment(%v), error: %v", client.ObjectKeyFromObject(d), patchErr)
 						return false, patchErr

@@ -3,6 +3,7 @@ package workloads
 import (
 	"context"
 	"fmt"
+	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -233,7 +234,7 @@ func (c *DeploymentsRolloutController) WatchWorkload() (WorkloadChangeEventType,
 	}
 
 	if c.canary != nil && c.canary.DeletionTimestamp != nil &&
-		controllerutil.ContainsFinalizer(c.canary, CanaryDeploymentFinalizer) {
+		controllerutil.ContainsFinalizer(c.canary, util.CanaryDeploymentFinalizer) {
 		return WorkloadUnHealthy, workloadInfo, nil
 	}
 
@@ -269,7 +270,7 @@ func (c *DeploymentsRolloutController) WatchWorkload() (WorkloadChangeEventType,
 
 	case v1alpha1.RolloutPhaseCompleted, v1alpha1.RolloutPhaseCancelled:
 		_, err = c.GetPodTemplateHash(c.stable, Latest)
-		if (c.canary == nil || !EqualIgnoreHash(&c.stable.Spec.Template, &c.canary.Spec.Template)) && apierrors.IsNotFound(err) {
+		if (c.canary == nil || !util.EqualIgnoreHash(&c.stable.Spec.Template, &c.canary.Spec.Template)) && apierrors.IsNotFound(err) {
 			workloadInfo.UpdateRevision = &updateRevision
 			klog.Warning("Deployment(%v) updateRevision changed during releasing", c.stableNamespacedName)
 			return WorkloadPodTemplateChanged, workloadInfo, nil
@@ -287,7 +288,7 @@ func (c *DeploymentsRolloutController) isRollingBack() (bool, error) {
 	for _, rs := range rss {
 		if c.releaseStatus.StableRevision != "" && *rs.Spec.Replicas > 0 &&
 			c.releaseStatus.StableRevision == rs.Labels[apps.DefaultDeploymentUniqueLabelKey] &&
-			EqualIgnoreHash(&rs.Spec.Template, &c.stable.Spec.Template) {
+			util.EqualIgnoreHash(&rs.Spec.Template, &c.stable.Spec.Template) {
 			return true, nil
 		}
 	}
@@ -317,17 +318,17 @@ func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
 	}
 
 	ds, err := c.listCanaryDeployment(client.InNamespace(c.stable.Namespace),
-		client.MatchingLabels(map[string]string{CanaryDeploymentLabelKey: string(c.stable.UID)}))
+		client.MatchingLabels(map[string]string{util.CanaryDeploymentLabelKey: string(c.parentController.UID)}))
 	if err != nil {
 		return err
 	}
 
-	ds = filterActiveDeployment(ds)
+	ds = util.FilterActiveDeployment(ds)
 	sort.Slice(ds, func(i, j int) bool {
 		return ds[j].CreationTimestamp.Before(&ds[i].CreationTimestamp)
 	})
 
-	if len(ds) == 0 || !EqualIgnoreHash(&ds[0].Spec.Template, &c.stable.Spec.Template) {
+	if len(ds) == 0 || !util.EqualIgnoreHash(&ds[0].Spec.Template, &c.stable.Spec.Template) {
 		err := apierrors.NewNotFound(schema.GroupResource{
 			Group:    apps.SchemeGroupVersion.Group,
 			Resource: c.stable.Kind,
@@ -342,7 +343,7 @@ func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
 
 // the target workload size for the current batch
 func (c *DeploymentsRolloutController) calculateCurrentTarget(totalSize int32) int32 {
-	targetSize := int32(calculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
+	targetSize := int32(util.CalculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
 	klog.InfoS("Calculated the number of pods in the canary Deployment after current batch",
 		"Deployment", c.stableNamespacedName, "BatchRelease", c.releaseKey,
 		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
@@ -420,7 +421,7 @@ func (c *DeploymentsRolloutController) GetPodTemplateHash(deploy *apps.Deploymen
 				return rs.Labels[apps.DefaultDeploymentUniqueLabelKey], nil
 			}
 		case Latest:
-			if EqualIgnoreHash(&deploy.Spec.Template, &rs.Spec.Template) {
+			if util.EqualIgnoreHash(&deploy.Spec.Template, &rs.Spec.Template) {
 				return rs.Labels[apps.DefaultDeploymentUniqueLabelKey], nil
 			}
 		}

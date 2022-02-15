@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/openkruise/rollouts/pkg/util"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,9 +15,6 @@ import (
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 )
-
-const BatchReleaseControlAnnotation = "batchrelease.rollouts.kruise.io/control-info"
-const StashCloneSetPartition = "batchrelease.rollouts.kruise.io/stash-partition"
 
 // cloneSetController is the place to hold fields needed for handle CloneSet type of workloads
 type cloneSetController struct {
@@ -29,7 +27,7 @@ type cloneSetController struct {
 // before kicking start the update and start from every pod in the old version
 func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (bool, error) {
 	var controlled bool
-	if controlInfo, ok := clone.Annotations[BatchReleaseControlAnnotation]; ok && controlInfo != "" {
+	if controlInfo, ok := clone.Annotations[util.BatchReleaseControlAnnotation]; ok && controlInfo != "" {
 		ref := &metav1.OwnerReference{}
 		err := json.Unmarshal([]byte(controlInfo), ref)
 		if err == nil && ref.UID == c.parentController.UID {
@@ -67,7 +65,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 		controlByte, _ := json.Marshal(controlInfo)
 		patch["metadata"] = map[string]interface{}{
 			"annotations": map[string]string{
-				BatchReleaseControlAnnotation: string(controlByte),
+				util.BatchReleaseControlAnnotation: string(controlByte),
 			},
 		}
 
@@ -75,8 +73,8 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 			partitionByte, _ := json.Marshal(clone.Spec.UpdateStrategy.Partition)
 			metadata := patch["metadata"].(map[string]interface{})
 			annotations := metadata["annotations"].(map[string]string)
-			annotations[StashCloneSetPartition] = string(partitionByte)
-			annotations[BatchReleaseControlAnnotation] = string(controlByte)
+			annotations[util.StashCloneSetPartition] = string(partitionByte)
+			annotations[util.BatchReleaseControlAnnotation] = string(controlByte)
 		}
 	}
 
@@ -99,7 +97,7 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 	var found bool
 	var refByte string
 	var patchErr error
-	if refByte, found = clone.Annotations[BatchReleaseControlAnnotation]; found && refByte != "" {
+	if refByte, found = clone.Annotations[util.BatchReleaseControlAnnotation]; found && refByte != "" {
 		ref := &metav1.OwnerReference{}
 		if err := json.Unmarshal([]byte(refByte), ref); err != nil {
 			found = false
@@ -115,9 +113,10 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 	}
 
 	switch {
-	case IsControlledByRollout(c.parentController):
-		if len(clone.Annotations[BatchReleaseControlAnnotation]) > 0 {
-			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, BatchReleaseControlAnnotation))
+
+	case util.IsControlledByRollout(c.parentController):
+		if len(clone.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
+			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
 			patchErr = c.client.Patch(context.TODO(), clone, client.RawPatch(types.StrategicMergePatchType, patchByte))
 			if patchErr != nil {
 				klog.Error("Error occurred when patching CloneSet(%v), error: %v", c.targetNamespacedName, patchErr)
@@ -133,9 +132,9 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 			},
 		}
 
-		if len(clone.Annotations[StashCloneSetPartition]) > 0 {
+		if len(clone.Annotations[util.StashCloneSetPartition]) > 0 {
 			restoredPartition := &intstr.IntOrString{}
-			if err := json.Unmarshal([]byte(clone.Annotations[StashCloneSetPartition]), restoredPartition); err == nil {
+			if err := json.Unmarshal([]byte(clone.Annotations[util.StashCloneSetPartition]), restoredPartition); err == nil {
 				updateStrategy := patchSpec["updateStrategy"].(map[string]interface{})
 				updateStrategy["partition"] = restoredPartition
 			}
@@ -143,7 +142,7 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 
 		patchSpecByte, _ := json.Marshal(patchSpec)
 		patchByte := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null, "%s":null}},"spec":%s}`,
-			BatchReleaseControlAnnotation, StashCloneSetPartition, string(patchSpecByte))
+			util.BatchReleaseControlAnnotation, util.StashCloneSetPartition, string(patchSpecByte))
 
 		if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(patchByte))); err != nil {
 			c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ReleaseCloneSetFailed", err.Error())

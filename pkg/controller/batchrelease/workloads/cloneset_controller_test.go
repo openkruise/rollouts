@@ -3,6 +3,7 @@ package workloads
 import (
 	"context"
 	"fmt"
+	"github.com/openkruise/rollouts/pkg/util"
 	"reflect"
 	"testing"
 
@@ -115,8 +116,8 @@ func init() {
 	canaryTemplate := stableClone.Spec.Template.DeepCopy()
 	stableTemplate := canaryTemplate.DeepCopy()
 	stableTemplate.Spec.Containers = containers("v1")
-	stableClone.Status.CurrentRevision = ComputeHash(stableTemplate, nil)
-	stableClone.Status.UpdateRevision = ComputeHash(canaryTemplate, nil)
+	stableClone.Status.CurrentRevision = util.ComputeHash(stableTemplate, nil)
+	stableClone.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 }
 
 func TestCloneSetController(t *testing.T) {

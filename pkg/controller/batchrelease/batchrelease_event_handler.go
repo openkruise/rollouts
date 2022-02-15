@@ -19,6 +19,7 @@ package batchrelease
 import (
 	"context"
 	"encoding/json"
+	"github.com/openkruise/rollouts/pkg/util"
 
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -157,7 +158,7 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			Name:      newAccessor.Metadata.Name,
 		}
 
-		brNsn, err := w.getBatchRelease(workloadNsn, gvk, newAccessor.Metadata.Annotations[workloads.BatchReleaseControlAnnotation])
+		brNsn, err := w.getBatchRelease(workloadNsn, gvk, newAccessor.Metadata.Annotations[util.BatchReleaseControlAnnotation])
 		if err != nil {
 			klog.Errorf("unable to get BatchRelease related with %s (%s/%s), error: %v",
 				gvk.Kind, workloadNsn.Namespace, workloadNsn.Name, err)
@@ -186,10 +187,10 @@ func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 	switch obj.(type) {
 	case *kruiseappsv1alpha1.CloneSet:
 		gvk = controllerKruiseKindCS
-		controlInfo = obj.(*kruiseappsv1alpha1.CloneSet).Annotations[workloads.BatchReleaseControlAnnotation]
+		controlInfo = obj.(*kruiseappsv1alpha1.CloneSet).Annotations[util.BatchReleaseControlAnnotation]
 	case *appsv1.Deployment:
 		gvk = controllerKindDep
-		controlInfo = obj.(*appsv1.Deployment).Annotations[workloads.BatchReleaseControlAnnotation]
+		controlInfo = obj.(*appsv1.Deployment).Annotations[util.BatchReleaseControlAnnotation]
 	default:
 		return
 	}
@@ -261,7 +262,7 @@ func observeLatestGeneration(newOne, oldOne *workloads.WorkloadAccessor) bool {
 }
 
 func observeScaleEventDone(newOne, oldOne *workloads.WorkloadAccessor) bool {
-	_, controlled := newOne.Metadata.Annotations[workloads.BatchReleaseControlAnnotation]
+	_, controlled := newOne.Metadata.Annotations[util.BatchReleaseControlAnnotation]
 	if !controlled {
 		return false
 	}
@@ -274,7 +275,7 @@ func observeScaleEventDone(newOne, oldOne *workloads.WorkloadAccessor) bool {
 }
 
 func observeReplicasChanged(newOne, oldOne *workloads.WorkloadAccessor) bool {
-	_, controlled := newOne.Metadata.Annotations[workloads.BatchReleaseControlAnnotation]
+	_, controlled := newOne.Metadata.Annotations[util.BatchReleaseControlAnnotation]
 	if !controlled {
 		return false
 	}

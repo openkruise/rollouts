@@ -3,7 +3,7 @@ package batchrelease
 import (
 	"context"
 	"flag"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
+	"github.com/openkruise/rollouts/pkg/util"
 	"reflect"
 	"time"
 
@@ -199,7 +199,7 @@ func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease)
 		HasTerminatingCondition(release.Status) &&
 		controllerutil.ContainsFinalizer(release, ReleaseFinalizer) {
 		finalizers := sets.NewString(release.Finalizers...).Delete(ReleaseFinalizer).List()
-		err = workloads.PatchFinalizer(r.Client, release, finalizers)
+		err = util.PatchFinalizer(r.Client, release, finalizers)
 		if client.IgnoreNotFound(err) != nil {
 			return true, err
 		}
@@ -209,7 +209,7 @@ func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease)
 	// add the release finalizer if it needs
 	if !controllerutil.ContainsFinalizer(release, ReleaseFinalizer) {
 		finalizers := append(release.Finalizers, ReleaseFinalizer)
-		err = workloads.PatchFinalizer(r.Client, release, finalizers)
+		err = util.PatchFinalizer(r.Client, release, finalizers)
 		if client.IgnoreNotFound(err) != nil {
 			return true, err
 		} else if errors.IsNotFound(err) {

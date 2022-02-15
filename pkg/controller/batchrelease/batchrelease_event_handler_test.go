@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
+	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
@@ -159,7 +159,7 @@ func TestEventHandler_Create(t *testing.T) {
 					Name:       "whatever",
 				})
 				object.SetName("another")
-				object.Annotations[workloads.BatchReleaseControlAnnotation] = string(controlInfo)
+				object.Annotations[util.BatchReleaseControlAnnotation] = string(controlInfo)
 				return object
 			},
 			ExpectedQueueLen: 0,
@@ -215,7 +215,7 @@ func TestEventHandler_Delete(t *testing.T) {
 					Name:       "whatever",
 				})
 				object.SetName("another")
-				object.Annotations[workloads.BatchReleaseControlAnnotation] = string(controlInfo)
+				object.Annotations[util.BatchReleaseControlAnnotation] = string(controlInfo)
 				return object
 			},
 			ExpectedQueueLen: 0,

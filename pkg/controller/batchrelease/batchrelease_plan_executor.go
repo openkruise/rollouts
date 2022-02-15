@@ -2,6 +2,7 @@ package batchrelease
 
 import (
 	"fmt"
+	"github.com/openkruise/rollouts/pkg/util"
 	"reflect"
 	"time"
 
@@ -143,7 +144,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseRollback)
 		// restore the workload in this state
 		pause, clean := false, true
-		if workloads.IsControlledByRollout(r.release) {
+		if util.IsControlledByRollout(r.release) {
 			pause, clean = true, false
 		}
 		if succeed := workloadController.Finalize(pause, clean); succeed {
@@ -155,7 +156,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 
 	case v1alpha1.RolloutPhaseTerminating:
 		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseTerminating)
-		if succeed := workloadController.Finalize(false, true); succeed {
+		if succeed := workloadController.Finalize(true, true); succeed {
 			if r.release.DeletionTimestamp != nil {
 				setCondition(status, v1alpha1.TerminatingReasonInTerminating, "Release plan was cancelled or deleted", v1.ConditionTrue)
 			} else {
