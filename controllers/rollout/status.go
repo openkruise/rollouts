@@ -66,8 +66,6 @@ func (r *RolloutReconciler) checkRolloutStatus(rollout *appsv1alpha1.Rollout) er
 		if workload.InRolloutProgressing {
 			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, appsv1alpha1.RolloutPhaseHealthy, appsv1alpha1.RolloutPhaseProgressing)
 			newStatus.Phase = appsv1alpha1.RolloutPhaseProgressing
-			// new canaryStatus
-			newStatus.CanaryStatus = &appsv1alpha1.CanaryStatus{}
 			cond := util.NewRolloutCondition(appsv1alpha1.RolloutConditionProgressing, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInitializing, "initiate rollout progressing action")
 			util.SetRolloutCondition(&newStatus, cond)
 		}

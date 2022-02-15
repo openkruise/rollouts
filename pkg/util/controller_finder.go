@@ -160,7 +160,7 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *appsv1alpha1.Wor
 
 	// in rollout progressing
 	workload.InRolloutProgressing = true
-	// in rollback
+	// workload is continuous release, indicates rollback(v1 -> v2 -> v1)
 	// delete auto-generated labels
 	delete(stableRs.Spec.Template.Labels, RsPodRevisionLabelKey)
 	if EqualIgnoreHash(&stableRs.Spec.Template, &stable.Spec.Template) {
@@ -181,14 +181,13 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *appsv1alpha1.Wor
 		if err != nil || canaryRs == nil {
 			return workload, err
 		}
-		workload.CanaryRevision = canaryRs.Labels[RsPodRevisionLabelKey]
 	}
 	return workload, err
 }
 
 func (r *ControllerFinder) getLatestCanaryDeployment(stable *apps.Deployment) (*apps.Deployment, error) {
 	canaryList := &apps.DeploymentList{}
-	selector, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{CanaryDeploymentLabel: string(stable.UID)}})
+	selector, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{CanaryDeploymentLabel: stable.Name}})
 	err := r.List(context.TODO(), canaryList, &client.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return nil, err

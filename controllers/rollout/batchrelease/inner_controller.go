@@ -75,7 +75,8 @@ func (r *innerBatchController) VerifyBatchInitial() (bool, string, error) {
 			klog.Errorf("rollout(%s/%s) create BatchRelease(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, r.batchName, err.Error())
 			return false, "", err
 		}
-		klog.Infof("rollout(%s/%s) create BatchRelease(%s) success", r.rollout.Namespace, r.rollout.Name, r.batchName)
+		by, _ := json.Marshal(br)
+		klog.Infof("rollout(%s/%s) create BatchRelease(%s) success", r.rollout.Namespace, r.rollout.Name, string(by))
 		return false, "", nil
 	}
 
@@ -147,7 +148,7 @@ func (r *innerBatchController) PromoteStableWorkload() (bool, error) {
 		if err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: r.rollout.Spec.ObjectRef.WorkloadRef.Name}, obj); err != nil {
 			return err
 		}
-		if obj.Spec.Paused == true {
+		if obj.Spec.Paused == false {
 			return nil
 		}
 		obj.Spec.Paused = false
@@ -177,9 +178,8 @@ func (r *innerBatchController) Finalize() (bool, error) {
 		klog.Errorf("rollout(%s/%s) fetch batch failed: %s", r.rollout.Namespace, r.rollout.Name, r.batchName)
 		return false, err
 	}
-	by,_ := json.Marshal(batch)
 	if !batch.DeletionTimestamp.IsZero() {
-		klog.Infof("rollout(%s/%s) batch(%s) is terminating, and wait a moment", r.rollout.Namespace, r.rollout.Name, string(by))
+		klog.Infof("rollout(%s/%s) batch(%s) is terminating, and wait a moment", r.rollout.Namespace, r.rollout.Name, r.batchName)
 		return false, nil
 	}
 

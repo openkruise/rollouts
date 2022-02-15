@@ -42,6 +42,8 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 	switch cond.Reason {
 	case appsv1alpha1.ProgressingReasonInitializing:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
+		// new canaryStatus
+		newStatus.CanaryStatus = &appsv1alpha1.CanaryStatus{}
 		done, msg, err := r.doProgressingInitializing(rollout)
 		if err != nil {
 			klog.Errorf("rollout(%s/%s) doProgressingInitializing error(%s)", rollout.Namespace, rollout.Name, err.Error())
