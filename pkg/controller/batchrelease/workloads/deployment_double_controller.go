@@ -176,7 +176,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 
 		// TODO: canary-deployment cannot be deleted when e2e testing
 		if cleanup {
-			ds, err := c.listCanaryDeployment(client.InNamespace(c.stableNamespacedName.Name),
+			ds, err := c.listCanaryDeployment(client.InNamespace(c.stableNamespacedName.Namespace),
 				client.MatchingLabels(map[string]string{util.CanaryDeploymentLabelKey: string(c.parentController.UID)}))
 			if err != nil {
 				return false, err
