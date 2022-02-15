@@ -115,7 +115,7 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 		stableDeploy, stableDeploy.GroupVersionKind()))
 
 	// set labels & annotations
-	canaryDeploy.Labels[util.CanaryDeploymentLabelKey] = string(c.parentController.UID)
+	canaryDeploy.Labels[util.CanaryDeploymentLabelKey] = c.stableNamespacedName.Name
 	owner := metav1.NewControllerRef(c.parentController, c.parentController.GroupVersionKind())
 	if owner != nil {
 		ownerInfo, _ := json.Marshal(owner)
@@ -176,8 +176,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 
 		// TODO: canary-deployment cannot be deleted when e2e testing
 		if cleanup {
-			ds, err := c.listCanaryDeployment(client.InNamespace(c.stableNamespacedName.Name),
-				client.MatchingLabels(map[string]string{util.CanaryDeploymentLabelKey: string(c.parentController.UID)}))
+			ds, err := c.listCanaryDeployment(client.InNamespace(c.stableNamespacedName.Namespace))
 			if err != nil {
 				return false, err
 			}
@@ -243,6 +242,10 @@ func (c *deploymentController) listCanaryDeployment(options ...client.ListOption
 	var ds []*apps.Deployment
 	for i := range dList.Items {
 		d := &dList.Items[i]
+		o := metav1.GetControllerOf(d)
+		if o == nil || o.UID != c.parentController.UID {
+			continue
+		}
 		ds = append(ds, d)
 	}
 

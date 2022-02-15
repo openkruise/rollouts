@@ -317,8 +317,7 @@ func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
 		return err
 	}
 
-	ds, err := c.listCanaryDeployment(client.InNamespace(c.stable.Namespace),
-		client.MatchingLabels(map[string]string{util.CanaryDeploymentLabelKey: string(c.parentController.UID)}))
+	ds, err := c.listCanaryDeployment(client.InNamespace(c.stable.Namespace))
 	if err != nil {
 		return err
 	}
