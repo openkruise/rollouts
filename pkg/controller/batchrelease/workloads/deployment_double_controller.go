@@ -35,11 +35,11 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		ref := &metav1.OwnerReference{}
 		err := json.Unmarshal([]byte(controlInfo), ref)
 		if err == nil && ref.UID == c.parentController.UID {
-			klog.V(3).Info("Deployment(%v) has been controlled by this BatchRelease(%v), no need to claim again",
+			klog.V(3).Infof("Deployment(%v) has been controlled by this BatchRelease(%v), no need to claim again",
 				c.stableNamespacedName, c.releaseKey)
 			controlled = true
 		} else {
-			klog.Error("Failed to parse controller info from Deployment(%v) annotation, error: %v, controller info: %+v",
+			klog.Errorf("Failed to parse controller info from Deployment(%v) annotation, error: %v, controller info: %+v",
 				c.stableNamespacedName, err, *ref)
 		}
 	}
@@ -55,7 +55,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		}
 		patchedBody, _ := json.Marshal(patchedInfo)
 		if err := c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchedBody)); err != nil {
-			klog.Error("Failed to patch controller info annotations to stable deployment(%v), error: %v", client.ObjectKeyFromObject(canaryDeploy), err)
+			klog.Errorf("Failed to patch controller info annotations to stable deployment(%v), error: %v", client.ObjectKeyFromObject(canaryDeploy), err)
 			return canaryDeploy, err
 		}
 	}
@@ -169,7 +169,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, util.BatchReleaseControlAnnotation, pause))
 			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 			if patchErr != nil {
-				klog.Error("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
+				klog.Errorf("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
 				return false, patchErr
 			}
 		}
@@ -202,7 +202,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 				// delete the deployment
 				deleteErr = c.client.Delete(context.TODO(), d)
 				if deleteErr != nil && !errors.IsNotFound(deleteErr) {
-					klog.Error("Error occurred when deleting Deployment(%v), error: %v", client.ObjectKeyFromObject(d), deleteErr)
+					klog.Errorf("Error occurred when deleting Deployment(%v), error: %v", client.ObjectKeyFromObject(d), deleteErr)
 					return false, deleteErr
 				}
 			}

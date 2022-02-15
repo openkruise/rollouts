@@ -272,7 +272,7 @@ func (c *DeploymentsRolloutController) WatchWorkload() (WorkloadChangeEventType,
 		_, err = c.GetPodTemplateHash(c.stable, Latest)
 		if (c.canary == nil || !util.EqualIgnoreHash(&c.stable.Spec.Template, &c.canary.Spec.Template)) && apierrors.IsNotFound(err) {
 			workloadInfo.UpdateRevision = &updateRevision
-			klog.Warning("Deployment(%v) updateRevision changed during releasing", c.stableNamespacedName)
+			klog.Warningf("Deployment(%v) updateRevision changed during releasing", c.stableNamespacedName)
 			return WorkloadPodTemplateChanged, workloadInfo, nil
 		}
 	}

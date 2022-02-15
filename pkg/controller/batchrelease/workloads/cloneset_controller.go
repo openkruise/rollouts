@@ -32,10 +32,10 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 		err := json.Unmarshal([]byte(controlInfo), ref)
 		if err == nil && ref.UID == c.parentController.UID {
 			controlled = true
-			klog.V(3).Info("CloneSet(%v) has been controlled by this BatchRelease(%v), no need to claim again",
+			klog.V(3).Infof("CloneSet(%v) has been controlled by this BatchRelease(%v), no need to claim again",
 				c.targetNamespacedName, c.releasePlanKey)
 		} else {
-			klog.Error("Failed to parse controller info from CloneSet(%v) annotation, error: %v, controller info: %+v",
+			klog.Errorf("Failed to parse controller info from CloneSet(%v) annotation, error: %v, controller info: %+v",
 				c.targetNamespacedName, err, *ref)
 		}
 	}
@@ -84,7 +84,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 		return false, err
 	}
 
-	klog.V(3).Info("Claim CloneSet(%v) Successfully", c.targetNamespacedName)
+	klog.V(3).Infof("Claim CloneSet(%v) Successfully", c.targetNamespacedName)
 	return true, nil
 }
 
@@ -101,7 +101,7 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 		ref := &metav1.OwnerReference{}
 		if err := json.Unmarshal([]byte(refByte), ref); err != nil {
 			found = false
-			klog.Error("failed to decode controller annotations of BatchRelease")
+			klog.Errorf("failed to decode controller annotations of BatchRelease")
 		} else if ref.UID != c.parentController.UID {
 			found = false
 		}
