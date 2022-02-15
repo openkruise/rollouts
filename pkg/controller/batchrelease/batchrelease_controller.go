@@ -212,8 +212,6 @@ func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease)
 		err = util.PatchFinalizer(r.Client, release, finalizers)
 		if client.IgnoreNotFound(err) != nil {
 			return true, err
-		} else if errors.IsNotFound(err) {
-			return true, nil
 		}
 	}
 
