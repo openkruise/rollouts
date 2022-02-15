@@ -61,6 +61,26 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 		if rollout.Status.StableRevision == rollout.Status.CanaryRevision {
 			klog.Infof("rollout(%s/%s) workload has been rollback, then rollout canceled", rollout.Namespace, rollout.Name)
 			progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonCancelling, "workload has been rollback, then rollout canceled")
+			// In case of continuous publishing(v1 -> v2 -> v3), then restart publishing
+		} else if newStatus.CanaryRevision != newStatus.CanaryStatus.CanaryRevision {
+			klog.Infof("rollout(%s/%s) workload continuous publishing canaryRevision from(%s) -> to(%s), then restart publishing",
+				rollout.Namespace, rollout.Name, newStatus.CanaryStatus.CanaryRevision, newStatus.CanaryRevision)
+			// delete batchRelease
+			batchControl := batchrelease.NewInnerBatchController(r.Client, rollout)
+			done, err := batchControl.Finalize()
+			if err != nil {
+				klog.Errorf("rollout(%s/%s) delete batchRelease failed: %s", rollout.Namespace, rollout.Name, err.Error())
+				return nil, err
+			} else if done {
+				progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInitializing, "workload is continuous release")
+				klog.Infof("rollout(%s/%s) workload is continuous publishing, restart complete", rollout.Namespace, rollout.Name)
+			} else {
+				// Incomplete, recheck
+				expectedTime := time.Now().Add(5 * time.Second)
+				recheckTime = &expectedTime
+				klog.Infof("rollout(%s/%s) workload is continuous publishing, restart incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
+			}
+
 			// pause rollout
 		} else if rollout.Spec.Strategy.Paused {
 			klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
@@ -100,7 +120,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 	case appsv1alpha1.ProgressingReasonCancelling:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		var done bool
-		done, recheckTime, err = r.doFinalising(rollout, newStatus, false)
+		done, recheckTime, err = r.doFinalising(rollout, newStatus, true)
 		if err != nil {
 			return nil, err
 			// finalizer is finished

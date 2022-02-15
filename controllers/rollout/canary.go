@@ -29,7 +29,6 @@ import (
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/controllers/rollout/batchrelease"
 	"github.com/openkruise/rollouts/pkg/util"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
@@ -207,20 +206,9 @@ func (r *rolloutContext) doCanaryFinalising(isPromote bool) (bool, error) {
 
 	// 3. after the normal rollout is completed, first need to upgrade stable deployment to new revision
 	if isPromote {
-		batchState, err := r.batchControl.BatchReleaseState()
-		if err != nil && !errors.IsNotFound(err) {
-			return false, err
-		} else if batchState != nil && r.workload != nil {
-			if batchState.CurrentBatch < int32(len(r.rollout.Spec.Strategy.CanaryPlan.Steps)) {
-				klog.Infof("rollout(%s/%s) will promote batch from(%d) -> to(%d)", r.rollout.Namespace, r.rollout.Name,
-					batchState.CurrentBatch, len(r.rollout.Spec.Strategy.CanaryPlan.Steps))
-				return false, r.batchControl.PromoteBatch(int32(len(r.rollout.Spec.Strategy.CanaryPlan.Steps)))
-			}
-			if batchState.State == batchrelease.BatchInRollingState {
-				klog.Infof("rollout(%s/%s) batch(%d) availableReplicas(%d) state(%s), and wait a moment",
-					r.rollout.Namespace, r.rollout.Name, r.newStatus.CanaryStatus.CurrentStepIndex, batchState.UpdatedReadyReplicas, batchState.State)
-				return false, nil
-			}
+		done, err := r.batchControl.PromoteStableWorkload()
+		if err != nil || !done {
+			return done, err
 		}
 	}
 
@@ -242,7 +230,7 @@ func (r *rolloutContext) doCanaryFinalising(isPromote bool) (bool, error) {
 	}
 
 	// delete rolloutState in workload
-	if err := r.updateRolloutStateInWorkload(util.RolloutState{}, true); err != nil {
+	if err = r.updateRolloutStateInWorkload(util.RolloutState{}, true); err != nil {
 		return false, err
 	}
 	klog.Infof("rollout(%s/%s) DoFinalising batchRelease success", r.rollout.Namespace, r.rollout.Name)

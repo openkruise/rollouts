@@ -97,7 +97,6 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *appsv1alpha1.Rollout, n
 			return err
 		}
 		rolloutClone.Status = newStatus
-		rolloutClone.Status.ObservedGeneration = rolloutClone.Generation
 		if err := r.Client.Status().Update(context.TODO(), rolloutClone); err != nil {
 			return err
 		}
