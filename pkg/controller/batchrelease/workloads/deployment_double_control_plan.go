@@ -194,10 +194,10 @@ func (c *DeploymentsRolloutController) Finalize(pause, cleanup bool) bool {
 
 	succeed, err := c.releaseDeployment(c.stable, pause, cleanup)
 	if !succeed || err != nil {
+		klog.Errorf("Failed to finalize deployment(%v), error: %v", c.stableNamespacedName, err)
 		return false
 	}
 
-	klog.Errorf("Failed to finalize deployment(%v), error: %v", c.stableNamespacedName, err)
 	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "Finalized", "Finalized: "+
 		"paused=%v, cleanup=%v", pause, cleanup)
 	return true

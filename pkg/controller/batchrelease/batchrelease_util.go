@@ -15,7 +15,7 @@ import (
 func HasTerminatingCondition(status v1alpha1.BatchReleaseStatus) bool {
 	for i := range status.Conditions {
 		c := status.Conditions[i]
-		if c.Reason == v1alpha1.TerminatingReasonInTerminating {
+		if c.Status == v1.ConditionTrue && c.Reason == v1alpha1.TerminatingReasonInTerminating {
 			return true
 		}
 	}

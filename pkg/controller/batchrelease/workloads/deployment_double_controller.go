@@ -149,16 +149,12 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 }
 
 func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, pause, cleanup bool) (bool, error) {
-	if stableDeploy == nil {
-		return true, nil
-	}
-
 	var patchErr, deleteErr error
 
 	switch {
 	/*
 		case util.IsControlledByRollout(c.parentController):
-			if len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
+			if stableDeploy != nil && len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
 				patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
 				patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 				if patchErr != nil {
@@ -169,7 +165,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 	*/
 
 	default:
-		if len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause {
+		if stableDeploy != nil && len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || stableDeploy.Spec.Paused != pause {
 			patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, util.BatchReleaseControlAnnotation, pause))
 			patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 			if patchErr != nil {
@@ -180,7 +176,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 
 		// TODO: canary-deployment cannot be deleted when e2e testing
 		if cleanup {
-			ds, err := c.listCanaryDeployment(client.InNamespace(stableDeploy.Namespace),
+			ds, err := c.listCanaryDeployment(client.InNamespace(c.stableNamespacedName.Name),
 				client.MatchingLabels(map[string]string{util.CanaryDeploymentLabelKey: string(c.parentController.UID)}))
 			if err != nil {
 				return false, err

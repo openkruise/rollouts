@@ -820,7 +820,11 @@ func TestReconcile_Deployment(t *testing.T) {
 			deployments := cs.GetDeployments()
 			rec := record.NewFakeRecorder(100)
 			cliBuilder := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).
-				WithObjects(deployments...).WithObjects(makeStableReplicaSets(deployments[0])...)
+				WithObjects(deployments...)
+
+			if len(deployments) > 0 {
+				cliBuilder = cliBuilder.WithObjects(makeStableReplicaSets(deployments[0])...)
+			}
 
 			if len(deployments) > 1 {
 				cliBuilder = cliBuilder.WithObjects(makeCanaryReplicaSets(deployments[1:]...)...)
