@@ -165,6 +165,9 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 	}
 	klog.Infof("rollout(%s/%s) DoFinalising TrafficRouting success", r.rollout.Namespace, r.rollout.Name)
 
+	if r.newStatus.CanaryStatus.CanaryService == "" {
+		return true, nil
+	}
 	// 2. remove canary service
 	cService := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{

@@ -36,16 +36,9 @@ import (
 func (r *rolloutContext) runCanary() error {
 	canaryStatus := r.newStatus.CanaryStatus
 	// In case of continuous publishing(v1 -> v2 -> v3), then restart publishing
-	if r.newStatus.CanaryRevision != r.newStatus.CanaryStatus.CanaryRevision {
+	if r.newStatus.CanaryStatus.CanaryRevision == "" {
 		canaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateUpgrade
 		canaryStatus.CanaryRevision = r.workload.CanaryRevision
-		canaryStatus.CurrentStepIndex = 0
-		canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		canaryStatus.CanaryReplicas = 0
-		canaryStatus.CanaryReadyReplicas = 0
-		klog.Infof("rollout(%s/%s) workload continuous publishing canaryRevision from(%s) -> to(%s), then restart publishing",
-			r.rollout.Namespace, r.rollout.Name, r.newStatus.CanaryStatus.CanaryRevision, r.newStatus.CanaryRevision)
-		return nil
 	}
 
 	// update canary status

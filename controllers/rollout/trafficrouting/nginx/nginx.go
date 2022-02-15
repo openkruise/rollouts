@@ -120,7 +120,7 @@ func (r *nginxController) SetRoutes(desiredWeight int32) error {
 		klog.Errorf("rollout(%s/%s) set ingress routes failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
 		return err
 	}
-	klog.Errorf("rollout(%s/%s) set ingress routes(weight:%d) success", r.conf.RolloutNs, r.conf.RolloutName, desiredWeight)
+	klog.Infof("rollout(%s/%s) set ingress routes(weight:%d) success", r.conf.RolloutNs, r.conf.RolloutName, desiredWeight)
 	return nil
 }
 
