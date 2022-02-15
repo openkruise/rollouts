@@ -112,7 +112,7 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 
 	canaryDeploy.Finalizers = append(canaryDeploy.Finalizers, util.CanaryDeploymentFinalizer)
 	canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *metav1.NewControllerRef(
-		stableDeploy, stableDeploy.GroupVersionKind()))
+		c.parentController, c.parentController.GroupVersionKind()))
 
 	// set labels & annotations
 	canaryDeploy.Labels[util.CanaryDeploymentLabelKey] = c.stableNamespacedName.Name
