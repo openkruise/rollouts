@@ -184,20 +184,12 @@ func (r *rolloutContext) doCanaryFinalising(isPromote bool) (bool, error) {
 		return true, nil
 	}
 
-	// 1. remove stable service podRevision selector
-	if r.rollout.Spec.Strategy.CanaryPlan.TrafficRouting != nil {
-		done, err := r.restoreStableService()
-		if err != nil || !done {
-			return done, err
-		}
-	}
-
-	// 2. mark rollout process complete, allow workload paused=false in webhook
+	// 1. mark rollout process complete, allow workload paused=false in webhook
 	if err := r.updateRolloutStateInWorkload(util.RolloutState{RolloutName: r.rollout.Name, RolloutDone: true}, false); err != nil {
 		return false, err
 	}
 
-	// 3. after the normal rollout is completed, first need to upgrade stable deployment to new revision
+	// 2. after the normal rollout is completed, first need to upgrade stable deployment to new revision
 	if isPromote {
 		done, err := r.batchControl.PromoteStableWorkload()
 		if err != nil || !done {
@@ -205,7 +197,15 @@ func (r *rolloutContext) doCanaryFinalising(isPromote bool) (bool, error) {
 		}
 	}
 
-	// 3. route all traffic to stable service
+	// 3. remove stable service podRevision selector
+	if r.rollout.Spec.Strategy.CanaryPlan.TrafficRouting != nil {
+		done, err := r.restoreStableService()
+		if err != nil || !done {
+			return done, err
+		}
+	}
+
+	// 4. route all traffic to stable service
 	if r.rollout.Spec.Strategy.CanaryPlan.TrafficRouting != nil {
 		done, err := r.doFinalisingTrafficRouting()
 		if err != nil || !done {
@@ -213,7 +213,7 @@ func (r *rolloutContext) doCanaryFinalising(isPromote bool) (bool, error) {
 		}
 	}
 
-	// 4. delete batchRelease CRD
+	// 5. delete batchRelease CRD
 	done, err := r.batchControl.Finalize()
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
@@ -222,7 +222,7 @@ func (r *rolloutContext) doCanaryFinalising(isPromote bool) (bool, error) {
 		return false, nil
 	}
 
-	// delete rolloutState in workload
+	// 6. delete rolloutState in workload
 	if err = r.updateRolloutStateInWorkload(util.RolloutState{}, true); err != nil {
 		return false, err
 	}
