@@ -91,6 +91,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	cfg := ctrl.GetConfigOrDie()
+	setupLog.Info("new clientset registry")
+	err = util.NewRegistry(cfg)
+	if err != nil {
+		setupLog.Error(err, "unable to init clientset and informer")
+		os.Exit(1)
+	}
+
 	// todo 卸载kruise之后，是否能独立部署
 	//+kubebuilder:scaffold:builder
 	setupLog.Info("setup webhook")

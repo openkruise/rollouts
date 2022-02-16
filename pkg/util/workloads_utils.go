@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/davecgh/go-spew/spew"
+	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"hash"
 	"hash/fnv"
 	apps "k8s.io/api/apps/v1"
@@ -35,6 +36,10 @@ const (
 	// We omit vowels from the set of available characters to reduce the chances
 	// of "bad words" being formed.
 	alphanums = "bcdfghjklmnpqrstvwxz2456789"
+)
+
+var (
+	CloneSetGVK = kruiseappsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
 )
 
 // DeepHashObject writes specified object to hash using the spew library

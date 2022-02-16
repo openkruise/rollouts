@@ -26,6 +26,8 @@ github.com/evanphx/json-patch
 github.com/form3tech-oss/jwt-go
 # github.com/fsnotify/fsnotify v1.4.9
 github.com/fsnotify/fsnotify
+# github.com/go-bindata/go-bindata v1.0.0
+## explicit
 # github.com/go-logr/logr v0.4.0
 github.com/go-logr/logr
 # github.com/go-logr/zapr v0.4.0
@@ -109,6 +111,13 @@ github.com/onsi/gomega/types
 ## explicit
 github.com/openkruise/kruise-api/apps/pub
 github.com/openkruise/kruise-api/apps/v1alpha1
+github.com/openkruise/kruise-api/apps/v1beta1
+github.com/openkruise/kruise-api/client/clientset/versioned
+github.com/openkruise/kruise-api/client/clientset/versioned/scheme
+github.com/openkruise/kruise-api/client/clientset/versioned/typed/apps/v1alpha1
+github.com/openkruise/kruise-api/client/clientset/versioned/typed/apps/v1beta1
+github.com/openkruise/kruise-api/client/clientset/versioned/typed/policy/v1alpha1
+github.com/openkruise/kruise-api/policy/v1alpha1
 github.com/openkruise/kruise-api/utils/scheme
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
@@ -578,6 +587,8 @@ k8s.io/client-go/util/jsonpath
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
+# k8s.io/code-generator v0.22.5
+## explicit
 # k8s.io/component-base v0.22.5
 k8s.io/component-base/config
 k8s.io/component-base/config/v1alpha1
@@ -586,6 +597,7 @@ k8s.io/component-base/config/v1alpha1
 k8s.io/klog/v2
 k8s.io/klog/v2/klogr
 # k8s.io/kube-openapi v0.0.0-20211109043538-20434351676c
+## explicit
 k8s.io/kube-openapi/pkg/util/proto
 # k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a
 ## explicit

@@ -18,10 +18,10 @@ package rollout
 
 import (
 	"context"
+	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"time"
 
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -115,10 +115,14 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err != nil {
 		return err
 	}
-	// Watch for changes to cloneset
-	if err = c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}); err != nil {
-		return err
+
+	if util.DiscoverGVK(util.CloneSetGVK) {
+		// Watch for changes to cloneset
+		if err = c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}); err != nil {
+			return err
+		}
 	}
+
 	// Watch for changes to deployment
 	if err = c.Watch(&source.Kind{Type: &apps.Deployment{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}); err != nil {
 		return err
