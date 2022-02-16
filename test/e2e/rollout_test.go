@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2022 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
+	utilpointer "k8s.io/utils/pointer"
 	"sort"
 	"strings"
 	"time"
@@ -165,6 +166,7 @@ var _ = SIGDescribe("Rollout", func() {
 	KruiseDescribe("Deployment rollout canary nginx", func() {
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded", func() {
+			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -273,6 +275,7 @@ var _ = SIGDescribe("Rollout", func() {
 		})
 
 		It("V1->V2: Percentage, 20%, and rollback(v1)", func() {
+			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -350,6 +353,7 @@ var _ = SIGDescribe("Rollout", func() {
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60% and continuous release v3", func() {
+			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -494,6 +498,84 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 5))
 			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.AvailableReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+		})
+
+		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded, and scale up replicas from(5) -> to(10)", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.Strategy.CanaryPlan.Steps = []rolloutsv1alpha1.CanaryStep{
+				{
+					Weight: 20,
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(10),
+					},
+				},
+				{
+					Weight: 40,
+					Pause: rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: 60,
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(10),
+					},
+				},
+				{
+					Weight: 100,
+					Pause: rolloutsv1alpha1.RolloutPause{},
+				},
+			}
+			CreateObject(rollout)
+			By("Creating workload and waiting for all pods ready...")
+			// service
+			service := &v1.Service{}
+			Expect(ReadYamlToObject("./test_data/rollout/service.yaml", service)).ToNot(HaveOccurred())
+			CreateObject(service)
+			// ingress
+			ingress := &netv1.Ingress{}
+			Expect(ReadYamlToObject("./test_data/rollout/nginx_ingress.yaml", ingress)).ToNot(HaveOccurred())
+			CreateObject(ingress)
+			// workload
+			workload := &apps.Deployment{}
+			Expect(ReadYamlToObject("./test_data/rollout/deployment.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitDeploymentAllPodsReady(workload)
+			time.Sleep(time.Second * 5)
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			By("check rollout status & paused success")
+
+			// v1 -> v2, start rollout action
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDeployment(workload)
+			By("Update deployment env NODE_NAME from(version1) -> to(version2)")
+			time.Sleep(time.Second * 2)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeTrue())
+			By("check deployment status & paused success")
+
+			// wait step 0 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			time.Sleep(time.Second*3)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
+			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
+
+			// scale up replicas, 5 -> 10
+			workload.Spec.Replicas = utilpointer.Int32(10)
+			UpdateDeployment(workload)
+			time.Sleep(time.Second * 5)
+
+
+			fmt.Println("===================")
+			time.Sleep(time.Hour)
 		})
 	})
 })

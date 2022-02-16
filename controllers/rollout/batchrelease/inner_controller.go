@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2022 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
@@ -33,7 +35,6 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"strconv"
 )
 
 const (
@@ -233,12 +234,9 @@ func (r *innerBatchController) deleteCanaryDeployment(batch *appsv1alpha1.BatchR
 
 func createBatchRelease(rollout *appsv1alpha1.Rollout, batchName string) *appsv1alpha1.BatchRelease {
 	var batches []appsv1alpha1.ReleaseBatch
-	var lastBatch appsv1alpha1.ReleaseBatch
 	for _, step := range rollout.Spec.Strategy.CanaryPlan.Steps {
 		batches = append(batches, appsv1alpha1.ReleaseBatch{CanaryReplicas: intstr.FromString(strconv.Itoa(int(step.Weight)) + "%")})
-		lastBatch = appsv1alpha1.ReleaseBatch{CanaryReplicas: intstr.FromString(strconv.Itoa(int(step.Weight)) + "%")}
 	}
-	batches = append(batches, lastBatch)
 
 	br := &appsv1alpha1.BatchRelease{
 		ObjectMeta: metav1.ObjectMeta{
