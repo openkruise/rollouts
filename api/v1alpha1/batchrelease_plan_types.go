@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Kruise & KubeVela Authors.
+Copyright 2022 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,43 +24,32 @@ import (
 // ReleaseStrategyType defines strategies for pods rollout
 type ReleaseStrategyType string
 
-type ReleasingBatchStateType string
-
-const (
-	InitializeBatchState ReleasingBatchStateType = "InitializeInBatch"
-	DoCanaryBatchState   ReleasingBatchStateType = "DoCanaryInBatch"
-	VerifyBatchState     ReleasingBatchStateType = "VerifyInBatch"
-	ReadyBatchState      ReleasingBatchStateType = "ReadyInBatch"
-)
-
-const (
-	// RolloutPhaseVerify indicates the phase of verifying workload health.
-	RolloutPhaseVerify RolloutPhase = "Verifying"
-	// RolloutPhaseFinalizing indicates the phase, where controller will do some operation after all batch ready.
-	RolloutPhaseFinalizing RolloutPhase = "Finalizing"
-	// RolloutPhaseCompleted indicates the release plan was executed successfully.
-	RolloutPhaseCompleted RolloutPhase = "Completed"
-)
-
-// ReleasePlan fines the details of the release plan
+// ReleasePlan fines the details of the rollout plan
 type ReleasePlan struct {
-	// Batches describe the plan for each batch in detail, including canary replicas and paused seconds.
+	// The exact distribution among batches.
+	// its size has to be exactly the same as the NumBatches (if set)
+	// The total number cannot exceed the targetSize or the size of the source resource
+	// We will IGNORE the last batch's replica field if it's a percentage since round errors can lead to inaccurate sum
+	// We highly recommend to leave the last batch's replica field empty
+	// +optional
 	Batches []ReleaseBatch `json:"batches"`
 	// All pods in the batches up to the batchPartition (included) will have
-	// the target updated specification while the rest still have the stable resource
-	// This is designed for the operators to manually release plan
-	// Default is nil, which means no partition.
+	// the target resource specification while the rest still have the source resource
+	// This is designed for the operators to manually rollout
+	// Default is the the number of batches which will rollout all the batches
 	// +optional
 	BatchPartition *int32 `json:"batchPartition,omitempty"`
-	// Paused the release plan executor, default is false
+	// Paused the rollout, default is false
 	// +optional
 	Paused bool `json:"paused,omitempty"`
 }
 
-// ReleaseBatch is used to describe how each release batch should be
+// ReleaseBatch is used to describe how the each batch rollout should be
 type ReleaseBatch struct {
-	// Replicas is the number of expected canary pods in this batch
-	// it can be an absolute number (ex: 5) or a percentage of total pods.
+	// Replicas is the number of pods to upgrade in this batch
+	// it can be an absolute number (ex: 5) or a percentage of total pods
+	// we will ignore the percentage of the last batch to just fill the gap
+	// +optional
 	// it is mutually exclusive with the PodList field
 	CanaryReplicas intstr.IntOrString `json:"canaryReplicas"`
 	// The wait time, in seconds, between instances upgrades, default = 0
@@ -70,9 +59,9 @@ type ReleaseBatch struct {
 
 // BatchReleaseStatus defines the observed state of a rollout plan
 type BatchReleaseStatus struct {
-	// Conditions records some important message at each Phase.
+	// Conditions represents the latest available observations of a CloneSet's current state.
 	Conditions []RolloutCondition `json:"conditions,omitempty"`
-	// Canary describes the status of the canary
+	// Canary describes the state of the canary rollout
 	CanaryStatus BatchReleaseCanaryStatus `json:"canaryStatus,omitempty"`
 	// StableRevision is the pod-template-hash of stable revision pod.
 	StableRevision string `json:"stableRevision,omitempty"`
@@ -84,6 +73,11 @@ type BatchReleaseStatus struct {
 	// ObservedWorkloadReplicas is the size of the target resources. This is determined once the initial spec verification
 	// and does not change until the rollout is restarted.
 	ObservedWorkloadReplicas int32 `json:"observedWorkloadReplicas,omitempty"`
+	// Count of hash collisions for creating canary Deployment. The controller uses this
+	// field as a collision avoidance mechanism when it needs to create the name for the
+	// newest canary Deployment.
+	// +optional
+	CollisionCount *int32 `json:"collisionCount,omitempty"`
 	// ObservedReleasePlanHash is a hash code of observed itself releasePlan.Batches.
 	ObservedReleasePlanHash string `json:"observedReleasePlanHash,omitempty"`
 	// Phase is the release phase.
@@ -92,8 +86,8 @@ type BatchReleaseStatus struct {
 }
 
 type BatchReleaseCanaryStatus struct {
-	// State indicates the state of the current batch.
-	State ReleasingBatchStateType `json:"state,omitempty"`
+	// ReleasingBatchState indicates the state of the current batch.
+	ReleasingBatchState ReleasingBatchStateType `json:"batchState,omitempty"`
 	// The current batch the rollout is working on/blocked, it starts from 0
 	CurrentBatch int32 `json:"currentBatch"`
 	// LastBatchFinalizedTime is the timestamp of
@@ -103,3 +97,12 @@ type BatchReleaseCanaryStatus struct {
 	// UpgradedReadyReplicas is the number of Pods upgraded by the rollout controller that have a Ready Condition.
 	UpdatedReadyReplicas int32 `json:"updatedReadyReplicas,omitempty"`
 }
+
+type ReleasingBatchStateType string
+
+const (
+	InitializeBatchState ReleasingBatchStateType = "InitializeInBatch"
+	DoCanaryBatchState   ReleasingBatchStateType = "DoCanaryInBatch"
+	VerifyBatchState     ReleasingBatchStateType = "VerifyInBatch"
+	ReadyBatchState      ReleasingBatchStateType = "ReadyInBatch"
+)

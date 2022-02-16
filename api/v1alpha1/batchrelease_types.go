@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Kruise & KubeVela Authors.
+Copyright 2022 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import (
 // +k8s:openapi-gen=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="KIND",type=string,JSONPath=`.spec.targetReference.kind`
+// +kubebuilder:printcolumn:name="KIND",type=string,JSONPath=`.spec.targetReference.workloadRef.kind`
 // +kubebuilder:printcolumn:name="PHASE",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="BATCH",type=integer,JSONPath=`.status.canaryStatus.currentBatch`
 // +kubebuilder:printcolumn:name="BATCH-STATE",type=string,JSONPath=`.status.canaryStatus.batchState`
@@ -38,16 +38,27 @@ type BatchRelease struct {
 	Status BatchReleaseStatus `json:"status,omitempty"`
 }
 
-// BatchReleaseSpec defines how to describe a batch release plan.
+// BatchReleaseSpec defines how to describe an update between different compRevision
 type BatchReleaseSpec struct {
-	// Cancelled is true indicates this batch release plan is cancelled.
-	// All resources about canary will be cleaned up.
+	Strategy ReleaseStrategy `json:"strategy,omitempty"`
+	// Cancel is true indicates this batch release plan is cancelled.
 	Cancelled bool `json:"cancelled,omitempty"`
-	// TargetRef contains the name of the workload that we need to upgrade to.
+	// TargetRevisionName contains the name of the componentRevisionName that we need to upgrade to.
 	TargetRef ObjectRef `json:"targetReference"`
-	// ReleasePlan is the details on how to release the updated revision.
+	// RolloutPlan is the details on how to rollout the resources
 	ReleasePlan ReleasePlan `json:"releasePlan"`
 }
+
+type ReleaseStrategy struct {
+	// +optional
+	CloneSetStrategy CloneSetReleaseStrategyType `json:"cloneSetStrategy,omitempty"`
+	// +optional
+	DeploymentStrategy DeploymentReleaseStrategyType `json:"deploymentStrategy,omitempty"`
+}
+
+type CloneSetReleaseStrategyType string
+
+type DeploymentReleaseStrategyType string
 
 // BatchReleaseList contains a list of BatchRelease
 // +kubebuilder:object:root=true
