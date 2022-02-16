@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/openkruise/rollouts/pkg/util"
+	"strconv"
 	"testing"
 	"time"
 
@@ -204,9 +205,6 @@ func init() {
 	stableDeploy.Annotations = map[string]string{
 		util.BatchReleaseControlAnnotation: string(controlInfo),
 	}
-	stableClone.Annotations = map[string]string{
-		util.BatchReleaseControlAnnotation: string(controlInfo),
-	}
 
 	canaryTemplate := stableClone.Spec.Template.DeepCopy()
 	stableTemplate := canaryTemplate.DeepCopy()
@@ -233,8 +231,10 @@ func TestReconcile_CloneSet(t *testing.T) {
 				return setPhase(releaseClone, v1alpha1.RolloutPhaseInitial)
 			},
 			GetCloneSet: func() []client.Object {
+				clone := stableClone.DeepCopy()
+				clone.Annotations = nil
 				return []client.Object{
-					stableClone.DeepCopy(),
+					clone,
 				}
 			},
 			ExpectedPhase: v1alpha1.RolloutPhaseHealthy,
@@ -739,7 +739,7 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseCancelled,
+			ExpectedPhase: v1alpha1.RolloutPhaseRollback,
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
@@ -767,7 +767,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
-			Name: `Special Case: Cancelled, Input-Phase=Progressing, Output-Phase=Cancelled`,
+			Name: `Special Case: Cancelled, Input-Phase=Progressing, Output-Phase=Terminating`,
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
 				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
@@ -787,7 +787,7 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseCancelled,
+			ExpectedPhase: v1alpha1.RolloutPhaseTerminating,
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
@@ -889,6 +889,7 @@ func getStableWithReady(workload client.Object, version string) client.Object {
 		deploy := workload.(*apps.Deployment)
 		d := deploy.DeepCopy()
 		d.Spec.Paused = true
+		d.ResourceVersion = strconv.Itoa(rand.Intn(100000000000))
 		d.Spec.Template.Spec.Containers = containers(version)
 		d.Status.ObservedGeneration = deploy.Generation
 		return d
@@ -896,6 +897,7 @@ func getStableWithReady(workload client.Object, version string) client.Object {
 	case *kruiseappsv1alpha1.CloneSet:
 		clone := workload.(*kruiseappsv1alpha1.CloneSet)
 		c := clone.DeepCopy()
+		c.ResourceVersion = strconv.Itoa(rand.Intn(100000000000))
 		c.Spec.UpdateStrategy.Paused = true
 		c.Spec.UpdateStrategy.Partition = &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}
 		c.Spec.Template.Spec.Containers = containers(version)
@@ -926,6 +928,7 @@ func getCanaryWithStage(workload client.Object, version string, stage int, ready
 		d.Name += "-canary-324785678"
 		d.UID = uuid.NewUUID()
 		d.Spec.Paused = false
+		d.ResourceVersion = strconv.Itoa(rand.Intn(100000000000))
 		d.Labels[util.CanaryDeploymentLabelKey] = "87076677"
 		d.Finalizers = []string{util.CanaryDeploymentFinalizer}
 		d.Spec.Replicas = pointer.Int32Ptr(int32(stageReplicas))
@@ -955,6 +958,7 @@ func getCanaryWithStage(workload client.Object, version string, stage int, ready
 		}
 
 		c := clone
+		c.ResourceVersion = strconv.Itoa(rand.Intn(100000000000))
 		c.Spec.UpdateStrategy.Paused = false
 		c.Spec.UpdateStrategy.Partition = &intstr.IntOrString{Type: intstr.Int, IntVal: *c.Spec.Replicas - int32(stageReplicas)}
 		c.Spec.Template.Spec.Containers = containers(version)

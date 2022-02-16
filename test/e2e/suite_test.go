@@ -99,7 +99,7 @@ func randomNamespaceName(basic string) string {
 
 // SIGDescribe describes SIG information
 func SIGDescribe(text string, body func()) bool {
-	return Describe("[apps] "+text, body)
+	return Describe("[rollouts] "+text, body)
 }
 
 // KruiseDescribe is a wrapper function for ginkgo describe.  Adds namespacing.
