@@ -150,7 +150,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 	})
 
 	KruiseDescribe("CloneSet BatchRelease Checker", func() {
-		return
 		It("V1->V2: Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
 			release := &rolloutsv1alpha1.BatchRelease{}
