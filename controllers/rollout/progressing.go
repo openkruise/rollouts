@@ -68,19 +68,18 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 			klog.Infof("rollout(%s/%s) workload continuous publishing canaryRevision from(%s) -> to(%s), then restart publishing",
 				rollout.Namespace, rollout.Name, newStatus.CanaryStatus.CanaryRevision, newStatus.CanaryRevision)
 			// delete batchRelease
-			batchControl := batchrelease.NewInnerBatchController(r.Client, rollout)
-			done, err := batchControl.Finalize()
+			done, err := r.doProgressingReset(rollout, newStatus)
 			if err != nil {
-				klog.Errorf("rollout(%s/%s) delete batchRelease failed: %s", rollout.Namespace, rollout.Name, err.Error())
+				klog.Errorf("rollout(%s/%s) doProgressingReset failed: %s", rollout.Namespace, rollout.Name, err.Error())
 				return nil, err
 			} else if done {
 				progressingStateTransition(newStatus, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInitializing, "workload is continuous release")
-				klog.Infof("rollout(%s/%s) workload is continuous publishing, restart complete", rollout.Namespace, rollout.Name)
+				klog.Infof("rollout(%s/%s) workload is continuous publishing, reset complete", rollout.Namespace, rollout.Name)
 			} else {
 				// Incomplete, recheck
-				expectedTime := time.Now().Add(5 * time.Second)
+				expectedTime := time.Now().Add(3 * time.Second)
 				recheckTime = &expectedTime
-				klog.Infof("rollout(%s/%s) workload is continuous publishing, restart incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
+				klog.Infof("rollout(%s/%s) workload is continuous publishing, reset incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
 			}
 
 			// pause rollout
@@ -185,6 +184,38 @@ func (r *RolloutReconciler) doProgressingInRolling(rollout *appsv1alpha1.Rollout
 		return nil, err
 	}
 	return rolloutCon.recheckTime, nil
+}
+
+func (r *RolloutReconciler) doProgressingReset(rollout *appsv1alpha1.Rollout, newStatus *appsv1alpha1.RolloutStatus)(bool, error){
+	rolloutCon := &rolloutContext{
+		Client:         r.Client,
+		rollout:        rollout,
+		newStatus:      newStatus,
+		batchControl:   batchrelease.NewInnerBatchController(r.Client, rollout),
+	}
+
+	if rolloutCon.rollout.Spec.Strategy.CanaryPlan.TrafficRouting != nil {
+		// 1. remove stable service podRevision selector
+		done, err := rolloutCon.restoreStableService()
+		if err != nil || !done {
+			return done, err
+		}
+		// 2. route all traffic to stable service
+		done, err = rolloutCon.doFinalisingTrafficRouting()
+		if err != nil || !done {
+			return done, err
+		}
+	}
+
+	// 3. delete batchRelease CRD
+	done, err := rolloutCon.batchControl.Finalize()
+	if err != nil {
+		klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", rollout.Namespace, rollout.Name, err.Error())
+		return false, err
+	} else if !done {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (r *RolloutReconciler) verifyCanaryStrategy(rollout *appsv1alpha1.Rollout) (bool, string, error) {

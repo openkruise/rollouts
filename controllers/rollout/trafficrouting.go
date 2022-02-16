@@ -150,7 +150,7 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 }
 
 func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
-	// 1. restore ingress，traffic routing stable service
+	// 1. restore ingress and route traffic to stable service
 	trController, err := r.newTrafficRoutingController(r)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) newTrafficRoutingController failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
