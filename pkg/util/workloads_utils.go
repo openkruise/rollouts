@@ -5,10 +5,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"hash"
 	"hash/fnv"
+
+	"github.com/davecgh/go-spew/spew"
+	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
@@ -18,8 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/openkruise/rollouts/api/v1alpha1"
 )
 
 const (

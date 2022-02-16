@@ -6,10 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/openkruise/rollouts/api/v1alpha1"
 )
 
 func HasTerminatingCondition(status v1alpha1.BatchReleaseStatus) bool {

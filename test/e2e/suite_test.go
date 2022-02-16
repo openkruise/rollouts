@@ -12,7 +12,8 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
+	kruise "github.com/openkruise/kruise-api/apps/v1alpha1"
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	crdv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,10 +24,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/yaml"
-
-	// +kubebuilder:scaffold:imports
-	kruise "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 )
 
 var k8sClient client.Client

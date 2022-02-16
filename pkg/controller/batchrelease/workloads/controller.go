@@ -1,11 +1,10 @@
 package workloads
 
 import (
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/openkruise/rollouts/api/v1alpha1"
 )
 
 type WorkloadChangeEventType string

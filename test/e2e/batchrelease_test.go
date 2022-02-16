@@ -8,7 +8,9 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
+	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	workloads "github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/test/images"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -20,10 +22,6 @@ import (
 	"k8s.io/utils/integer"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	workloads "github.com/openkruise/rollouts/pkg/util"
 )
 
 var _ = SIGDescribe("BatchRelease", func() {

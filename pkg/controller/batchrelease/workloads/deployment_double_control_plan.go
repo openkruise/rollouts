@@ -3,6 +3,9 @@ package workloads
 import (
 	"context"
 	"fmt"
+	"sort"
+
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -15,9 +18,6 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sort"
-
-	"github.com/openkruise/rollouts/api/v1alpha1"
 )
 
 // DeploymentsRolloutController is responsible for handling rollout Deployment type of workloads
