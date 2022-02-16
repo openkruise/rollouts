@@ -18,11 +18,13 @@ package util
 
 import (
 	"encoding/json"
-	"fmt"
+	"time"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
-	"time"
 )
 
 const (
@@ -31,7 +33,12 @@ const (
 )
 
 var (
-	errKindNotFound = fmt.Errorf("kind not found in group version resources")
+	backOff = wait.Backoff{
+		Steps:    4,
+		Duration: 500 * time.Millisecond,
+		Factor:   5.0,
+		Jitter:   0.1,
+	}
 )
 
 // annotation[InRolloutProgressingAnnotation] = rolloutState
@@ -58,7 +65,7 @@ func DiscoverGVK(gvk schema.GroupVersionKind) bool {
 	discoveryClient := genericClient.DiscoveryClient
 
 	startTime := time.Now()
-	err := retry.OnError(retry.DefaultRetry, func(err error) bool { return true }, func() error {
+	err := retry.OnError(backOff, func(err error) bool { return true }, func() error {
 		resourceList, err := discoveryClient.ServerResourcesForGroupVersion(gvk.GroupVersion().String())
 		if err != nil {
 			return err
@@ -68,11 +75,11 @@ func DiscoverGVK(gvk schema.GroupVersionKind) bool {
 				return nil
 			}
 		}
-		return errKindNotFound
+		return errors.NewNotFound(schema.GroupResource{Group: gvk.GroupVersion().String(), Resource: gvk.Kind}, "")
 	})
 
 	if err != nil {
-		if err == errKindNotFound {
+		if errors.IsNotFound(err) {
 			klog.Warningf("Not found kind %s in group version %s, waiting time %s", gvk.Kind, gvk.GroupVersion().String(), time.Since(startTime))
 			return false
 		}

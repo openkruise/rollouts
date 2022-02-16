@@ -3,7 +3,6 @@ package batchrelease
 import (
 	"context"
 	"flag"
-	"github.com/openkruise/rollouts/pkg/util"
 	"reflect"
 	"time"
 
@@ -28,6 +27,7 @@ import (
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 var (

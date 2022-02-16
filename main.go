@@ -65,6 +65,13 @@ func main() {
 	flag.Parse()
 	ctrl.SetLogger(klogr.New())
 
+	setupLog.Info("new clientset registry")
+	err := util.NewRegistry(ctrl.GetConfigOrDie())
+	if err != nil {
+		setupLog.Error(err, "unable to init clientset and informer")
+		os.Exit(1)
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     metricsAddr,
@@ -88,14 +95,6 @@ func main() {
 
 	if err = br.Add(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "BatchRelease")
-		os.Exit(1)
-	}
-
-	cfg := ctrl.GetConfigOrDie()
-	setupLog.Info("new clientset registry")
-	err = util.NewRegistry(cfg)
-	if err != nil {
-		setupLog.Error(err, "unable to init clientset and informer")
 		os.Exit(1)
 	}
 
