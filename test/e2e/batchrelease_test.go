@@ -156,7 +156,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			cloneset := &kruiseappsv1alpha1.CloneSet{}
-			Expect(ReadYamlToObject("./test_data/workload/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
 			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(cloneset)
 			WaitCloneSetAllPodsReady(cloneset)
@@ -202,7 +202,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			cloneset := &kruiseappsv1alpha1.CloneSet{}
-			Expect(ReadYamlToObject("./test_data/workload/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
 			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(cloneset)
 			WaitCloneSetAllPodsReady(cloneset)
@@ -257,7 +257,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			By("Creating CloneSet and waiting for all pods ready....")
 			By("Creating workload and waiting for all pods ready...")
 			cloneset := &kruiseappsv1alpha1.CloneSet{}
-			Expect(ReadYamlToObject("./test_data/workload/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
 			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(cloneset)
 			WaitCloneSetAllPodsReady(cloneset)
@@ -341,7 +341,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			By("Creating CloneSet and waiting for all pods ready....")
 			By("Creating workload and waiting for all pods ready...")
 			cloneset := &kruiseappsv1alpha1.CloneSet{}
-			Expect(ReadYamlToObject("./test_data/workload/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
 			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(cloneset)
 			WaitCloneSetAllPodsReady(cloneset)
@@ -421,7 +421,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			cloneset := &kruiseappsv1alpha1.CloneSet{}
-			Expect(ReadYamlToObject("./test_data/workload/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
 			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(cloneset)
 			WaitCloneSetAllPodsReady(cloneset)
@@ -482,7 +482,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			cloneset := &kruiseappsv1alpha1.CloneSet{}
-			Expect(ReadYamlToObject("./test_data/workload/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
 			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(cloneset)
 			WaitCloneSetAllPodsReady(cloneset)
@@ -543,7 +543,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			cloneset := &kruiseappsv1alpha1.CloneSet{}
-			Expect(ReadYamlToObject("./test_data/workload/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
 			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(cloneset)
 			WaitCloneSetAllPodsReady(cloneset)
@@ -604,7 +604,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			cloneset := &kruiseappsv1alpha1.CloneSet{}
-			Expect(ReadYamlToObject("./test_data/workload/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
 			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(cloneset)
 			WaitCloneSetAllPodsReady(cloneset)
@@ -665,7 +665,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			cloneset := &kruiseappsv1alpha1.CloneSet{}
-			Expect(ReadYamlToObject("./test_data/workload/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
 			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			cloneset.Spec.Template.Spec.Containers[0].ImagePullPolicy = v1.PullIfNotPresent
 			CreateObject(cloneset)
@@ -722,7 +722,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			deployment := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/workload/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
@@ -767,7 +767,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			deployment := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/workload/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
@@ -821,7 +821,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			By("Creating Deployment and waiting for all pods ready....")
 			By("Creating workload and waiting for all pods ready...")
 			deployment := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/workload/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
@@ -903,7 +903,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			By("Creating Deployment and waiting for all pods ready....")
 			By("Creating workload and waiting for all pods ready...")
 			deployment := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/workload/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
@@ -981,7 +981,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			deployment := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/workload/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
@@ -1042,7 +1042,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			deployment := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/workload/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
@@ -1103,7 +1103,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			deployment := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/workload/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
@@ -1163,7 +1163,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			deployment := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/workload/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
@@ -1224,7 +1224,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			deployment := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/workload/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			deployment.Spec.Template.Spec.Containers[0].ImagePullPolicy = v1.PullIfNotPresent
 			CreateObject(deployment)
@@ -1281,7 +1281,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 			By("Creating workload and waiting for all pods ready...")
 			deployment := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/workload/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Replicas = pointer.Int32Ptr(10)
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			deployment.Spec.Template.Spec.Containers[0].ImagePullPolicy = v1.PullIfNotPresent
