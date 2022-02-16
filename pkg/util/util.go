@@ -22,7 +22,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 )
@@ -30,15 +29,6 @@ import (
 const (
 	InRolloutProgressingAnnotation = "rollouts.kruise.io/in-rollout-progressing"
 	KruiseRolloutFinalizer         = "finalizers.rollouts.kruise.io"
-)
-
-var (
-	backOff = wait.Backoff{
-		Steps:    4,
-		Duration: 500 * time.Millisecond,
-		Factor:   5.0,
-		Jitter:   0.1,
-	}
 )
 
 // annotation[InRolloutProgressingAnnotation] = rolloutState
@@ -65,7 +55,7 @@ func DiscoverGVK(gvk schema.GroupVersionKind) bool {
 	discoveryClient := genericClient.DiscoveryClient
 
 	startTime := time.Now()
-	err := retry.OnError(backOff, func(err error) bool { return true }, func() error {
+	err := retry.OnError(retry.DefaultRetry, func(err error) bool { return true }, func() error {
 		resourceList, err := discoveryClient.ServerResourcesForGroupVersion(gvk.GroupVersion().String())
 		if err != nil {
 			return err
