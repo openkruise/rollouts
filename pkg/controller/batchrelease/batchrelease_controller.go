@@ -83,10 +83,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch changes to CloneSet
-	err = c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, &workloadEventHandler{Reader: mgr.GetCache()})
-	if err != nil {
-		return err
+	if util.DiscoverGVK(util.CloneSetGVK) {
+		// Watch changes to CloneSet
+		err = c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, &workloadEventHandler{Reader: mgr.GetCache()})
+		if err != nil {
+			return err
+		}
 	}
 
 	// Watch changes to Deployment
