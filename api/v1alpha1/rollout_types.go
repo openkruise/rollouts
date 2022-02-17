@@ -29,10 +29,10 @@ import (
 type RolloutSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
+	// ObjectRef indicates workload
 	ObjectRef ObjectRef `json:"objectRef"`
 
-	// The deployment strategy to use to replace existing pods with new ones.
+	// rollout strategy
 	Strategy RolloutStrategy `json:"strategy"`
 }
 
@@ -66,10 +66,10 @@ type WorkloadRef struct {
 	Name string `json:"name"`
 }
 
-type ControllerRevisionRef struct {
+/*type ControllerRevisionRef struct {
 	TargetRevisionName string `json:"targetRevisionName"`
 	SourceRevisionName string `json:"sourceRevisionName"`
-}
+}*/
 
 // RolloutStrategy defines strategy to apply during next rollout
 type RolloutStrategy struct {
@@ -108,10 +108,8 @@ type CanaryStep struct {
 	Weight int32 `json:"weight,omitempty"`
 	// Replicas is the number of expected canary pods in this batch
 	// it can be an absolute number (ex: 5) or a percentage of total pods.
-	// it is mutually exclusive with the PodList field
 	Replicas *intstr.IntOrString `json:"replicas,omitempty"`
-	// Pause freezes the rollout by setting spec.Paused to true.
-	// A Rollout will resume when spec.Paused is reset to false.
+	// Pause defines a pause stage for a rollout, manual or auto
 	// +optional
 	Pause RolloutPause `json:"pause,omitempty"`
 	// MetricsAnalysis defines the AnalysisRun that will run for a step
@@ -210,6 +208,7 @@ const (
 
 	// Terminating condition
 	RolloutConditionTerminating    RolloutConditionType = "Terminating"
+	// Terminating Reason
 	TerminatingReasonInTerminating                      = "InTerminating"
 	TerminatingReasonCompleted                          = "Completed"
 )
