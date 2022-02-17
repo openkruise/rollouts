@@ -39,7 +39,7 @@ import (
 
 func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 	//fetch stable service
-	sName := r.rollout.Spec.Strategy.CanaryPlan.TrafficRouting.Service
+	sName := r.rollout.Spec.Strategy.Canary.TrafficRouting.Service
 	r.stableService = &corev1.Service{}
 	err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: sName}, r.stableService)
 	if err != nil {
@@ -97,8 +97,8 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 	}
 
 	var desiredWeight int32
-	if len(r.rollout.Spec.Strategy.CanaryPlan.Steps) > 0 {
-		desiredWeight = r.rollout.Spec.Strategy.CanaryPlan.Steps[r.newStatus.CanaryStatus.CurrentStepIndex].Weight
+	if len(r.rollout.Spec.Strategy.Canary.Steps) > 0 {
+		desiredWeight = r.rollout.Spec.Strategy.Canary.Steps[r.newStatus.CanaryStatus.CurrentStepIndex].Weight
 	}
 	verify, err := trController.VerifyTrafficRouting(desiredWeight)
 	if err != nil {
@@ -112,7 +112,7 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 
 func (r *rolloutContext) restoreStableService() (bool, error) {
 	//fetch stable service
-	sName := r.rollout.Spec.Strategy.CanaryPlan.TrafficRouting.Service
+	sName := r.rollout.Spec.Strategy.Canary.TrafficRouting.Service
 	r.stableService = &corev1.Service{}
 	err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: sName}, r.stableService)
 	if err != nil {
@@ -185,7 +185,7 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 }
 
 func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (trafficrouting.TrafficRoutingController, error) {
-	canary := roCtx.rollout.Spec.Strategy.CanaryPlan
+	canary := roCtx.rollout.Spec.Strategy.Canary
 	switch canary.TrafficRouting.Type {
 	case appsv1alpha1.TrafficRoutingNginx:
 		gvk := schema.GroupVersionKind{Group: appsv1alpha1.GroupVersion.Group, Version: appsv1alpha1.GroupVersion.Version, Kind: "Rollout"}
@@ -194,7 +194,7 @@ func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (tra
 			RolloutNs:     r.rollout.Namespace,
 			CanaryService: r.canaryService,
 			StableService: r.stableService,
-			TrafficConf:   r.rollout.Spec.Strategy.CanaryPlan.TrafficRouting.Nginx,
+			TrafficConf:   r.rollout.Spec.Strategy.Canary.TrafficRouting.Nginx,
 			OwnerRef:      *metav1.NewControllerRef(r.rollout, gvk),
 		})
 	}

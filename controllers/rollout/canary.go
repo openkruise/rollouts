@@ -95,7 +95,7 @@ func (r *rolloutContext) runCanary() error {
 
 	case appsv1alpha1.CanaryStepStateCompleted:
 		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", r.rollout.Namespace, r.rollout.Name, appsv1alpha1.CanaryStepStateCompleted)
-		if len(r.rollout.Spec.Strategy.CanaryPlan.Steps) > int(canaryStatus.CurrentStepIndex+1) {
+		if len(r.rollout.Spec.Strategy.Canary.Steps) > int(canaryStatus.CurrentStepIndex+1) {
 			canaryStatus.CurrentStepIndex++
 			canaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateUpgrade
 			klog.Infof("rollout(%s/%s) canary step from(%d) -> to(%d)", r.rollout.Namespace, r.rollout.Name, canaryStatus.CurrentStepIndex-1, canaryStatus.CurrentStepIndex)
@@ -109,7 +109,7 @@ func (r *rolloutContext) runCanary() error {
 
 func (r *rolloutContext) doCanaryUpgrade() (bool, error) {
 	// only traffic routing
-	/*if len(r.rollout.Spec.Strategy.CanaryPlan.Steps) == 0 {
+	/*if len(r.rollout.Spec.Strategy.Canary.Steps) == 0 {
 		if r.workload.CanaryReadyReplicas > 0 {
 			klog.Infof("rollout(%s/%s) workload(%s) canaryAvailable(%d), and go to the next stage",
 				r.rollout.Namespace, r.rollout.Name, r.workload.Name, r.workload.CanaryReadyReplicas)
@@ -150,12 +150,12 @@ func (r *rolloutContext) doCanaryMetricsAnalysis() (bool, error) {
 
 func (r *rolloutContext) doCanaryPaused() (bool, error) {
 	// No step set, need manual confirmation
-	if len(r.rollout.Spec.Strategy.CanaryPlan.Steps) == 0 {
+	if len(r.rollout.Spec.Strategy.Canary.Steps) == 0 {
 		klog.Infof("rollout(%s/%s) don't contains steps, and need manual confirmation", r.rollout.Namespace, r.rollout.Name)
 		return false, nil
 	}
 
-	currentStep := r.rollout.Spec.Strategy.CanaryPlan.Steps[r.newStatus.CanaryStatus.CurrentStepIndex]
+	currentStep := r.rollout.Spec.Strategy.Canary.Steps[r.newStatus.CanaryStatus.CurrentStepIndex]
 	// need manual confirmation
 	if currentStep.Pause.Duration == nil {
 		klog.Infof("rollout(%s/%s) don't set pause duration, and need manual confirmation", r.rollout.Namespace, r.rollout.Name)

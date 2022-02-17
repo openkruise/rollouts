@@ -64,7 +64,7 @@ spec:
                 description: The deployment strategy to use to replace existing pods
                   with new ones.
                 properties:
-                  canaryPlan:
+                  canary:
                     description: CanaryStrategy defines parameters for a Replica Based
                       Canary
                     properties:
@@ -133,7 +133,7 @@ spec:
                       value is false
                     type: boolean
                   type:
-                    description: canaryPlan, BlueGreenPlan Default value is canaryPlan
+                    description: canary, BlueGreenPlan Default value is canary
                     type: string
                 type: object
             required:

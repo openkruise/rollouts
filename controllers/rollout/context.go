@@ -53,8 +53,8 @@ type rolloutContext struct {
 
 func (r *rolloutContext) reconcile() error {
 	// canary strategy
-	if r.rollout.Spec.Strategy.CanaryPlan != nil {
-		klog.Infof("rollout(%s/%s) run CanaryPlan action...", r.rollout.Namespace, r.rollout.Name)
+	if r.rollout.Spec.Strategy.Canary != nil {
+		klog.Infof("rollout(%s/%s) run Canary action...", r.rollout.Namespace, r.rollout.Name)
 		return r.runCanary()
 	}
 	return nil
@@ -62,7 +62,7 @@ func (r *rolloutContext) reconcile() error {
 
 func (r *rolloutContext) finalising() (bool, error) {
 	// canary strategy
-	if r.rollout.Spec.Strategy.CanaryPlan != nil {
+	if r.rollout.Spec.Strategy.Canary != nil {
 		done, err := r.doCanaryFinalising()
 		if err == nil && !done {
 			// The finalizer is not finished, wait one second

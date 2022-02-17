@@ -76,19 +76,19 @@ type RolloutStrategy struct {
 	// Paused indicates that the Rollout is paused.
 	// Default value is false
 	Paused bool `json:"paused,omitempty"`
-	// canaryPlan, BlueGreenPlan
-	// Default value is canaryPlan
+	// canary, BlueGreenPlan
+	// Default value is canary
 	Type RolloutStrategyType `json:"type,omitempty"`
 	// +optional
-	CanaryPlan *CanaryStrategy `json:"canaryPlan,omitempty"`
+	Canary *CanaryStrategy `json:"canary,omitempty"`
 	// +optional
-	// BlueGreenPlan *BlueGreenStrategy `json:"blueGreenPlan,omitempty"`
+	// BlueGreen *BlueGreenStrategy `json:"blueGreen,omitempty"`
 }
 
 type RolloutStrategyType string
 
 const (
-	RolloutStrategyCanary RolloutStrategyType = "canaryPlan"
+	RolloutStrategyCanary RolloutStrategyType = "canary"
 )
 
 // CanaryStrategy defines parameters for a Replica Based Canary
@@ -109,7 +109,7 @@ type CanaryStep struct {
 	// Replicas is the number of expected canary pods in this batch
 	// it can be an absolute number (ex: 5) or a percentage of total pods.
 	// it is mutually exclusive with the PodList field
-	CanaryReplicas *intstr.IntOrString `json:"canaryReplicas,omitempty"`
+	Replicas *intstr.IntOrString `json:"replicas,omitempty"`
 	// Pause freezes the rollout by setting spec.Paused to true.
 	// A Rollout will resume when spec.Paused is reset to false.
 	// +optional

@@ -200,6 +200,7 @@ var _ = SIGDescribe("Rollout", func() {
 	KruiseDescribe("Deployment rollout canary nginx", func() {
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded", func() {
+			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -266,7 +267,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.CanaryPlan.Steps[0].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[0].Weight)))
 			// canary deployment
 			cWorkload, err := GetCanaryDeployment(workload)
 			Expect(err).NotTo(HaveOccurred())
@@ -282,7 +283,7 @@ var _ = SIGDescribe("Rollout", func() {
 			// canary ingress
 			cIngress = &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.CanaryPlan.Steps[4].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[4].Weight)))
 			// canary deployment
 			cWorkload, err = GetCanaryDeployment(workload)
 			Expect(err).NotTo(HaveOccurred())
@@ -322,9 +323,15 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
 		})
 
 		It("V1->V2: Percentage, 20%, and rollback(v1)", func() {
+			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -415,9 +422,15 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version1"))
+				}
+			}
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60% and continuous release v3", func() {
+			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -507,7 +520,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.CanaryPlan.Steps[0].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[0].Weight)))
 			// canary deployment
 			cWorkload, err := GetCanaryDeployment(workload)
 			Expect(err).NotTo(HaveOccurred())
@@ -523,7 +536,7 @@ var _ = SIGDescribe("Rollout", func() {
 			// canary ingress
 			cIngress = &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.CanaryPlan.Steps[4].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[4].Weight)))
 			// canary deployment
 			cWorkload, err = GetCanaryDeployment(workload)
 			Expect(err).NotTo(HaveOccurred())
@@ -564,13 +577,19 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version3"))
+				}
+			}
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded, and scale up replicas from(5) -> to(10)", func() {
+			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
-			rollout.Spec.Strategy.CanaryPlan.Steps = []rolloutsv1alpha1.CanaryStep{
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
 					Weight: 20,
 					Pause: rolloutsv1alpha1.RolloutPause{
@@ -690,13 +709,19 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded, and scale down replicas from(10) -> to(5)", func() {
+			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
-			rollout.Spec.Strategy.CanaryPlan.Steps = []rolloutsv1alpha1.CanaryStep{
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
 					Weight: 20,
 					Pause: rolloutsv1alpha1.RolloutPause{
@@ -817,13 +842,19 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100% Succeeded, paused and resume", func() {
+			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
-			rollout.Spec.Strategy.CanaryPlan.Steps = []rolloutsv1alpha1.CanaryStep{
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
 					Weight: 20,
 					Pause: rolloutsv1alpha1.RolloutPause{
@@ -933,13 +964,19 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100%, progressing, but delete rollout crd", func() {
+			return
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
-			rollout.Spec.Strategy.CanaryPlan.Steps = []rolloutsv1alpha1.CanaryStep{
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
 					Weight: 20,
 					Pause: rolloutsv1alpha1.RolloutPause{
@@ -994,7 +1031,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(workload.Spec.Paused).Should(BeTrue())
 			By("check deployment status & paused success")
 
-			// paused rollout
+			// delete rollout
 			time.Sleep(time.Second * 10)
 			Expect(k8sClient.DeleteAllOf(context.TODO(), &rolloutsv1alpha1.Rollout{}, client.InNamespace(namespace), client.PropagationPolicy(metav1.DeletePropagationForeground))).Should(Succeed())
 			WaitRolloutNotFound(rollout.Name)
@@ -1014,6 +1051,119 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
+		})
+
+		It("V1->V2: Percentage, 20%,60%,100%, v2 failed image, and v3 succeed image", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
+				{
+					Weight: 20,
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(5),
+					},
+				},
+				{
+					Weight: 60,
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(5),
+					},
+				},
+				{
+					Weight: 100,
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(5),
+					},
+				},
+			}
+			CreateObject(rollout)
+			By("Creating workload and waiting for all pods ready...")
+			// service
+			service := &v1.Service{}
+			Expect(ReadYamlToObject("./test_data/rollout/service.yaml", service)).ToNot(HaveOccurred())
+			CreateObject(service)
+			// ingress
+			ingress := &netv1.Ingress{}
+			Expect(ReadYamlToObject("./test_data/rollout/nginx_ingress.yaml", ingress)).ToNot(HaveOccurred())
+			CreateObject(ingress)
+			// workload
+			workload := &apps.Deployment{}
+			Expect(ReadYamlToObject("./test_data/rollout/deployment.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitDeploymentAllPodsReady(workload)
+			time.Sleep(time.Second * 5)
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(rollout.Status.StableRevision).ShouldNot(Equal(""))
+			By("check rollout status & paused success")
+
+			// v1 -> v2, start rollout action
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Image = "echoserver:failed"
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDeployment(workload)
+			By("Update deployment image from(v1.0.0) -> to(failed)")
+			time.Sleep(time.Hour * 2)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeTrue())
+			By("check deployment status & paused success")
+			time.Sleep(time.Second * 10)
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
+			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 0))
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 1))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 0))
+			Expect(rollout.Status.CanaryStatus.CurrentStepState).Should(Equal(rolloutsv1alpha1.CanaryStepStateUpgrade))
+
+			// update success image, v3
+			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version3"})
+			workload.Spec.Template.Spec.Containers[0].Image = "registry.aliyuncs.com/google_containers/echoserver:1.10"
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDeployment(workload)
+			By("Update deployment image from(v2) -> to(v3)")
+			time.Sleep(time.Second * 2)
+
+			// wait rollout complete
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+
+			// check service & ingress & deployment
+			// ingress
+			Expect(GetObject(ingress.Name, ingress)).NotTo(HaveOccurred())
+			cIngress := &netv1.Ingress{}
+			Expect(GetObject(fmt.Sprintf("%s-canary", ingress.Name), cIngress)).To(HaveOccurred())
+			// service
+			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
+			Expect(service.Spec.Selector[util.RsPodRevisionLabelKey]).Should(Equal(""))
+			cService := &v1.Service{}
+			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
+			// deployment
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeFalse())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version3"))
+				}
+			}
 		})
 	})
 })
