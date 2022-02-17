@@ -131,16 +131,31 @@ func validateRolloutSpecStrategy(strategy *appsv1alpha1.RolloutStrategy, fldPath
 }
 
 func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
+	if canary == nil {
+		return field.ErrorList{field.Invalid(fldPath, nil, "CanaryPlan cannot be empty")}
+	}
+
 	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"))
 	errList = append(errList, validateRolloutSpecCanaryTraffic(canary.TrafficRouting, fldPath.Child("TrafficRouting"))...)
 	return errList
 }
 
 func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldPath *field.Path) field.ErrorList {
-	// TODO: validate service
-	// TODO: validate ingress
+	if traffic == nil {
+		return field.ErrorList{field.Invalid(fldPath, nil, "CanaryPlan.TrafficRouting cannot be empty")}
+	}
+
+	errList := field.ErrorList{}
+	if len(traffic.Service) == 0 {
+		errList = append(errList, field.Invalid(fldPath.Child("Service"), traffic.Service, "TrafficRouting.Service cannot be empty"))
+	}
+
 	switch traffic.Type {
 	case "", appsv1alpha1.TrafficRoutingNginx:
+		if traffic.Nginx == nil ||
+			len(traffic.Nginx.Ingress) == 0 {
+			errList = append(errList, field.Invalid(fldPath.Child("Nginx"), traffic.Nginx, "TrafficRouting.Nginx.Ingress cannot be empty"))
+		}
 	default:
 		return field.ErrorList{field.Invalid(fldPath.Child("Type"), traffic.Type, "TrafficRouting only support 'nginx' type")}
 	}
@@ -148,6 +163,15 @@ func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldP
 }
 
 func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *field.Path) field.ErrorList {
+	stepCount := len(steps)
+	if stepCount == 0 {
+		return field.ErrorList{field.Invalid(fldPath, steps, "The number of CanaryPlan.Steps cannot be empty")}
+	}
+
+	if steps[stepCount-1].Weight != 100 {
+		return field.ErrorList{field.Invalid(fldPath, steps, "The 'Weight' field of the last CanaryStep must be '100'")}
+	}
+
 	for i := range steps {
 		s := &steps[i]
 		if s.Weight <= 0 || s.Weight > 100 {
@@ -163,7 +187,6 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 		}
 	}
 
-	stepCount := len(steps)
 	for i := 1; i < stepCount; i++ {
 		prev := &steps[i-1]
 		curr := &steps[i]

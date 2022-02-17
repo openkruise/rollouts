@@ -187,7 +187,7 @@ func (c *DeploymentsRolloutController) CheckOneBatchPods() (bool, error) {
 		"canary pod available count", availableCanaryPodCount, "stable pod count", c.stable.Status.Replicas,
 		"max unavailable pod allowed", maxUnavailable, "canary goal", canaryGoal)
 
-	if  canaryPodCount < canaryGoal || availableCanaryPodCount+int32(maxUnavailable) < canaryGoal || (canaryGoal > 0 && availableCanaryPodCount == 0) {
+	if canaryPodCount < canaryGoal || availableCanaryPodCount+int32(maxUnavailable) < canaryGoal || (canaryGoal > 0 && availableCanaryPodCount == 0) {
 		klog.Infof("BatchRelease(%v) batch is not ready yet, current batch=%v", c.releaseKey, c.releaseStatus.CanaryStatus.CurrentBatch)
 		return false, nil
 	}
