@@ -17,9 +17,9 @@ limitations under the License.
 package webhook
 
 import (
-	"github.com/openkruise/rollouts/webhook/workload/mutating"
+	"github.com/openkruise/rollouts/webhook/rollout/validating"
 )
 
 func init() {
-	addHandlers(mutating.HandlerMap)
+	addHandlers(validating.HandlerMap)
 }

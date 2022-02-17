@@ -18,6 +18,7 @@ package validating
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
@@ -94,11 +95,41 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 		}
 	}
 
+	if newObj.Status.CanaryStatus != nil && newObj.Status.CanaryStatus.CurrentStepState == appsv1alpha1.CanaryStepStateCompleted {
+		if oldObj.Status.CanaryStatus != nil {
+			switch oldObj.Status.CanaryStatus.CurrentStepState {
+			case appsv1alpha1.CanaryStepStateCompleted, appsv1alpha1.CanaryStepStatePaused:
+			default:
+				return field.ErrorList{field.Forbidden(field.NewPath("Status"), "CanaryStatus.CurrentStepState only allow to translate to 'StepInCompleted' from 'StepInPaused'")}
+			}
+		}
+	}
+
 	return h.validateRollout(newObj)
 }
 
 func (h *RolloutCreateUpdateHandler) validateRollout(rollout *appsv1alpha1.Rollout) field.ErrorList {
-	return validateRolloutSpec(rollout, field.NewPath("Spec"))
+	errList := validateRolloutSpec(rollout, field.NewPath("Spec"))
+	errList = append(errList, h.validateRolloutConflict(rollout, field.NewPath("Conflict Checker"))...)
+	return errList
+}
+
+func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1alpha1.Rollout, path *field.Path) field.ErrorList {
+	errList := field.ErrorList{}
+	rolloutList := &appsv1alpha1.RolloutList{}
+	err := h.Client.List(context.TODO(), rolloutList, client.InNamespace(rollout.Namespace))
+	if err != nil {
+		return append(errList, field.InternalError(path, err))
+	}
+	for i := range rolloutList.Items {
+		r := &rolloutList.Items[i]
+		if r.Name == rollout.Name || !IsSameWorkloadRefGVKName(r.Spec.ObjectRef.WorkloadRef, rollout.Spec.ObjectRef.WorkloadRef) {
+			continue
+		}
+		return field.ErrorList{field.Invalid(path, rollout.Name,
+			fmt.Sprintf("This rollout conflict with Rollout(%v), one workload only have less than one Rollout", client.ObjectKeyFromObject(r)))}
+	}
+	return nil
 }
 
 func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
@@ -201,6 +232,13 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 	}
 
 	return nil
+}
+
+func IsSameWorkloadRefGVKName(a, b *appsv1alpha1.WorkloadRef) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return reflect.DeepEqual(a, b)
 }
 
 var _ inject.Client = &RolloutCreateUpdateHandler{}
