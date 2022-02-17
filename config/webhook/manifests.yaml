@@ -14,7 +14,7 @@ webhooks:
       name: webhook-service
       namespace: system
       path: /mutate-apps-kruise-io-v1alpha1-cloneset
-  failurePolicy: Fail
+  failurePolicy: Ignore
   name: mcloneset.kb.io
   rules:
   - apiGroups:
@@ -34,7 +34,7 @@ webhooks:
       name: webhook-service
       namespace: system
       path: /mutate-apps-v1-deployment
-  failurePolicy: Fail
+  failurePolicy: Ignore
   name: mdeployment.kb.io
   rules:
   - apiGroups:

@@ -18,12 +18,12 @@ package main
 
 import (
 	"flag"
+	br "github.com/openkruise/rollouts/controllers/batchrelease"
 	"os"
 
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/controllers/rollout"
-	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/webhook"
 	"k8s.io/apimachinery/pkg/runtime"

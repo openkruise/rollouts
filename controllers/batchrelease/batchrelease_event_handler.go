@@ -19,10 +19,10 @@ package batchrelease
 import (
 	"context"
 	"encoding/json"
+	"github.com/openkruise/rollouts/controllers/batchrelease/workloads"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
 	"github.com/openkruise/rollouts/pkg/util"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

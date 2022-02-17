@@ -18,12 +18,12 @@ package batchrelease
 
 import (
 	"fmt"
+	workloads2 "github.com/openkruise/rollouts/controllers/batchrelease/workloads"
 	"reflect"
 	"time"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -97,7 +97,7 @@ func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
 	return r.executeBatchReleasePlan(workloadController)
 }
 
-func (r *Executor) executeBatchReleasePlan(workloadController workloads.WorkloadController) (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
+func (r *Executor) executeBatchReleasePlan(workloadController workloads2.WorkloadController) (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
 	status := r.releaseStatus
 	retryDuration := reconcile.Result{}
 
@@ -207,7 +207,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 }
 
 // reconcile logic when we are in the middle of release, we have to go through finalizing state before succeed or fail
-func (r *Executor) progressBatches(workloadController workloads.WorkloadController) (bool, reconcile.Result) {
+func (r *Executor) progressBatches(workloadController workloads2.WorkloadController) (bool, reconcile.Result) {
 	progressDone := false
 	retryDuration := reconcile.Result{}
 
@@ -264,7 +264,7 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 }
 
 // GetWorkloadController pick the right workload controller to work on the workload
-func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error) {
+func (r *Executor) GetWorkloadController() (workloads2.WorkloadController, error) {
 	targetRef := r.release.Spec.TargetRef.WorkloadRef
 	if targetRef == nil {
 		return nil, nil
@@ -279,13 +279,13 @@ func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error)
 	case kruiseappsv1alpha1.GroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(kruiseappsv1alpha1.CloneSet{}).Name() {
 			klog.InfoS("using cloneset batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return workloads.NewCloneSetRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
+			return workloads2.NewCloneSetRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
 		}
 
 	case apps.SchemeGroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
 			klog.InfoS("using deployment batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return workloads.NewDeploymentRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
+			return workloads2.NewDeploymentRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
 		}
 	}
 	message := fmt.Sprintf("the workload `%v.%v/%v` is not supported", targetRef.APIVersion, targetRef.Kind, targetRef.Name)

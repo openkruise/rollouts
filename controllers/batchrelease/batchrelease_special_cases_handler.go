@@ -17,10 +17,10 @@ limitations under the License.
 package batchrelease
 
 import (
+	"github.com/openkruise/rollouts/controllers/batchrelease/workloads"
 	"time"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
 	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
