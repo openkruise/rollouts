@@ -31,7 +31,7 @@ func GetNamespace() string {
 	if ns := os.Getenv("POD_NAMESPACE"); len(ns) > 0 {
 		return ns
 	}
-	return "rollout-system"
+	return "kruise-system"
 }
 
 func GetSecretName() string {

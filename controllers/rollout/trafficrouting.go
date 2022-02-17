@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2022 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -150,7 +150,7 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 }
 
 func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
-	// 1. restore ingress，traffic routing stable service
+	// 1. restore ingress and route traffic to stable service
 	trController, err := r.newTrafficRoutingController(r)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) newTrafficRoutingController failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())

@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2022 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,18 +19,18 @@ package rollout
 import (
 	"context"
 	"encoding/json"
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	apps "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 
+	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/controllers/rollout/batchrelease"
 	"github.com/openkruise/rollouts/pkg/util"
+	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (r *rolloutContext) runCanary() error {
@@ -178,51 +178,42 @@ func (r *rolloutContext) doCanaryPaused() (bool, error) {
 }
 
 // cleanup after rollout is completed or finished
-func (r *rolloutContext) doCanaryFinalising(isPromote bool) (bool, error) {
+func (r *rolloutContext) doCanaryFinalising() (bool, error) {
 	// when CanaryStatus is nil, which means canary action hasn't started yet, don't need doing cleanup
 	if r.newStatus.CanaryStatus == nil {
 		return true, nil
 	}
-
-	// 1. remove stable service podRevision selector
-	if r.rollout.Spec.Strategy.CanaryPlan.TrafficRouting != nil {
-		done, err := r.restoreStableService()
-		if err != nil || !done {
-			return done, err
-		}
-	}
-
-	// 2. mark rollout process complete, allow workload paused=false in webhook
-	if err := r.updateRolloutStateInWorkload(util.RolloutState{RolloutName: r.rollout.Name, RolloutDone: true}, false); err != nil {
+	// 1. mark rollout process complete, allow workload paused=false in webhook
+	err := r.updateRolloutStateInWorkload(util.RolloutState{RolloutName: r.rollout.Name, RolloutDone: true}, false)
+	if err != nil {
 		return false, err
 	}
-
-	// 3. after the normal rollout is completed, first need to upgrade stable deployment to new revision
-	if isPromote {
-		done, err := r.batchControl.PromoteStableWorkload()
-		if err != nil || !done {
-			return done, err
-		}
+	// 2. restore stable service, remove podRevision selector
+	done, err := r.restoreStableService()
+	if err != nil || !done {
+		return done, err
 	}
-
-	// 3. route all traffic to stable service
-	if r.rollout.Spec.Strategy.CanaryPlan.TrafficRouting != nil {
-		done, err := r.doFinalisingTrafficRouting()
-		if err != nil || !done {
-			return done, err
-		}
+	// 3. upgrade stable deployment, set paused=false
+	// isComplete indicates whether rollout progressing complete, and wait for all pods are ready
+	// else indicates rollout is canceled
+	done, err = r.batchControl.ResumeStableWorkload(r.isComplete)
+	if err != nil || !done {
+		return done, err
 	}
-
-	// 4. delete batchRelease CRD
-	done, err := r.batchControl.Finalize()
+	// 4. route all traffic to stable service
+	done, err = r.doFinalisingTrafficRouting()
+	if err != nil || !done {
+		return done, err
+	}
+	// 5. delete batchRelease crd
+	done, err = r.batchControl.Finalize()
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return false, err
 	} else if !done {
 		return false, nil
 	}
-
-	// delete rolloutState in workload
+	// 6. delete rolloutState in workload
 	if err = r.updateRolloutStateInWorkload(util.RolloutState{}, true); err != nil {
 		return false, err
 	}

@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2022 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -188,7 +188,7 @@ func (r *nginxController) DoFinalising() (bool, error) {
 	if state.Weight == 0 {
 		// After setting up traffic routing, give the ingress provider 5 seconds to take effect
 		if verifyTime := state.UpdateTimestamp.Add(time.Second * 5); verifyTime.After(time.Now()) {
-			klog.Errorf("rollout(%s/%s) set ingress routes(weight:0) success, and wait a moment", r.conf.RolloutNs, r.conf.RolloutName)
+			klog.Infof("rollout(%s/%s) set ingress routes(weight:0) success, and wait a moment", r.conf.RolloutNs, r.conf.RolloutName)
 			return false, nil
 		}
 		if err = r.Delete(context.TODO(), canaryIngress); err != nil {

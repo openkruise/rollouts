@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2022 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,11 +18,11 @@ package rollout
 
 import (
 	"context"
-	"github.com/openkruise/rollouts/pkg/util"
 	"time"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/controllers/rollout/batchrelease"
+	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -53,7 +53,7 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *appsv1alpha1.Ro
 	return recheckTime, nil
 }
 
-func (r *RolloutReconciler) doFinalising(rollout *appsv1alpha1.Rollout, newStatus *appsv1alpha1.RolloutStatus, isPromote bool) (bool, *time.Time, error) {
+func (r *RolloutReconciler) doFinalising(rollout *appsv1alpha1.Rollout, newStatus *appsv1alpha1.RolloutStatus, isComplete bool) (bool, *time.Time, error) {
 	// fetch target workload
 	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
 	if err != nil {
@@ -69,8 +69,9 @@ func (r *RolloutReconciler) doFinalising(rollout *appsv1alpha1.Rollout, newStatu
 		canaryRevision: newStatus.CanaryRevision,
 		batchControl:   batchrelease.NewInnerBatchController(r.Client, rollout),
 		workload:       workload,
+		isComplete:     isComplete,
 	}
-	done, err := rolloutCon.finalising(isPromote)
+	done, err := rolloutCon.finalising()
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) Progressing failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return false, nil, err

@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2022 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@ limitations under the License.
 package rollout
 
 import (
-	"github.com/openkruise/rollouts/pkg/util"
-	"k8s.io/klog/v2"
 	"time"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/controllers/rollout/batchrelease"
+	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -37,6 +37,8 @@ type rolloutContext struct {
 	stableRevision string
 
 	canaryRevision string
+
+	isComplete bool
 
 	stableService *corev1.Service
 
@@ -58,10 +60,10 @@ func (r *rolloutContext) reconcile() error {
 	return nil
 }
 
-func (r *rolloutContext) finalising(isPromote bool) (bool, error) {
+func (r *rolloutContext) finalising() (bool, error) {
 	// canary strategy
 	if r.rollout.Spec.Strategy.CanaryPlan != nil {
-		done, err := r.doCanaryFinalising(isPromote)
+		done, err := r.doCanaryFinalising()
 		if err == nil && !done {
 			// The finalizer is not finished, wait one second
 			expectedTime := time.Now().Add(5 * time.Second)

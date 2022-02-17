@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2022 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,9 +26,9 @@ type BatchController interface {
 	// BatchReleaseState fetch batchRelease status
 	BatchReleaseState() (*BatchReleaseState, error)
 
-	// PromoteStableWorkload in multi-deployment scenarios, upgrade the stable deployment to the latest version after rollout complete
+	// ResumeStableWorkload in multi-deployment scenarios, upgrade the stable deployment to the latest version after rollout complete
 	// and wait pods are ready
-	PromoteStableWorkload() (bool, error)
+	ResumeStableWorkload(checkReady bool) (bool, error)
 
 	// Finalize clean up batchRelease
 	// 1. delete canary deployments
