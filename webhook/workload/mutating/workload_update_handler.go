@@ -137,18 +137,23 @@ func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) err
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
 		return nil
 	}
-	// 2. deployment.spec.PodTemplate is changed
+	// 2. deployment.spec.strategy.type must be RollingUpdate
+	if newObj.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
+		klog.Warningf("deployment(%s/%s) strategy type is 'Recreate', rollout will not work on it", newObj.Namespace, newObj.Name)
+		return nil
+	}
+	// 3. deployment.spec.PodTemplate is changed
 	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
 		return nil
 	}
-	// 3. the deployment must be in a stable version (only one version of rs)
+	// 4. the deployment must be in a stable version (only one version of rs)
 	stableRs, err := h.Finder.GetDeploymentStableRs(newObj)
 	if err != nil {
 		return err
 	} else if stableRs == nil {
 		return nil
 	}
-	// 4. have matched rollout crd
+	// 5. have matched rollout crd
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
 		return err

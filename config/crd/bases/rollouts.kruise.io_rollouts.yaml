@@ -59,8 +59,6 @@ spec:
                     - kind
                     - name
                     type: object
-                required:
-                - type
                 type: object
               strategy:
                 description: The deployment strategy to use to replace existing pods
@@ -137,8 +135,6 @@ spec:
                   type:
                     description: canaryPlan, BlueGreenPlan Default value is canaryPlan
                     type: string
-                required:
-                - type
                 type: object
             required:
             - objectRef

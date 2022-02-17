@@ -18,9 +18,16 @@ package validating
 
 import (
 	"context"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"net/http"
+	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
 
+	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	addmissionv1 "k8s.io/api/admission/v1"
+	apps "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -30,7 +37,7 @@ type RolloutCreateUpdateHandler struct {
 	// - uncomment it
 	// - import sigs.k8s.io/controller-runtime/pkg/client
 	// - uncomment the InjectClient method at the bottom of this file.
-	// Client  client.Client
+	Client client.Client
 
 	// Decoder decodes objects
 	Decoder *admission.Decoder
@@ -40,12 +47,145 @@ var _ admission.Handler = &RolloutCreateUpdateHandler{}
 
 // Handle handles admission requests.
 func (h *RolloutCreateUpdateHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
-	obj := &appsv1alpha1.Rollout{}
-	if err := h.Decoder.Decode(req, obj); err != nil {
-		return admission.Errored(http.StatusBadRequest, err)
+	switch req.Operation {
+	case addmissionv1.Create:
+		obj := &appsv1alpha1.Rollout{}
+		if err := h.Decoder.Decode(req, obj); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
+		}
+		errList := h.validateRollout(obj)
+		if len(errList) != 0 {
+			return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+		}
+
+	case addmissionv1.Update:
+		obj := &appsv1alpha1.Rollout{}
+		if err := h.Decoder.Decode(req, obj); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
+		}
+		oldObj := &appsv1alpha1.Rollout{}
+		if err := h.Decoder.DecodeRaw(req.AdmissionRequest.OldObject, oldObj); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
+		}
+		errList := h.validateRolloutUpdate(oldObj, obj)
+		if len(errList) != 0 {
+			return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+		}
 	}
 
 	return admission.ValidationResponse(true, "")
+}
+
+func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv1alpha1.Rollout) field.ErrorList {
+	latestObject := &appsv1alpha1.Rollout{}
+	err := h.Client.Get(context.TODO(), client.ObjectKeyFromObject(newObj), latestObject)
+	if err != nil {
+		return field.ErrorList{field.InternalError(field.NewPath("Rollout"), err)}
+	}
+
+	switch latestObject.Status.Phase {
+	case "", appsv1alpha1.RolloutPhaseInitial, appsv1alpha1.RolloutPhaseHealthy:
+		if !reflect.DeepEqual(oldObj.Spec.ObjectRef, newObj.Spec.ObjectRef) {
+			return field.ErrorList{field.Forbidden(field.NewPath("Spec.ObjectRef"), "Rollout 'ObjectRef' field is immutable")}
+		}
+	default:
+		if !reflect.DeepEqual(oldObj.Spec, newObj.Spec) {
+			return field.ErrorList{field.Forbidden(field.NewPath("Status.Phase"), "Rollout is immutable because it is at Progressing/Terminating phase")}
+		}
+	}
+
+	return h.validateRollout(newObj)
+}
+
+func (h *RolloutCreateUpdateHandler) validateRollout(rollout *appsv1alpha1.Rollout) field.ErrorList {
+	return validateRolloutSpec(rollout, field.NewPath("Spec"))
+}
+
+func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
+	errList := validateRolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
+	errList = append(errList, validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
+	return errList
+}
+
+func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *field.Path) field.ErrorList {
+	switch objectRef.Type {
+	case "", appsv1alpha1.WorkloadRefType:
+		if objectRef.WorkloadRef == nil ||
+			objectRef.WorkloadRef.Kind != "Deployment" ||
+			objectRef.WorkloadRef.APIVersion != apps.SchemeGroupVersion.String() {
+			return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef only support 'Deployments.apps/v1'")}
+		}
+	default:
+		return field.ErrorList{field.Invalid(fldPath.Child("Type"), objectRef.Type, "ObjectRef only support 'workloadRef' type")}
+	}
+	return nil
+}
+
+func validateRolloutSpecStrategy(strategy *appsv1alpha1.RolloutStrategy, fldPath *field.Path) field.ErrorList {
+	switch strategy.Type {
+	case "", appsv1alpha1.RolloutStrategyCanary:
+		return validateRolloutSpecCanaryStrategy(strategy.CanaryPlan, fldPath.Child("CanaryPlan"))
+	default:
+		return field.ErrorList{field.Invalid(fldPath.Child("Type"), strategy.Type, "Strategy type only support 'canaryPlan'")}
+	}
+}
+
+func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
+	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"))
+	errList = append(errList, validateRolloutSpecCanaryTraffic(canary.TrafficRouting, fldPath.Child("TrafficRouting"))...)
+	return errList
+}
+
+func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldPath *field.Path) field.ErrorList {
+	// TODO: validate service
+	// TODO: validate ingress
+	switch traffic.Type {
+	case "", appsv1alpha1.TrafficRoutingNginx:
+	default:
+		return field.ErrorList{field.Invalid(fldPath.Child("Type"), traffic.Type, "TrafficRouting only support 'nginx' type")}
+	}
+	return nil
+}
+
+func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *field.Path) field.ErrorList {
+	for i := range steps {
+		s := &steps[i]
+		if s.Weight <= 0 || s.Weight > 100 {
+			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Weight"),
+				s.Weight, `Weight must be a positive number with "0" < weight <= "100"`)}
+		}
+		if s.CanaryReplicas != nil {
+			canaryReplicas, err := intstr.GetScaledValueFromIntOrPercent(s.CanaryReplicas, 100, true)
+			if err != nil || canaryReplicas <= 0 || canaryReplicas > 100 {
+				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("CanaryReplicas"),
+					s.CanaryReplicas, `canaryReplicas must be positive number with with "0" < canaryReplicas <= "100", or a percentage with "0%" < canaryReplicas <= "100%"`)}
+			}
+		}
+	}
+
+	stepCount := len(steps)
+	for i := 1; i < stepCount; i++ {
+		prev := &steps[i-1]
+		curr := &steps[i]
+		if curr.Weight < prev.Weight {
+			return field.ErrorList{field.Invalid(fldPath.Child("Weight"), steps, `Steps.Weight must be a non decreasing sequence`)}
+		}
+		prevCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(prev.CanaryReplicas, 100, true)
+		currCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(curr.CanaryReplicas, 100, true)
+		if currCanaryReplicas < prevCanaryReplicas {
+			return field.ErrorList{field.Invalid(fldPath.Child("CanaryReplicas"), steps, `Steps.CanaryReplicas must be a non decreasing sequence`)}
+		}
+	}
+
+	return nil
+}
+
+var _ inject.Client = &RolloutCreateUpdateHandler{}
+
+// InjectClient injects the client into the RolloutCreateUpdateHandler
+func (h *RolloutCreateUpdateHandler) InjectClient(c client.Client) error {
+	h.Client = c
+	return nil
 }
 
 var _ admission.DecoderInjector = &RolloutCreateUpdateHandler{}

@@ -130,8 +130,6 @@ spec:
                     - kind
                     - name
                     type: object
-                required:
-                - type
                 type: object
             required:
             - releasePlan
