@@ -138,15 +138,16 @@ func (r *innerBatchController) PromoteBatch(index int32) error {
 	return nil
 }
 
-func (r *innerBatchController) PromoteStableWorkload() (bool, error) {
-	// if cloneSet, do nothing
+func (r *innerBatchController) ResumeStableWorkload(checkReady bool) (bool, error) {
+	// todo cloneSet
 	if r.rollout.Spec.ObjectRef.WorkloadRef.Kind == util.ControllerKruiseKindCS.Kind {
 		return true, nil
 	}
 
+	dName := r.rollout.Spec.ObjectRef.WorkloadRef.Name
 	obj := &apps.Deployment{}
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		if err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: r.rollout.Spec.ObjectRef.WorkloadRef.Name}, obj); err != nil {
+		if err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj); err != nil {
 			return err
 		}
 		if obj.Spec.Paused == false {
@@ -156,16 +157,26 @@ func (r *innerBatchController) PromoteStableWorkload() (bool, error) {
 		return r.Update(context.TODO(), obj)
 	})
 	if err != nil {
+		if errors.IsNotFound(err) {
+			klog.Warningf("rollout(%s/%s) stable deployment(%s) not found, and return true", r.rollout.Namespace, r.rollout.Name, dName)
+			return true, nil
+		}
 		klog.Errorf("update rollout(%s/%s) stable deployment failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return false, err
 	}
+	if !checkReady {
+		klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) success", r.rollout.Namespace, r.rollout.Name, obj.Status.AvailableReplicas)
+		return true, nil
+	}
+
+	// wait for all pods are ready
 	maxUnavailable, _ := intstr.GetValueFromIntOrPercent(obj.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*obj.Spec.Replicas), true)
 	if obj.Status.ObservedGeneration != obj.Generation || obj.Status.UpdatedReplicas != *obj.Spec.Replicas &&
 		*obj.Spec.Replicas-obj.Status.AvailableReplicas > int32(maxUnavailable) {
 		klog.Infof("rollout(%s/%s) stable deployment AvailableReplicas(%d), and wait a moment", r.rollout.Namespace, r.rollout.Name, obj.Status.AvailableReplicas)
 		return false, nil
 	}
-	klog.Infof("promote rollout(%s/%s) stable deployment AvailableReplicas(%d) success", r.rollout.Namespace, r.rollout.Name, obj.Status.AvailableReplicas)
+	klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) AvailableReplicas(%d) success", r.rollout.Namespace, r.rollout.Name, obj.Status.AvailableReplicas)
 	return true, nil
 }
 

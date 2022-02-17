@@ -121,7 +121,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 	case appsv1alpha1.ProgressingReasonCancelling:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		var done bool
-		done, recheckTime, err = r.doFinalising(rollout, newStatus, true)
+		done, recheckTime, err = r.doFinalising(rollout, newStatus, false)
 		if err != nil {
 			return nil, err
 			// finalizer is finished

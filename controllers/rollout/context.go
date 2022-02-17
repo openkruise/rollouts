@@ -38,6 +38,8 @@ type rolloutContext struct {
 
 	canaryRevision string
 
+	isComplete bool
+
 	stableService *corev1.Service
 
 	canaryService *corev1.Service
@@ -58,10 +60,10 @@ func (r *rolloutContext) reconcile() error {
 	return nil
 }
 
-func (r *rolloutContext) finalising(isPromote bool) (bool, error) {
+func (r *rolloutContext) finalising() (bool, error) {
 	// canary strategy
 	if r.rollout.Spec.Strategy.CanaryPlan != nil {
-		done, err := r.doCanaryFinalising(isPromote)
+		done, err := r.doCanaryFinalising()
 		if err == nil && !done {
 			// The finalizer is not finished, wait one second
 			expectedTime := time.Now().Add(5 * time.Second)

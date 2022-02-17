@@ -26,9 +26,9 @@ type BatchController interface {
 	// BatchReleaseState fetch batchRelease status
 	BatchReleaseState() (*BatchReleaseState, error)
 
-	// PromoteStableWorkload in multi-deployment scenarios, upgrade the stable deployment to the latest version after rollout complete
+	// ResumeStableWorkload in multi-deployment scenarios, upgrade the stable deployment to the latest version after rollout complete
 	// and wait pods are ready
-	PromoteStableWorkload() (bool, error)
+	ResumeStableWorkload(checkReady bool) (bool, error)
 
 	// Finalize clean up batchRelease
 	// 1. delete canary deployments

@@ -178,50 +178,41 @@ func (r *rolloutContext) doCanaryPaused() (bool, error) {
 }
 
 // cleanup after rollout is completed or finished
-func (r *rolloutContext) doCanaryFinalising(isPromote bool) (bool, error) {
+func (r *rolloutContext) doCanaryFinalising() (bool, error) {
 	// when CanaryStatus is nil, which means canary action hasn't started yet, don't need doing cleanup
 	if r.newStatus.CanaryStatus == nil {
 		return true, nil
 	}
-
 	// 1. mark rollout process complete, allow workload paused=false in webhook
-	if err := r.updateRolloutStateInWorkload(util.RolloutState{RolloutName: r.rollout.Name, RolloutDone: true}, false); err != nil {
+	err := r.updateRolloutStateInWorkload(util.RolloutState{RolloutName: r.rollout.Name, RolloutDone: true}, false)
+	if err != nil {
 		return false, err
 	}
-
-	// 2. after the normal rollout is completed, first need to upgrade stable deployment to new revision
-	if isPromote {
-		done, err := r.batchControl.PromoteStableWorkload()
-		if err != nil || !done {
-			return done, err
-		}
+	// 2. restore stable service, remove podRevision selector
+	done, err := r.restoreStableService()
+	if err != nil || !done {
+		return done, err
 	}
-
-	// 3. remove stable service podRevision selector
-	if r.rollout.Spec.Strategy.CanaryPlan.TrafficRouting != nil {
-		done, err := r.restoreStableService()
-		if err != nil || !done {
-			return done, err
-		}
+	// 3. upgrade stable deployment, set paused=false
+	// isComplete indicates whether rollout progressing complete, and wait for all pods are ready
+	// else indicates rollout is canceled
+	done, err = r.batchControl.ResumeStableWorkload(r.isComplete)
+	if err != nil || !done {
+		return done, err
 	}
-
 	// 4. route all traffic to stable service
-	if r.rollout.Spec.Strategy.CanaryPlan.TrafficRouting != nil {
-		done, err := r.doFinalisingTrafficRouting()
-		if err != nil || !done {
-			return done, err
-		}
+	done, err = r.doFinalisingTrafficRouting()
+	if err != nil || !done {
+		return done, err
 	}
-
-	// 5. delete batchRelease CRD
-	done, err := r.batchControl.Finalize()
+	// 5. delete batchRelease crd
+	done, err = r.batchControl.Finalize()
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return false, err
 	} else if !done {
 		return false, nil
 	}
-
 	// 6. delete rolloutState in workload
 	if err = r.updateRolloutStateInWorkload(util.RolloutState{}, true); err != nil {
 		return false, err
