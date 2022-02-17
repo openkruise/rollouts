@@ -201,7 +201,7 @@ spec:
                       description: Phase of the condition, one of True, False, Unknown.
                       type: string
                     type:
-                      description: Type of deployment condition.
+                      description: Type of rollout condition.
                       type: string
                   required:
                   - message

@@ -89,7 +89,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *appsv1alpha1.Ro
 		} else {
 			klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 			//check if progressing is done
-			if len(rollout.Spec.Strategy.CanaryPlan.Steps) == int(newStatus.CanaryStatus.CurrentStepIndex+1) &&
+			if len(rollout.Spec.Strategy.Canary.Steps) == int(newStatus.CanaryStatus.CurrentStepIndex+1) &&
 				newStatus.CanaryStatus.CurrentStepState == appsv1alpha1.CanaryStepStateCompleted {
 				klog.Infof("rollout(%s/%s) progressing rolling done", rollout.Namespace, rollout.Name)
 				progressingStateTransition(newStatus, corev1.ConditionTrue, appsv1alpha1.ProgressingReasonFinalising, "")
@@ -194,7 +194,7 @@ func (r *RolloutReconciler) doProgressingReset(rollout *appsv1alpha1.Rollout, ne
 		batchControl: batchrelease.NewInnerBatchController(r.Client, rollout),
 	}
 
-	if rolloutCon.rollout.Spec.Strategy.CanaryPlan.TrafficRouting != nil {
+	if rolloutCon.rollout.Spec.Strategy.Canary.TrafficRouting != nil {
 		// 1. remove stable service podRevision selector
 		done, err := rolloutCon.restoreStableService()
 		if err != nil || !done {
@@ -219,7 +219,7 @@ func (r *RolloutReconciler) doProgressingReset(rollout *appsv1alpha1.Rollout, ne
 }
 
 func (r *RolloutReconciler) verifyCanaryStrategy(rollout *appsv1alpha1.Rollout) (bool, string, error) {
-	canary := rollout.Spec.Strategy.CanaryPlan
+	canary := rollout.Spec.Strategy.Canary
 	// Traffic routing
 	if canary.TrafficRouting != nil {
 		if ok, msg, err := r.verifyTrafficRouting(rollout.Namespace, canary.TrafficRouting); !ok {

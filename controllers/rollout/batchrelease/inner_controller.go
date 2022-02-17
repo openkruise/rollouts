@@ -245,8 +245,12 @@ func (r *innerBatchController) deleteCanaryDeployment(batch *appsv1alpha1.BatchR
 
 func createBatchRelease(rollout *appsv1alpha1.Rollout, batchName string) *appsv1alpha1.BatchRelease {
 	var batches []appsv1alpha1.ReleaseBatch
-	for _, step := range rollout.Spec.Strategy.CanaryPlan.Steps {
-		batches = append(batches, appsv1alpha1.ReleaseBatch{CanaryReplicas: intstr.FromString(strconv.Itoa(int(step.Weight)) + "%")})
+	for _, step := range rollout.Spec.Strategy.Canary.Steps {
+		if step.Replicas == nil {
+			batches = append(batches, appsv1alpha1.ReleaseBatch{CanaryReplicas: intstr.FromString(strconv.Itoa(int(step.Weight)) + "%")})
+		} else {
+			batches = append(batches, appsv1alpha1.ReleaseBatch{CanaryReplicas: *step.Replicas})
+		}
 	}
 
 	br := &appsv1alpha1.BatchRelease{

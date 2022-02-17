@@ -37,6 +37,9 @@ spec:
             description: RolloutSpec defines the desired state of Rollout
             properties:
               objectRef:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                  ObjectRef indicates workload'
                 properties:
                   type:
                     description: workloadRef, revisionRef default is workloadRef
@@ -61,32 +64,21 @@ spec:
                     type: object
                 type: object
               strategy:
-                description: The deployment strategy to use to replace existing pods
-                  with new ones.
+                description: rollout strategy
                 properties:
-                  canaryPlan:
+                  canary:
                     description: CanaryStrategy defines parameters for a Replica Based
                       Canary
                     properties:
                       steps:
-                        description: Steps define the order of phases to execute the
-                          canary deployment
+                        description: Steps define the order of phases to execute release
+                          in batches(20%, 40%, 60%, 80%, 100%)
                         items:
                           description: CanaryStep defines a step of a canary workload.
                           properties:
-                            canaryReplicas:
-                              anyOf:
-                              - type: integer
-                              - type: string
-                              description: 'Replicas is the number of expected canary
-                                pods in this batch it can be an absolute number (ex:
-                                5) or a percentage of total pods. it is mutually exclusive
-                                with the PodList field'
-                              x-kubernetes-int-or-string: true
                             pause:
-                              description: Pause freezes the rollout by setting spec.Paused
-                                to true. A Rollout will resume when spec.Paused is
-                                reset to false.
+                              description: Pause defines a pause stage for a rollout,
+                                manual or auto
                               properties:
                                 duration:
                                   description: Duration the amount of time to wait
@@ -94,6 +86,14 @@ spec:
                                   format: int32
                                   type: integer
                               type: object
+                            replicas:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: 'Replicas is the number of expected canary
+                                pods in this batch it can be an absolute number (ex:
+                                5) or a percentage of total pods.'
+                              x-kubernetes-int-or-string: true
                             weight:
                               description: SetWeight sets what percentage of the canary
                                 pods should receive
@@ -133,7 +133,7 @@ spec:
                       value is false
                     type: boolean
                   type:
-                    description: canaryPlan, BlueGreenPlan Default value is canaryPlan
+                    description: canary, BlueGreenPlan Default value is canary
                     type: string
                 type: object
             required:
@@ -150,6 +150,8 @@ spec:
                 description: Canary describes the state of the canary rollout
                 properties:
                   canaryReadyReplicas:
+                    description: CanaryReadyReplicas the numbers of ready canary revision
+                      pods
                     format: int32
                     type: integer
                   canaryReplicas:
@@ -178,6 +180,11 @@ spec:
                     type: string
                   message:
                     type: string
+                  observedWorkloadGeneration:
+                    description: observedWorkloadGeneration is the most recent generation
+                      observed for this Rollout ref workload generation.
+                    format: int64
+                    type: integer
                 required:
                 - canaryReadyReplicas
                 - canaryReplicas
@@ -210,7 +217,7 @@ spec:
                       description: Phase of the condition, one of True, False, Unknown.
                       type: string
                     type:
-                      description: Type of deployment condition.
+                      description: Type of rollout condition.
                       type: string
                   required:
                   - message
@@ -225,13 +232,12 @@ spec:
                 type: string
               observedGeneration:
                 description: observedGeneration is the most recent generation observed
-                  for this SidecarSet. It corresponds to the SidecarSet's generation,
-                  which is updated on mutation by the API Server.
+                  for this Rollout.
                 format: int64
                 type: integer
               phase:
-                description: Phase is the rollout phase. Clients should only rely
-                  on the value if status.observedGeneration equals metadata.generation
+                description: BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
+                  Phase is the rollout phase.
                 type: string
               stableRevision:
                 description: StableRevision indicates the revision pods that has successfully

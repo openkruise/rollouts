@@ -155,15 +155,15 @@ func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *fi
 func validateRolloutSpecStrategy(strategy *appsv1alpha1.RolloutStrategy, fldPath *field.Path) field.ErrorList {
 	switch strategy.Type {
 	case "", appsv1alpha1.RolloutStrategyCanary:
-		return validateRolloutSpecCanaryStrategy(strategy.CanaryPlan, fldPath.Child("CanaryPlan"))
+		return validateRolloutSpecCanaryStrategy(strategy.Canary, fldPath.Child("Canary"))
 	default:
-		return field.ErrorList{field.Invalid(fldPath.Child("Type"), strategy.Type, "Strategy type only support 'canaryPlan'")}
+		return field.ErrorList{field.Invalid(fldPath.Child("Type"), strategy.Type, "Strategy type only support 'canary'")}
 	}
 }
 
 func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
 	if canary == nil {
-		return field.ErrorList{field.Invalid(fldPath, nil, "CanaryPlan cannot be empty")}
+		return field.ErrorList{field.Invalid(fldPath, nil, "Canary cannot be empty")}
 	}
 
 	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"))
@@ -173,7 +173,7 @@ func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldP
 
 func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldPath *field.Path) field.ErrorList {
 	if traffic == nil {
-		return field.ErrorList{field.Invalid(fldPath, nil, "CanaryPlan.TrafficRouting cannot be empty")}
+		return field.ErrorList{field.Invalid(fldPath, nil, "Canary.TrafficRouting cannot be empty")}
 	}
 
 	errList := field.ErrorList{}
@@ -196,7 +196,7 @@ func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldP
 func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *field.Path) field.ErrorList {
 	stepCount := len(steps)
 	if stepCount == 0 {
-		return field.ErrorList{field.Invalid(fldPath, steps, "The number of CanaryPlan.Steps cannot be empty")}
+		return field.ErrorList{field.Invalid(fldPath, steps, "The number of Canary.Steps cannot be empty")}
 	}
 
 	if steps[stepCount-1].Weight != 100 {
@@ -209,11 +209,11 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Weight"),
 				s.Weight, `Weight must be a positive number with "0" < weight <= "100"`)}
 		}
-		if s.CanaryReplicas != nil {
-			canaryReplicas, err := intstr.GetScaledValueFromIntOrPercent(s.CanaryReplicas, 100, true)
+		if s.Replicas != nil {
+			canaryReplicas, err := intstr.GetScaledValueFromIntOrPercent(s.Replicas, 100, true)
 			if err != nil || canaryReplicas <= 0 || canaryReplicas > 100 {
 				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("CanaryReplicas"),
-					s.CanaryReplicas, `canaryReplicas must be positive number with with "0" < canaryReplicas <= "100", or a percentage with "0%" < canaryReplicas <= "100%"`)}
+					s.Replicas, `canaryReplicas must be positive number with with "0" < canaryReplicas <= "100", or a percentage with "0%" < canaryReplicas <= "100%"`)}
 			}
 		}
 	}
@@ -224,8 +224,8 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 		if curr.Weight < prev.Weight {
 			return field.ErrorList{field.Invalid(fldPath.Child("Weight"), steps, `Steps.Weight must be a non decreasing sequence`)}
 		}
-		prevCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(prev.CanaryReplicas, 100, true)
-		currCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(curr.CanaryReplicas, 100, true)
+		prevCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(prev.Replicas, 100, true)
+		currCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(curr.Replicas, 100, true)
 		if currCanaryReplicas < prevCanaryReplicas {
 			return field.ErrorList{field.Invalid(fldPath.Child("CanaryReplicas"), steps, `Steps.CanaryReplicas must be a non decreasing sequence`)}
 		}

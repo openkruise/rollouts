@@ -29,10 +29,9 @@ import (
 type RolloutSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
+	// ObjectRef indicates workload
 	ObjectRef ObjectRef `json:"objectRef"`
-
-	// The deployment strategy to use to replace existing pods with new ones.
+	// rollout strategy
 	Strategy RolloutStrategy `json:"strategy"`
 }
 
@@ -66,39 +65,38 @@ type WorkloadRef struct {
 	Name string `json:"name"`
 }
 
-type ControllerRevisionRef struct {
+/*type ControllerRevisionRef struct {
 	TargetRevisionName string `json:"targetRevisionName"`
 	SourceRevisionName string `json:"sourceRevisionName"`
-}
+}*/
 
 // RolloutStrategy defines strategy to apply during next rollout
 type RolloutStrategy struct {
 	// Paused indicates that the Rollout is paused.
 	// Default value is false
 	Paused bool `json:"paused,omitempty"`
-	// canaryPlan, BlueGreenPlan
-	// Default value is canaryPlan
+	// canary, BlueGreenPlan
+	// Default value is canary
 	Type RolloutStrategyType `json:"type,omitempty"`
 	// +optional
-	CanaryPlan *CanaryStrategy `json:"canaryPlan,omitempty"`
+	Canary *CanaryStrategy `json:"canary,omitempty"`
 	// +optional
-	// BlueGreenPlan *BlueGreenStrategy `json:"blueGreenPlan,omitempty"`
+	// BlueGreen *BlueGreenStrategy `json:"blueGreen,omitempty"`
 }
 
 type RolloutStrategyType string
 
 const (
-	RolloutStrategyCanary RolloutStrategyType = "canaryPlan"
+	RolloutStrategyCanary RolloutStrategyType = "canary"
 )
 
 // CanaryStrategy defines parameters for a Replica Based Canary
 type CanaryStrategy struct {
-	// Steps define the order of phases to execute the canary deployment
+	// Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%)
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
 	// TrafficRouting hosts all the supported service meshes supported to enable more fine-grained traffic routing
 	TrafficRouting *TrafficRouting `json:"trafficRouting,omitempty"`
-	// MetricsAnalysis runs a separate analysisRun while all the steps execute. This is intended to be a continuous validation of the new ReplicaSet
 	// MetricsAnalysis *MetricsAnalysisBackground `json:"metricsAnalysis,omitempty"`
 }
 
@@ -108,13 +106,10 @@ type CanaryStep struct {
 	Weight int32 `json:"weight,omitempty"`
 	// Replicas is the number of expected canary pods in this batch
 	// it can be an absolute number (ex: 5) or a percentage of total pods.
-	// it is mutually exclusive with the PodList field
-	CanaryReplicas *intstr.IntOrString `json:"canaryReplicas,omitempty"`
-	// Pause freezes the rollout by setting spec.Paused to true.
-	// A Rollout will resume when spec.Paused is reset to false.
+	Replicas *intstr.IntOrString `json:"replicas,omitempty"`
+	// Pause defines a pause stage for a rollout, manual or auto
 	// +optional
 	Pause RolloutPause `json:"pause,omitempty"`
-	// MetricsAnalysis defines the AnalysisRun that will run for a step
 	// MetricsAnalysis *RolloutAnalysis `json:"metricsAnalysis,omitempty"`
 }
 
@@ -153,8 +148,7 @@ type RolloutStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// observedGeneration is the most recent generation observed for this SidecarSet. It corresponds to the
-	// SidecarSet's generation, which is updated on mutation by the API Server.
+	// observedGeneration is the most recent generation observed for this Rollout.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// CanaryRevision the hash of the canary pod template
 	// +optional
@@ -167,7 +161,9 @@ type RolloutStatus struct {
 	// Canary describes the state of the canary rollout
 	// +optional
 	CanaryStatus *CanaryStatus `json:"canaryStatus,omitempty"`
-	// Phase is the rollout phase. Clients should only rely on the value if status.observedGeneration equals metadata.generation
+	// +optional
+	//BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
+	// Phase is the rollout phase.
 	Phase RolloutPhase `json:"phase,omitempty"`
 	// Message provides details on why the rollout is in its current phase
 	Message string `json:"message,omitempty"`
@@ -175,7 +171,7 @@ type RolloutStatus struct {
 
 // RolloutCondition describes the state of a rollout at a certain point.
 type RolloutCondition struct {
-	// Type of deployment condition.
+	// Type of rollout condition.
 	Type RolloutConditionType `json:"type"`
 	// Phase of the condition, one of True, False, Unknown.
 	Status corev1.ConditionStatus `json:"status"`
@@ -209,20 +205,24 @@ const (
 	ProgressingReasonPaused       = "Paused"
 
 	// Terminating condition
-	RolloutConditionTerminating    RolloutConditionType = "Terminating"
-	TerminatingReasonInTerminating                      = "InTerminating"
-	TerminatingReasonCompleted                          = "Completed"
+	RolloutConditionTerminating RolloutConditionType = "Terminating"
+	// Terminating Reason
+	TerminatingReasonInTerminating = "InTerminating"
+	TerminatingReasonCompleted     = "Completed"
 )
 
 // CanaryStatus status fields that only pertain to the canary rollout
 type CanaryStatus struct {
+	// observedWorkloadGeneration is the most recent generation observed for this Rollout ref workload generation.
+	ObservedWorkloadGeneration int64 `json:"observedWorkloadGeneration,omitempty"`
 	// CanaryService holds the name of a service which selects pods with canary version and don't select any pods with stable version.
 	CanaryService string `json:"canaryService"`
 	// CanaryRevision the hash of the current pod template
 	// +optional
 	CanaryRevision string `json:"canaryRevision"`
 	// CanaryReplicas the numbers of canary revision pods
-	CanaryReplicas      int32 `json:"canaryReplicas"`
+	CanaryReplicas int32 `json:"canaryReplicas"`
+	// CanaryReadyReplicas the numbers of ready canary revision pods
 	CanaryReadyReplicas int32 `json:"canaryReadyReplicas"`
 	// CurrentStepIndex defines the current step of the rollout is on. If the current step index is null, the
 	// controller will execute the rollout.
