@@ -188,9 +188,11 @@ func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldP
 			errList = append(errList, field.Invalid(fldPath.Child("Nginx"), traffic.Nginx, "TrafficRouting.Nginx.Ingress cannot be empty"))
 		}
 	default:
-		return field.ErrorList{field.Invalid(fldPath.Child("Type"), traffic.Type, "TrafficRouting only support 'nginx' type")}
+
+		errList = append(errList, field.Invalid(fldPath.Child("Type"), traffic.Type, "TrafficRouting only support 'nginx' type"))
 	}
-	return nil
+
+	return errList
 }
 
 func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *field.Path) field.ErrorList {
@@ -224,14 +226,30 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 		if curr.Weight < prev.Weight {
 			return field.ErrorList{field.Invalid(fldPath.Child("Weight"), steps, `Steps.Weight must be a non decreasing sequence`)}
 		}
+
+		// if they are comparable, then compare them
+		if IsPercentageCanaryReplicasType(prev.Replicas) != IsPercentageCanaryReplicasType(curr.Replicas) {
+			continue
+		}
+
 		prevCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(prev.Replicas, 100, true)
 		currCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(curr.Replicas, 100, true)
+		if prev.Replicas == nil {
+			prevCanaryReplicas = int(prev.Weight)
+		}
+		if curr.Replicas == nil {
+			currCanaryReplicas = int(curr.Weight)
+		}
 		if currCanaryReplicas < prevCanaryReplicas {
 			return field.ErrorList{field.Invalid(fldPath.Child("CanaryReplicas"), steps, `Steps.CanaryReplicas must be a non decreasing sequence`)}
 		}
 	}
 
 	return nil
+}
+
+func IsPercentageCanaryReplicasType(replicas *intstr.IntOrString) bool {
+	return replicas == nil || replicas.Type == intstr.String
 }
 
 func IsSameWorkloadRefGVKName(a, b *appsv1alpha1.WorkloadRef) bool {
