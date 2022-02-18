@@ -106,7 +106,7 @@ func (r *innerBatchController) BatchReleaseState() (*BatchReleaseState, error) {
 		UpdatedReadyReplicas: batch.Status.CanaryStatus.UpdatedReadyReplicas,
 		Paused:               batch.Spec.ReleasePlan.Paused,
 	}
-	if batch.Status.CanaryStatus.ReleasingBatchState == appsv1alpha1.ReadyBatchState {
+	if batch.Status.CanaryStatus.CurrentBatchState == appsv1alpha1.ReadyBatchState {
 		state.State = BatchReadyState
 	} else {
 		state.State = BatchInRollingState

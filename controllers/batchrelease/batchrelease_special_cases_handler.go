@@ -131,14 +131,14 @@ func (r *Executor) handleSpecialCases(controller workloads.WorkloadController) (
 	default:
 		// check canary batch pause seconds
 		if r.releaseStatus.Phase == v1alpha1.RolloutPhaseProgressing &&
-			r.releaseStatus.CanaryStatus.ReleasingBatchState == v1alpha1.ReadyBatchState &&
+			r.releaseStatus.CanaryStatus.CurrentBatchState == v1alpha1.ReadyBatchState &&
 			int(r.releaseStatus.CanaryStatus.CurrentBatch) < len(r.releasePlan.Batches) {
 			currentTimestamp := time.Now()
 			currentBatch := r.releasePlan.Batches[r.releaseStatus.CanaryStatus.CurrentBatch]
 			waitDuration := time.Duration(currentBatch.PauseSeconds) * time.Second
-			if waitDuration > 0 && r.releaseStatus.CanaryStatus.LastBatchReadyTime.Time.Add(waitDuration).After(currentTimestamp) {
+			if waitDuration > 0 && r.releaseStatus.CanaryStatus.BatchReadyTime.Time.Add(waitDuration).After(currentTimestamp) {
 				needStopThisRound = true
-				restDuration := r.releaseStatus.CanaryStatus.LastBatchReadyTime.Time.Add(waitDuration).Sub(currentTimestamp)
+				restDuration := r.releaseStatus.CanaryStatus.BatchReadyTime.Time.Add(waitDuration).Sub(currentTimestamp)
 				result = reconcile.Result{RequeueAfter: restDuration}
 				klog.V(3).Infof("BatchRelease %v/%v paused and will continue to reconcile after %v", r.release.Namespace, r.release.Name, restDuration)
 			}
@@ -210,7 +210,7 @@ func (r *Executor) workloadHasGone(err error) bool {
 func (r *Executor) releasePlanPaused() bool {
 	partitioned := r.releasePlan.BatchPartition != nil &&
 		r.releaseStatus.Phase == v1alpha1.RolloutPhaseProgressing &&
-		r.releaseStatus.CanaryStatus.ReleasingBatchState == v1alpha1.ReadyBatchState &&
+		r.releaseStatus.CanaryStatus.CurrentBatchState == v1alpha1.ReadyBatchState &&
 		r.releaseStatus.CanaryStatus.CurrentBatch >= *r.releasePlan.BatchPartition
 	return !r.isTerminating() && (r.releasePlan.Paused || partitioned)
 }

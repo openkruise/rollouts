@@ -58,7 +58,7 @@ func signalRestart(status *v1alpha1.BatchReleaseStatus) {
 }
 
 func signalRecalculate(status *v1alpha1.BatchReleaseStatus) {
-	status.CanaryStatus.ReleasingBatchState = v1alpha1.InitializeBatchState
+	status.CanaryStatus.CurrentBatchState = v1alpha1.InitializeBatchState
 }
 
 func signalTerminating(status *v1alpha1.BatchReleaseStatus) {

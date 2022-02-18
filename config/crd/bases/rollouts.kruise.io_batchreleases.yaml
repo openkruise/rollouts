@@ -61,41 +61,44 @@ spec:
                   batchPartition:
                     description: All pods in the batches up to the batchPartition
                       (included) will have the target resource specification while
-                      the rest still have the source resource This is designed for
-                      the operators to manually rollout Default is the the number
-                      of batches which will rollout all the batches
+                      the rest still is the stable revision. This is designed for
+                      the operators to manually rollout Default is nil, which means
+                      no partition and will release all batches. BatchPartition start
+                      from 0.
                     format: int32
                     type: integer
                   batches:
-                    description: The exact distribution among batches. its size has
-                      to be exactly the same as the NumBatches (if set) The total
-                      number cannot exceed the targetSize or the size of the source
-                      resource We will IGNORE the last batch's replica field if it's
-                      a percentage since round errors can lead to inaccurate sum We
-                      highly recommend to leave the last batch's replica field empty
+                    description: 'Batches is the details on each batch of the ReleasePlan.
+                      Users can specify their batch plan in this field, such as: batches:
+                      - canaryReplicas: 1  # batches 0 - canaryReplicas: 2  # batches
+                      1 - canaryReplicas: 5  # batches 2 Not that these canaryReplicas
+                      should be a non-decreasing sequence.'
                     items:
-                      description: ReleaseBatch is used to describe how the each batch
-                        rollout should be
+                      description: ReleaseBatch is used to describe how each batch
+                        release should be
                       properties:
                         canaryReplicas:
                           anyOf:
                           - type: integer
                           - type: string
-                          description: 'Replicas is the number of pods to upgrade
-                            in this batch it can be an absolute number (ex: 5) or
-                            a percentage of total pods we will ignore the percentage
-                            of the last batch to just fill the gap it is mutually
-                            exclusive with the PodList field'
+                          description: 'CanaryReplicas is the number of upgraded pods
+                            that should have in this batch. it can be an absolute
+                            number (ex: 5) or a percentage of workload replicas. batches[i].canaryReplicas
+                            should less than or equal to batches[j].canaryReplicas
+                            if i < j.'
                           x-kubernetes-int-or-string: true
                         pauseSeconds:
                           description: The wait time, in seconds, between instances
-                            upgrades, default = 0
+                            batches, default = 0
                           format: int64
                           type: integer
+                      required:
+                      - canaryReplicas
                       type: object
                     type: array
                   paused:
-                    description: Paused the rollout, default is false
+                    description: Paused the rollout, the release progress will be
+                      paused util paused is false. default is false
                     type: boolean
                 type: object
               strategy:
@@ -136,15 +139,15 @@ spec:
             - targetReference
             type: object
           status:
-            description: BatchReleaseStatus defines the observed state of a rollout
+            description: BatchReleaseStatus defines the observed state of a release
               plan
             properties:
               canaryStatus:
-                description: Canary describes the state of the canary rollout
+                description: CanaryStatus describes the state of the canary rollout.
                 properties:
                   batchState:
-                    description: ReleasingBatchState indicates the state of the current
-                      batch.
+                    description: CurrentBatchState indicates the release state of
+                      the current batch.
                     type: string
                   currentBatch:
                     description: The current batch the rollout is working on/blocked,
@@ -152,17 +155,19 @@ spec:
                     format: int32
                     type: integer
                   lastBatchReadyTime:
-                    description: LastBatchFinalizedTime is the timestamp of
+                    description: BatchReadyTime is the ready timestamp of the current
+                      batch or the last batch. This field is updated once a batch
+                      ready, and the batches[x].pausedSeconds relies on this field
+                      to calculate the real-time duration.
                     format: date-time
                     type: string
                   updatedReadyReplicas:
-                    description: UpgradedReadyReplicas is the number of Pods upgraded
-                      by the rollout controller that have a Ready Condition.
+                    description: UpdatedReadyReplicas is the number upgraded Pods
+                      that have a Ready Condition.
                     format: int32
                     type: integer
                   updatedReplicas:
-                    description: UpgradedReplicas is the number of Pods upgraded by
-                      the rollout controller
+                    description: UpdatedReplicas is the number of upgraded Pods.
                     format: int32
                     type: integer
                 required:
@@ -175,8 +180,8 @@ spec:
                 format: int32
                 type: integer
               conditions:
-                description: Conditions represents the latest available observations
-                  of a CloneSet's current state.
+                description: Conditions represents the observed process state of each
+                  phase during executing the release plan.
                 items:
                   description: RolloutCondition describes the state of a rollout at
                     a certain point.
@@ -211,9 +216,10 @@ spec:
                   type: object
                 type: array
               observedGeneration:
-                description: observedGeneration is the most recent generation observed
-                  for this SidecarSet. It corresponds to the SidecarSet's generation,
-                  which is updated on mutation by the API Server.
+                description: ObservedGeneration is the most recent generation observed
+                  for this BatchRelease. It corresponds to this BatchRelease's generation,
+                  which is updated on mutation by the API Server, and only if BatchRelease
+                  Spec was changed, its generation will increase 1.
                 format: int64
                 type: integer
               observedReleasePlanHash:
@@ -221,22 +227,23 @@ spec:
                   releasePlan.Batches.
                 type: string
               observedWorkloadReplicas:
-                description: ObservedWorkloadReplicas is the size of the target resources.
-                  This is determined once the initial spec verification and does not
-                  change until the rollout is restarted.
+                description: ObservedWorkloadReplicas is observed replicas of target
+                  referenced workload. This field is designed to deal with scaling
+                  event during rollout, if this field changed, it means that the workload
+                  is scaling during rollout.
                 format: int32
                 type: integer
               phase:
-                description: Phase is the release phase. Clients should only rely
-                  on the value if status.observedGeneration equals metadata.generation
+                description: Phase is the release plan phase, which indicates the
+                  current state of release plan state machine in BatchRelease controller.
                 type: string
               stableRevision:
                 description: StableRevision is the pod-template-hash of stable revision
-                  pod.
+                  pod template.
                 type: string
               updateRevision:
-                description: UpdateRevision is the pod-template-hash of updated revision
-                  pod.
+                description: UpdateRevision is the pod-template-hash of update revision
+                  pod template.
                 type: string
             type: object
         type: object

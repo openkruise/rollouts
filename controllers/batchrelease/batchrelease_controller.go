@@ -168,7 +168,7 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	defer func() {
 		klog.V(3).InfoS("Finished one round of reconciling release plan",
 			"BatchRelease", client.ObjectKeyFromObject(release), "release-phase", currentStatus.Phase,
-			"batch-state", currentStatus.CanaryStatus.ReleasingBatchState, "current-batch", currentStatus.CanaryStatus.CurrentBatch,
+			"batch-state", currentStatus.CanaryStatus.CurrentBatchState, "current-batch", currentStatus.CanaryStatus.CurrentBatch,
 			"reconcile-result ", result, "time-cost", time.Since(startTimestamp))
 	}()
 

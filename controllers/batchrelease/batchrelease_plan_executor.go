@@ -81,7 +81,7 @@ func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
 
 	klog.V(3).InfoS("release-status:",
 		"release-phase", r.releaseStatus.Phase,
-		"batch-rolling-state", r.releaseStatus.CanaryStatus.ReleasingBatchState,
+		"batch-rolling-state", r.releaseStatus.CanaryStatus.CurrentBatchState,
 		"current-batch", r.releaseStatus.CanaryStatus.CurrentBatch)
 
 	workloadController, err := r.GetWorkloadController()
@@ -211,11 +211,11 @@ func (r *Executor) progressBatches(workloadController workloads2.WorkloadControl
 	progressDone := false
 	retryDuration := reconcile.Result{}
 
-	switch r.releaseStatus.CanaryStatus.ReleasingBatchState {
+	switch r.releaseStatus.CanaryStatus.CurrentBatchState {
 	case "", v1alpha1.InitializeBatchState:
 		klog.V(3).Infof("BatchRelease(%v) Batch State Machine into %s state", r.releaseKey, v1alpha1.InitializeBatchState)
 		// prepare something before do canary to modify workload, such as calculating suitable batch index.
-		r.releaseStatus.CanaryStatus.ReleasingBatchState = v1alpha1.DoCanaryBatchState
+		r.releaseStatus.CanaryStatus.CurrentBatchState = v1alpha1.DoCanaryBatchState
 		fallthrough
 
 	case v1alpha1.DoCanaryBatchState:
@@ -226,7 +226,7 @@ func (r *Executor) progressBatches(workloadController workloads2.WorkloadControl
 		case err != nil:
 			setCondition(r.releaseStatus, "DoCanaryError", err.Error(), v1.ConditionFalse)
 		case upgradeDone:
-			r.releaseStatus.CanaryStatus.ReleasingBatchState = v1alpha1.VerifyBatchState
+			r.releaseStatus.CanaryStatus.CurrentBatchState = v1alpha1.VerifyBatchState
 			fallthrough
 		default:
 			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
@@ -242,10 +242,10 @@ func (r *Executor) progressBatches(workloadController workloads2.WorkloadControl
 			setCondition(r.releaseStatus, "VerifyBatchReadyError", err.Error(), v1.ConditionFalse)
 		case verified:
 			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
-			r.releaseStatus.CanaryStatus.LastBatchReadyTime = metav1.Now()
-			r.releaseStatus.CanaryStatus.ReleasingBatchState = v1alpha1.ReadyBatchState
+			r.releaseStatus.CanaryStatus.BatchReadyTime = metav1.Now()
+			r.releaseStatus.CanaryStatus.CurrentBatchState = v1alpha1.ReadyBatchState
 		default:
-			r.releaseStatus.CanaryStatus.ReleasingBatchState = v1alpha1.InitializeBatchState
+			r.releaseStatus.CanaryStatus.CurrentBatchState = v1alpha1.InitializeBatchState
 		}
 
 	case v1alpha1.ReadyBatchState:
@@ -303,7 +303,7 @@ func (r *Executor) moveToNextBatch() bool {
 			*r.releasePlan.BatchPartition > r.releaseStatus.CanaryStatus.CurrentBatch {
 			r.releaseStatus.CanaryStatus.CurrentBatch++
 		}
-		r.releaseStatus.CanaryStatus.ReleasingBatchState = v1alpha1.InitializeBatchState
+		r.releaseStatus.CanaryStatus.CurrentBatchState = v1alpha1.InitializeBatchState
 		klog.V(3).Infof("BatchRelease(%v) finished one batch, release current batch: %v", r.releasePlan, r.releaseStatus.CanaryStatus.CurrentBatch)
 		return false
 	}

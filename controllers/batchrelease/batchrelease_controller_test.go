@@ -371,7 +371,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=Initialize",
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = *getOldTime()
+				release.Status.CanaryStatus.BatchReadyTime = *getOldTime()
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -395,7 +395,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=BatchReady",
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -418,7 +418,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			Name: "Special Case: Scaling, Input-State=BatchReady, Output-State=Initialize",
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -442,7 +442,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			Name: `Special Case: RollBack, Input-Phase=Progressing, Output-Phase=Cancelled`,
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -469,7 +469,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			Name: `Special Case: Deletion, Input-Phase=Progressing, Output-Phase=Terminating`,
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -493,7 +493,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			Name: `Special Case: Cancelled, Input-Phase=Progressing, Output-Phase=Cancelled`,
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -517,7 +517,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			Name: `Special Case: Continuous Release, Input-Phase=Progressing, Output-Phase=Initial`,
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -567,7 +567,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			Expect(cli.Get(context.TODO(), key, &newRelease)).NotTo(HaveOccurred())
 			Expect(newRelease.Status.Phase).Should(Equal(cs.ExpectedPhase))
 			Expect(newRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(cs.ExpectedBatch))
-			Expect(newRelease.Status.CanaryStatus.ReleasingBatchState).Should(Equal(cs.ExpectedState))
+			Expect(newRelease.Status.CanaryStatus.CurrentBatchState).Should(Equal(cs.ExpectedState))
 		})
 	}
 }
@@ -685,7 +685,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=Initialize",
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = *getOldTime()
+				release.Status.CanaryStatus.BatchReadyTime = *getOldTime()
 				return release
 			},
 			GetDeployments: func() []client.Object {
@@ -703,7 +703,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=BatchReady",
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				return release
 			},
 			GetDeployments: func() []client.Object {
@@ -720,7 +720,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			Name: "Special Case: Scaling, Input-State=BatchReady, Output-State=Initialize",
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				return release
 			},
 			GetDeployments: func() []client.Object {
@@ -738,7 +738,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			Name: `Special Case: RollBack, Input-Phase=Progressing, Output-Phase=Cancelled`,
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				stableTemplate := stableDeploy.Spec.Template.DeepCopy()
 				canaryTemplate := stableDeploy.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -761,7 +761,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			Name: `Special Case: Deletion, Input-Phase=Progressing, Output-Phase=Terminating`,
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				stableTemplate := stableDeploy.Spec.Template.DeepCopy()
 				canaryTemplate := stableDeploy.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -785,7 +785,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			Name: `Special Case: Cancelled, Input-Phase=Progressing, Output-Phase=Terminating`,
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				stableTemplate := stableDeploy.Spec.Template.DeepCopy()
 				canaryTemplate := stableDeploy.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -809,7 +809,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			Name: `Special Case: Continuous Release, Input-Phase=Progressing, Output-Phase=Initial`,
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.LastBatchReadyTime = metav1.Now()
+				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
 				stableTemplate := stableDeploy.Spec.Template.DeepCopy()
 				canaryTemplate := stableDeploy.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -863,7 +863,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			Expect(cli.Get(context.TODO(), key, &newRelease)).NotTo(HaveOccurred())
 			Expect(newRelease.Status.Phase).Should(Equal(cs.ExpectedPhase))
 			Expect(newRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(cs.ExpectedBatch))
-			Expect(newRelease.Status.CanaryStatus.ReleasingBatchState).Should(Equal(cs.ExpectedState))
+			Expect(newRelease.Status.CanaryStatus.CurrentBatchState).Should(Equal(cs.ExpectedState))
 		})
 	}
 }
@@ -892,7 +892,7 @@ func setPhase(release *v1alpha1.BatchRelease, phase v1alpha1.RolloutPhase) *v1al
 func setState(release *v1alpha1.BatchRelease, state v1alpha1.ReleasingBatchStateType) *v1alpha1.BatchRelease {
 	r := release.DeepCopy()
 	r.Status.Phase = v1alpha1.RolloutPhaseProgressing
-	r.Status.CanaryStatus.ReleasingBatchState = state
+	r.Status.CanaryStatus.CurrentBatchState = state
 	r.Status.ObservedWorkloadReplicas = 100
 	r.Status.ObservedReleasePlanHash = hashReleasePlanBatches(&release.Spec.ReleasePlan)
 	return r

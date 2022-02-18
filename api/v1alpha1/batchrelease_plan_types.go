@@ -24,54 +24,58 @@ import (
 // ReleaseStrategyType defines strategies for pods rollout
 type ReleaseStrategyType string
 
-// ReleasePlan fines the details of the rollout plan
+// ReleasePlan fines the details of the release plan
 type ReleasePlan struct {
-	// The exact distribution among batches.
-	// its size has to be exactly the same as the NumBatches (if set)
-	// The total number cannot exceed the targetSize or the size of the source resource
-	// We will IGNORE the last batch's replica field if it's a percentage since round errors can lead to inaccurate sum
-	// We highly recommend to leave the last batch's replica field empty
+	// Batches is the details on each batch of the ReleasePlan.
+	//Users can specify their batch plan in this field, such as:
+	// batches:
+	// - canaryReplicas: 1  # batches 0
+	// - canaryReplicas: 2  # batches 1
+	// - canaryReplicas: 5  # batches 2
+	// Not that these canaryReplicas should be a non-decreasing sequence.
 	// +optional
 	Batches []ReleaseBatch `json:"batches"`
 	// All pods in the batches up to the batchPartition (included) will have
-	// the target resource specification while the rest still have the source resource
+	// the target resource specification while the rest still is the stable revision.
 	// This is designed for the operators to manually rollout
-	// Default is the the number of batches which will rollout all the batches
+	// Default is nil, which means no partition and will release all batches.
+	// BatchPartition start from 0.
 	// +optional
 	BatchPartition *int32 `json:"batchPartition,omitempty"`
-	// Paused the rollout, default is false
+	// Paused the rollout, the release progress will be paused util paused is false.
+	// default is false
 	// +optional
 	Paused bool `json:"paused,omitempty"`
 }
 
-// ReleaseBatch is used to describe how the each batch rollout should be
+// ReleaseBatch is used to describe how each batch release should be
 type ReleaseBatch struct {
-	// Replicas is the number of pods to upgrade in this batch
-	// it can be an absolute number (ex: 5) or a percentage of total pods
-	// we will ignore the percentage of the last batch to just fill the gap
-	// +optional
-	// it is mutually exclusive with the PodList field
+	// CanaryReplicas is the number of upgraded pods that should have in this batch.
+	// it can be an absolute number (ex: 5) or a percentage of workload replicas.
+	// batches[i].canaryReplicas should less than or equal to batches[j].canaryReplicas if i < j.
 	CanaryReplicas intstr.IntOrString `json:"canaryReplicas"`
-	// The wait time, in seconds, between instances upgrades, default = 0
+	// The wait time, in seconds, between instances batches, default = 0
 	// +optional
 	PauseSeconds int64 `json:"pauseSeconds,omitempty"`
 }
 
-// BatchReleaseStatus defines the observed state of a rollout plan
+// BatchReleaseStatus defines the observed state of a release plan
 type BatchReleaseStatus struct {
-	// Conditions represents the latest available observations of a CloneSet's current state.
+	// Conditions represents the observed process state of each phase during executing the release plan.
 	Conditions []RolloutCondition `json:"conditions,omitempty"`
-	// Canary describes the state of the canary rollout
+	// CanaryStatus describes the state of the canary rollout.
 	CanaryStatus BatchReleaseCanaryStatus `json:"canaryStatus,omitempty"`
-	// StableRevision is the pod-template-hash of stable revision pod.
+	// StableRevision is the pod-template-hash of stable revision pod template.
 	StableRevision string `json:"stableRevision,omitempty"`
-	// UpdateRevision is the pod-template-hash of updated revision pod.
+	// UpdateRevision is the pod-template-hash of update revision pod template.
 	UpdateRevision string `json:"updateRevision,omitempty"`
-	// observedGeneration is the most recent generation observed for this SidecarSet. It corresponds to the
-	// SidecarSet's generation, which is updated on mutation by the API Server.
+	// ObservedGeneration is the most recent generation observed for this BatchRelease.
+	// It corresponds to this BatchRelease's generation, which is updated on mutation
+	// by the API Server, and only if BatchRelease Spec was changed, its generation will increase 1.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// ObservedWorkloadReplicas is the size of the target resources. This is determined once the initial spec verification
-	// and does not change until the rollout is restarted.
+	// ObservedWorkloadReplicas is observed replicas of target referenced workload.
+	// This field is designed to deal with scaling event during rollout, if this field changed,
+	// it means that the workload is scaling during rollout.
 	ObservedWorkloadReplicas int32 `json:"observedWorkloadReplicas,omitempty"`
 	// Count of hash collisions for creating canary Deployment. The controller uses this
 	// field as a collision avoidance mechanism when it needs to create the name for the
@@ -80,29 +84,35 @@ type BatchReleaseStatus struct {
 	CollisionCount *int32 `json:"collisionCount,omitempty"`
 	// ObservedReleasePlanHash is a hash code of observed itself releasePlan.Batches.
 	ObservedReleasePlanHash string `json:"observedReleasePlanHash,omitempty"`
-	// Phase is the release phase.
-	// Clients should only rely on the value if status.observedGeneration equals metadata.generation
+	// Phase is the release plan phase, which indicates the current state of release
+	// plan state machine in BatchRelease controller.
 	Phase RolloutPhase `json:"phase,omitempty"`
 }
 
 type BatchReleaseCanaryStatus struct {
-	// ReleasingBatchState indicates the state of the current batch.
-	ReleasingBatchState ReleasingBatchStateType `json:"batchState,omitempty"`
+	// CurrentBatchState indicates the release state of the current batch.
+	CurrentBatchState ReleasingBatchStateType `json:"batchState,omitempty"`
 	// The current batch the rollout is working on/blocked, it starts from 0
 	CurrentBatch int32 `json:"currentBatch"`
-	// LastBatchFinalizedTime is the timestamp of
-	LastBatchReadyTime metav1.Time `json:"lastBatchReadyTime,omitempty"`
-	// UpgradedReplicas is the number of Pods upgraded by the rollout controller
+	// BatchReadyTime is the ready timestamp of the current batch or the last batch.
+	// This field is updated once a batch ready, and the batches[x].pausedSeconds
+	// relies on this field to calculate the real-time duration.
+	BatchReadyTime metav1.Time `json:"lastBatchReadyTime,omitempty"`
+	// UpdatedReplicas is the number of upgraded Pods.
 	UpdatedReplicas int32 `json:"updatedReplicas,omitempty"`
-	// UpgradedReadyReplicas is the number of Pods upgraded by the rollout controller that have a Ready Condition.
+	// UpdatedReadyReplicas is the number upgraded Pods that have a Ready Condition.
 	UpdatedReadyReplicas int32 `json:"updatedReadyReplicas,omitempty"`
 }
 
 type ReleasingBatchStateType string
 
 const (
+	// InitializeBatchState indicates that current batch is at initial state
 	InitializeBatchState ReleasingBatchStateType = "InitializeInBatch"
-	DoCanaryBatchState   ReleasingBatchStateType = "DoCanaryInBatch"
-	VerifyBatchState     ReleasingBatchStateType = "VerifyInBatch"
-	ReadyBatchState      ReleasingBatchStateType = "ReadyInBatch"
+	// DoCanaryBatchState indicates that current batch is at upgrading pod state
+	DoCanaryBatchState ReleasingBatchStateType = "DoCanaryInBatch"
+	// VerifyBatchState indicates that current batch is at verifying whether it's ready state
+	VerifyBatchState ReleasingBatchStateType = "VerifyInBatch"
+	// ReadyBatchState indicates that current batch is at batch ready state
+	ReadyBatchState ReleasingBatchStateType = "ReadyInBatch"
 )
