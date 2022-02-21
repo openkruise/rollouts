@@ -1,12 +1,12 @@
 # Adds namespace to all resources.
-namespace: rollouts-system
+namespace: kruise-system
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named
 # "wordpress" becomes "alices-wordpress".
 # Note that it should also match with the prefix (text before '-') of the namespace
 # field above.
-namePrefix: rollouts-
+namePrefix: rollout-
 
 # Labels to add to all resources and selectors.
 #commonLabels:
@@ -14,11 +14,11 @@ namePrefix: rollouts-
 
 bases:
 - ../crd
-- ../rbac
 - ../manager
+- ../rbac
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
 # crd/kustomization.yaml
-#- ../webhook
+- ../webhook
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER'. 'WEBHOOK' components are required.
 #- ../certmanager
 # [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
