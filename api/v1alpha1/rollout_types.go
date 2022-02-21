@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -28,16 +29,34 @@ import (
 type RolloutSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
-	// TargetRef contains enough information to let you identify a workload for Rollout
-	TargetRef ObjectRef `json:"targetRef"`
-
-	// The deployment strategy to use to replace existing pods with new ones.
+	// ObjectRef indicates workload
+	ObjectRef ObjectRef `json:"objectRef"`
+	// rollout strategy
 	Strategy RolloutStrategy `json:"strategy"`
 }
 
-// ObjectRef holds a references to the Kubernetes object
 type ObjectRef struct {
+	// workloadRef, revisionRef
+	// default is workloadRef
+	Type ObjectRefType `json:"type,omitempty"`
+	// WorkloadRef contains enough information to let you identify a workload for Rollout
+	// Batch release of the bypass
+	WorkloadRef *WorkloadRef `json:"workloadRef,omitempty"`
+
+	// revisionRef
+	// Fully managed batch publishing capability
+	//RevisionRef *ControllerRevisionRef `json:"revisionRef,omitempty"`
+}
+
+type ObjectRefType string
+
+const (
+	WorkloadRefType = "workloadRef"
+	RevisionRefType = "revisionRef"
+)
+
+// WorkloadRef holds a references to the Kubernetes object
+type WorkloadRef struct {
 	// API Version of the referent
 	APIVersion string `json:"apiVersion"`
 	// Kind of the referent
@@ -46,41 +65,51 @@ type ObjectRef struct {
 	Name string `json:"name"`
 }
 
+/*type ControllerRevisionRef struct {
+	TargetRevisionName string `json:"targetRevisionName"`
+	SourceRevisionName string `json:"sourceRevisionName"`
+}*/
+
 // RolloutStrategy defines strategy to apply during next rollout
 type RolloutStrategy struct {
-	// +optional
-	// BlueGreen *BlueGreenStrategy `json:"blueGreen,omitempty" protobuf:"bytes,1,opt,name=blueGreen"`
+	// Paused indicates that the Rollout is paused.
+	// Default value is false
+	Paused bool `json:"paused,omitempty"`
+	// canary, BlueGreenPlan
+	// Default value is canary
+	Type RolloutStrategyType `json:"type,omitempty"`
 	// +optional
 	Canary *CanaryStrategy `json:"canary,omitempty"`
+	// +optional
+	// BlueGreen *BlueGreenStrategy `json:"blueGreen,omitempty"`
 }
+
+type RolloutStrategyType string
+
+const (
+	RolloutStrategyCanary RolloutStrategyType = "canary"
+)
 
 // CanaryStrategy defines parameters for a Replica Based Canary
 type CanaryStrategy struct {
-	// CanaryService holds the name of a service which selects pods with canary version and don't select any pods with stable version.
-	// +optional
-	//CanaryService string `json:"canaryService,omitempty"`
-	// StableService holds the name of a service which selects pods with stable version and don't select any pods with canary version.
-	// +optional
-	StableService string `json:"stableService,omitempty"`
-	// Steps define the order of phases to execute the canary deployment
+	// Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%)
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
 	// TrafficRouting hosts all the supported service meshes supported to enable more fine-grained traffic routing
 	TrafficRouting *TrafficRouting `json:"trafficRouting,omitempty"`
-
-	// MetricsAnalysis runs a separate analysisRun while all the steps execute. This is intended to be a continuous validation of the new ReplicaSet
 	// MetricsAnalysis *MetricsAnalysisBackground `json:"metricsAnalysis,omitempty"`
 }
 
 // CanaryStep defines a step of a canary workload.
 type CanaryStep struct {
 	// SetWeight sets what percentage of the canary pods should receive
-	SetWeight *int32 `json:"setWeight,omitempty"`
-	// Pause freezes the rollout by setting spec.Paused to true.
-	// A Rollout will resume when spec.Paused is reset to false.
+	Weight int32 `json:"weight,omitempty"`
+	// Replicas is the number of expected canary pods in this batch
+	// it can be an absolute number (ex: 5) or a percentage of total pods.
+	Replicas *intstr.IntOrString `json:"replicas,omitempty"`
+	// Pause defines a pause stage for a rollout, manual or auto
 	// +optional
-	Pause *RolloutPause `json:"pause,omitempty"`
-	// MetricsAnalysis defines the AnalysisRun that will run for a step
+	Pause RolloutPause `json:"pause,omitempty"`
 	// MetricsAnalysis *RolloutAnalysis `json:"metricsAnalysis,omitempty"`
 }
 
@@ -93,41 +122,25 @@ type RolloutPause struct {
 
 // TrafficRouting hosts all the different configuration for supported service meshes to enable more fine-grained traffic routing
 type TrafficRouting struct {
-	Type TrafficRoutingType `json:"type,omitempty"`
+	// Service holds the name of a service which selects pods with stable version and don't select any pods with canary version.
+	// +optional
+	Service string `json:"service"`
+	// Nginx, Alb, Istio etc.
+	Type TrafficRoutingType `json:"type"`
 	// Nginx holds Nginx Ingress specific configuration to route traffic
 	Nginx *NginxTrafficRouting `json:"nginx,omitempty"`
-	//
-	Alb *AlbTrafficRouting `json:"alb,omitempty"`
 }
 
 type TrafficRoutingType string
 
 const (
 	TrafficRoutingNginx TrafficRoutingType = "nginx"
-	TrafficRoutingAlb   TrafficRoutingType = "alb"
 )
 
 // NginxTrafficRouting configuration for Nginx ingress controller to control traffic routing
 type NginxTrafficRouting struct {
 	// Ingress refers to the name of an `Ingress` resource in the same namespace as the `Rollout`
 	Ingress string `json:"ingress"`
-	// A/B Testing
-	Tickets *Tickets `json:"tickets,omitempty"`
-}
-
-// AlbTrafficRouting configuration for Nginx ingress controller to control traffic routing
-type AlbTrafficRouting struct {
-	// Ingress refers to the name of an `Ingress` resource in the same namespace as the `Rollout`
-	Ingress string `json:"ingress"`
-	// A/B Testing
-	Tickets *Tickets `json:"tickets,omitempty"`
-}
-
-type Tickets struct {
-	// +optional
-	Header map[string]string `json:"header,omitempty"`
-	// +optional
-	Cookie map[string]string `json:"cookie,omitempty"`
 }
 
 // RolloutStatus defines the observed state of Rollout
@@ -135,12 +148,11 @@ type RolloutStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// observedGeneration is the most recent generation observed for this SidecarSet. It corresponds to the
-	// SidecarSet's generation, which is updated on mutation by the API Server.
+	// observedGeneration is the most recent generation observed for this Rollout.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// UpdateRevision the hash of the current pod template
+	// CanaryRevision the hash of the canary pod template
 	// +optional
-	UpdateRevision string `json:"updateRevision,omitempty"`
+	CanaryRevision string `json:"canaryRevision,omitempty"`
 	// StableRevision indicates the revision pods that has successfully rolled out
 	StableRevision string `json:"stableRevision,omitempty"`
 	// Conditions a list of conditions a rollout can have.
@@ -149,7 +161,9 @@ type RolloutStatus struct {
 	// Canary describes the state of the canary rollout
 	// +optional
 	CanaryStatus *CanaryStatus `json:"canaryStatus,omitempty"`
-	// Phase is the rollout phase. Clients should only rely on the value if status.observedGeneration equals metadata.generation
+	// +optional
+	//BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
+	// Phase is the rollout phase.
 	Phase RolloutPhase `json:"phase,omitempty"`
 	// Message provides details on why the rollout is in its current phase
 	Message string `json:"message,omitempty"`
@@ -157,7 +171,7 @@ type RolloutStatus struct {
 
 // RolloutCondition describes the state of a rollout at a certain point.
 type RolloutCondition struct {
-	// Type of deployment condition.
+	// Type of rollout condition.
 	Type RolloutConditionType `json:"type"`
 	// Phase of the condition, one of True, False, Unknown.
 	Status corev1.ConditionStatus `json:"status"`
@@ -181,21 +195,26 @@ const (
 	// up or old pods scale down, or when the services are updated. Progress is not estimated
 	// for paused rollouts.
 	RolloutConditionProgressing RolloutConditionType = "Progressing"
-	// reason
+	// Progressing Reason
 	ProgressingReasonInitializing = "Initializing"
 	ProgressingReasonInRolling    = "InRolling"
 	ProgressingReasonFinalising   = "Finalising"
-	ProgressingReasonFailed       = "Failed"
 	ProgressingReasonSucceeded    = "Succeeded"
+	ProgressingReasonCancelling   = "Cancelling"
+	ProgressingReasonCanceled     = "Canceled"
+	ProgressingReasonPaused       = "Paused"
 
-	RolloutConditionTerminating RolloutConditionType = "Terminating"
-	//reason
-	TerminatingReasonInTerminating = "InTerminating"
-	TerminatingReasonCompleted     = "Completed"
+	// Terminating condition
+	RolloutConditionTerminating    RolloutConditionType = "Terminating"
+	// Terminating Reason
+	TerminatingReasonInTerminating                      = "InTerminating"
+	TerminatingReasonCompleted                          = "Completed"
 )
 
 // CanaryStatus status fields that only pertain to the canary rollout
 type CanaryStatus struct {
+	// observedWorkloadGeneration is the most recent generation observed for this Rollout ref workload generation.
+	ObservedWorkloadGeneration int64 `json:"observedWorkloadGeneration,omitempty"`
 	// CanaryService holds the name of a service which selects pods with canary version and don't select any pods with stable version.
 	CanaryService string `json:"canaryService"`
 	// CanaryRevision the hash of the current pod template
@@ -203,6 +222,7 @@ type CanaryStatus struct {
 	CanaryRevision string `json:"canaryRevision"`
 	// CanaryReplicas the numbers of canary revision pods
 	CanaryReplicas      int32 `json:"canaryReplicas"`
+	// CanaryReadyReplicas the numbers of ready canary revision pods
 	CanaryReadyReplicas int32 `json:"canaryReadyReplicas"`
 	// CurrentStepIndex defines the current step of the rollout is on. If the current step index is null, the
 	// controller will execute the rollout.
@@ -211,7 +231,7 @@ type CanaryStatus struct {
 	CurrentStepState CanaryStepState `json:"currentStepState"`
 	Message          string          `json:"message,omitempty"`
 	// The last time this step pods is ready.
-	LastReadyTime *metav1.Time `json:"lastReadyTime,omitempty"`
+	LastUpdateTime *metav1.Time `json:"lastReadyTime,omitempty"`
 }
 
 type CanaryStepState string
@@ -232,12 +252,20 @@ const (
 	RolloutPhaseInitial RolloutPhase = "Initial"
 	// RolloutPhaseHealthy indicates a rollout is healthy
 	RolloutPhaseHealthy RolloutPhase = "Healthy"
+	// RolloutPhasePreparing indicates a rollout is preparing for next progress.
+	RolloutPhasePreparing RolloutPhase = "Preparing"
 	// RolloutPhaseProgressing indicates a rollout is not yet healthy but still making progress towards a healthy state
 	RolloutPhaseProgressing RolloutPhase = "Progressing"
-	// RolloutPhasePaused indicates a rollout is not yet healthy and will not make progress until paused=false
-	RolloutPhasePaused RolloutPhase = "Paused"
+	// RolloutPhaseFinalizing indicates a rollout is finalizing
+	RolloutPhaseFinalizing RolloutPhase = "Finalizing"
 	// RolloutPhaseTerminating indicates a rollout is terminated
 	RolloutPhaseTerminating RolloutPhase = "Terminating"
+	// RolloutPhaseCompleted indicates a rollout is completed
+	RolloutPhaseCompleted RolloutPhase = "Completed"
+	// RolloutPhaseCancelled indicates a rollout is cancelled
+	RolloutPhaseCancelled RolloutPhase = "Cancelled"
+	// RolloutPhaseRollback indicates workload has been rollback
+	RolloutPhaseRollback RolloutPhase = "Rollback"
 )
 
 // +genclient
