@@ -22,8 +22,10 @@ import (
 
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	br "github.com/openkruise/rollouts/controllers/batchrelease"
 	"github.com/openkruise/rollouts/controllers/rollout"
 	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/webhook"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -90,6 +92,18 @@ func main() {
 		Recorder: mgr.GetEventRecorderFor("rollout-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Rollout")
+	}
+
+	if err = br.Add(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "BatchRelease")
+		os.Exit(1)
+	}
+
+	//+kubebuilder:scaffold:builder
+	setupLog.Info("setup webhook")
+	if err = webhook.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to setup webhook")
+		os.Exit(1)
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
