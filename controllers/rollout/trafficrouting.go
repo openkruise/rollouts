@@ -18,25 +18,28 @@ package rollout
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/controllers/rollout/trafficrouting"
 	"github.com/openkruise/rollouts/controllers/rollout/trafficrouting/nginx"
+	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
+	if r.rollout.Spec.Strategy.Canary.TrafficRouting == nil {
+		return true, nil
+	}
+	canaryStatus := r.newStatus.CanaryStatus
 	//fetch stable service
 	sName := r.rollout.Spec.Strategy.Canary.TrafficRouting.Service
 	r.stableService = &corev1.Service{}
@@ -49,7 +52,6 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 		}
 		return false, err
 	}
-	canaryStatus := r.newStatus.CanaryStatus
 	canaryStatus.CanaryService = fmt.Sprintf("%s-canary", sName)
 	// fetch canary service
 	// todo for the time being, we do not consider the scenario where the user only changes the stable service definition during rollout progressing
@@ -63,15 +65,16 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 		if err = r.createCanaryService(); err != nil {
 			return false, err
 		}
-		by, _ := json.Marshal(r.canaryService)
-		klog.Infof("create rollout(%s/%s) canary service(%s) success", r.rollout.Namespace, r.rollout.Name, string(by))
+		data := util.DumpJSON(r.canaryService)
+		klog.Infof("create rollout(%s/%s) canary service(%s) success", r.rollout.Namespace, r.rollout.Name, data)
 	}
 
 	// update service selector
 	// update service selector specific revision pods
 	if r.canaryService.Spec.Selector[r.podRevisionLabelKey()] != canaryStatus.CanaryRevision {
-		r.canaryService.Spec.Selector[r.podRevisionLabelKey()] = canaryStatus.CanaryRevision
-		if err = r.retryUpdateService(r.canaryService); err != nil {
+		body := fmt.Sprintf(`{"spec":{"selector":{"%s":"%s"}}}`, r.podRevisionLabelKey(), canaryStatus.CanaryRevision)
+		if err = r.Patch(context.TODO(), r.canaryService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+			klog.Errorf("rollout(%s/%s) patch canary service(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, r.canaryService.Name, err.Error())
 			return false, err
 		}
 		// update canary service time, and wait 3 seconds, just to be safe
@@ -80,8 +83,9 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 			r.rollout.Namespace, r.rollout.Name, r.canaryService.Name, r.podRevisionLabelKey(), canaryStatus.CanaryRevision)
 	}
 	if r.stableService.Spec.Selector[r.podRevisionLabelKey()] != r.newStatus.StableRevision {
-		r.stableService.Spec.Selector[r.podRevisionLabelKey()] = r.newStatus.StableRevision
-		if err = r.retryUpdateService(r.stableService); err != nil {
+		body := fmt.Sprintf(`{"spec":{"selector":{"%s":"%s"}}}`, r.podRevisionLabelKey(), r.newStatus.StableRevision)
+		if err = r.Patch(context.TODO(), r.stableService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+			klog.Errorf("rollout(%s/%s) patch stable service(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, r.stableService.Name, err.Error())
 			return false, err
 		}
 		// update stable service time, and wait 3 seconds, just to be safe
@@ -92,7 +96,7 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 	}
 
 	// After restore stable service configuration, give the ingress provider 3 seconds to take effect
-	if verifyTime := canaryStatus.LastUpdateTime.Add(time.Second * 3); verifyTime.After(time.Now()) {
+	if verifyTime := canaryStatus.LastUpdateTime.Add(time.Second * time.Duration(r.rollout.Spec.Strategy.Canary.TrafficRouting.GracePeriodSeconds)); verifyTime.After(time.Now()) {
 		klog.Infof("update rollout(%s/%s) stable service(%s) done, and wait 3 seconds", r.rollout.Namespace, r.rollout.Name, r.stableService.Name)
 		return false, nil
 	}
@@ -105,12 +109,16 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 	}
 	var desiredWeight int32
 	if len(r.rollout.Spec.Strategy.Canary.Steps) > 0 {
-		desiredWeight = r.rollout.Spec.Strategy.Canary.Steps[r.newStatus.CanaryStatus.CurrentStepIndex].Weight
+		desiredWeight = r.rollout.Spec.Strategy.Canary.Steps[r.newStatus.CanaryStatus.CurrentStepIndex-1].Weight
 	}
-	verify, err := trController.VerifyTrafficRouting(desiredWeight)
+	steps := len(r.rollout.Spec.Strategy.Canary.Steps)
+	cond := util.GetRolloutCondition(*r.newStatus, rolloutv1alpha1.RolloutConditionProgressing)
+	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and route traffic weight(%d)", canaryStatus.CurrentStepIndex, steps, desiredWeight)
+	verify, err := trController.Verify(desiredWeight)
 	if err != nil {
 		return false, err
 	} else if !verify {
+		r.recorder.Eventf(r.rollout, corev1.EventTypeNormal, "Progressing", fmt.Sprintf("traffic route weight(%d) done", desiredWeight))
 		return false, trController.SetRoutes(desiredWeight)
 	}
 	klog.Infof("rollout(%s/%s) do step(%d) trafficRouting(%d%) success", r.rollout.Namespace, r.rollout.Name, r.newStatus.CanaryStatus.CurrentStepIndex, desiredWeight)
@@ -118,6 +126,9 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 }
 
 func (r *rolloutContext) restoreStableService() (bool, error) {
+	if r.rollout.Spec.Strategy.Canary.TrafficRouting == nil {
+		return true, nil
+	}
 	//fetch stable service
 	sName := r.rollout.Spec.Strategy.Canary.TrafficRouting.Service
 	r.stableService = &corev1.Service{}
@@ -131,12 +142,13 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 	}
 
 	if r.newStatus.CanaryStatus == nil {
-		r.newStatus.CanaryStatus = &appsv1alpha1.CanaryStatus{}
+		r.newStatus.CanaryStatus = &rolloutv1alpha1.CanaryStatus{}
 	}
 	//restore stable service configuration，remove hash revision selector
 	if r.stableService.Spec.Selector != nil && r.stableService.Spec.Selector[r.podRevisionLabelKey()] != "" {
-		delete(r.stableService.Spec.Selector, r.podRevisionLabelKey())
-		if err := r.retryUpdateService(r.stableService); err != nil {
+		body := fmt.Sprintf(`{"spec":{"selector":{"%s":null}}}`, r.podRevisionLabelKey())
+		if err = r.Patch(context.TODO(), r.stableService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+			klog.Errorf("rollout(%s/%s) patch stable service(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, r.stableService.Name, err.Error())
 			return false, err
 		}
 		klog.Infof("remove rollout(%s/%s) stable service(%s) pod revision selector success, and retry later", r.rollout.Namespace, r.rollout.Name, r.stableService.Name)
@@ -145,7 +157,7 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 	}
 	// After restore stable service configuration, give the ingress provider 3 seconds to take effect
 	if r.newStatus.CanaryStatus.LastUpdateTime != nil {
-		if verifyTime := r.newStatus.CanaryStatus.LastUpdateTime.Add(time.Second * 3); verifyTime.After(time.Now()) {
+		if verifyTime := r.newStatus.CanaryStatus.LastUpdateTime.Add(time.Second * time.Duration(r.rollout.Spec.Strategy.Canary.TrafficRouting.GracePeriodSeconds)); verifyTime.After(time.Now()) {
 			klog.Infof("restore rollout(%s/%s) stable service(%s) done, and wait a moment", r.rollout.Namespace, r.rollout.Name, r.stableService.Name)
 			return false, nil
 		}
@@ -155,33 +167,40 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 }
 
 func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
-	if r.newStatus.CanaryStatus == nil {
-		r.newStatus.CanaryStatus = &appsv1alpha1.CanaryStatus{}
+	if r.rollout.Spec.Strategy.Canary.TrafficRouting == nil {
+		return true, nil
 	}
-
+	if r.newStatus.CanaryStatus == nil {
+		r.newStatus.CanaryStatus = &rolloutv1alpha1.CanaryStatus{}
+	}
 	// 1. restore ingress and route traffic to stable service
 	trController, err := r.newTrafficRoutingController(r)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) newTrafficRoutingController failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return false, err
 	}
-	verify, err := trController.VerifyTrafficRouting(-1)
+	verify, err := trController.Verify(-1)
 	if err != nil {
 		return false, err
 	} else if !verify {
 		r.newStatus.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		return false, trController.SetRoutes(0)
+		err = trController.SetRoutes(0)
+		if err != nil && errors.IsNotFound(err) {
+			klog.Warningf("rollout(%s/%s) VerifyTrafficRouting(-1), and stable ingress not found", r.rollout.Namespace, r.rollout.Name)
+			return false, nil
+		}
+		return false, err
 	}
 
-	// After do TrafficRouting configuration, give the ingress provider 5 seconds to take effect
+	// After do TrafficRouting configuration, give the ingress provider 3 seconds to take effect
 	if r.newStatus.CanaryStatus.LastUpdateTime != nil {
-		if verifyTime := r.newStatus.CanaryStatus.LastUpdateTime.Add(time.Second * 5); verifyTime.After(time.Now()) {
+		if verifyTime := r.newStatus.CanaryStatus.LastUpdateTime.Add(time.Second * time.Duration(r.rollout.Spec.Strategy.Canary.TrafficRouting.GracePeriodSeconds)); verifyTime.After(time.Now()) {
 			klog.Infof("rollout(%s/%s) doFinalisingTrafficRouting done, and wait a moment", r.rollout.Namespace, r.rollout.Name)
 			return false, nil
 		}
 	}
 	// DoFinalising, such as delete nginx canary ingress
-	if err = trController.DoFinalising(); err != nil {
+	if err = trController.Finalise(); err != nil {
 		return false, err
 	}
 
@@ -207,8 +226,8 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (trafficrouting.TrafficRoutingController, error) {
 	canary := roCtx.rollout.Spec.Strategy.Canary
 	switch canary.TrafficRouting.Type {
-	case appsv1alpha1.TrafficRoutingNginx:
-		gvk := schema.GroupVersionKind{Group: appsv1alpha1.GroupVersion.Group, Version: appsv1alpha1.GroupVersion.Version, Kind: "Rollout"}
+	case rolloutv1alpha1.TrafficRoutingNginx:
+		gvk := schema.GroupVersionKind{Group: rolloutv1alpha1.GroupVersion.Group, Version: rolloutv1alpha1.GroupVersion.Version, Kind: "Rollout"}
 		return nginx.NewNginxTrafficRouting(r.Client, r.newStatus, nginx.NginxConfig{
 			RolloutName:   r.rollout.Name,
 			RolloutNs:     r.rollout.Namespace,
@@ -220,23 +239,6 @@ func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (tra
 	}
 
 	return nil, fmt.Errorf("TrafficRouting(%s) not support", canary.TrafficRouting.Type)
-}
-
-func (r *rolloutContext) retryUpdateService(service *corev1.Service) error {
-	obj := service.DeepCopy()
-	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		if err := r.Get(context.TODO(), types.NamespacedName{Name: service.Name, Namespace: service.Namespace}, obj); err != nil {
-			klog.Errorf("getting updated service(%s.%s) failed: %s", obj.Namespace, obj.Name, err.Error())
-			return err
-		}
-		obj.Spec = *service.Spec.DeepCopy()
-		return r.Update(context.TODO(), obj)
-	})
-	if err != nil {
-		klog.Errorf("update rollout(%s/%s) service(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, service.Name, err.Error())
-		return err
-	}
-	return nil
 }
 
 func (r *rolloutContext) createCanaryService() error {

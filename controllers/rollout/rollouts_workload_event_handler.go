@@ -18,7 +18,8 @@ package rollout
 
 import (
 	"context"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/controllers/rollout/batchrelease"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -76,8 +77,8 @@ func (w *enqueueRequestForWorkload) handleEvent(q workqueue.RateLimitingInterfac
 	}
 }
 
-func (w *enqueueRequestForWorkload) getRolloutForWorkload(key types.NamespacedName, gvk schema.GroupVersionKind) (*appsv1alpha1.Rollout, error) {
-	rList := &appsv1alpha1.RolloutList{}
+func (w *enqueueRequestForWorkload) getRolloutForWorkload(key types.NamespacedName, gvk schema.GroupVersionKind) (*rolloutv1alpha1.Rollout, error) {
+	rList := &rolloutv1alpha1.RolloutList{}
 	listOptions := &client.ListOptions{Namespace: key.Namespace}
 	if err := w.reader.List(context.TODO(), rList, listOptions); err != nil {
 		klog.Errorf("List WorkloadSpread failed: %s", err.Error())
@@ -120,7 +121,7 @@ func (w *enqueueRequestForBatchRelease) Update(evt event.UpdateEvent, q workqueu
 }
 
 func (w *enqueueRequestForBatchRelease) handleEvent(q workqueue.RateLimitingInterface, obj client.Object) {
-	rollout := obj.GetAnnotations()[batchrelease.BatchReleaseOwnerRefAnnotation]
+	rollout := obj.GetLabels()[batchrelease.BatchReleaseOwnerRefLabel]
 	if rollout == "" {
 		return
 	}

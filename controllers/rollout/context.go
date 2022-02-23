@@ -19,10 +19,11 @@ package rollout
 import (
 	"time"
 
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/controllers/rollout/batchrelease"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -30,9 +31,9 @@ import (
 type rolloutContext struct {
 	client.Client
 
-	rollout *appsv1alpha1.Rollout
+	rollout *rolloutv1alpha1.Rollout
 
-	newStatus *appsv1alpha1.RolloutStatus
+	newStatus *rolloutv1alpha1.RolloutStatus
 
 	isComplete bool
 
@@ -42,9 +43,11 @@ type rolloutContext struct {
 
 	workload *util.Workload
 
-	batchControl batchrelease.BatchController
+	batchControl batchrelease.BatchRelease
 
 	recheckTime *time.Time
+
+	recorder record.EventRecorder
 }
 
 func (r *rolloutContext) reconcile() error {
@@ -62,7 +65,7 @@ func (r *rolloutContext) finalising() (bool, error) {
 		done, err := r.doCanaryFinalising()
 		if err == nil && !done {
 			// The finalizer is not finished, wait one second
-			expectedTime := time.Now().Add(5 * time.Second)
+			expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
 			r.recheckTime = &expectedTime
 		}
 		return done, err

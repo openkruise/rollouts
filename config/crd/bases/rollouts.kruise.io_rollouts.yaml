@@ -29,6 +29,10 @@ spec:
       jsonPath: .status.canaryStatus.currentStepState
       name: CANARY_STATE
       type: string
+    - description: The rollout canary status message
+      jsonPath: .status.message
+      name: MESSAGE
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -118,6 +122,12 @@ spec:
                         description: TrafficRouting hosts all the supported service
                           meshes supported to enable more fine-grained traffic routing
                         properties:
+                          gracePeriodSeconds:
+                            description: Optional duration in seconds the traffic
+                              provider(e.g. nginx ingress controller) consumes the
+                              service, ingress configuration changes gracefully.
+                            format: int32
+                            type: integer
                           nginx:
                             description: Nginx holds Nginx Ingress specific configuration
                               to route traffic

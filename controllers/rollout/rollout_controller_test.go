@@ -18,7 +18,7 @@ package rollout
 
 import (
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -28,15 +28,15 @@ import (
 var (
 	scheme *runtime.Scheme
 
-	rolloutDemo = &appsv1alpha1.Rollout{
+	rolloutDemo = &rolloutv1alpha1.Rollout{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rollout-demo",
 			Labels: map[string]string{},
 		},
-		Spec: appsv1alpha1.RolloutSpec{
-			ObjectRef: appsv1alpha1.ObjectRef{
-				Type: appsv1alpha1.WorkloadRefType,
-				WorkloadRef: &appsv1alpha1.WorkloadRef{
+		Spec: rolloutv1alpha1.RolloutSpec{
+			ObjectRef: rolloutv1alpha1.ObjectRef{
+				Type: rolloutv1alpha1.WorkloadRefType,
+				WorkloadRef: &rolloutv1alpha1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
 					Name:       "echoserver",
@@ -61,5 +61,5 @@ func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = kruisev1aplphal.AddToScheme(scheme)
-	_ = appsv1alpha1.AddToScheme(scheme)
+	_ = rolloutv1alpha1.AddToScheme(scheme)
 }

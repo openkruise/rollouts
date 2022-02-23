@@ -81,3 +81,8 @@ func DiscoverGVK(gvk schema.GroupVersionKind) bool {
 
 	return true
 }
+
+func DumpJSON(o interface{}) string {
+	by, _ := json.Marshal(o)
+	return string(by)
+}

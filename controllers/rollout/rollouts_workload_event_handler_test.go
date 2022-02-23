@@ -18,10 +18,11 @@ package rollout
 
 import (
 	"context"
+	"testing"
+
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"testing"
 )
 
 func TestPodEventHandler(t *testing.T) {

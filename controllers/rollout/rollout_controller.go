@@ -20,12 +20,13 @@ import (
 	"context"
 	"time"
 
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -42,7 +43,8 @@ type RolloutReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	Finder *util.ControllerFinder
+	Recorder record.EventRecorder
+	Finder   *util.ControllerFinder
 }
 
 //+kubebuilder:rbac:groups=rollouts.kruise.io,resources=rollouts,verbs=get;list;watch;create;update;patch;delete
@@ -66,8 +68,8 @@ type RolloutReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// Fetch the SidecarSet instance
-	rollout := &appsv1alpha1.Rollout{}
+	// Fetch the Rollout instance
+	rollout := &rolloutv1alpha1.Rollout{}
 	err := r.Get(context.TODO(), req.NamespacedName, rollout)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -84,17 +86,17 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	// check rollout status, and update
-	err = r.checkRolloutStatus(rollout)
+	// update rollout status
+	err = r.updateRolloutStatus(rollout)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	var recheckTime *time.Time
 	switch rollout.Status.Phase {
-	case appsv1alpha1.RolloutPhaseProgressing:
+	case rolloutv1alpha1.RolloutPhaseProgressing:
 		recheckTime, err = r.reconcileRolloutProgressing(rollout)
-	case appsv1alpha1.RolloutPhaseTerminating:
+	case rolloutv1alpha1.RolloutPhaseTerminating:
 		recheckTime, err = r.reconcileRolloutTerminating(rollout)
 	}
 	if err != nil {
@@ -116,7 +118,7 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	if util.DiscoverGVK(util.CloneSetGVK) {
 		// Watch for changes to cloneset
-		if err = c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}); err != nil {
+		if err = c.Watch(&source.Kind{Type: &appsv1alpha1.CloneSet{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}); err != nil {
 			return err
 		}
 	}
@@ -126,11 +128,11 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 	// Watch for changes to rollout
-	if err = c.Watch(&source.Kind{Type: &appsv1alpha1.Rollout{}}, &handler.EnqueueRequestForObject{}); err != nil {
+	if err = c.Watch(&source.Kind{Type: &rolloutv1alpha1.Rollout{}}, &handler.EnqueueRequestForObject{}); err != nil {
 		return err
 	}
 	// Watch for changes to batchRelease
-	if err = c.Watch(&source.Kind{Type: &appsv1alpha1.BatchRelease{}}, &enqueueRequestForBatchRelease{reader: mgr.GetCache()}); err != nil {
+	if err = c.Watch(&source.Kind{Type: &rolloutv1alpha1.BatchRelease{}}, &enqueueRequestForBatchRelease{reader: mgr.GetCache()}); err != nil {
 		return err
 	}
 	return nil

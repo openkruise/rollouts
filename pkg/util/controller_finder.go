@@ -21,8 +21,8 @@ import (
 	"sort"
 	"strings"
 
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,6 +45,8 @@ type Workload struct {
 	CanaryReplicas int32
 	// canary ready replicas
 	CanaryReadyReplicas int32
+	// deployment.spec.pod.template hash
+	CurrentPodTemplateHash string
 
 	// indicate whether the workload can enter the rollout process
 	// 1. workload.Spec.Paused = true
@@ -54,7 +56,7 @@ type Workload struct {
 
 // ControllerFinderFunc is a function type that maps a pod to a list of
 // controllers and their scale.
-type ControllerFinderFunc func(namespace string, ref *appsv1alpha1.WorkloadRef) (*Workload, error)
+type ControllerFinderFunc func(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error)
 
 type ControllerFinder struct {
 	client.Client
@@ -73,7 +75,7 @@ func NewControllerFinder(c client.Client) *ControllerFinder {
 // +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=replicasets/status,verbs=get;update;patch
 
-func (r *ControllerFinder) GetWorkloadForRef(namespace string, ref *appsv1alpha1.WorkloadRef) (*Workload, error) {
+func (r *ControllerFinder) GetWorkloadForRef(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
 	for _, finder := range r.finders() {
 		scale, err := finder(namespace, ref)
 		if scale != nil || err != nil {
@@ -89,17 +91,17 @@ func (r *ControllerFinder) finders() []ControllerFinderFunc {
 
 var (
 	ControllerKindDep      = apps.SchemeGroupVersion.WithKind("Deployment")
-	ControllerKruiseKindCS = kruiseappsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	ControllerKruiseKindCS = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
 )
 
 // getKruiseCloneSet returns the kruise cloneSet referenced by the provided controllerRef.
-func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *appsv1alpha1.WorkloadRef) (*Workload, error) {
+func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, err := verifyGroupKind(ref, ControllerKruiseKindCS.Kind, []string{ControllerKruiseKindCS.Group})
 	if !ok {
 		return nil, nil
 	}
-	cloneSet := &kruiseappsv1alpha1.CloneSet{}
+	cloneSet := &appsv1alpha1.CloneSet{}
 	err = r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: ref.Name}, cloneSet)
 	if err != nil {
 		// when error is NotFound, it is ok here.
@@ -109,7 +111,6 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *appsv1alpha1
 		return nil, err
 	}
 	workload := &Workload{
-		// echoserver-68966d4654 -> 68966d4654
 		StableRevision:      cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
 		CanaryRevision:      cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
 		CanaryReplicas:      cloneSet.Status.UpdatedReplicas,
@@ -126,8 +127,8 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *appsv1alpha1
 	return workload, nil
 }
 
-// getKruiseCloneSet returns the kruise cloneSet referenced by the provided controllerRef.
-func (r *ControllerFinder) getDeployment(namespace string, ref *appsv1alpha1.WorkloadRef) (*Workload, error) {
+// getDeployment returns the k8s native deployment referenced by the provided controllerRef.
+func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, err := verifyGroupKind(ref, ControllerKindDep.Kind, []string{ControllerKindDep.Group})
 	if !ok {
@@ -155,6 +156,7 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *appsv1alpha1.Wor
 	workload.StableRevision = stableRs.Labels[RsPodRevisionLabelKey]
 	// canary revision
 	workload.CanaryRevision = ComputeHash(&stable.Spec.Template, nil)
+	workload.CurrentPodTemplateHash = workload.CanaryRevision
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
@@ -238,7 +240,7 @@ func (r *ControllerFinder) GetDeploymentStableRs(obj *apps.Deployment) (*apps.Re
 	return &rss[0], nil
 }
 
-func verifyGroupKind(ref *appsv1alpha1.WorkloadRef, expectedKind string, expectedGroups []string) (bool, error) {
+func verifyGroupKind(ref *rolloutv1alpha1.WorkloadRef, expectedKind string, expectedGroups []string) (bool, error) {
 	gv, err := schema.ParseGroupVersion(ref.APIVersion)
 	if err != nil {
 		return false, err

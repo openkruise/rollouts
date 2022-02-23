@@ -25,7 +25,6 @@ type BatchReleaseState struct {
 	CurrentBatch         int32
 	UpdatedReplicas      int32
 	UpdatedReadyReplicas int32
-	Paused               bool
 	State                BatchRollingState
 }
 

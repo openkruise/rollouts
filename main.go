@@ -84,9 +84,10 @@ func main() {
 	}
 
 	if err = (&rollout.RolloutReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Finder: util.NewControllerFinder(mgr.GetClient()),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Finder:   util.NewControllerFinder(mgr.GetClient()),
+		Recorder: mgr.GetEventRecorderFor("rollout-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Rollout")
 	}

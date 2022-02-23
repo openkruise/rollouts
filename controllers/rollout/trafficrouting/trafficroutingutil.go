@@ -18,9 +18,10 @@ package trafficrouting
 
 // TrafficRoutingController common function across all TrafficRouting implementation
 type TrafficRoutingController interface {
+	// SetRoutes set canary ingress desired weight
 	SetRoutes(desiredWeight int32) error
-
-	VerifyTrafficRouting(desiredWeight int32) (bool, error)
-
-	DoFinalising() error
+	// Verify check if canary ingress has been set desired weight
+	Verify(desiredWeight int32) (bool, error)
+	// Finalise will do some cleanup work, such as delete canary ingress
+	Finalise() error
 }

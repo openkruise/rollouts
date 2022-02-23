@@ -125,6 +125,8 @@ type TrafficRouting struct {
 	// Service holds the name of a service which selects pods with stable version and don't select any pods with canary version.
 	// +optional
 	Service string `json:"service"`
+	// Optional duration in seconds the traffic provider(e.g. nginx ingress controller) consumes the service, ingress configuration changes gracefully.
+	GracePeriodSeconds int32 `json:"gracePeriodSeconds,omitempty"`
 	// Nginx, Alb, Istio etc.
 	Type TrafficRoutingType `json:"type"`
 	// Nginx holds Nginx Ingress specific configuration to route traffic
@@ -274,6 +276,7 @@ const (
 // +kubebuilder:printcolumn:name="STATUS",type="string",JSONPath=".status.phase",description="The rollout status phase"
 // +kubebuilder:printcolumn:name="CANARY_STEP",type="integer",JSONPath=".status.canaryStatus.currentStepIndex",description="The rollout canary status step"
 // +kubebuilder:printcolumn:name="CANARY_STATE",type="string",JSONPath=".status.canaryStatus.currentStepState",description="The rollout canary status step state"
+// +kubebuilder:printcolumn:name="MESSAGE",type="string",JSONPath=".status.message",description="The rollout canary status message"
 
 // Rollout is the Schema for the rollouts API
 type Rollout struct {

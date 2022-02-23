@@ -19,26 +19,26 @@ package rollout
 import (
 	"context"
 	"encoding/json"
-	"github.com/openkruise/rollouts/pkg/util"
 	"reflect"
 
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 )
 
-func (r *RolloutReconciler) checkRolloutStatus(rollout *appsv1alpha1.Rollout) error {
+func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout) error {
 	newStatus := *rollout.Status.DeepCopy()
 	newStatus.ObservedGeneration = rollout.GetGeneration()
 	// delete rollout CRD
-	if !rollout.DeletionTimestamp.IsZero() && newStatus.Phase != appsv1alpha1.RolloutPhaseTerminating {
-		newStatus.Phase = appsv1alpha1.RolloutPhaseTerminating
-		cond := util.NewRolloutCondition(appsv1alpha1.RolloutConditionTerminating, corev1.ConditionFalse, appsv1alpha1.TerminatingReasonInTerminating, "rollout is in terminating")
-		util.SetRolloutCondition(&newStatus, cond)
+	if !rollout.DeletionTimestamp.IsZero() && newStatus.Phase != rolloutv1alpha1.RolloutPhaseTerminating {
+		newStatus.Phase = rolloutv1alpha1.RolloutPhaseTerminating
+		cond := util.NewRolloutCondition(rolloutv1alpha1.RolloutConditionTerminating, corev1.ConditionFalse, rolloutv1alpha1.TerminatingReasonInTerminating, "Rollout is in terminating")
+		util.SetRolloutCondition(&newStatus, *cond)
 	} else if newStatus.Phase == "" {
-		newStatus.Phase = appsv1alpha1.RolloutPhaseInitial
+		newStatus.Phase = rolloutv1alpha1.RolloutPhaseInitial
 	}
 	// get ref workload
 	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
@@ -61,27 +61,27 @@ func (r *RolloutReconciler) checkRolloutStatus(rollout *appsv1alpha1.Rollout) er
 	}
 
 	switch newStatus.Phase {
-	case appsv1alpha1.RolloutPhaseInitial:
+	case rolloutv1alpha1.RolloutPhaseInitial:
 		if workload != nil {
-			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, appsv1alpha1.RolloutPhaseInitial, appsv1alpha1.RolloutPhaseHealthy)
-			newStatus.Phase = appsv1alpha1.RolloutPhaseHealthy
+			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, rolloutv1alpha1.RolloutPhaseInitial, rolloutv1alpha1.RolloutPhaseHealthy)
+			newStatus.Phase = rolloutv1alpha1.RolloutPhaseHealthy
 			newStatus.Message = "rollout is healthy"
 		}
-	case appsv1alpha1.RolloutPhaseHealthy:
+	case rolloutv1alpha1.RolloutPhaseHealthy:
 		// from healthy to progressing
 		if workload.InRolloutProgressing {
-			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, appsv1alpha1.RolloutPhaseHealthy, appsv1alpha1.RolloutPhaseProgressing)
-			newStatus.Phase = appsv1alpha1.RolloutPhaseProgressing
-			cond := util.NewRolloutCondition(appsv1alpha1.RolloutConditionProgressing, corev1.ConditionFalse, appsv1alpha1.ProgressingReasonInitializing, "initiate rollout progressing action")
-			util.SetRolloutCondition(&newStatus, cond)
+			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, rolloutv1alpha1.RolloutPhaseHealthy, rolloutv1alpha1.RolloutPhaseProgressing)
+			newStatus.Phase = rolloutv1alpha1.RolloutPhaseProgressing
+			cond := util.NewRolloutCondition(rolloutv1alpha1.RolloutConditionProgressing, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonInitializing, "Rollout is in Progressing")
+			util.SetRolloutCondition(&newStatus, *cond)
 		}
-	case appsv1alpha1.RolloutPhaseProgressing:
-		cond := util.GetRolloutCondition(newStatus, appsv1alpha1.RolloutConditionProgressing)
-		if cond == nil || cond.Reason == appsv1alpha1.ProgressingReasonSucceeded || cond.Reason == appsv1alpha1.ProgressingReasonCanceled {
-			newStatus.Phase = appsv1alpha1.RolloutPhaseHealthy
+	case rolloutv1alpha1.RolloutPhaseProgressing:
+		cond := util.GetRolloutCondition(newStatus, rolloutv1alpha1.RolloutConditionProgressing)
+		if cond == nil || cond.Reason == rolloutv1alpha1.ProgressingReasonSucceeded || cond.Reason == rolloutv1alpha1.ProgressingReasonCanceled {
+			newStatus.Phase = rolloutv1alpha1.RolloutPhaseHealthy
 		}
 	}
-	err = r.updateRolloutStatus(rollout, newStatus)
+	err = r.updateRolloutStatusInternal(rollout, newStatus)
 	if err != nil {
 		klog.Errorf("update rollout(%s/%s) status failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return err
@@ -90,7 +90,7 @@ func (r *RolloutReconciler) checkRolloutStatus(rollout *appsv1alpha1.Rollout) er
 	return nil
 }
 
-func (r *RolloutReconciler) updateRolloutStatus(rollout *appsv1alpha1.Rollout, newStatus appsv1alpha1.RolloutStatus) error {
+func (r *RolloutReconciler) updateRolloutStatusInternal(rollout *rolloutv1alpha1.Rollout, newStatus rolloutv1alpha1.RolloutStatus) error {
 	if reflect.DeepEqual(rollout.Status, newStatus) {
 		return nil
 	}
@@ -115,10 +115,10 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *appsv1alpha1.Rollout, n
 }
 
 // ResetStatus resets the status of the rollout to start from beginning
-func resetStatus(status *appsv1alpha1.RolloutStatus) {
+func resetStatus(status *rolloutv1alpha1.RolloutStatus) {
 	status.CanaryRevision = ""
 	status.StableRevision = ""
-	util.RemoveRolloutCondition(status, appsv1alpha1.RolloutConditionProgressing)
-	status.Phase = appsv1alpha1.RolloutPhaseInitial
+	util.RemoveRolloutCondition(status, rolloutv1alpha1.RolloutConditionProgressing)
+	status.Phase = rolloutv1alpha1.RolloutPhaseInitial
 	status.Message = "workload not found"
 }

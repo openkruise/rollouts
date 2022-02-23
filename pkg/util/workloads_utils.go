@@ -114,7 +114,7 @@ func IsControlledBy(object, owner metav1.Object) bool {
 }
 
 func CalculateNewBatchTarget(rolloutSpec *v1alpha1.ReleasePlan, workloadReplicas, currentBatch int) int {
-	batchSize, _ := intstr.GetValueFromIntOrPercent(&rolloutSpec.Batches[currentBatch].CanaryReplicas, workloadReplicas, true)
+	batchSize, _ := intstr.GetScaledValueFromIntOrPercent(&rolloutSpec.Batches[currentBatch].CanaryReplicas, workloadReplicas, true)
 	if batchSize > workloadReplicas {
 		klog.Warningf("releasePlan has wrong batch replicas, batches[%d].replicas %v is more than workload.replicas %v", currentBatch, batchSize, workloadReplicas)
 		batchSize = workloadReplicas
@@ -166,10 +166,5 @@ func FilterActiveDeployment(ds []*apps.Deployment) []*apps.Deployment {
 
 func ShortRandomStr(collisionCount *int32) string {
 	randStr := rand.String(3)
-	if collisionCount != nil {
-		for i := int32(0); i < *collisionCount; i++ {
-			randStr = rand.String(3)
-		}
-	}
-	return randStr
+	return rand.SafeEncodeString(randStr)
 }

@@ -20,7 +20,7 @@ import (
 	"context"
 	"time"
 
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/controllers/rollout/batchrelease"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
@@ -28,10 +28,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *appsv1alpha1.Rollout) (*time.Time, error) {
-	cond := util.GetRolloutCondition(rollout.Status, appsv1alpha1.RolloutConditionTerminating)
+func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *rolloutv1alpha1.Rollout) (*time.Time, error) {
+	cond := util.GetRolloutCondition(rollout.Status, rolloutv1alpha1.RolloutConditionTerminating)
 	klog.Infof("reconcile rollout(%s/%s) Terminating action", rollout.Namespace, rollout.Name)
-	if cond.Reason == appsv1alpha1.TerminatingReasonCompleted {
+	if cond.Reason == rolloutv1alpha1.TerminatingReasonCompleted {
 		return nil, nil
 	}
 
@@ -40,12 +40,12 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *appsv1alpha1.Ro
 	if err != nil {
 		return nil, err
 	} else if done {
-		klog.Infof("rollout(%s/%s) is terminating, and state from(%s) -> to(%s)", rollout.Namespace, rollout.Name, cond.Reason, appsv1alpha1.TerminatingReasonCompleted)
-		cond.Reason = appsv1alpha1.TerminatingReasonCompleted
+		klog.Infof("rollout(%s/%s) is terminating, and state from(%s) -> to(%s)", rollout.Namespace, rollout.Name, cond.Reason, rolloutv1alpha1.TerminatingReasonCompleted)
+		cond.Reason = rolloutv1alpha1.TerminatingReasonCompleted
 		cond.Status = corev1.ConditionTrue
 		util.SetRolloutCondition(newStatus, *cond)
 	}
-	err = r.updateRolloutStatus(rollout, *newStatus)
+	err = r.updateRolloutStatusInternal(rollout, *newStatus)
 	if err != nil {
 		klog.Errorf("update rollout(%s/%s) status failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return nil, err
@@ -53,7 +53,7 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *appsv1alpha1.Ro
 	return recheckTime, nil
 }
 
-func (r *RolloutReconciler) doFinalising(rollout *appsv1alpha1.Rollout, newStatus *appsv1alpha1.RolloutStatus, isComplete bool) (bool, *time.Time, error) {
+func (r *RolloutReconciler) doFinalising(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus, isComplete bool) (bool, *time.Time, error) {
 	// fetch target workload
 	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
 	if err != nil {
@@ -68,13 +68,14 @@ func (r *RolloutReconciler) doFinalising(rollout *appsv1alpha1.Rollout, newStatu
 		batchControl: batchrelease.NewInnerBatchController(r.Client, rollout),
 		workload:     workload,
 		isComplete:   isComplete,
+		recorder:     r.Recorder,
 	}
 	done, err := rolloutCon.finalising()
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) Progressing failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return false, nil, err
 	} else if !done {
-		klog.Infof("rollout(%s/%s) finalizer is not finished, and time(%s) retry reconcile", rollout.Namespace, rollout.Name, rolloutCon.recheckTime.String())
+		klog.Infof("rollout(%s/%s) finalizer is not finished, and retry reconcile", rollout.Namespace, rollout.Name)
 		return false, rolloutCon.recheckTime, nil
 	}
 	//newStatus.CanaryStatus = nil
@@ -83,11 +84,11 @@ func (r *RolloutReconciler) doFinalising(rollout *appsv1alpha1.Rollout, newStatu
 }
 
 // handle adding and handle finalizer logic, it turns if we should continue to reconcile
-func (r *RolloutReconciler) handleFinalizer(rollout *appsv1alpha1.Rollout) error {
+func (r *RolloutReconciler) handleFinalizer(rollout *rolloutv1alpha1.Rollout) error {
 	// delete rollout crd, remove finalizer
 	if !rollout.DeletionTimestamp.IsZero() {
-		cond := util.GetRolloutCondition(rollout.Status, appsv1alpha1.RolloutConditionTerminating)
-		if cond != nil && cond.Reason == appsv1alpha1.TerminatingReasonCompleted {
+		cond := util.GetRolloutCondition(rollout.Status, rolloutv1alpha1.RolloutConditionTerminating)
+		if cond != nil && cond.Reason == rolloutv1alpha1.TerminatingReasonCompleted {
 			// Completed
 			if controllerutil.ContainsFinalizer(rollout, util.KruiseRolloutFinalizer) {
 				controllerutil.RemoveFinalizer(rollout, util.KruiseRolloutFinalizer)
