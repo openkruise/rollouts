@@ -1,6 +1,8 @@
 package validating
 
 import (
+	"testing"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -11,7 +13,6 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"testing"
 )
 
 var (
@@ -239,16 +240,16 @@ func TestRolloutValidateCreate(t *testing.T) {
 				return []client.Object{object}
 			},
 		},
-		{
-			Name:    "The last Steps.Weight is not 100",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				n := len(object.Spec.Strategy.Canary.Steps)
-				object.Spec.Strategy.Canary.Steps[n-1].Weight = 80
-				return []client.Object{object}
-			},
-		},
+		//{
+		//	Name:    "The last Steps.Weight is not 100",
+		//	Succeed: false,
+		//	GetObject: func() []client.Object {
+		//		object := rollout.DeepCopy()
+		//		n := len(object.Spec.Strategy.Canary.Steps)
+		//		object.Spec.Strategy.Canary.Steps[n-1].Weight = 80
+		//		return []client.Object{object}
+		//	},
+		//},
 		{
 			Name:    "Wrong objectRef type",
 			Succeed: false,

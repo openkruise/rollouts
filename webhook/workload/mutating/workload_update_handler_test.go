@@ -19,6 +19,9 @@ package mutating
 import (
 	"context"
 	"encoding/json"
+	"reflect"
+	"testing"
+
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -29,10 +32,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-	"testing"
 )
 
 var (
@@ -339,7 +340,7 @@ func TestHandlerDeployment(t *testing.T) {
 			}
 
 			oldObj, newObj := cs.getObjs()
-			err := h.handlerDeployment(newObj, oldObj)
+			err, _ := h.handlerDeployment(newObj, oldObj)
 			if cs.isError && err == nil {
 				t.Fatal("handlerDeployment failed")
 			} else if !cs.isError && err != nil {
@@ -403,7 +404,7 @@ func TestHandlerCloneSet(t *testing.T) {
 			}
 
 			oldObj, newObj := cs.getObjs()
-			err := h.handlerCloneSet(newObj, oldObj)
+			err, _ := h.handlerCloneSet(newObj, oldObj)
 			if cs.isError && err == nil {
 				t.Fatal("handlerCloneSet failed")
 			} else if !cs.isError && err != nil {

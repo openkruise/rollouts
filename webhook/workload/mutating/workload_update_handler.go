@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"reflect"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -67,22 +66,22 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 		if req.Kind.Kind != util.ControllerKruiseKindCS.Kind {
 			return admission.Allowed("")
 		}
-		// check deployment
+		// check cloneset
 		newObj := &kruiseappsv1alpha1.CloneSet{}
 		if err := h.Decoder.Decode(req, newObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		copy := newObj.DeepCopy()
 		oldObj := &kruiseappsv1alpha1.CloneSet{}
 		if err := h.Decoder.Decode(
 			admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
 			oldObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		if err := h.handlerCloneSet(newObj, oldObj); err != nil {
+		err, changed := h.handlerCloneSet(newObj, oldObj)
+		if err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		if reflect.DeepEqual(newObj, copy) {
+		if !changed {
 			return admission.Allowed("")
 		}
 		marshalled, err := json.Marshal(newObj)
@@ -100,17 +99,17 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 		if err := h.Decoder.Decode(req, newObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		copy := newObj.DeepCopy()
 		oldObj := &apps.Deployment{}
 		if err := h.Decoder.Decode(
 			admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
 			oldObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		if err := h.handlerDeployment(newObj, oldObj); err != nil {
+		err, changed := h.handlerDeployment(newObj, oldObj)
+		if err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		if reflect.DeepEqual(newObj, copy) {
+		if !changed {
 			return admission.Allowed("")
 		}
 		marshalled, err := json.Marshal(newObj)
@@ -122,52 +121,55 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 	return admission.Allowed("")
 }
 
-func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) error {
+func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) (err error, changed bool) {
 	// in rollout progressing
 	if state, _ := util.GetRolloutState(newObj.Annotations); state != nil {
 		// deployment paused=false is not allowed until the rollout is completed
 		if newObj.Spec.Paused == false {
+			changed = true
 			newObj.Spec.Paused = true
 			klog.Warningf("deployment(%s/%s) is in rollout(%s) progressing, and set paused=true", newObj.Namespace, newObj.Name, state.RolloutName)
 		}
-		return nil
+		return
 	}
 
 	// indicate whether the workload can enter the rollout process
 	// 1. replicas > 0
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
-		return nil
+		return
 	}
 	// 2. deployment.spec.strategy.type must be RollingUpdate
 	if newObj.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
 		klog.Warningf("deployment(%s/%s) strategy type is 'Recreate', rollout will not work on it", newObj.Namespace, newObj.Name)
-		return nil
+		return
 	}
 	// 3. deployment.spec.PodTemplate not change
 	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
-		return nil
+		return
 	}
 	// 4. the deployment must be in a stable version (only one version of rs)
 	stableRs, err := h.Finder.GetDeploymentStableRs(newObj)
 	if err != nil {
-		return err
+		return
 	} else if stableRs == nil {
-		return nil
+		return
 	}
 	// 5. have matched rollout crd
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
-		return err
+		return
 	} else if rollout == nil {
-		return nil
+		return
 	}
 	klog.Infof("deployment(%s/%s) will be in rollout progressing, and set paused=true", newObj.Namespace, newObj.Name)
+
+	changed = true
 	// need set workload paused = true
 	newObj.Spec.Paused = true
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
 	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
-	return nil
+	return
 }
 
 func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.Rollout, error) {
@@ -196,43 +198,46 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.
 	return nil, nil
 }
 
-func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) error {
+func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) (err error, changed bool) {
 	// in rollout progressing
 	if state, _ := util.GetRolloutState(newObj.Annotations); state != nil {
 		if newObj.Spec.UpdateStrategy.Paused == false {
+			changed = true
 			newObj.Spec.UpdateStrategy.Paused = true
 			klog.Warningf("cloneSet(%s/%s) is in rollout(%s) progressing, and set paused=true", newObj.Namespace, newObj.Name, state.RolloutName)
 		}
-		return nil
+		return
 	}
 
 	// indicate whether the workload can enter the rollout process
 	// 1. replicas > 0
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
-		return nil
+		return
 	}
 	// 2. cloneSet.spec.PodTemplate is changed
 	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
-		return nil
+		return
 	}
 	// 3. the cloneSet must be in a stable version (only one version of pods)
 	if newObj.Status.UpdatedReplicas != newObj.Status.Replicas {
-		return nil
+		return
 	}
 	// 4. have matched rollout crd
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
-		return err
+		return
 	} else if rollout == nil {
-		return nil
+		return
 	}
 	klog.Infof("cloneSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
+
+	changed = true
 	// need set workload paused = true
 	newObj.Spec.UpdateStrategy.Paused = true
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
 	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
-	return nil
+	return
 }
 
 var _ inject.Client = &WorkloadHandler{}

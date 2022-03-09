@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	addmissionv1 "k8s.io/api/admission/v1"
@@ -29,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -202,10 +202,6 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 	stepCount := len(steps)
 	if stepCount == 0 {
 		return field.ErrorList{field.Invalid(fldPath, steps, "The number of Canary.Steps cannot be empty")}
-	}
-
-	if steps[stepCount-1].Weight != 100 {
-		return field.ErrorList{field.Invalid(fldPath, steps, "The 'Weight' field of the last CanaryStep must be '100'")}
 	}
 
 	for i := range steps {
