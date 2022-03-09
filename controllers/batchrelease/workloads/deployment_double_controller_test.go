@@ -27,6 +27,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -150,7 +151,9 @@ func TestDeploymentController(t *testing.T) {
 
 	for _, cs := range cases {
 		t.Run(cs.Name, func(t *testing.T) {
-			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(releaseDeploy.DeepCopy(), stableDeploy.DeepCopy()).Build()
+			release := releaseDeploy.DeepCopy()
+			deploy := stableDeploy.DeepCopy()
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release, deploy).Build()
 			rec := record.NewFakeRecorder(100)
 			c := deploymentController{
 				workloadController: workloadController{
@@ -168,6 +171,19 @@ func TestDeploymentController(t *testing.T) {
 			canary, err := c.claimDeployment(oldObject.DeepCopy(), nil)
 			Expect(canary).ShouldNot(BeNil())
 			Expect(err).NotTo(HaveOccurred())
+
+			// The following logic should have been done in controller-runtime
+			{
+				dList := &apps.DeploymentList{}
+				Expect(cli.List(context.TODO(), dList)).NotTo(HaveOccurred())
+				for i := range dList.Items {
+					d := &dList.Items[i]
+					d.SetGroupVersionKind(schema.GroupVersionKind{
+						Group: "apps", Version: "v1", Kind: "Deployment",
+					})
+					Expect(cli.Update(context.TODO(), d)).NotTo(HaveOccurred())
+				}
+			}
 
 			newObject := &apps.Deployment{}
 			Expect(cli.Get(context.TODO(), c.stableNamespacedName, newObject)).NotTo(HaveOccurred())

@@ -477,6 +477,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
 				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				release.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				release.Finalizers = append(release.Finalizers, ReleaseFinalizer)
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -548,8 +549,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			release := cs.GetRelease()
 			clonesets := cs.GetCloneSet()
 			rec := record.NewFakeRecorder(100)
-			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).
-				WithObjects(clonesets...).Build()
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).WithObjects(clonesets...).Build()
 			reconciler := &BatchReleaseReconciler{
 				Client:   cli,
 				recorder: rec,
@@ -564,7 +564,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 			Expect(result.RequeueAfter).Should(BeNumerically(">=", int64(0)))
 
 			newRelease := v1alpha1.BatchRelease{}
-			Expect(cli.Get(context.TODO(), key, &newRelease)).NotTo(HaveOccurred())
+			err = cli.Get(context.TODO(), key, &newRelease)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(newRelease.Status.Phase).Should(Equal(cs.ExpectedPhase))
 			Expect(newRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(cs.ExpectedBatch))
 			Expect(newRelease.Status.CanaryStatus.CurrentBatchState).Should(Equal(cs.ExpectedState))
@@ -769,6 +770,7 @@ func TestReconcile_Deployment(t *testing.T) {
 				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
 				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				release.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				release.Finalizers = append(release.Finalizers, ReleaseFinalizer)
 				return release
 			},
 			GetDeployments: func() []client.Object {
@@ -834,8 +836,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			release := cs.GetRelease()
 			deployments := cs.GetDeployments()
 			rec := record.NewFakeRecorder(100)
-			cliBuilder := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).
-				WithObjects(deployments...)
+			cliBuilder := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).WithObjects(deployments...)
 
 			if len(deployments) > 0 {
 				cliBuilder = cliBuilder.WithObjects(makeStableReplicaSets(deployments[0])...)
@@ -860,7 +861,8 @@ func TestReconcile_Deployment(t *testing.T) {
 			Expect(result.RequeueAfter).Should(BeNumerically(">=", int64(0)))
 
 			newRelease := v1alpha1.BatchRelease{}
-			Expect(cli.Get(context.TODO(), key, &newRelease)).NotTo(HaveOccurred())
+			err = cli.Get(context.TODO(), key, &newRelease)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(newRelease.Status.Phase).Should(Equal(cs.ExpectedPhase))
 			Expect(newRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(cs.ExpectedBatch))
 			Expect(newRelease.Status.CanaryStatus.CurrentBatchState).Should(Equal(cs.ExpectedState))

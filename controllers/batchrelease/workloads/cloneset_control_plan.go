@@ -172,7 +172,7 @@ func (c *CloneSetRolloutController) CheckOneBatchReplicas() (bool, error) {
 	// the number of stable pods now we have in current state
 	stableReplicas := c.clone.Status.Replicas - canaryReplicas
 	// the number of canary pods that have been ready in current state
-	canaryReadyReplicas := c.clone.Status.UpdatedReplicas
+	canaryReadyReplicas := c.clone.Status.UpdatedReadyReplicas
 	// the number of canary pods should have in current batch
 	canaryGoal := c.calculateCurrentCanary(c.releaseStatus.ObservedWorkloadReplicas)
 	// the number of stable pods should have in current batch
@@ -194,7 +194,11 @@ func (c *CloneSetRolloutController) CheckOneBatchReplicas() (bool, error) {
 		return false, nil
 	}
 
-	if canaryGoal > canaryReplicas || stableGoal < stableReplicas || canaryReadyReplicas+int32(maxUnavailable) < canaryGoal || (canaryGoal > 0 && canaryReadyReplicas == 0) {
+	currentBatchNotReadyYet := func() bool {
+		return canaryGoal > canaryReplicas || stableGoal < stableReplicas || canaryReadyReplicas+int32(maxUnavailable) < canaryGoal || (canaryGoal > 0 && canaryReadyReplicas == 0)
+	}
+
+	if currentBatchNotReadyYet() {
 		klog.InfoS("the batch is not ready yet", "CloneSet", c.targetNamespacedName,
 			"ReleasePlan", c.releasePlanKey, "current-batch", c.releaseStatus.CanaryStatus.CurrentBatch)
 		return false, nil

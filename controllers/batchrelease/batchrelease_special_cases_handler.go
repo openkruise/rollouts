@@ -183,7 +183,7 @@ func (r *Executor) checkHealthyBeforeExecution(controller workloads.WorkloadCont
 	// If it needs to retry
 	if needRetry {
 		needStopThisRound = true
-		result = reconcile.Result{RequeueAfter: DefaultShortDuration}
+		result = reconcile.Result{RequeueAfter: DefaultDuration}
 	}
 
 	return needStopThisRound, result

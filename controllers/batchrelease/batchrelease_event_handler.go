@@ -19,10 +19,10 @@ package batchrelease
 import (
 	"context"
 	"encoding/json"
-	"github.com/openkruise/rollouts/controllers/batchrelease/workloads"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/controllers/batchrelease/workloads"
 	"github.com/openkruise/rollouts/pkg/util"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -152,21 +152,21 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 		observeScaleEventDone(newAccessor, oldAccessor) ||
 		observeReplicasChanged(newAccessor, oldAccessor) {
 
-		workloadNsn := types.NamespacedName{
+		workloadNamespacedName := types.NamespacedName{
 			Namespace: newAccessor.Metadata.Namespace,
 			Name:      newAccessor.Metadata.Name,
 		}
 
-		brNsn, err := w.getBatchRelease(workloadNsn, gvk, newAccessor.Metadata.Annotations[util.BatchReleaseControlAnnotation])
+		brNsn, err := w.getBatchRelease(workloadNamespacedName, gvk, newAccessor.Metadata.Annotations[util.BatchReleaseControlAnnotation])
 		if err != nil {
 			klog.Errorf("unable to get BatchRelease related with %s (%s/%s), error: %v",
-				gvk.Kind, workloadNsn.Namespace, workloadNsn.Name, err)
+				gvk.Kind, workloadNamespacedName.Namespace, workloadNamespacedName.Name, err)
 			return
 		}
 
 		if len(brNsn.Name) != 0 {
 			klog.V(3).Infof("%s (%s/%s) changed generation from %d to %d managed by BatchRelease (%v)",
-				gvk.Kind, workloadNsn.Namespace, workloadNsn.Name, oldAccessor.Metadata.Generation, newAccessor.Metadata.Generation, brNsn)
+				gvk.Kind, workloadNamespacedName.Namespace, workloadNamespacedName.Name, oldAccessor.Metadata.Generation, newAccessor.Metadata.Generation, brNsn)
 			q.Add(reconcile.Request{NamespacedName: brNsn})
 		}
 	}
@@ -194,19 +194,19 @@ func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 		return
 	}
 
-	workloadNsn := types.NamespacedName{
+	workloadNamespacedName := types.NamespacedName{
 		Namespace: obj.GetNamespace(),
 		Name:      obj.GetName(),
 	}
-	brNsn, err := w.getBatchRelease(workloadNsn, gvk, controlInfo)
+	brNsn, err := w.getBatchRelease(workloadNamespacedName, gvk, controlInfo)
 	if err != nil {
 		klog.Errorf("Unable to get BatchRelease related with %s (%s/%s), err: %v",
-			gvk.Kind, workloadNsn.Namespace, workloadNsn.Name, err)
+			gvk.Kind, workloadNamespacedName.Namespace, workloadNamespacedName.Name, err)
 		return
 	}
 	if len(brNsn.Name) != 0 {
 		klog.V(5).Infof("Something related %s %s (%s/%s) happen and will reconcile BatchRelease (%v)",
-			action, gvk.Kind, workloadNsn.Namespace, workloadNsn.Namespace, brNsn)
+			action, gvk.Kind, workloadNamespacedName.Namespace, workloadNamespacedName.Namespace, brNsn)
 		q.Add(reconcile.Request{NamespacedName: brNsn})
 	}
 }

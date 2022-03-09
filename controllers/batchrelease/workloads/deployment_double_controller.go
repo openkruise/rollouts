@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
@@ -202,11 +201,10 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 		for _, d := range ds {
 			// clean up finalizers first
 			if controllerutil.ContainsFinalizer(d, util.CanaryDeploymentFinalizer) {
-				finalizers := sets.NewString(d.Finalizers...).Delete(util.CanaryDeploymentFinalizer).List()
-				patchErr = util.PatchFinalizer(c.client, d, finalizers)
-				if patchErr != nil && !errors.IsNotFound(patchErr) {
-					klog.Error("Error occurred when patching Deployment(%v), error: %v", client.ObjectKeyFromObject(d), patchErr)
-					return false, patchErr
+				updateErr := util.UpdateFinalizer(c.client, d, "Remove", util.CanaryDeploymentFinalizer)
+				if updateErr != nil && !errors.IsNotFound(updateErr) {
+					klog.Error("Error occurred when updating Deployment(%v), error: %v", client.ObjectKeyFromObject(d), updateErr)
+					return false, updateErr
 				}
 				return false, nil
 			}

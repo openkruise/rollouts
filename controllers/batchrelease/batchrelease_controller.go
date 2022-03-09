@@ -28,7 +28,6 @@ import (
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -172,10 +171,10 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			"reconcile-result ", result, "time-cost", time.Since(startTimestamp))
 	}()
 
-	return result, r.updateStatus(ctx, release, currentStatus)
+	return result, r.updateStatus(release, currentStatus)
 }
 
-func (r *BatchReleaseReconciler) updateStatus(ctx context.Context, release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) error {
+func (r *BatchReleaseReconciler) updateStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) error {
 	var err error
 	defer func() {
 		if err != nil {
@@ -185,16 +184,14 @@ func (r *BatchReleaseReconciler) updateStatus(ctx context.Context, release *v1al
 
 	// observe and record the latest changes for generation and release plan
 	newStatus.ObservedGeneration = release.Generation
-	newStatus.ObservedReleasePlanHash = hashReleasePlanBatches(&release.Spec.ReleasePlan)
-
 	// do not retry
 	if !reflect.DeepEqual(release.Status, *newStatus) {
 		releaseClone := release.DeepCopy()
 		releaseClone.Status = *newStatus
-		return r.Status().Update(ctx, releaseClone)
+		return r.Status().Update(context.TODO(), releaseClone)
 	}
 
-	return err
+	return nil
 }
 
 func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease) (bool, error) {
@@ -209,8 +206,7 @@ func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease)
 	if !release.DeletionTimestamp.IsZero() &&
 		HasTerminatingCondition(release.Status) &&
 		controllerutil.ContainsFinalizer(release, ReleaseFinalizer) {
-		finalizers := sets.NewString(release.Finalizers...).Delete(ReleaseFinalizer).List()
-		err = util.PatchFinalizer(r.Client, release, finalizers)
+		err = util.UpdateFinalizer(r.Client, release, "Remove", ReleaseFinalizer)
 		if client.IgnoreNotFound(err) != nil {
 			return true, err
 		}
@@ -219,8 +215,7 @@ func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease)
 
 	// add the release finalizer if it needs
 	if !controllerutil.ContainsFinalizer(release, ReleaseFinalizer) {
-		finalizers := append(release.Finalizers, ReleaseFinalizer)
-		err = util.PatchFinalizer(r.Client, release, finalizers)
+		err = util.UpdateFinalizer(r.Client, release, "Add", ReleaseFinalizer)
 		if client.IgnoreNotFound(err) != nil {
 			return true, err
 		}

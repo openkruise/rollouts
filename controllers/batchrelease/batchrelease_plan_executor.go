@@ -18,13 +18,12 @@ package batchrelease
 
 import (
 	"fmt"
-	workloads2 "github.com/openkruise/rollouts/controllers/batchrelease/workloads"
-	"k8s.io/utils/pointer"
 	"reflect"
 	"time"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/controllers/batchrelease/workloads"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -32,13 +31,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
-	DefaultLongDuration  = 5 * time.Second
-	DefaultShortDuration = (50 * 1000) * time.Microsecond
+	DefaultDuration = (50 * 1000) * time.Microsecond
 )
 
 // Executor is the controller that controls the release plan resource
@@ -88,17 +87,17 @@ func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
 		return reconcile.Result{}, r.releaseStatus
 	}
 
-	shouldStopThisRound, retryDuration := r.checkHealthyBeforeExecution(workloadController)
+	shouldStopThisRound, result := r.checkHealthyBeforeExecution(workloadController)
 	if shouldStopThisRound {
-		return retryDuration, r.releaseStatus
+		return result, r.releaseStatus
 	}
 
 	return r.executeBatchReleasePlan(workloadController)
 }
 
-func (r *Executor) executeBatchReleasePlan(workloadController workloads2.WorkloadController) (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
+func (r *Executor) executeBatchReleasePlan(workloadController workloads.WorkloadController) (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
 	status := r.releaseStatus
-	retryDuration := reconcile.Result{}
+	result := reconcile.Result{}
 
 	switch status.Phase {
 	case v1alpha1.RolloutPhaseInitial:
@@ -117,7 +116,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 			status.Phase = v1alpha1.RolloutPhasePreparing
 			fallthrough
 		default:
-			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
+			result = reconcile.Result{RequeueAfter: DefaultDuration}
 		}
 
 	case v1alpha1.RolloutPhasePreparing:
@@ -132,14 +131,14 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 			status.Phase = v1alpha1.RolloutPhaseProgressing
 			fallthrough
 		default:
-			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
+			result = reconcile.Result{RequeueAfter: DefaultDuration}
 		}
 
 	case v1alpha1.RolloutPhaseProgressing:
 		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, v1alpha1.RolloutPhaseProgressing)
 		// progress the release plan in this state.
 		var progressDone bool
-		if progressDone, retryDuration = r.progressBatches(workloadController); progressDone {
+		if progressDone, result = r.progressBatches(workloadController); progressDone {
 			setCondition(status, "ProgressSuccessfully", "", v1.ConditionTrue)
 			status.Phase = v1alpha1.RolloutPhaseFinalizing
 		}
@@ -160,7 +159,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 			cleanupConditions(status)
 			status.Phase = v1alpha1.RolloutPhaseCompleted
 		} else {
-			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
+			result = reconcile.Result{RequeueAfter: DefaultDuration}
 		}
 
 	case v1alpha1.RolloutPhaseAbort:
@@ -179,7 +178,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 			cleanupConditions(status)
 			status.Phase = v1alpha1.RolloutPhaseCancelled
 		} else {
-			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
+			result = reconcile.Result{RequeueAfter: DefaultDuration}
 		}
 
 	case v1alpha1.RolloutPhaseTerminating:
@@ -191,7 +190,7 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 				status.Phase = v1alpha1.RolloutPhaseCancelled
 			}
 		} else {
-			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
+			result = reconcile.Result{RequeueAfter: DefaultDuration}
 		}
 
 	case v1alpha1.RolloutPhaseCompleted:
@@ -207,13 +206,13 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads2.Workloa
 		panic(fmt.Sprintf("illegal release status %+v", status))
 	}
 
-	return retryDuration, status
+	return result, status
 }
 
 // reconcile logic when we are in the middle of release, we have to go through finalizing state before succeed or fail
-func (r *Executor) progressBatches(workloadController workloads2.WorkloadController) (bool, reconcile.Result) {
+func (r *Executor) progressBatches(workloadController workloads.WorkloadController) (bool, reconcile.Result) {
 	progressDone := false
-	retryDuration := reconcile.Result{}
+	result := reconcile.Result{}
 
 	switch r.releaseStatus.CanaryStatus.CurrentBatchState {
 	case "", v1alpha1.InitializeBatchState:
@@ -233,7 +232,7 @@ func (r *Executor) progressBatches(workloadController workloads2.WorkloadControl
 			r.releaseStatus.CanaryStatus.CurrentBatchState = v1alpha1.VerifyBatchState
 			fallthrough
 		default:
-			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
+			result = reconcile.Result{RequeueAfter: DefaultDuration}
 		}
 
 	case v1alpha1.VerifyBatchState:
@@ -245,7 +244,7 @@ func (r *Executor) progressBatches(workloadController workloads2.WorkloadControl
 		case err != nil:
 			setCondition(r.releaseStatus, "VerifyBatchReadyError", err.Error(), v1.ConditionFalse)
 		case verified:
-			retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
+			result = reconcile.Result{RequeueAfter: DefaultDuration}
 			r.releaseStatus.CanaryStatus.BatchReadyTime = metav1.Now()
 			r.releaseStatus.CanaryStatus.CurrentBatchState = v1alpha1.ReadyBatchState
 		default:
@@ -254,21 +253,21 @@ func (r *Executor) progressBatches(workloadController workloads2.WorkloadControl
 
 	case v1alpha1.ReadyBatchState:
 		klog.V(3).Infof("BatchRelease(%v) Batch State Machine into %s state", r.releaseKey, v1alpha1.ReadyBatchState)
-		// all the pods in the batch are upgraded and their state are ready
+		// expected pods in the batch are upgraded and their state are ready
 		// wait to move to the next batch if there are any
 		progressDone = r.moveToNextBatch()
-		retryDuration = reconcile.Result{RequeueAfter: DefaultShortDuration}
+		result = reconcile.Result{RequeueAfter: DefaultDuration}
 
 	default:
 		klog.V(3).Infof("ReleasePlan(%v) Batch State Machine into %s state", "Unknown")
 		panic(fmt.Sprintf("illegal status %+v", r.releaseStatus))
 	}
 
-	return progressDone, retryDuration
+	return progressDone, result
 }
 
 // GetWorkloadController pick the right workload controller to work on the workload
-func (r *Executor) GetWorkloadController() (workloads2.WorkloadController, error) {
+func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error) {
 	targetRef := r.release.Spec.TargetRef.WorkloadRef
 	if targetRef == nil {
 		return nil, nil
@@ -283,13 +282,13 @@ func (r *Executor) GetWorkloadController() (workloads2.WorkloadController, error
 	case kruiseappsv1alpha1.GroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(kruiseappsv1alpha1.CloneSet{}).Name() {
 			klog.InfoS("using cloneset batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return workloads2.NewCloneSetRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
+			return workloads.NewCloneSetRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
 		}
 
 	case apps.SchemeGroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
 			klog.InfoS("using deployment batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return workloads2.NewDeploymentRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
+			return workloads.NewDeploymentRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
 		}
 	}
 	message := fmt.Sprintf("the workload `%v.%v/%v` is not supported", targetRef.APIVersion, targetRef.Kind, targetRef.Name)
@@ -303,8 +302,7 @@ func (r *Executor) moveToNextBatch() bool {
 		klog.V(3).Infof("BatchRelease(%v) finished all batch, release current batch: %v", r.releasePlan, r.releaseStatus.CanaryStatus.CurrentBatch)
 		return true
 	} else {
-		if r.releasePlan.BatchPartition == nil ||
-			*r.releasePlan.BatchPartition > r.releaseStatus.CanaryStatus.CurrentBatch {
+		if r.releasePlan.BatchPartition == nil || *r.releasePlan.BatchPartition > r.releaseStatus.CanaryStatus.CurrentBatch {
 			r.releaseStatus.CanaryStatus.CurrentBatch++
 		}
 		r.releaseStatus.CanaryStatus.CurrentBatchState = v1alpha1.InitializeBatchState
