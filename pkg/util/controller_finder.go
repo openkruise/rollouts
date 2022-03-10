@@ -97,12 +97,12 @@ var (
 // getKruiseCloneSet returns the kruise cloneSet referenced by the provided controllerRef.
 func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
 	// This error is irreversible, so there is no need to return error
-	ok, err := verifyGroupKind(ref, ControllerKruiseKindCS.Kind, []string{ControllerKruiseKindCS.Group})
+	ok, _ := verifyGroupKind(ref, ControllerKruiseKindCS.Kind, []string{ControllerKruiseKindCS.Group})
 	if !ok {
 		return nil, nil
 	}
 	cloneSet := &appsv1alpha1.CloneSet{}
-	err = r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: ref.Name}, cloneSet)
+	err := r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: ref.Name}, cloneSet)
 	if err != nil {
 		// when error is NotFound, it is ok here.
 		if errors.IsNotFound(err) {
@@ -130,12 +130,12 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 // getDeployment returns the k8s native deployment referenced by the provided controllerRef.
 func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
 	// This error is irreversible, so there is no need to return error
-	ok, err := verifyGroupKind(ref, ControllerKindDep.Kind, []string{ControllerKindDep.Group})
+	ok, _ := verifyGroupKind(ref, ControllerKindDep.Kind, []string{ControllerKindDep.Group})
 	if !ok {
 		return nil, nil
 	}
 	stable := &apps.Deployment{}
-	err = r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: ref.Name}, stable)
+	err := r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: ref.Name}, stable)
 	if err != nil {
 		// when error is NotFound, it is ok here.
 		if errors.IsNotFound(err) {

@@ -546,6 +546,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 
 	for _, cs := range cases {
 		t.Run(cs.Name, func(t *testing.T) {
+			defer GinkgoRecover()
 			release := cs.GetRelease()
 			clonesets := cs.GetCloneSet()
 			rec := record.NewFakeRecorder(100)
@@ -833,6 +834,7 @@ func TestReconcile_Deployment(t *testing.T) {
 
 	for _, cs := range cases {
 		t.Run(cs.Name, func(t *testing.T) {
+			defer GinkgoRecover()
 			release := cs.GetRelease()
 			deployments := cs.GetDeployments()
 			rec := record.NewFakeRecorder(100)
