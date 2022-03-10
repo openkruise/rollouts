@@ -1,0 +1,23 @@
+apiVersion: rollouts.kruise.io/v1alpha1
+kind: BatchRelease
+metadata:
+  name: release-cloneset-100
+spec:
+  targetReference:
+    type: workloadRef
+    workloadRef:
+      apiVersion: apps.kruise.io/v1alpha1
+      kind: CloneSet
+      name: sample
+  releasePlan:
+    batches:
+      - canaryReplicas: 20%
+        pauseSeconds: 20
+      - canaryReplicas: 40%
+        pauseSeconds: 20
+      - canaryReplicas: 60%
+        pauseSeconds: 20
+      - canaryReplicas: 100%
+        pauseSeconds: 10
+
+
