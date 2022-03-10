@@ -25,17 +25,19 @@ import (
 	"hash/fnv"
 
 	"github.com/davecgh/go-spew/spew"
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 const (
@@ -55,7 +57,7 @@ const (
 )
 
 var (
-	CloneSetGVK = kruiseappsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	CloneSetGVK = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
 )
 
 // DeepHashObject writes specified object to hash using the spew library
@@ -114,7 +116,7 @@ func IsControlledBy(object, owner metav1.Object) bool {
 }
 
 func CalculateNewBatchTarget(rolloutSpec *v1alpha1.ReleasePlan, workloadReplicas, currentBatch int) int {
-	batchSize, _ := intstr.GetScaledValueFromIntOrPercent(&rolloutSpec.Batches[currentBatch].CanaryReplicas, workloadReplicas, true)
+	batchSize, _ := intstr.GetValueFromIntOrPercent(&rolloutSpec.Batches[currentBatch].CanaryReplicas, workloadReplicas, true)
 	if batchSize > workloadReplicas {
 		klog.Warningf("releasePlan has wrong batch replicas, batches[%d].replicas %v is more than workload.replicas %v", currentBatch, batchSize, workloadReplicas)
 		batchSize = workloadReplicas
@@ -137,13 +139,44 @@ func EqualIgnoreHash(template1, template2 *v1.PodTemplateSpec) bool {
 	return apiequality.Semantic.DeepEqual(t1Copy, t2Copy)
 }
 
-func PatchFinalizer(c client.Client, object client.Object, finalizers []string) error {
-	patchByte, _ := json.Marshal(map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"finalizers": finalizers,
-		},
+type FinalizerOpType string
+
+const (
+	AddFinalizerOpType    FinalizerOpType = "Add"
+	RemoveFinalizerOpType FinalizerOpType = "Remove"
+)
+
+func UpdateFinalizer(c client.Client, object client.Object, op FinalizerOpType, finalizer string) error {
+	switch op {
+	case AddFinalizerOpType, RemoveFinalizerOpType:
+	default:
+		panic(fmt.Sprintf("UpdateFinalizer Func 'op' parameter must be 'Add' or 'Remove'"))
+	}
+
+	key := client.ObjectKeyFromObject(object)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		fetchedObject := object.DeepCopyObject().(client.Object)
+		getErr := c.Get(context.TODO(), key, fetchedObject)
+		if getErr != nil {
+			return getErr
+		}
+		finalizers := fetchedObject.GetFinalizers()
+		switch op {
+		case AddFinalizerOpType:
+			if controllerutil.ContainsFinalizer(fetchedObject, finalizer) {
+				return nil
+			}
+			finalizers = append(finalizers, finalizer)
+		case RemoveFinalizerOpType:
+			finalizerSet := sets.NewString(finalizers...)
+			if !finalizerSet.Has(finalizer) {
+				return nil
+			}
+			finalizers = finalizerSet.Delete(finalizer).List()
+		}
+		fetchedObject.SetFinalizers(finalizers)
+		return c.Update(context.TODO(), fetchedObject)
 	})
-	return c.Patch(context.TODO(), object, client.RawPatch(types.MergePatchType, patchByte))
 }
 
 func IsControlledByRollout(release *v1alpha1.BatchRelease) bool {

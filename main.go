@@ -22,10 +22,10 @@ import (
 
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	br "github.com/openkruise/rollouts/controllers/batchrelease"
-	"github.com/openkruise/rollouts/controllers/rollout"
+	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
+	"github.com/openkruise/rollouts/pkg/controller/rollout"
 	"github.com/openkruise/rollouts/pkg/util"
-	"github.com/openkruise/rollouts/webhook"
+	"github.com/openkruise/rollouts/pkg/webhook"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
