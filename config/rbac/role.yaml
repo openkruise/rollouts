@@ -7,6 +7,14 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - '*'
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - update
+- apiGroups:
   - admissionregistration.k8s.io
   resources:
   - mutatingwebhookconfigurations
@@ -170,6 +178,26 @@ rules:
   - networking.k8s.io
   resources:
   - ingresses/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - batchreleases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - batchreleases/status
   verbs:
   - get
   - patch
