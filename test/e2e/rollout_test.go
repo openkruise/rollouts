@@ -19,7 +19,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"k8s.io/klog/v2"
 	"sort"
 	"strings"
 	"time"
@@ -37,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -1206,8 +1206,4 @@ func mergeEnvVar(original []v1.EnvVar, add v1.EnvVar) []v1.EnvVar {
 	}
 	newEnvs = append(newEnvs, add)
 	return newEnvs
-}
-
-func skip() bool {
-	return true
 }

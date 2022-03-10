@@ -50,6 +50,7 @@ func TestPodEventHandler(t *testing.T) {
 	createEvt = event.CreateEvent{
 		Object: demo1,
 	}
+	handler.Create(createEvt, createQ)
 	if createQ.Len() != 1 {
 		t.Errorf("unexpected create event handle queue size, expected 1 actual %d", createQ.Len())
 	}
