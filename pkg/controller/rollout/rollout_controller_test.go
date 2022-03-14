@@ -23,6 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	utilpointer "k8s.io/utils/pointer"
 )
 
 var (
@@ -42,6 +43,9 @@ var (
 					Name:       "echoserver",
 				},
 			},
+			Strategy: rolloutv1alpha1.RolloutStrategy{
+				Canary: &rolloutv1alpha1.CanaryStrategy{},
+			},
 		},
 	}
 
@@ -53,6 +57,26 @@ var (
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "echoserver",
 			Labels: map[string]string{},
+		},
+		Spec: apps.DeploymentSpec{
+			Replicas: utilpointer.Int32(100),
+		},
+	}
+
+	batchDemo = &rolloutv1alpha1.BatchRelease{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "rollout-demo",
+			Labels: map[string]string{},
+		},
+		Spec: rolloutv1alpha1.BatchReleaseSpec{
+			TargetRef: rolloutv1alpha1.ObjectRef{
+				Type: rolloutv1alpha1.WorkloadRefType,
+				WorkloadRef: &rolloutv1alpha1.WorkloadRef{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+					Name:       "echoserver",
+				},
+			},
 		},
 	}
 )

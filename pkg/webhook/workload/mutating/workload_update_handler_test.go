@@ -340,7 +340,7 @@ func TestHandlerDeployment(t *testing.T) {
 			}
 
 			oldObj, newObj := cs.getObjs()
-			err, _ := h.handlerDeployment(newObj, oldObj)
+			_, err := h.handlerDeployment(newObj, oldObj)
 			if cs.isError && err == nil {
 				t.Fatal("handlerDeployment failed")
 			} else if !cs.isError && err != nil {
@@ -404,7 +404,7 @@ func TestHandlerCloneSet(t *testing.T) {
 			}
 
 			oldObj, newObj := cs.getObjs()
-			err, _ := h.handlerCloneSet(newObj, oldObj)
+			_, err := h.handlerCloneSet(newObj, oldObj)
 			if cs.isError && err == nil {
 				t.Fatal("handlerCloneSet failed")
 			} else if !cs.isError && err != nil {

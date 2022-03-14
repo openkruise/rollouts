@@ -58,11 +58,13 @@ var (
 							Weight: 100,
 						},
 					},
-					TrafficRouting: &appsv1alpha1.TrafficRouting{
-						Type:    appsv1alpha1.TrafficRoutingNginx,
-						Service: "service-demo",
-						Nginx: &appsv1alpha1.NginxTrafficRouting{
-							Ingress: "ingress-nginx-demo",
+					TrafficRouting: []*appsv1alpha1.TrafficRouting{
+						{
+							Type:    "nginx",
+							Service: "service-demo",
+							Ingress: &appsv1alpha1.IngressTrafficRouting{
+								Name: "ingress-nginx-demo",
+							},
 						},
 					},
 				},
@@ -116,24 +118,6 @@ func TestRolloutValidateCreate(t *testing.T) {
 				return []client.Object{object}
 			},
 		},
-		{
-			Name:    "Traffic is nil",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting = nil
-				return []client.Object{object}
-			},
-		},
-		{
-			Name:    "Nginx is nil",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting.Nginx = nil
-				return []client.Object{object}
-			},
-		},
 		/****************************************************************
 			The following cases may lead to that controller cannot work
 		 ***************************************************************/
@@ -142,7 +126,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting.Service = ""
+				object.Spec.Strategy.Canary.TrafficRouting[0].Service = ""
 				return []client.Object{object}
 			},
 		},
@@ -151,7 +135,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting.Nginx.Ingress = ""
+				object.Spec.Strategy.Canary.TrafficRouting[0].Ingress.Name = ""
 				return []client.Object{object}
 			},
 		},
@@ -273,7 +257,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting.Type = "Whatever"
+				object.Spec.Strategy.Canary.TrafficRouting[0].Type = "Whatever"
 				return []client.Object{object}
 			},
 		},
@@ -382,7 +366,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 		},
 		{
 			Name:    "Rollout is progressing, and spec changed",
-			Succeed: false,
+			Succeed: true,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
 				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
@@ -406,7 +390,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
 				object.Status.Phase = appsv1alpha1.RolloutPhaseTerminating
-				object.Spec.Strategy.Canary.Steps[0].Weight = 5
+				object.Spec.Strategy.Canary.TrafficRouting[0].Type = "alb"
 				return object
 			},
 		},
@@ -468,7 +452,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 				return object
 			},
 		},
-		{
+		/*{
 			Name:    "Rollout canary state: upgrade -> completed",
 			Succeed: false,
 			GetOldObject: func() client.Object {
@@ -523,7 +507,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
 				return object
 			},
-		},
+		},*/
 	}
 
 	for _, cs := range cases {

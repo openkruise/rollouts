@@ -72,3 +72,7 @@ func (r *rolloutContext) finalising() (bool, error) {
 	}
 	return false, nil
 }
+
+func (r *rolloutContext) podRevisionLabelKey() string {
+	return util.RsPodRevisionLabelKey
+}

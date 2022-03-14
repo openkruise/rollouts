@@ -18,15 +18,19 @@ package rollout
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"reflect"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout) error {
@@ -86,6 +90,10 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 		klog.Errorf("update rollout(%s/%s) status failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return err
 	}
+	err = r.calculateRolloutHash(rollout)
+	if err != nil {
+		return err
+	}
 	rollout.Status = newStatus
 	return nil
 }
@@ -121,4 +129,30 @@ func resetStatus(status *rolloutv1alpha1.RolloutStatus) {
 	util.RemoveRolloutCondition(status, rolloutv1alpha1.RolloutConditionProgressing)
 	status.Phase = rolloutv1alpha1.RolloutPhaseInitial
 	status.Message = "workload not found"
+}
+
+func (r *RolloutReconciler) calculateRolloutHash(rollout *rolloutv1alpha1.Rollout) error {
+	spec := rollout.Spec.DeepCopy()
+	// ignore paused filed
+	spec.Strategy.Paused = false
+	data := util.DumpJSON(spec)
+	hash := rand.SafeEncodeString(hash(data))
+	if rollout.Annotations[util.RolloutHashAnnotation] == hash {
+		return nil
+	}
+	// update rollout hash in annotation
+	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`, util.RolloutHashAnnotation, hash)
+	err := r.Patch(context.TODO(), rollout, client.RawPatch(types.MergePatchType, []byte(body)))
+	if err != nil {
+		klog.Errorf("rollout(%s/%s) patch(%s) failed: %s", rollout.Namespace, rollout.Name, body, err.Error())
+		return err
+	}
+	rollout.Annotations[util.RolloutHashAnnotation] = hash
+	klog.Infof("rollout(%s/%s) patch annotation(%s=%s) success", rollout.Namespace, rollout.Name, util.RolloutHashAnnotation, hash)
+	return nil
+}
+
+// hash hashes `data` with sha256 and returns the hex string
+func hash(data string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(data)))
 }

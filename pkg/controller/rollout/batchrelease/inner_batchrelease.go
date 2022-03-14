@@ -18,8 +18,10 @@ package batchrelease
 
 import (
 	"context"
+	"reflect"
 	"strconv"
 
+	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
@@ -57,7 +59,8 @@ func NewInnerBatchController(c client.Client, rollout *rolloutv1alpha1.Rollout) 
 	return r
 }
 
-func (r *innerBatchRelease) Initialize() (bool, error) {
+func (r *innerBatchRelease) Verify(index int32) error {
+	index = index - 1
 	batch := &rolloutv1alpha1.BatchRelease{}
 	err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: r.batchName}, batch)
 	if errors.IsNotFound(err) {
@@ -65,49 +68,52 @@ func (r *innerBatchRelease) Initialize() (bool, error) {
 		br := createBatchRelease(r.rollout, r.batchName)
 		if err = r.Create(context.TODO(), br); err != nil && !errors.IsAlreadyExists(err) {
 			klog.Errorf("rollout(%s/%s) create BatchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
-			return false, err
+			return err
 		}
 		data := util.DumpJSON(br)
 		klog.Infof("rollout(%s/%s) create BatchRelease(%s) success", r.rollout.Namespace, r.rollout.Name, data)
-		return false, nil
+		return nil
 	} else if err != nil {
 		klog.Errorf("rollout(%s/%s) fetch BatchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
-		return false, err
+		return err
 	}
 
-	// verify batchRelease status
-	if batch.Status.ObservedGeneration == batch.Generation {
-		klog.Infof("rollout(%s/%s) batchRelease initialize done", r.rollout.Namespace, r.rollout.Name)
-		return true, nil
+	// check whether batchRelease configuration is the latest
+	newBr := createBatchRelease(r.rollout, r.batchName)
+	if reflect.DeepEqual(batch.Spec.ReleasePlan.Batches, newBr.Spec.ReleasePlan.Batches) {
+		klog.Infof("rollout(%s/%s) batchRelease is initialize done", r.rollout.Namespace, r.rollout.Name)
+		return nil
 	}
-	klog.Infof("rollout(%s/%s) batchRelease is initialing, and wait a moment ", r.rollout.Namespace, r.rollout.Name)
-	return false, nil
+
+	// update batchRelease to the latest version
+	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: r.batchName}, batch); err != nil {
+			klog.Errorf("error getting updated BatchRelease(%s/%s) from client", batch.Namespace, batch.Name)
+			return err
+		}
+		batch.Spec.ReleasePlan.Batches = newBr.Spec.ReleasePlan.Batches
+		batch.Spec.ReleasePlan.BatchPartition = utilpointer.Int32Ptr(index)
+		if err := r.Client.Update(context.TODO(), batch); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		klog.Errorf("rollout(%s/%s) update batchRelease configuration failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
+		return err
+	}
+	data := util.DumpJSON(batch)
+	klog.Infof("rollout(%s/%s) update batchRelease configuration(%s) to the latest", r.rollout.Namespace, r.rollout.Name, data)
+	return nil
 }
 
-func (r *innerBatchRelease) BatchReleaseState() (*BatchReleaseState, error) {
+func (r *innerBatchRelease) FetchBatchRelease() (*rolloutv1alpha1.BatchRelease, error) {
 	batch := &rolloutv1alpha1.BatchRelease{}
 	err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: r.batchName}, batch)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) fetch BatchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return nil, err
 	}
-
-	state := &BatchReleaseState{
-		UpdateRevision:       batch.Status.UpdateRevision,
-		StableRevision:       batch.Status.StableRevision,
-		CurrentBatch:         batch.Status.CanaryStatus.CurrentBatch + 1,
-		UpdatedReplicas:      batch.Status.CanaryStatus.UpdatedReplicas,
-		UpdatedReadyReplicas: batch.Status.CanaryStatus.UpdatedReadyReplicas,
-	}
-	if batch.Spec.ReleasePlan.Paused {
-		state.CurrentBatch = batch.Status.CanaryStatus.CurrentBatch
-	}
-	if batch.Status.CanaryStatus.CurrentBatchState == rolloutv1alpha1.ReadyBatchState {
-		state.State = BatchReadyState
-	} else {
-		state.State = BatchInRollingState
-	}
-	return state, nil
+	return batch, nil
 }
 
 func (r *innerBatchRelease) Promote(index int32, checkReady bool) (bool, error) {
@@ -142,8 +148,36 @@ func (r *innerBatchRelease) Promote(index int32, checkReady bool) (bool, error) 
 }
 
 func (r *innerBatchRelease) resumeStableWorkload(checkReady bool) (bool, error) {
-	// todo cloneSet
+	// cloneSet
 	if r.rollout.Spec.ObjectRef.WorkloadRef.Kind == util.ControllerKruiseKindCS.Kind {
+		dName := r.rollout.Spec.ObjectRef.WorkloadRef.Name
+		obj := &appsv1alpha1.CloneSet{}
+		err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				klog.Warningf("rollout(%s/%s) cloneSet(%s) not found, and return true", r.rollout.Namespace, r.rollout.Name, dName)
+				return true, nil
+			}
+			return false, err
+		}
+		// default partition.IntVal=0
+		if !obj.Spec.UpdateStrategy.Paused && obj.Spec.UpdateStrategy.Partition.IntVal == 0 {
+			return true, nil
+		}
+
+		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			if err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj); err != nil {
+				return err
+			}
+			obj.Spec.UpdateStrategy.Paused = false
+			obj.Spec.UpdateStrategy.Partition = nil
+			return r.Update(context.TODO(), obj)
+		})
+		if err != nil {
+			klog.Errorf("update rollout(%s/%s) cloneSet failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
+			return false, err
+		}
+		klog.Infof("resume rollout(%s/%s) cloneSet(paused=false,partition=nil) success", r.rollout.Namespace, r.rollout.Name)
 		return true, nil
 	}
 
@@ -172,7 +206,6 @@ func (r *innerBatchRelease) resumeStableWorkload(checkReady bool) (bool, error) 
 			return false, err
 		}
 		klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) success", r.rollout.Namespace, r.rollout.Name)
-		return false, nil
 	}
 
 	// Whether to wait for pods are ready
@@ -253,7 +286,6 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rol
 			ReleasePlan: rolloutv1alpha1.ReleasePlan{
 				Batches:        batches,
 				BatchPartition: utilpointer.Int32Ptr(0),
-				Paused:         true,
 			},
 		},
 	}

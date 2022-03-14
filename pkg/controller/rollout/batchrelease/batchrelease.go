@@ -16,18 +16,20 @@ limitations under the License.
 
 package batchrelease
 
+import rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+
 // BatchRelease is not the actual controller of the BatchRelease controller,
 // but rather the ability to interact with the BatchRelease controller through the BatchRelease CRD to achieve a batch release
 type BatchRelease interface {
-	// Initialize will create batchRelease
-	Initialize() (bool, error)
+	// Verify will create batchRelease or update batchRelease steps configuration
+	Verify(index int32) error
 
 	// 1. Promote release workload in step(index), 1<=index<=len(step)
 	// 2. Promote will resume stable workload if the last batch(index=-1) is finished
 	Promote(index int32, checkReady bool) (bool, error)
 
-	// BatchReleaseState fetch batchRelease status
-	BatchReleaseState() (*BatchReleaseState, error)
+	// FetchBatchRelease fetch batchRelease
+	FetchBatchRelease() (*rolloutv1alpha1.BatchRelease, error)
 
 	// Finalize clean up batchRelease
 	// 1. delete canary deployments

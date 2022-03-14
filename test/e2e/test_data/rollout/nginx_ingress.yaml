@@ -6,13 +6,13 @@ metadata:
     kubernetes.io/ingress.class: nginx
 spec:
   rules:
-    - host: echoserver.example.com
-      http:
-        paths:
-          - backend:
-              service:
-                name: echoserver
-                port:
-                  number: 80
-            path: /apis/echo
-            pathType: Exact
+  - host: echoserver.example.com
+    http:
+      paths:
+      - backend:
+          service:
+            name: echoserver
+            port:
+              number: 80
+        path: /apis/echo
+        pathType: Exact

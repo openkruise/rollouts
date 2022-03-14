@@ -30,7 +30,10 @@ const (
 	// InRolloutProgressingAnnotation marks workload as entering the rollout progressing process
 	//and does not allow paused=false during this process
 	InRolloutProgressingAnnotation = "rollouts.kruise.io/in-progressing"
-	KruiseRolloutFinalizer         = "rollouts.kruise.io/rollout"
+	// finalizer
+	KruiseRolloutFinalizer = "rollouts.kruise.io/rollout"
+	// rollout spec hash
+	RolloutHashAnnotation = "rollouts.kruise.io/hash"
 )
 
 // RolloutState is annotation[rollouts.kruise.io/in-progressing] value
@@ -39,13 +42,13 @@ type RolloutState struct {
 }
 
 func GetRolloutState(annotations map[string]string) (*RolloutState, error) {
-	if value, ok := annotations[InRolloutProgressingAnnotation]; !ok || value == "" {
+	value, ok := annotations[InRolloutProgressingAnnotation]
+	if !ok || value == "" {
 		return nil, nil
-	} else {
-		var obj *RolloutState
-		err := json.Unmarshal([]byte(value), &obj)
-		return obj, err
 	}
+	var obj *RolloutState
+	err := json.Unmarshal([]byte(value), &obj)
+	return obj, err
 }
 
 func DiscoverGVK(gvk schema.GroupVersionKind) bool {
