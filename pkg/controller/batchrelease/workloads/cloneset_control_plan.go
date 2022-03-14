@@ -90,7 +90,7 @@ func (c *CloneSetRolloutController) IfNeedToProgress() (bool, error) {
 		return false, verifyErr
 	}
 
-	klog.V(3).Infof("Verified CloneSet Successfully, Status %+v", c.targetNamespacedName, c.releaseStatus)
+	klog.V(3).Infof("Verified CloneSet(%v) Successfully,", c.targetNamespacedName)
 	c.recorder.Event(c.parentController, v1.EventTypeNormal, "VerifiedSuccessfully", "ReleasePlan and the CloneSet resource are verified")
 	return true, nil
 }
@@ -221,7 +221,6 @@ func (c *CloneSetRolloutController) FinalizeProgress(pause *bool, cleanup bool) 
 		return false
 	}
 
-	//
 	if _, err := c.releaseCloneSet(c.clone, pause, cleanup); err != nil {
 		return false
 	}
@@ -235,25 +234,21 @@ func (c *CloneSetRolloutController) FinalizeProgress(pause *bool, cleanup bool) 
 func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadChangeEventType, *WorkloadInfo, error) {
 	if c.parentController.Spec.Cancelled ||
 		c.parentController.DeletionTimestamp != nil ||
-		c.releaseStatus.Phase == v1alpha1.RolloutPhaseAbort ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseFinalizing ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseTerminating {
 		return IgnoreWorkloadEvent, nil, nil
 	}
 
 	workloadInfo := &WorkloadInfo{}
-	err := c.fetchCloneSet()
-	if client.IgnoreNotFound(err) != nil {
+	if err := c.fetchCloneSet(); err != nil {
 		return "", nil, err
-	} else if apierrors.IsNotFound(err) {
-		workloadInfo.Status = &WorkloadStatus{}
-		return "", workloadInfo, err
 	}
 
+	// in case that the cloneSet status is untrustworthy
 	if c.clone.Status.ObservedGeneration != c.clone.Generation {
 		klog.Warningf("CloneSet(%v) is still reconciling, waiting for it to complete, generation: %v, observed: %v",
 			c.targetNamespacedName, c.clone.Generation, c.clone.Status.ObservedGeneration)
-		return WorkloadStillReconciling, nil, nil
+		return WorkloadStillReconciling, workloadInfo, nil
 	}
 
 	workloadInfo.Status = &WorkloadStatus{
@@ -261,6 +256,7 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadChangeEventType,
 		UpdatedReadyReplicas: c.clone.Status.UpdatedReadyReplicas,
 	}
 
+	// in case of that the updated revision of cloneSet is promoted
 	if !c.clone.Spec.UpdateStrategy.Paused && c.clone.Status.UpdatedReplicas == c.clone.Status.Replicas {
 		return IgnoreWorkloadEvent, workloadInfo, nil
 	}
@@ -270,9 +266,10 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadChangeEventType,
 		if c.clone.Status.CurrentRevision == c.clone.Status.UpdateRevision &&
 			c.parentController.Status.UpdateRevision != c.clone.Status.UpdateRevision {
 			workloadInfo.UpdateRevision = &c.clone.Status.UpdateRevision
-			klog.Warningf("CloneSet(%v) is stable or is rolling back", c.targetNamespacedName)
+			klog.Warningf("CloneSet(%v) is rolling back", c.targetNamespacedName)
 			return WorkloadRollback, workloadInfo, nil
 		}
+
 		if *c.clone.Spec.Replicas != c.releaseStatus.ObservedWorkloadReplicas {
 			workloadInfo.Replicas = c.clone.Spec.Replicas
 			klog.Warningf("CloneSet(%v) replicas changed during releasing, should pause and wait for it to complete, replicas from: %v -> %v",

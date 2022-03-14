@@ -237,7 +237,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 		GetCloneSet   func() []client.Object
 		ExpectedBatch int32
 		ExpectedPhase v1alpha1.RolloutPhase
-		ExpectedState v1alpha1.ReleasingBatchStateType
+		ExpectedState v1alpha1.BatchReleaseBatchStateType
 	}{
 		// Following cases of Linear Transaction on State Machine
 		{
@@ -462,7 +462,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseAbort,
+			ExpectedPhase: v1alpha1.RolloutPhaseFinalizing,
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
@@ -583,7 +583,7 @@ func TestReconcile_Deployment(t *testing.T) {
 		GetDeployments func() []client.Object
 		ExpectedBatch  int32
 		ExpectedPhase  v1alpha1.RolloutPhase
-		ExpectedState  v1alpha1.ReleasingBatchStateType
+		ExpectedState  v1alpha1.BatchReleaseBatchStateType
 	}{
 		// Following cases of Linear Transaction on State Machine
 		{
@@ -756,7 +756,7 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseAbort,
+			ExpectedPhase: v1alpha1.RolloutPhaseFinalizing,
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
@@ -893,7 +893,7 @@ func setPhase(release *v1alpha1.BatchRelease, phase v1alpha1.RolloutPhase) *v1al
 	return r
 }
 
-func setState(release *v1alpha1.BatchRelease, state v1alpha1.ReleasingBatchStateType) *v1alpha1.BatchRelease {
+func setState(release *v1alpha1.BatchRelease, state v1alpha1.BatchReleaseBatchStateType) *v1alpha1.BatchRelease {
 	r := release.DeepCopy()
 	r.Status.Phase = v1alpha1.RolloutPhaseProgressing
 	r.Status.CanaryStatus.CurrentBatchState = state

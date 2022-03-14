@@ -231,19 +231,18 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadChangeEventTy
 	// ignore the sync if the release plan is at the following states
 	if c.parentController.Spec.Cancelled ||
 		c.parentController.DeletionTimestamp != nil ||
-		c.releaseStatus.Phase == v1alpha1.RolloutPhaseAbort ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseFinalizing ||
 		c.releaseStatus.Phase == v1alpha1.RolloutPhaseTerminating {
 		return IgnoreWorkloadEvent, nil, nil
 	}
 
 	var err error
-	workloadInfo := &WorkloadInfo{}
 	err = c.fetchStableDeployment()
 	if err != nil {
 		return "", nil, err
 	}
 
+	workloadInfo := &WorkloadInfo{}
 	err = c.fetchCanaryDeployment()
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -319,6 +318,10 @@ The functions below are helper functions
 
 // NeedsRollingBack returns 'true' if the workload needs to rollback
 func (c *DeploymentsRolloutController) NeedsRollingBack() (bool, error) {
+	if c.canary != nil {
+		return false, nil
+	}
+
 	rss, err := c.listReplicaSetsFor(c.stable)
 	if err != nil {
 		return false, err
@@ -340,9 +343,10 @@ func (c *DeploymentsRolloutController) fetchStableDeployment() error {
 
 	stable := &apps.Deployment{}
 	if err := c.client.Get(context.TODO(), c.stableNamespacedName, stable); err != nil {
-		if !apierrors.IsNotFound(err) {
-			c.recorder.Event(c.parentController, v1.EventTypeWarning, "GetStableDeploymentFailed", err.Error())
-		}
+		//if !apierrors.IsNotFound(err) {
+		//c.recorder.Event(c.parentController, v1.EventTypeWarning, "GetStableDeploymentFailed", err.Error())
+		//}
+		klog.Errorf("BatchRelease(%v) get stable deployment error: %v", c.releaseKey, err)
 		return err
 	}
 	c.stable = stable
@@ -351,7 +355,14 @@ func (c *DeploymentsRolloutController) fetchStableDeployment() error {
 
 // fetch canary deployment to c.canary
 func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
-	err := c.fetchStableDeployment()
+	var err error
+	defer func() {
+		if err != nil {
+			klog.Errorf("BatchRelease(%v) get canary deployment error: %v", c.releaseKey, err)
+		}
+	}()
+
+	err = c.fetchStableDeployment()
 	if err != nil {
 		return err
 	}
@@ -367,11 +378,11 @@ func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
 	})
 
 	if len(ds) == 0 || !util.EqualIgnoreHash(&ds[0].Spec.Template, &c.stable.Spec.Template) {
-		err := apierrors.NewNotFound(schema.GroupResource{
+		err = apierrors.NewNotFound(schema.GroupResource{
 			Group:    apps.SchemeGroupVersion.Group,
 			Resource: c.stable.Kind,
-		}, c.canaryNamespacedName.Name)
-		c.recorder.Event(c.parentController, v1.EventTypeWarning, "GetCanaryDeploymentFailed", err.Error())
+		}, fmt.Sprintf("%v-canary", c.canaryNamespacedName.Name))
+		//c.recorder.Event(c.parentController, v1.EventTypeWarning, "GetCanaryDeploymentFailed", err.Error())
 		return err
 	}
 
@@ -409,14 +420,17 @@ func (c *DeploymentsRolloutController) recordDeploymentRevisionAndReplicas() err
 		return err
 	}
 
-	c.releaseStatus.StableRevision, err = c.GetPodTemplateHash(c.stable, Stable)
+	stableRevision, err := c.GetPodTemplateHash(c.stable, Stable)
 	if err != nil {
 		return err
 	}
-	c.releaseStatus.UpdateRevision, err = c.GetPodTemplateHash(c.canary, Latest)
+	updateRevision, err := c.GetPodTemplateHash(c.canary, Latest)
 	if err != nil {
 		return err
 	}
+
+	c.releaseStatus.StableRevision = stableRevision
+	c.releaseStatus.UpdateRevision = updateRevision
 	c.releaseStatus.ObservedWorkloadReplicas = *c.stable.Spec.Replicas
 	return nil
 }

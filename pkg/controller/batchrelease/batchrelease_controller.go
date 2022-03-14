@@ -18,6 +18,7 @@ package batchrelease
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"reflect"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -182,16 +184,26 @@ func (r *BatchReleaseReconciler) updateStatus(release *v1alpha1.BatchRelease, ne
 		}
 	}()
 
+	newStatusInfo, _ := json.Marshal(newStatus)
+	oldStatusInfo, _ := json.Marshal(&release.Status)
+	klog.Infof("BatchRelease(%v) try to update status from %v to %v", client.ObjectKeyFromObject(release), string(oldStatusInfo), string(newStatusInfo))
+
 	// observe and record the latest changes for generation and release plan
 	newStatus.ObservedGeneration = release.Generation
 	// do not retry
+	objectKey := client.ObjectKeyFromObject(release)
 	if !reflect.DeepEqual(release.Status, *newStatus) {
-		releaseClone := release.DeepCopy()
-		releaseClone.Status = *newStatus
-		return r.Status().Update(context.TODO(), releaseClone)
+		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			clone := &v1alpha1.BatchRelease{}
+			getErr := r.Get(context.TODO(), objectKey, clone)
+			if getErr != nil {
+				return getErr
+			}
+			clone.Status = *newStatus.DeepCopy()
+			return r.Status().Update(context.TODO(), clone)
+		})
 	}
-
-	return nil
+	return err
 }
 
 func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease) (bool, error) {

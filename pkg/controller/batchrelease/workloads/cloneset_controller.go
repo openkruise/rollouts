@@ -87,14 +87,6 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 				util.BatchReleaseControlAnnotation: string(controlByte),
 			},
 		}
-
-		if clone.Spec.UpdateStrategy.Partition != nil {
-			partitionByte, _ := json.Marshal(clone.Spec.UpdateStrategy.Partition)
-			metadata := patch["metadata"].(map[string]interface{})
-			annotations := metadata["annotations"].(map[string]string)
-			annotations[util.StashCloneSetPartition] = string(partitionByte)
-			annotations[util.BatchReleaseControlAnnotation] = string(controlByte)
-		}
 	}
 
 	if len(patch) > 0 {
@@ -132,37 +124,37 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 		return true, nil
 	}
 
-	var patchByte string
+	var specPatchByte []byte
 	switch {
-	case cleanup:
-		patchSpec := map[string]interface{}{
+	case pause == nil:
+	case *pause:
+		specPatchByte, _ = json.Marshal(map[string]interface{}{
+			"updateStrategy": map[string]interface{}{
+				"paused": true,
+			},
+		})
+	default:
+		specPatchByte, _ = json.Marshal(map[string]interface{}{
 			"updateStrategy": map[string]interface{}{
 				"partition": nil,
+				"paused":    false,
 			},
-		}
-
-		if len(clone.Annotations[util.StashCloneSetPartition]) > 0 {
-			restoredPartition := &intstr.IntOrString{}
-			if err := json.Unmarshal([]byte(clone.Annotations[util.StashCloneSetPartition]), restoredPartition); err == nil {
-				updateStrategy := patchSpec["updateStrategy"].(map[string]interface{})
-				updateStrategy["partition"] = restoredPartition
-			}
-		}
-
-		patchSpecByte, _ := json.Marshal(patchSpec)
-		patchByte = fmt.Sprintf(`{"metadata":{"annotations":{"%s":null, "%s":null}},"spec":%s}`,
-			util.BatchReleaseControlAnnotation, util.StashCloneSetPartition, string(patchSpecByte))
-
-	default:
-		patchByte = fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation)
+		})
 	}
 
-	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(patchByte))); err != nil {
+	var patchByte []byte
+	if len(specPatchByte) == 0 {
+		patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation))
+	} else {
+		patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}, "spec": %s}`, util.BatchReleaseControlAnnotation, string(specPatchByte)))
+	}
+
+	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ReleaseCloneSetFailed", err.Error())
 		return false, err
 	}
 
-	klog.V(3).Infof("Release CloneSet(%v) Successfully", client.ObjectKeyFromObject(clone))
+	klog.V(3).Infof("Release CloneSet(%v) Successfully", c.targetNamespacedName)
 	return true, nil
 }
 

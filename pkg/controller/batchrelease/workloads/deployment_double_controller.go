@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
@@ -28,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
@@ -153,15 +155,21 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 		return nil, err
 	}
 
-	canaryDeployInfo, _ := json.Marshal(canaryDeploy)
-	klog.V(3).Infof("Create canary Deployment(%v) successfully, details: %v", canaryKey, string(canaryDeployInfo))
-
 	// fetch the canary Deployment
+	backOff := wait.Backoff{
+		Steps:    5,
+		Duration: 1 * time.Second,
+		Factor:   3,
+		Jitter:   1,
+	}
 	var fetchedCanary *apps.Deployment
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	err = retry.RetryOnConflict(backOff, func() error {
 		fetchedCanary = &apps.Deployment{}
 		return c.client.Get(context.TODO(), canaryKey, fetchedCanary)
 	})
+
+	canaryDeployInfo, _ := json.Marshal(canaryDeploy)
+	klog.V(3).Infof("Create canary Deployment(%v) successfully, details: %v", canaryKey, string(canaryDeployInfo))
 
 	return fetchedCanary, err
 }

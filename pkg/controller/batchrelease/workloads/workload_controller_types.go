@@ -27,7 +27,7 @@ type WorkloadChangeEventType string
 
 const (
 	IgnoreWorkloadEvent        WorkloadChangeEventType = "workload-not-cared"
-	WorkloadRollback           WorkloadChangeEventType = "workload-rollback"
+	WorkloadRollback           WorkloadChangeEventType = "workload-is-rolling-back"
 	WorkloadPodTemplateChanged WorkloadChangeEventType = "workload-pod-template-changed"
 	WorkloadReplicasChanged    WorkloadChangeEventType = "workload-replicas-changed"
 	WorkloadStillReconciling   WorkloadChangeEventType = "workload-is-reconciling"

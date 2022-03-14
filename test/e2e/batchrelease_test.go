@@ -57,6 +57,21 @@ var _ = SIGDescribe("BatchRelease", func() {
 		Expect(k8sClient.Delete(context.TODO(), object)).NotTo(HaveOccurred())
 	}
 
+	UpdateRelease := func(object *rolloutsv1alpha1.BatchRelease) *rolloutsv1alpha1.BatchRelease {
+		var release *rolloutsv1alpha1.BatchRelease
+		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			release = &rolloutsv1alpha1.BatchRelease{}
+			err := GetObject(object.Namespace, object.Name, release)
+			if err != nil {
+				return err
+			}
+			release.Spec = *object.Spec.DeepCopy()
+			return k8sClient.Update(context.TODO(), release)
+		})).NotTo(HaveOccurred())
+
+		return release
+	}
+
 	UpdateCloneSet := func(object *kruiseappsv1alpha1.CloneSet) *kruiseappsv1alpha1.CloneSet {
 		var clone *kruiseappsv1alpha1.CloneSet
 		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -164,6 +179,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 	})
 
 	KruiseDescribe("CloneSet BatchRelease Checker", func() {
+
 		It("V1->V2: Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
 			release := &rolloutsv1alpha1.BatchRelease{}
@@ -1344,6 +1360,76 @@ var _ = SIGDescribe("BatchRelease", func() {
 				Expect(GetObject(deployment.Namespace, deployment.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.UpdatedReplicas
 			}, 15*time.Minute, time.Second).Should(Equal(*deployment.Spec.Replicas))
+		})
+		It("Plan changed during rollout", func() {
+			By("Creating BatchRelease...")
+			release := &rolloutsv1alpha1.BatchRelease{}
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_100.yaml", release)).ToNot(HaveOccurred())
+			release.Spec.ReleasePlan.Batches[1].PauseSeconds = 10000
+			CreateObject(release)
+
+			By("Creating workload and waiting for all pods ready...")
+			deployment := &apps.Deployment{}
+			Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			deployment.Spec.Replicas = pointer.Int32Ptr(10)
+			deployment.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+			deployment.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{
+				MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+				MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
+			}
+			CreateObject(deployment)
+			WaitDeploymentAllPodsReady(deployment)
+
+			// record stable revision --> v1
+			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
+
+			deployment.Spec.Paused = true
+			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV2)
+			UpdateDeployment(deployment)
+
+			// record canary revision --> v2
+			canaryRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
+			Expect(canaryRevision).ShouldNot(Equal(stableRevision))
+
+			var fetchedRelease *rolloutsv1alpha1.BatchRelease
+			Eventually(func() bool {
+				fetchedRelease = &rolloutsv1alpha1.BatchRelease{}
+				Expect(GetObject(release.Namespace, release.Name, fetchedRelease)).NotTo(HaveOccurred())
+				return fetchedRelease.Status.CanaryStatus.CurrentBatch == 1 &&
+					fetchedRelease.Status.CanaryStatus.CurrentBatchState == rolloutsv1alpha1.ReadyBatchState
+			}, time.Minute, 5*time.Second).Should(BeTrue())
+
+			// now canary: 4
+			fetchedRelease.Spec.ReleasePlan.Batches = []rolloutsv1alpha1.ReleaseBatch{
+				{
+					CanaryReplicas: intstr.FromInt(1),
+					PauseSeconds:   100000,
+				},
+				{
+					CanaryReplicas: intstr.FromInt(2),
+					PauseSeconds:   100000,
+				},
+				{
+					CanaryReplicas: intstr.FromInt(4),
+				},
+			}
+
+			By("Update BatchRelease plan...")
+			UpdateRelease(fetchedRelease)
+
+			By("Checking BatchRelease status...")
+			Eventually(func() rolloutsv1alpha1.RolloutPhase {
+				clone := &rolloutsv1alpha1.BatchRelease{}
+				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
+				return clone.Status.Phase
+			}, 15*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+
+			By("Checking all pod were updated when release completed...")
+			Eventually(func() bool {
+				clone := &apps.Deployment{}
+				Expect(GetObject(deployment.Namespace, deployment.Name, clone)).NotTo(HaveOccurred())
+				return clone.Status.UpdatedReplicas == *clone.Spec.Replicas
+			}, 15*time.Minute, time.Second).Should(BeTrue())
 		})
 	})
 })
