@@ -21,33 +21,58 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
-	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-const (
-	Keep         = "Keep"
-	Start        = "Start"
-	Restart      = "Restart"
-	Finalize     = "Finalize"
-	Terminating  = "Terminating"
-	Recalculate  = "Recalculate"
-	Reinitialize = "Reinitialize"
-)
-
 func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadController) (needStopThisRound bool, result reconcile.Result) {
 	var reason string
 	var message string
 	var needRetry bool
-	var stateTrans string
 
 	// sync the workload info and watch the workload change event
 	workloadEvent, workloadInfo, err := controller.SyncWorkloadInfo()
 
-	// Handle the special cases about the workload, include:
+	// Note: must keep the order of the following cases:
+	switch {
+	/**************************************************************************
+		          SPECIAL CASES ABOUT THE BATCH RELEASE PLAN
+	 *************************************************************************/
+	//The following special cases are about the **batch release plan**, include:
+	//  (1). Plan is deleted or cancelled
+	//  (2). Plan is paused during rollout
+	//  (3). Plan is changed during rollout
+	//  (4). Plan status is unexpected/unhealthy
+	case isPlanTerminating(r.release, r.releaseStatus):
+		// handle the case that the plan is deleted or is terminating
+		reason = "PlanTerminating"
+		message = "Release plan is terminating, then terminating"
+		signalTerminating(r.releaseStatus)
+
+	case isPlanPaused(err, r.releasePlan, r.releaseStatus):
+		// handle the case that releasePlan.paused = true
+		reason = "PlanPaused"
+		message = "release plan is paused, then paused"
+		needStopThisRound = true
+
+	case isPlanChanged(r.releasePlan, r.releaseStatus):
+		// handle the case that release plan is changed during progressing
+		reason = "PlanChanged"
+		message = "release plan is changed, then recalculate"
+		signalRecalculate(r.release, r.releaseStatus)
+
+	case isPlanUnhealthy(r.releasePlan, r.releaseStatus):
+		// handle the case that release status is chaos which may lead to panic
+		reason = "PlanStatusUnhealthy"
+		message = "release plan is unhealthy, then restart"
+		needStopThisRound = true
+
+	/**************************************************************************
+			          SPECIAL CASES ABOUT THE WORKLOAD
+	*************************************************************************/
+	// The following special cases are about the **workload**, include:
 	//   (1). Get workload info err
 	//   (2). Workload was deleted
 	//   (3). Workload is created
@@ -56,98 +81,53 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	//   (6). Workload revision changed when rollout
 	//   (7). Workload is at unexpected/unhealthy state
 	//   (8). Workload is at unstable state, its workload info is untrustworthy
-	switch {
-	// handle the case of IgnoreNotFound(err) != nil
 	case isGetWorkloadInfoError(err):
+		// handle the case of IgnoreNotFound(err) != nil
 		reason = "GetWorkloadError"
 		message = err.Error()
 		needRetry = true
-		stateTrans = Keep
 
-	// handle the case that the workload is deleted
 	case isWorkloadGone(err, r.releaseStatus):
+		// handle the case that the workload is deleted
 		reason = "WorkloadGone"
 		message = "target workload has gone, then terminating"
-		stateTrans = Terminating
+		signalTerminating(r.releaseStatus)
 
-	// handle the case that workload is newly created
 	case isWorkloadLocated(err, r.releaseStatus):
+		// handle the case that workload is newly created
 		reason = "WorkloadLocated"
 		message = "workload is located, then start"
-		stateTrans = Start
+		signalLocated(r.releaseStatus)
 
-	// handle the case that workload is scaling during progressing
 	case isWorkloadScaling(workloadEvent, r.releaseStatus):
+		// handle the case that workload is scaling during progressing
 		reason = "ReplicasChanged"
 		message = "workload is scaling, then recalculate"
-		stateTrans = Reinitialize
+		signalReinitializeBatch(r.releaseStatus)
 
-	// handle the case that workload is rolling back during progressing
 	case isWorkloadRollback(workloadEvent, r.releaseStatus):
+		// handle the case that workload is rolling back during progressing
 		reason = "StableOrRollback"
-		message = "workload is table or rolling back, then abort"
-		stateTrans = Finalize
+		message = "workload is stable or rolling back, then abort"
+		signalFinalize(r.releaseStatus)
 
-	// handle the case that workload is unhealthy, and rollout plan cannot go on
+	case isWorkloadChanged(workloadEvent, r.releaseStatus):
+		// handle the case of continuous release v1 -> v2 -> v3
+		reason = "TargetRevisionChanged"
+		message = "workload revision was changed, then abort"
+		signalFinalize(r.releaseStatus)
+
 	case isWorkloadUnhealthy(workloadEvent, r.releaseStatus):
+		// handle the case that workload is unhealthy, and rollout plan cannot go on
 		reason = "WorkloadUnHealthy"
 		message = "workload is UnHealthy, then stop"
-		stateTrans = Keep
 		needStopThisRound = true
 
-	// handle the case that workload.Generation != workload.Status.ObservedGeneration
 	case isWorkloadUnStable(workloadEvent, r.releaseStatus):
-		if r.releaseStatus.Phase != v1alpha1.RolloutPhaseCompleted {
-			reason = "WorkloadNotStable"
-			message = "workload status is not stable, then retry"
-		}
+		// handle the case that workload.Generation != workload.Status.ObservedGeneration
+		reason = "WorkloadNotStable"
+		message = "workload status is not stable, then retry"
 		needRetry = true
-		stateTrans = Keep
-
-	// handle the case of continuous release v1 -> v2 (UnCompleted) -> v3
-	case isWorkloadChanged(workloadEvent, r.releaseStatus):
-		reason = "TargetRevisionChanged"
-		// Rollout controller needs route traffic firstly
-		if !util.IsControlledByRollout(r.release) {
-			message = "workload revision was changed, then restart"
-			stateTrans = Restart
-		} else {
-			message = "workload revision was changed, then finalize"
-			stateTrans = Finalize
-		}
-	}
-
-	// Handle the special cases about the batch release plan.
-	// Note: must keep the order of the following cases:
-	//   (1). Plan is deleted or cancelled
-	//   (2). Plan is paused during rollout
-	//   (3). Plan is changed during rollout
-	//   (4). Plan status is unexpected/unhealthy
-	switch {
-	// handle the case that the plan is deleted or is terminating
-	case isPlanTerminating(r.release, r.releaseStatus):
-		reason = "PlanTerminating"
-		message = "Release plan is terminating, then terminating"
-		stateTrans = Terminating
-
-	// handle the case that releasePlan.paused = true
-	case isPlanPaused(r.releasePlan, r.releaseStatus):
-		reason = "PlanPaused"
-		message = "release plan is paused, then paused"
-		stateTrans = Keep
-		needStopThisRound = true
-
-	// handle the case that release plan is changed during progressing
-	case isPlanChanged(r.releasePlan, r.releaseStatus):
-		reason = "PlanChanged"
-		message = "release plan is changed, then recalculate"
-		stateTrans = Recalculate
-
-	// handle the case that release status is chaos which may lead to panic
-	case isPlanUnhealthy(r.releasePlan, r.releaseStatus):
-		reason = "PlanStatusUnhealthy"
-		message = "release plan is unhealthy, then restart"
-		stateTrans = Restart
 	}
 
 	// log the special event info
@@ -156,10 +136,9 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 		klog.Warningf("Special case occurred in BatchRelease(%v), message: %v", r.releaseKey, message)
 	}
 
-	// 1. sync workload info with status
-	// 2. transform status state according to stateTrans
+	// sync workload info with status
 	oldStatus := r.releaseStatus.DeepCopy()
-	refreshStatus(r.release, r.releaseStatus, workloadInfo, stateTrans)
+	refreshStatus(r.release, r.releaseStatus, workloadInfo)
 
 	// If it needs to retry or status phase or state changed, should
 	// stop and retry. This is because we must ensure that the phase
@@ -178,7 +157,7 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	return needStopThisRound, result
 }
 
-func refreshStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadInfo *workloads.WorkloadInfo, stateTrans string) {
+func refreshStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadInfo *workloads.WorkloadInfo) {
 	// refresh workload info for status
 	if workloadInfo != nil {
 		if workloadInfo.Replicas != nil {
@@ -196,24 +175,6 @@ func refreshStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchRele
 			newStatus.ObservedReleasePlanHash = planHash
 		}
 	}
-
-	// transform status state
-	switch stateTrans {
-	case Keep:
-		// keep current state, do nothing
-	case Start:
-		signalStart(newStatus)
-	case Restart:
-		signalRestart(newStatus)
-	case Finalize:
-		signalFinalize(newStatus)
-	case Terminating:
-		signalTerminating(newStatus)
-	case Reinitialize:
-		signalReinitialize(newStatus)
-	case Recalculate:
-		signalRecalculate(release, newStatus, workloadInfo)
-	}
 }
 
 func isPlanUnhealthy(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
@@ -224,18 +185,6 @@ func isPlanChanged(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStat
 	return isProgressingState(status) && status.ObservedReleasePlanHash != hashReleasePlanBatches(plan)
 }
 
-func isWorkloadLocated(err error, status *v1alpha1.BatchReleaseStatus) bool {
-	return err == nil && status.Phase == v1alpha1.RolloutPhaseInitial
-}
-
-func isWorkloadGone(err error, status *v1alpha1.BatchReleaseStatus) bool {
-	return errors.IsNotFound(err) && status.Phase != v1alpha1.RolloutPhaseInitial
-}
-
-func isPlanPaused(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
-	return isProgressingState(status) && plan.Paused
-}
-
 func isPlanTerminating(release *v1alpha1.BatchRelease, status *v1alpha1.BatchReleaseStatus) bool {
 	return release.DeletionTimestamp != nil || status.Phase == v1alpha1.RolloutPhaseTerminating
 }
@@ -244,8 +193,20 @@ func isProgressingState(status *v1alpha1.BatchReleaseStatus) bool {
 	return status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
+func isPlanPaused(err error, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
+	return !isWorkloadGone(err, status) && isProgressingState(status) && plan.Paused
+}
+
 func isGetWorkloadInfoError(err error) bool {
 	return err != nil && !errors.IsNotFound(err)
+}
+
+func isWorkloadLocated(err error, status *v1alpha1.BatchReleaseStatus) bool {
+	return err == nil && status.Phase == v1alpha1.RolloutPhaseInitial
+}
+
+func isWorkloadGone(err error, status *v1alpha1.BatchReleaseStatus) bool {
+	return errors.IsNotFound(err) && status.Phase != v1alpha1.RolloutPhaseInitial
 }
 
 func isWorkloadScaling(event workloads.WorkloadChangeEventType, status *v1alpha1.BatchReleaseStatus) bool {
@@ -256,14 +217,14 @@ func isWorkloadRollback(event workloads.WorkloadChangeEventType, status *v1alpha
 	return event == workloads.WorkloadRollback && isProgressingState(status)
 }
 
-func isWorkloadUnhealthy(event workloads.WorkloadChangeEventType, status *v1alpha1.BatchReleaseStatus) bool {
+func isWorkloadChanged(event workloads.WorkloadChangeEventType, status *v1alpha1.BatchReleaseStatus) bool {
+	return event == workloads.WorkloadPodTemplateChanged && isProgressingState(status)
+}
+
+func isWorkloadUnhealthy(event workloads.WorkloadChangeEventType, _ *v1alpha1.BatchReleaseStatus) bool {
 	return event == workloads.WorkloadUnHealthy
 }
 
-func isWorkloadChanged(event workloads.WorkloadChangeEventType, status *v1alpha1.BatchReleaseStatus) bool {
-	return event == workloads.WorkloadPodTemplateChanged
-}
-
-func isWorkloadUnStable(event workloads.WorkloadChangeEventType, status *v1alpha1.BatchReleaseStatus) bool {
+func isWorkloadUnStable(event workloads.WorkloadChangeEventType, _ *v1alpha1.BatchReleaseStatus) bool {
 	return event == workloads.WorkloadStillReconciling
 }

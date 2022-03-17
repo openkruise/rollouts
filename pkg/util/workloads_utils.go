@@ -179,14 +179,6 @@ func UpdateFinalizer(c client.Client, object client.Object, op FinalizerOpType, 
 	})
 }
 
-func IsControlledByRollout(release *v1alpha1.BatchRelease) bool {
-	owner := metav1.GetControllerOf(release)
-	if owner != nil && owner.APIVersion == v1alpha1.GroupVersion.String() && owner.Kind == "Rollout" {
-		return true
-	}
-	return false
-}
-
 func FilterActiveDeployment(ds []*apps.Deployment) []*apps.Deployment {
 	var activeDs []*apps.Deployment
 	for i := range ds {

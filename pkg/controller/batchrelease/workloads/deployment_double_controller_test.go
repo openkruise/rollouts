@@ -187,7 +187,7 @@ func TestDeploymentController(t *testing.T) {
 
 			newObject := &apps.Deployment{}
 			Expect(cli.Get(context.TODO(), c.stableNamespacedName, newObject)).NotTo(HaveOccurred())
-			_, err = c.releaseDeployment(newObject.DeepCopy(), &cs.Paused, cs.Cleanup)
+			_, err = c.releaseDeployment(newObject.DeepCopy(), cs.Cleanup)
 			Expect(err).NotTo(HaveOccurred())
 
 			newObject = &apps.Deployment{}

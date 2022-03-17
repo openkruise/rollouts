@@ -174,18 +174,13 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	return fetchedCanary, err
 }
 
-func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, pause *bool, cleanup bool) (bool, error) {
+func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, cleanup bool) (bool, error) {
 	var patchErr, deleteErr error
 
 	// clean up control info for stable deployment if it needs
-	if stableDeploy != nil && (len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || (pause != nil && stableDeploy.Spec.Paused != *pause)) {
+	if stableDeploy != nil && len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
 		var patchByte []byte
-		if pause == nil {
-			patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
-		} else {
-			patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, util.BatchReleaseControlAnnotation, *pause))
-		}
-
+		patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
 		patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 		if patchErr != nil {
 			klog.Errorf("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)

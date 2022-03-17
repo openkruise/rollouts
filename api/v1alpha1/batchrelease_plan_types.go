@@ -107,14 +107,12 @@ type BatchReleaseCanaryStatus struct {
 type BatchReleaseBatchStateType string
 
 const (
-	// InitializeBatchState indicates that current batch is at initial state
-	InitializeBatchState BatchReleaseBatchStateType = "InitializeInBatch"
-	// DoCanaryBatchState indicates that current batch is at upgrading pod state
-	DoCanaryBatchState BatchReleaseBatchStateType = "DoCanaryInBatch"
-	// VerifyBatchState indicates that current batch is at verifying whether it's ready state
-	VerifyBatchState BatchReleaseBatchStateType = "VerifyInBatch"
+	// UpgradingBatchState indicates that current batch is at upgrading pod state
+	UpgradingBatchState BatchReleaseBatchStateType = "Upgrading"
+	// VerifyingBatchState indicates that current batch is at verifying whether it's ready state
+	VerifyingBatchState BatchReleaseBatchStateType = "Verifying"
 	// ReadyBatchState indicates that current batch is at batch ready state
-	ReadyBatchState BatchReleaseBatchStateType = "ReadyInBatch"
+	ReadyBatchState BatchReleaseBatchStateType = "Ready"
 )
 
 const (

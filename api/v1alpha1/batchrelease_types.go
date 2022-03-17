@@ -41,11 +41,9 @@ type BatchRelease struct {
 // BatchReleaseSpec defines how to describe an update between different compRevision
 type BatchReleaseSpec struct {
 	Strategy ReleaseStrategy `json:"strategy,omitempty"`
-	// Cancel is true indicates this batch release plan is cancelled.
-	Cancelled bool `json:"cancelled,omitempty"`
-	// TargetRevisionName contains the name of the componentRevisionName that we need to upgrade to.
+	// TargetRef contains the GVK and name of the workload that we need to upgrade to.
 	TargetRef ObjectRef `json:"targetReference"`
-	// RolloutPlan is the details on how to rollout the resources
+	// ReleasePlan is the details on how to rollout the resources
 	ReleasePlan ReleasePlan `json:"releasePlan"`
 }
 

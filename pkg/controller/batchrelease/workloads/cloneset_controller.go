@@ -102,7 +102,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 }
 
 // remove the parent controller from the deployment's owner list
-func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet, pause *bool, cleanup bool) (bool, error) {
+func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet, cleanup bool) (bool, error) {
 	if clone == nil {
 		return true, nil
 	}
@@ -124,31 +124,7 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 		return true, nil
 	}
 
-	var specPatchByte []byte
-	switch {
-	case pause == nil:
-	case *pause:
-		specPatchByte, _ = json.Marshal(map[string]interface{}{
-			"updateStrategy": map[string]interface{}{
-				"paused": true,
-			},
-		})
-	default:
-		specPatchByte, _ = json.Marshal(map[string]interface{}{
-			"updateStrategy": map[string]interface{}{
-				"partition": nil,
-				"paused":    false,
-			},
-		})
-	}
-
-	var patchByte []byte
-	if len(specPatchByte) == 0 {
-		patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation))
-	} else {
-		patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}, "spec": %s}`, util.BatchReleaseControlAnnotation, string(specPatchByte)))
-	}
-
+	patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation))
 	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ReleaseCloneSetFailed", err.Error())
 		return false, err

@@ -22,11 +22,8 @@ import (
 	"encoding/json"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
-	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,15 +51,11 @@ func initializeStatusIfNeeds(status *v1alpha1.BatchReleaseStatus) {
 	}
 }
 
-func signalRestart(status *v1alpha1.BatchReleaseStatus) {
-	resetStatus(status)
+func signalReinitializeBatch(status *v1alpha1.BatchReleaseStatus) {
+	status.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
 }
 
-func signalReinitialize(status *v1alpha1.BatchReleaseStatus) {
-	status.CanaryStatus.CurrentBatchState = v1alpha1.InitializeBatchState
-}
-
-func signalStart(status *v1alpha1.BatchReleaseStatus) {
+func signalLocated(status *v1alpha1.BatchReleaseStatus) {
 	status.Phase = v1alpha1.RolloutPhaseHealthy
 	setCondition(status, v1alpha1.VerifyingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is verifying the workload")
 }
@@ -77,32 +70,19 @@ func signalFinalize(status *v1alpha1.BatchReleaseStatus) {
 	setCondition(status, v1alpha1.FinalizingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is finalizing")
 }
 
-func signalRecalculate(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, info *workloads.WorkloadInfo) {
-	infoBy, _ := json.Marshal(info)
-	klog.Infof("workloadInfo: %v", string(infoBy))
-
-	// ensure current batch upper bound
-	currentBatch := int32(len(release.Spec.ReleasePlan.Batches) - 1)
+func signalRecalculate(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) {
+	// When BatchRelease plan was changed, rollout controller will update this batchRelease cr,
+	// and rollout controller will set BatchPartition as its expected current batch index.
+	currentBatch := int32(0)
 	if release.Spec.ReleasePlan.BatchPartition != nil {
+		// ensure current batch upper bound
 		currentBatch = integer.Int32Min(*release.Spec.ReleasePlan.BatchPartition, currentBatch)
 	}
 
-	// find the suitable current batch via ready replicas
-	if !util.IsControlledByRollout(release) && info != nil && info.Status != nil {
-		for i := range release.Spec.ReleasePlan.Batches {
-			batch := &release.Spec.ReleasePlan.Batches[i]
-			batchGoalReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&batch.CanaryReplicas, int(newStatus.ObservedWorkloadReplicas), true)
-			if int(info.Status.UpdatedReplicas) <= batchGoalReplicas {
-				currentBatch = integer.Int32Min(int32(i), currentBatch)
-				break
-			}
-		}
-	}
-
-	klog.Infof("BatchRelease(%v) canary batch changed from %v to %v",
+	klog.Infof("BatchRelease(%v) canary batch changed from %v to %v when the release plan changed",
 		client.ObjectKeyFromObject(release), newStatus.CanaryStatus.CurrentBatch, currentBatch)
 	newStatus.CanaryStatus.CurrentBatch = currentBatch
-	newStatus.CanaryStatus.CurrentBatchState = v1alpha1.InitializeBatchState
+	newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
 }
 
 func resetStatus(status *v1alpha1.BatchReleaseStatus) {

@@ -43,8 +43,6 @@ type DeploymentsRolloutController struct {
 	canary *apps.Deployment
 }
 
-//TODO: scale during releasing: workload replicas changed -> Finalising Deployment with Paused=true
-
 // NewDeploymentRolloutController creates a new Deployment rollout controller
 func NewDeploymentRolloutController(cli client.Client, recorder record.EventRecorder, release *v1alpha1.BatchRelease, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus, stableNamespacedName types.NamespacedName) *DeploymentsRolloutController {
 	return &DeploymentsRolloutController{
@@ -193,8 +191,17 @@ func (c *DeploymentsRolloutController) CheckOneBatchReplicas() (bool, error) {
 		"canary-available-pod-count", availableCanaryPodCount, "stable-pod-count", c.stable.Status.Replicas,
 		"maxUnavailable-pod-allowed", maxUnavailable, "canary-goal", canaryGoal)
 
+	currentBatchIsNotReadyYet := func() bool {
+		// the number of upgrade pods does not achieve the goal
+		return canaryPodCount < canaryGoal ||
+			// the number of upgraded available pods does not achieve the goal
+			availableCanaryPodCount+int32(maxUnavailable) < canaryGoal ||
+			// make sure that at least one upgrade pod is available
+			(canaryGoal > 0 && availableCanaryPodCount == 0)
+	}
+
 	// make sure there is at least one pod is available
-	if canaryPodCount < canaryGoal || availableCanaryPodCount+int32(maxUnavailable) < canaryGoal || (canaryGoal > 0 && availableCanaryPodCount == 0) {
+	if currentBatchIsNotReadyYet() {
 		klog.Infof("BatchRelease(%v) batch is not ready yet, current batch=%v", c.releaseKey, c.releaseStatus.CanaryStatus.CurrentBatch)
 		return false, nil
 	}
@@ -210,29 +217,26 @@ func (c *DeploymentsRolloutController) FinalizeOneBatch() (bool, error) {
 }
 
 // FinalizeProgress makes sure restore deployments and clean up some canary settings
-func (c *DeploymentsRolloutController) FinalizeProgress(pause *bool, cleanup bool) bool {
+func (c *DeploymentsRolloutController) FinalizeProgress(cleanup bool) bool {
 	if err := c.fetchStableDeployment(); client.IgnoreNotFound(err) != nil {
 		return false
 	}
 
 	// make the deployment ride out of our control, and clean up canary resources
-	succeed, err := c.releaseDeployment(c.stable, pause, cleanup)
+	succeed, err := c.releaseDeployment(c.stable, cleanup)
 	if !succeed || err != nil {
 		klog.Errorf("Failed to finalize deployment(%v), error: %v", c.stableNamespacedName, err)
 		return false
 	}
 
-	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "Finalized", "Finalized: paused=%v, cleanup=%v", pause, cleanup)
+	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "Finalized", "Finalized: cleanup=%v", cleanup)
 	return true
 }
 
 // SyncWorkloadInfo return workloadInfo if workload info is changed during rollout
 func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadChangeEventType, *WorkloadInfo, error) {
-	// ignore the sync if the release plan is at the following states
-	if c.parentController.Spec.Cancelled ||
-		c.parentController.DeletionTimestamp != nil ||
-		c.releaseStatus.Phase == v1alpha1.RolloutPhaseFinalizing ||
-		c.releaseStatus.Phase == v1alpha1.RolloutPhaseTerminating {
+	// ignore the sync if the release plan is deleted
+	if c.parentController.DeletionTimestamp != nil {
 		return IgnoreWorkloadEvent, nil, nil
 	}
 
@@ -242,71 +246,53 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadChangeEventTy
 		return "", nil, err
 	}
 
-	workloadInfo := &WorkloadInfo{}
 	err = c.fetchCanaryDeployment()
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return "", nil, err
-		}
-	} else {
+	if client.IgnoreNotFound(err) != nil {
+		return "", nil, err
+	}
+
+	workloadInfo := &WorkloadInfo{}
+	if c.canary != nil {
 		workloadInfo.Status = &WorkloadStatus{
 			UpdatedReplicas:      c.canary.Status.Replicas,
 			UpdatedReadyReplicas: c.canary.Status.AvailableReplicas,
 		}
 	}
 
-	// if the canary deployment is deleted but still have finalizers, it is out of our expectation
-	if c.canary != nil && c.canary.DeletionTimestamp != nil &&
-		controllerutil.ContainsFinalizer(c.canary, util.CanaryDeploymentFinalizer) {
+	// in case of that the canary deployment is being deleted but still have the finalizer, it is out of our expectation
+	if c.canary != nil && c.canary.DeletionTimestamp != nil && controllerutil.ContainsFinalizer(c.canary, util.CanaryDeploymentFinalizer) {
 		return WorkloadUnHealthy, workloadInfo, nil
 	}
 
-	// check whether the workload status is trustworthy
+	// in case of that the workload status is trustworthy
 	if c.stable.Status.ObservedGeneration != c.stable.Generation {
 		klog.Warningf("Deployment(%v) is still reconciling, waiting for it to complete, generation: %v, observed: %v",
 			c.stableNamespacedName, c.stable.Generation, c.stable.Status.ObservedGeneration)
 		return WorkloadStillReconciling, workloadInfo, nil
 	}
 
-	// check whether the workload has been promoted
+	// in case of that the workload has been promoted
 	if !c.stable.Spec.Paused && c.stable.Status.UpdatedReplicas == c.stable.Status.Replicas {
 		return IgnoreWorkloadEvent, workloadInfo, nil
 	}
 
-	var updateRevision string
-	switch c.releaseStatus.Phase {
-	// these two phase should not care about too many event types
-	case v1alpha1.RolloutPhaseHealthy, v1alpha1.RolloutPhaseInitial, v1alpha1.RolloutPhasePreparing:
-		return IgnoreWorkloadEvent, workloadInfo, nil
+	// in case of that the workload needs to rollback
+	if needsRollBack, _ := c.NeedsRollBack(); needsRollBack {
+		return WorkloadRollback, workloadInfo, nil
+	}
 
-	// any other phase should care about the following event types
-	default:
-		// check if workload needs rollback
-		if needsRollingBack, err := c.NeedsRollingBack(); err != nil {
-			return "", workloadInfo, err
-		} else if needsRollingBack {
-			workloadInfo.UpdateRevision = &updateRevision
-			return WorkloadRollback, workloadInfo, nil
-		}
+	// in case of that the workload is scaling up/down
+	if *c.stable.Spec.Replicas != c.releaseStatus.ObservedWorkloadReplicas {
+		workloadInfo.Replicas = c.stable.Spec.Replicas
+		klog.Warningf("Deployment(%v) replicas changed during releasing, should pause and wait for it to complete, replicas from: %v -> %v",
+			c.stableNamespacedName, c.releaseStatus.ObservedWorkloadReplicas, *c.stable.Spec.Replicas)
+		return WorkloadReplicasChanged, workloadInfo, nil
+	}
 
-		// check if workload is scaling up/down
-		if *c.stable.Spec.Replicas != c.releaseStatus.ObservedWorkloadReplicas {
-			workloadInfo.Replicas = c.stable.Spec.Replicas
-			klog.Warningf("Deployment(%v) replicas changed during releasing, should pause and wait for it to complete, replicas from: %v -> %v",
-				c.stableNamespacedName, c.releaseStatus.ObservedWorkloadReplicas, *c.stable.Spec.Replicas)
-			return WorkloadReplicasChanged, workloadInfo, nil
-		}
-		fallthrough
-
-	// these two phase should only care about workload revision changed event
-	case v1alpha1.RolloutPhaseCompleted, v1alpha1.RolloutPhaseCancelled:
-		// check if workload revision was changed
-		_, err = c.GetPodTemplateHash(c.stable, Latest)
-		if (c.canary == nil || !util.EqualIgnoreHash(&c.stable.Spec.Template, &c.canary.Spec.Template)) && apierrors.IsNotFound(err) {
-			workloadInfo.UpdateRevision = &updateRevision
-			klog.Warningf("Deployment(%v) updateRevision changed during releasing", c.stableNamespacedName)
-			return WorkloadPodTemplateChanged, workloadInfo, nil
-		}
+	// in case of that the workload revision was changed
+	if util.ComputeHash(&c.stable.Spec.Template, nil) != c.releaseStatus.UpdateRevision {
+		klog.Warningf("Deployment(%v) updateRevision changed during releasing", c.stableNamespacedName)
+		return WorkloadPodTemplateChanged, workloadInfo, nil
 	}
 
 	return IgnoreWorkloadEvent, workloadInfo, nil
@@ -316,8 +302,8 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadChangeEventTy
 The functions below are helper functions
 ------------------------------------- */
 
-// NeedsRollingBack returns 'true' if the workload needs to rollback
-func (c *DeploymentsRolloutController) NeedsRollingBack() (bool, error) {
+// NeedsRollBack returns 'true' if the workload needs to rollback
+func (c *DeploymentsRolloutController) NeedsRollBack() (bool, error) {
 	if c.canary != nil {
 		return false, nil
 	}
@@ -326,11 +312,17 @@ func (c *DeploymentsRolloutController) NeedsRollingBack() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
+	var stableRS *apps.ReplicaSet
 	for _, rs := range rss {
-		if c.releaseStatus.StableRevision != "" && *rs.Spec.Replicas > 0 &&
-			util.EqualIgnoreHash(&rs.Spec.Template, &c.stable.Spec.Template) {
-			return true, nil
+		if rs.Labels[apps.DefaultDeploymentUniqueLabelKey] == c.releaseStatus.StableRevision {
+			stableRS = rs
+			break
 		}
+	}
+
+	if stableRS != nil && util.EqualIgnoreHash(&stableRS.Spec.Template, &c.stable.Spec.Template) {
+		return true, nil
 	}
 	return false, nil
 }

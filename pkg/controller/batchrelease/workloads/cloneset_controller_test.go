@@ -190,7 +190,7 @@ func TestCloneSetController(t *testing.T) {
 
 			newObject := &kruiseappsv1alpha1.CloneSet{}
 			Expect(cli.Get(context.TODO(), c.targetNamespacedName, newObject)).NotTo(HaveOccurred())
-			succeed, err = c.releaseCloneSet(newObject.DeepCopy(), &cs.Paused, cs.Cleanup)
+			succeed, err = c.releaseCloneSet(newObject.DeepCopy(), cs.Cleanup)
 			Expect(succeed).Should(BeTrue())
 			Expect(err).NotTo(HaveOccurred())
 

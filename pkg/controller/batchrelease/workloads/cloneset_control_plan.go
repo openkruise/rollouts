@@ -38,8 +38,6 @@ type CloneSetRolloutController struct {
 	clone *kruiseappsv1alpha1.CloneSet
 }
 
-//TODO: scale during releasing: workload replicas changed -> Finalising CloneSet with Paused=true
-
 // NewCloneSetRolloutController creates a new CloneSet rollout controller
 func NewCloneSetRolloutController(cli client.Client, recorder record.EventRecorder, release *v1alpha1.BatchRelease, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus, targetNamespacedName types.NamespacedName) *CloneSetRolloutController {
 	return &CloneSetRolloutController{
@@ -85,8 +83,8 @@ func (c *CloneSetRolloutController) IfNeedToProgress() (bool, error) {
 	}
 
 	// if the cloneSet is not paused and is not under our control
-	if !c.clone.Spec.UpdateStrategy.Paused && !util.IsControlledBy(c.clone, c.parentController) {
-		verifyErr = fmt.Errorf("cloneSet(%v) should be paused before execute the release plan", c.targetNamespacedName)
+	if !c.clone.Spec.UpdateStrategy.Paused {
+		verifyErr = fmt.Errorf("CloneSet(%v) should be paused before execute the release plan", c.targetNamespacedName)
 		return false, verifyErr
 	}
 
@@ -194,11 +192,16 @@ func (c *CloneSetRolloutController) CheckOneBatchReplicas() (bool, error) {
 		return false, nil
 	}
 
-	currentBatchNotReadyYet := func() bool {
-		return canaryGoal > canaryReplicas || stableGoal < stableReplicas || canaryReadyReplicas+int32(maxUnavailable) < canaryGoal || (canaryGoal > 0 && canaryReadyReplicas == 0)
+	currentBatchIsNotReadyYet := func() bool {
+		// the number of upgrade pods does not achieve the goal
+		return canaryGoal > canaryReplicas ||
+			// the number of upgraded available pods does not achieve the goal
+			canaryReadyReplicas+int32(maxUnavailable) < canaryGoal ||
+			// make sure that at least one upgrade pod is available
+			(canaryGoal > 0 && canaryReadyReplicas == 0)
 	}
 
-	if currentBatchNotReadyYet() {
+	if currentBatchIsNotReadyYet() {
 		klog.InfoS("the batch is not ready yet", "CloneSet", c.targetNamespacedName,
 			"ReleasePlan", c.releasePlanKey, "current-batch", c.releaseStatus.CanaryStatus.CurrentBatch)
 		return false, nil
@@ -216,30 +219,26 @@ func (c *CloneSetRolloutController) FinalizeOneBatch() (bool, error) {
 }
 
 // FinalizeProgress makes sure the CloneSet is all upgraded
-func (c *CloneSetRolloutController) FinalizeProgress(pause *bool, cleanup bool) bool {
+func (c *CloneSetRolloutController) FinalizeProgress(cleanup bool) bool {
 	if err := c.fetchCloneSet(); client.IgnoreNotFound(err) != nil {
 		return false
 	}
 
-	if _, err := c.releaseCloneSet(c.clone, pause, cleanup); err != nil {
+	if _, err := c.releaseCloneSet(c.clone, cleanup); err != nil {
 		return false
 	}
 
-	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "FinalizedSuccessfully", "Rollout resource are finalized, "+
-		"pause=%v, cleanup=%v", pause, cleanup)
+	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "FinalizedSuccessfully", "Rollout resource are finalized: cleanup=%v", cleanup)
 	return true
 }
 
 // SyncWorkloadInfo return change type if workload was changed during release
 func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadChangeEventType, *WorkloadInfo, error) {
-	if c.parentController.Spec.Cancelled ||
-		c.parentController.DeletionTimestamp != nil ||
-		c.releaseStatus.Phase == v1alpha1.RolloutPhaseFinalizing ||
-		c.releaseStatus.Phase == v1alpha1.RolloutPhaseTerminating {
+	// ignore the sync if the release plan is deleted
+	if c.parentController.DeletionTimestamp != nil {
 		return IgnoreWorkloadEvent, nil, nil
 	}
 
-	workloadInfo := &WorkloadInfo{}
 	if err := c.fetchCloneSet(); err != nil {
 		return "", nil, err
 	}
@@ -248,46 +247,40 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadChangeEventType,
 	if c.clone.Status.ObservedGeneration != c.clone.Generation {
 		klog.Warningf("CloneSet(%v) is still reconciling, waiting for it to complete, generation: %v, observed: %v",
 			c.targetNamespacedName, c.clone.Generation, c.clone.Status.ObservedGeneration)
-		return WorkloadStillReconciling, workloadInfo, nil
+		return WorkloadStillReconciling, nil, nil
 	}
 
-	workloadInfo.Status = &WorkloadStatus{
-		UpdatedReplicas:      c.clone.Status.UpdatedReplicas,
-		UpdatedReadyReplicas: c.clone.Status.UpdatedReadyReplicas,
+	workloadInfo := &WorkloadInfo{
+		Status: &WorkloadStatus{
+			UpdatedReplicas:      c.clone.Status.UpdatedReplicas,
+			UpdatedReadyReplicas: c.clone.Status.UpdatedReadyReplicas,
+		},
 	}
 
-	// in case of that the updated revision of cloneSet is promoted
-	if !c.clone.Spec.UpdateStrategy.Paused && c.clone.Status.UpdatedReplicas == c.clone.Status.Replicas {
+	// in case of that the updated revision of the workload is promoted
+	if c.clone.Status.UpdatedReplicas == c.clone.Status.Replicas {
 		return IgnoreWorkloadEvent, workloadInfo, nil
 	}
 
-	switch c.releaseStatus.Phase {
-	default:
-		if c.clone.Status.CurrentRevision == c.clone.Status.UpdateRevision &&
-			c.parentController.Status.UpdateRevision != c.clone.Status.UpdateRevision {
-			workloadInfo.UpdateRevision = &c.clone.Status.UpdateRevision
-			klog.Warningf("CloneSet(%v) is rolling back", c.targetNamespacedName)
-			return WorkloadRollback, workloadInfo, nil
-		}
+	// in case of that the workload is rolling back
+	if c.clone.Status.CurrentRevision == c.clone.Status.UpdateRevision && c.parentController.Status.UpdateRevision != c.clone.Status.UpdateRevision {
+		klog.Warningf("CloneSet(%v) is rolling back", c.targetNamespacedName)
+		return WorkloadRollback, workloadInfo, nil
+	}
 
-		if *c.clone.Spec.Replicas != c.releaseStatus.ObservedWorkloadReplicas {
-			workloadInfo.Replicas = c.clone.Spec.Replicas
-			klog.Warningf("CloneSet(%v) replicas changed during releasing, should pause and wait for it to complete, replicas from: %v -> %v",
-				c.targetNamespacedName, c.releaseStatus.ObservedWorkloadReplicas, *c.clone.Spec.Replicas)
-			return WorkloadReplicasChanged, workloadInfo, nil
-		}
-		fallthrough
+	// in case of that the workload is scaling
+	if *c.clone.Spec.Replicas != c.releaseStatus.ObservedWorkloadReplicas {
+		workloadInfo.Replicas = c.clone.Spec.Replicas
+		klog.Warningf("CloneSet(%v) replicas changed during releasing, should pause and wait for it to complete, "+
+			"replicas from: %v -> %v", c.targetNamespacedName, c.releaseStatus.ObservedWorkloadReplicas, *c.clone.Spec.Replicas)
+		return WorkloadReplicasChanged, workloadInfo, nil
+	}
 
-	case v1alpha1.RolloutPhaseCompleted, v1alpha1.RolloutPhaseCancelled:
-		if c.clone.Status.UpdateRevision != c.releaseStatus.UpdateRevision {
-			workloadInfo.UpdateRevision = &c.clone.Status.UpdateRevision
-			klog.Warningf("CloneSet(%v) updateRevision changed during releasing, should try to restart the release plan, updateRevision from: %v -> %v",
-				c.targetNamespacedName, c.releaseStatus.UpdateRevision, c.clone.Status.UpdateRevision)
-			return WorkloadPodTemplateChanged, workloadInfo, nil
-		}
-
-	case v1alpha1.RolloutPhaseHealthy, v1alpha1.RolloutPhaseInitial, v1alpha1.RolloutPhasePreparing:
-		return IgnoreWorkloadEvent, workloadInfo, nil
+	// in case of that the workload was changed
+	if c.clone.Status.UpdateRevision != c.releaseStatus.UpdateRevision {
+		klog.Warningf("CloneSet(%v) updateRevision changed during releasing, should try to restart the release plan, "+
+			"updateRevision from: %v -> %v", c.targetNamespacedName, c.releaseStatus.UpdateRevision, c.clone.Status.UpdateRevision)
+		return WorkloadPodTemplateChanged, workloadInfo, nil
 	}
 
 	return IgnoreWorkloadEvent, workloadInfo, nil

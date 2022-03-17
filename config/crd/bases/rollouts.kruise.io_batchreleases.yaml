@@ -52,11 +52,8 @@ spec:
             description: BatchReleaseSpec defines how to describe an update between
               different compRevision
             properties:
-              cancelled:
-                description: Cancel is true indicates this batch release plan is cancelled.
-                type: boolean
               releasePlan:
-                description: RolloutPlan is the details on how to rollout the resources
+                description: ReleasePlan is the details on how to rollout the resources
                 properties:
                   batchPartition:
                     description: All pods in the batches up to the batchPartition
@@ -109,8 +106,8 @@ spec:
                     type: string
                 type: object
               targetReference:
-                description: TargetRevisionName contains the name of the componentRevisionName
-                  that we need to upgrade to.
+                description: TargetRef contains the GVK and name of the workload that
+                  we need to upgrade to.
                 properties:
                   type:
                     description: workloadRef, revisionRef default is workloadRef

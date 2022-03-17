@@ -302,9 +302,9 @@ func TestReconcile_CloneSet(t *testing.T) {
 			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
 		},
 		{
-			Name: "Progressing, stage=0, Input-State=Initialize, Output-State=Verify",
+			Name: "Progressing, stage=0, Input-State=Upgrade, Output-State=Verify",
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.InitializeBatchState)
+				release := setState(releaseClone, v1alpha1.UpgradingBatchState)
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -321,12 +321,12 @@ func TestReconcile_CloneSet(t *testing.T) {
 				}
 			},
 			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.VerifyBatchState,
+			ExpectedState: v1alpha1.VerifyingBatchState,
 		},
 		{
-			Name: "Progressing, stage=0, Input-State=DoCanary, Output-State=Verify",
+			Name: "Progressing, stage=0, Input-State=Upgrade, Output-State=Verify",
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.DoCanaryBatchState)
+				release := setState(releaseClone, v1alpha1.UpgradingBatchState)
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -343,12 +343,12 @@ func TestReconcile_CloneSet(t *testing.T) {
 				}
 			},
 			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.VerifyBatchState,
+			ExpectedState: v1alpha1.VerifyingBatchState,
 		},
 		{
 			Name: "Progressing, stage=0, Input-State=Verify, Output-State=BatchReady",
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.VerifyBatchState)
+				release := setState(releaseClone, v1alpha1.VerifyingBatchState)
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -368,7 +368,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
-			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=Initialize",
+			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=Upgrade",
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
 				release.Status.CanaryStatus.BatchReadyTime = *getOldTime()
@@ -388,7 +388,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 				}
 			},
 			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.InitializeBatchState,
+			ExpectedState: v1alpha1.UpgradingBatchState,
 			ExpectedBatch: 1,
 		},
 		{
@@ -415,7 +415,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
-			Name: "Special Case: Scaling, Input-State=BatchReady, Output-State=Initialize",
+			Name: "Special Case: Scaling, Input-State=BatchReady, Output-State=Upgrade",
 			GetRelease: func() client.Object {
 				release := setState(releaseClone, v1alpha1.ReadyBatchState)
 				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
@@ -436,7 +436,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 				}
 			},
 			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.InitializeBatchState,
+			ExpectedState: v1alpha1.UpgradingBatchState,
 		},
 		{
 			Name: `Special Case: RollBack, Input-Phase=Progressing, Output-Phase=Abort`,
@@ -478,30 +478,6 @@ func TestReconcile_CloneSet(t *testing.T) {
 				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				release.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 				release.Finalizers = append(release.Finalizers, ReleaseFinalizer)
-				return release
-			},
-			GetCloneSet: func() []client.Object {
-				stable := getStableWithReady(stableClone, "v2")
-				canary := getCanaryWithStage(stable, "v2", 0, true)
-				return []client.Object{
-					canary,
-				}
-			},
-			ExpectedPhase: v1alpha1.RolloutPhaseTerminating,
-			ExpectedState: v1alpha1.ReadyBatchState,
-		},
-		{
-			Name: `Special Case: Cancelled, Input-Phase=Progressing, Output-Phase=Terminating`,
-			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
-				stableTemplate := stableClone.Spec.Template.DeepCopy()
-				canaryTemplate := stableClone.Spec.Template.DeepCopy()
-				stableTemplate.Spec.Containers = containers("v1")
-				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
-				release.Spec.Cancelled = true
 				return release
 			},
 			GetCloneSet: func() []client.Object {
@@ -639,9 +615,9 @@ func TestReconcile_Deployment(t *testing.T) {
 			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
 		},
 		{
-			Name: "Progressing, stage=0, Input-State=Initialize, Output-State=Verify",
+			Name: "Progressing, stage=0, Input-State=Upgrade, Output-State=Verify",
 			GetRelease: func() client.Object {
-				return setState(releaseDeploy, v1alpha1.InitializeBatchState)
+				return setState(releaseDeploy, v1alpha1.UpgradingBatchState)
 			},
 			GetDeployments: func() []client.Object {
 				stable := getStableWithReady(stableDeploy, "v2")
@@ -651,12 +627,12 @@ func TestReconcile_Deployment(t *testing.T) {
 				}
 			},
 			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.VerifyBatchState,
+			ExpectedState: v1alpha1.VerifyingBatchState,
 		},
 		{
-			Name: "Progressing, stage=0, Input-State=DoCanary, Output-State=Verify",
+			Name: "Progressing, stage=0, Input-State=Upgrade, Output-State=Verify",
 			GetRelease: func() client.Object {
-				return setState(releaseDeploy, v1alpha1.DoCanaryBatchState)
+				return setState(releaseDeploy, v1alpha1.UpgradingBatchState)
 			},
 			GetDeployments: func() []client.Object {
 				stable := getStableWithReady(stableDeploy, "v2")
@@ -666,12 +642,12 @@ func TestReconcile_Deployment(t *testing.T) {
 				}
 			},
 			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.VerifyBatchState,
+			ExpectedState: v1alpha1.VerifyingBatchState,
 		},
 		{
 			Name: "Progressing, stage=0, Input-State=Verify, Output-State=BatchReady",
 			GetRelease: func() client.Object {
-				return setState(releaseDeploy, v1alpha1.VerifyBatchState)
+				return setState(releaseDeploy, v1alpha1.VerifyingBatchState)
 			},
 			GetDeployments: func() []client.Object {
 				stable := getStableWithReady(stableDeploy, "v2")
@@ -684,7 +660,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
-			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=Initialize",
+			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=Upgrade",
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
 				release.Status.CanaryStatus.BatchReadyTime = *getOldTime()
@@ -698,7 +674,7 @@ func TestReconcile_Deployment(t *testing.T) {
 				}
 			},
 			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.InitializeBatchState,
+			ExpectedState: v1alpha1.UpgradingBatchState,
 			ExpectedBatch: 1,
 		},
 		{
@@ -719,7 +695,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			ExpectedState: v1alpha1.ReadyBatchState,
 		},
 		{
-			Name: "Special Case: Scaling, Input-State=BatchReady, Output-State=Initialize",
+			Name: "Special Case: Scaling, Input-State=BatchReady, Output-State=Upgrade",
 			GetRelease: func() client.Object {
 				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
 				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
@@ -734,7 +710,7 @@ func TestReconcile_Deployment(t *testing.T) {
 				}
 			},
 			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.InitializeBatchState,
+			ExpectedState: v1alpha1.UpgradingBatchState,
 		},
 		{
 			Name: `Special Case: RollBack, Input-Phase=Progressing, Output-Phase=Abort`,
@@ -772,30 +748,6 @@ func TestReconcile_Deployment(t *testing.T) {
 				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				release.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 				release.Finalizers = append(release.Finalizers, ReleaseFinalizer)
-				return release
-			},
-			GetDeployments: func() []client.Object {
-				stable := getStableWithReady(stableDeploy, "v2")
-				canary := getCanaryWithStage(stable, "v2", 0, true)
-				return []client.Object{
-					stable, canary,
-				}
-			},
-			ExpectedPhase: v1alpha1.RolloutPhaseTerminating,
-			ExpectedState: v1alpha1.ReadyBatchState,
-		},
-		{
-			Name: `Special Case: Cancelled, Input-Phase=Progressing, Output-Phase=Terminating`,
-			GetRelease: func() client.Object {
-				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
-				release.Status.CanaryStatus.BatchReadyTime = metav1.Now()
-				stableTemplate := stableDeploy.Spec.Template.DeepCopy()
-				canaryTemplate := stableDeploy.Spec.Template.DeepCopy()
-				stableTemplate.Spec.Containers = containers("v1")
-				canaryTemplate.Spec.Containers = containers("v2")
-				release.Status.StableRevision = util.ComputeHash(stableTemplate, nil)
-				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
-				release.Spec.Cancelled = true
 				return release
 			},
 			GetDeployments: func() []client.Object {
