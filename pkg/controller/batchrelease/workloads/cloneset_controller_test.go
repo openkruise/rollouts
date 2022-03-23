@@ -19,6 +19,7 @@ package workloads
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"testing"
 
@@ -205,6 +206,29 @@ func TestCloneSetController(t *testing.T) {
 			newObject.Annotations[util.StashCloneSetPartition] = ""
 			Expect(reflect.DeepEqual(oldObject.Annotations, newObject.Annotations)).Should(BeTrue())
 		})
+	}
+}
+
+func TestParseIntegerAsPercentage(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	supposeUpper := 1000
+	for allReplicas := 1; allReplicas <= supposeUpper; allReplicas++ {
+		for percent := 0; percent <= 100; percent++ {
+			canaryPercent := intstr.FromString(fmt.Sprintf("%v%%", percent))
+			canaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&canaryPercent, allReplicas, true)
+			partition := ParseIntegerAsPercentageIfPossible(int32(allReplicas-canaryReplicas), int32(allReplicas), &canaryPercent)
+			stableReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&partition, allReplicas, true)
+			if percent == 0 {
+				Expect(stableReplicas).Should(BeNumerically("==", allReplicas))
+			} else if percent == 100 {
+				Expect(stableReplicas).Should(BeNumerically("==", 0))
+			} else if percent > 0 {
+				Expect(allReplicas - stableReplicas).To(BeNumerically(">", 0))
+			}
+			Expect(stableReplicas).Should(BeNumerically("<=", allReplicas))
+			Expect(math.Abs(float64((allReplicas - canaryReplicas) - stableReplicas))).Should(BeNumerically("<", float64(allReplicas)*0.01))
+		}
 	}
 }
 

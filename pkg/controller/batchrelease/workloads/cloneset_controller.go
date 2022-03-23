@@ -135,11 +135,11 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 }
 
 // scale the deployment
-func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.CloneSet, partition int32) error {
+func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.CloneSet, partition *intstr.IntOrString) error {
 	patch := map[string]interface{}{
 		"spec": map[string]interface{}{
 			"updateStrategy": map[string]interface{}{
-				"partition": &intstr.IntOrString{Type: intstr.Int, IntVal: partition},
+				"partition": partition,
 			},
 		},
 	}

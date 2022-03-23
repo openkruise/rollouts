@@ -48,19 +48,19 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	case isPlanTerminating(r.release, r.releaseStatus):
 		// handle the case that the plan is deleted or is terminating
 		reason = "PlanTerminating"
-		message = "Release plan is terminating, then terminating"
+		message = "Release plan is deleted, then terminate"
 		signalTerminating(r.releaseStatus)
 
 	case isPlanPaused(err, r.releasePlan, r.releaseStatus):
 		// handle the case that releasePlan.paused = true
 		reason = "PlanPaused"
-		message = "release plan is paused, then paused"
+		message = "release plan is paused, then stop reconcile"
 		needStopThisRound = true
 
 	case isPlanChanged(r.releasePlan, r.releaseStatus):
 		// handle the case that release plan is changed during progressing
 		reason = "PlanChanged"
-		message = "release plan is changed, then recalculate"
+		message = "release plan is changed, then recalculate status"
 		signalRecalculate(r.release, r.releaseStatus)
 
 	case isPlanUnhealthy(r.releasePlan, r.releaseStatus):
@@ -90,7 +90,7 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	case isWorkloadGone(err, r.releaseStatus):
 		// handle the case that the workload is deleted
 		reason = "WorkloadGone"
-		message = "target workload has gone, then terminating"
+		message = "target workload has gone, then terminate"
 		signalTerminating(r.releaseStatus)
 
 	case isWorkloadLocated(err, r.releaseStatus):
@@ -102,7 +102,7 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	case isWorkloadScaling(workloadEvent, r.releaseStatus):
 		// handle the case that workload is scaling during progressing
 		reason = "ReplicasChanged"
-		message = "workload is scaling, then recalculate"
+		message = "workload is scaling, then reinitialize batch status"
 		signalReinitializeBatch(r.releaseStatus)
 
 	case isWorkloadRollback(workloadEvent, r.releaseStatus):
@@ -123,11 +123,11 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 		message = "workload is UnHealthy, then stop"
 		needStopThisRound = true
 
-	case isWorkloadUnStable(workloadEvent, r.releaseStatus):
+	case isWorkloadUnstable(workloadEvent, r.releaseStatus):
 		// handle the case that workload.Generation != workload.Status.ObservedGeneration
 		reason = "WorkloadNotStable"
-		message = "workload status is not stable, then retry"
-		needRetry = true
+		message = "workload status is not stable, then wait"
+		needStopThisRound = true
 	}
 
 	// log the special event info
@@ -225,6 +225,6 @@ func isWorkloadUnhealthy(event workloads.WorkloadChangeEventType, _ *v1alpha1.Ba
 	return event == workloads.WorkloadUnHealthy
 }
 
-func isWorkloadUnStable(event workloads.WorkloadChangeEventType, _ *v1alpha1.BatchReleaseStatus) bool {
+func isWorkloadUnstable(event workloads.WorkloadChangeEventType, _ *v1alpha1.BatchReleaseStatus) bool {
 	return event == workloads.WorkloadStillReconciling
 }

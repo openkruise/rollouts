@@ -119,6 +119,11 @@ func (c *CloneSetRolloutController) ProgressOneBatchReplicas() (bool, error) {
 		return false, nil
 	}
 
+	if c.releaseStatus.ObservedWorkloadReplicas == 0 {
+		klog.Infof("BatchRelease(%v) observed workload replicas is 0, no need to upgrade", c.releasePlanKey)
+		return true, nil
+	}
+
 	// if the workload status is untrustworthy
 	if c.clone.Status.ObservedGeneration != c.clone.Generation {
 		return false, nil
@@ -142,8 +147,18 @@ func (c *CloneSetRolloutController) ProgressOneBatchReplicas() (bool, error) {
 		return true, nil
 	}
 
+	// if canaryReplicas is int, then we use int;
+	// if canaryReplicas is percentage, then we use percentage.
+	var partitionGoal intstr.IntOrString
+	canaryIntOrStr := c.releasePlan.Batches[c.releaseStatus.CanaryStatus.CurrentBatch].CanaryReplicas
+	if canaryIntOrStr.Type == intstr.Int {
+		partitionGoal = intstr.FromInt(int(stableGoal))
+	} else if c.releaseStatus.ObservedWorkloadReplicas > 0 {
+		partitionGoal = ParseIntegerAsPercentageIfPossible(stableGoal, c.releaseStatus.ObservedWorkloadReplicas, &canaryIntOrStr)
+	}
+
 	// upgrade pods
-	if err := c.patchCloneSetPartition(c.clone, stableGoal); err != nil {
+	if err := c.patchCloneSetPartition(c.clone, &partitionGoal); err != nil {
 		return false, nil
 	}
 
@@ -325,4 +340,36 @@ func (c *CloneSetRolloutController) recordCloneSetRevisionAndReplicas() {
 	c.releaseStatus.ObservedWorkloadReplicas = *c.clone.Spec.Replicas
 	c.releaseStatus.StableRevision = c.clone.Status.CurrentRevision
 	c.releaseStatus.UpdateRevision = c.clone.Status.UpdateRevision
+}
+
+// ParseIntegerAsPercentageIfPossible will return a percentage type IntOrString, such as "20%", "33%", but "33.3%" is illegal.
+// Given A, B, return P that should try best to satisfy ⌈P * B⌉ == A, and we ensure that the error is less than 1%.
+// For examples:
+// * Given stableReplicas 1,  allReplicas 3,   return "33%";
+// * Given stableReplicas 98, allReplicas 99,  return "97%";
+// * Given stableReplicas 1,  allReplicas 101, return "1";
+func ParseIntegerAsPercentageIfPossible(stableReplicas, allReplicas int32, canaryReplicas *intstr.IntOrString) intstr.IntOrString {
+	if stableReplicas >= allReplicas {
+		return intstr.FromString("100%")
+	}
+
+	if stableReplicas <= 0 {
+		return intstr.FromString("0%")
+	}
+
+	pValue := stableReplicas * 100 / allReplicas
+	percent := intstr.FromString(fmt.Sprintf("%v%%", pValue))
+	restoredStableReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&percent, int(allReplicas), true)
+	// restoredStableReplicas == 0 is un-tolerated if user-defined canaryReplicas is not 0.
+	// we must make sure that at least one canary pod is created.
+	if restoredStableReplicas == 0 && canaryReplicas.StrVal != "0%" {
+		return intstr.FromString("1%")
+	}
+
+	// restoredStableReplicas == 0 is un-tolerated if user-defined canaryReplicas is not 100%.
+	if restoredStableReplicas == int(allReplicas) && canaryReplicas.StrVal != "100%" {
+		return intstr.FromInt(int(allReplicas) - 1)
+	}
+
+	return percent
 }

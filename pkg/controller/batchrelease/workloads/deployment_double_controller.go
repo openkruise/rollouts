@@ -74,7 +74,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		}
 		patchedBody, _ := json.Marshal(patchedInfo)
 		if err := c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchedBody)); err != nil {
-			klog.Errorf("Failed to patch controller info annotations to stable deployment(%v), error: %v", client.ObjectKeyFromObject(canaryDeploy), err)
+			klog.Errorf("Failed to patch controller info annotations to stable deployment(%v), error: %v", client.ObjectKeyFromObject(stableDeploy), err)
 			return canaryDeploy, err
 		}
 	}

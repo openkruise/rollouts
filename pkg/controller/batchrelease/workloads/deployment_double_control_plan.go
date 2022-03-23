@@ -183,7 +183,7 @@ func (c *DeploymentsRolloutController) CheckOneBatchReplicas() (bool, error) {
 	maxUnavailable := 0
 	if c.canary.Spec.Strategy.RollingUpdate != nil &&
 		c.canary.Spec.Strategy.RollingUpdate.MaxUnavailable != nil {
-		maxUnavailable, _ = intstr.GetValueFromIntOrPercent(c.canary.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*c.canary.Spec.Replicas), true)
+		maxUnavailable, _ = intstr.GetScaledValueFromIntOrPercent(c.canary.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*c.canary.Spec.Replicas), true)
 	}
 
 	klog.InfoS("checking the batch releasing progress",
