@@ -212,7 +212,7 @@ func TestCloneSetController(t *testing.T) {
 func TestParseIntegerAsPercentage(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	supposeUpper := 1000
+	supposeUpper := 10000
 	for allReplicas := 1; allReplicas <= supposeUpper; allReplicas++ {
 		for percent := 0; percent <= 100; percent++ {
 			canaryPercent := intstr.FromString(fmt.Sprintf("%v%%", percent))

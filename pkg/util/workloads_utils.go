@@ -189,7 +189,7 @@ func FilterActiveDeployment(ds []*apps.Deployment) []*apps.Deployment {
 	return activeDs
 }
 
-func ShortRandomStr(collisionCount *int32) string {
-	randStr := rand.String(3)
+func GenRandomStr(length int) string {
+	randStr := rand.String(length)
 	return rand.SafeEncodeString(randStr)
 }

@@ -22,7 +22,6 @@ import (
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -55,37 +54,36 @@ func NewCloneSetRolloutController(cli client.Client, recorder record.EventRecord
 	}
 }
 
-// IfNeedToProgress verifies that the workload is ready to execute release plan
-func (c *CloneSetRolloutController) IfNeedToProgress() (bool, error) {
-	var verifyErr error
+// VerifyWorkload verifies that the workload is ready to execute release plan
+func (c *CloneSetRolloutController) VerifyWorkload() (bool, error) {
+	var err error
 	defer func() {
-		if verifyErr != nil {
-			klog.Warningf(verifyErr.Error())
-			c.recorder.Event(c.parentController, v1.EventTypeWarning, "VerifyFailed", verifyErr.Error())
+		if err != nil {
+			klog.Warningf(err.Error())
+			c.recorder.Event(c.parentController, v1.EventTypeWarning, "VerifyFailed", err.Error())
 		}
 	}()
 
-	if err := c.fetchCloneSet(); err != nil {
-		//c.releaseStatus.RolloutRetry(err.Error())
-		return false, nil
+	if err = c.fetchCloneSet(); err != nil {
+		return true, err
 	}
 
 	// if the workload status is untrustworthy
 	if c.clone.Status.ObservedGeneration != c.clone.Generation {
-		klog.Warningf("CloneSet(%v) is still reconciling, wait for it to be done", c.targetNamespacedName)
-		return false, nil
+		err = fmt.Errorf("CloneSet(%v) is still reconciling, wait for it to be done", c.targetNamespacedName)
+		return false, err
 	}
 
 	// if the cloneSet has been promoted, no need to go on
 	if c.clone.Status.UpdatedReplicas == *c.clone.Spec.Replicas {
-		verifyErr = fmt.Errorf("CloneSet(%v) update revision has been promoted, no need to reconcile", c.targetNamespacedName)
-		return false, verifyErr
+		err = fmt.Errorf("CloneSet(%v) update revision has been promoted, no need to reconcile", c.targetNamespacedName)
+		return false, err
 	}
 
 	// if the cloneSet is not paused and is not under our control
 	if !c.clone.Spec.UpdateStrategy.Paused {
-		verifyErr = fmt.Errorf("CloneSet(%v) should be paused before execute the release plan", c.targetNamespacedName)
-		return false, verifyErr
+		err = fmt.Errorf("CloneSet(%v) should be paused before execute the release plan", c.targetNamespacedName)
+		return false, err
 	}
 
 	klog.V(3).Infof("Verified CloneSet(%v) Successfully,", c.targetNamespacedName)
@@ -112,9 +110,9 @@ func (c *CloneSetRolloutController) PrepareBeforeProgress() (bool, error) {
 	return true, nil
 }
 
-// ProgressOneBatchReplicas calculates the number of pods we can upgrade once according to the rollout spec
+// UpgradeOneBatch calculates the number of pods we can upgrade once according to the rollout spec
 // and then set the partition accordingly
-func (c *CloneSetRolloutController) ProgressOneBatchReplicas() (bool, error) {
+func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 	if err := c.fetchCloneSet(); err != nil {
 		return false, nil
 	}
@@ -169,8 +167,8 @@ func (c *CloneSetRolloutController) ProgressOneBatchReplicas() (bool, error) {
 	return true, nil
 }
 
-// CheckOneBatchReplicas checks to see if the pods are all available according to the rollout plan
-func (c *CloneSetRolloutController) CheckOneBatchReplicas() (bool, error) {
+// CheckOneBatchReady checks to see if the pods are all available according to the rollout plan
+func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 	if err := c.fetchCloneSet(); err != nil {
 		return false, nil
 	}
@@ -186,10 +184,14 @@ func (c *CloneSetRolloutController) CheckOneBatchReplicas() (bool, error) {
 	stableReplicas := c.clone.Status.Replicas - canaryReplicas
 	// the number of canary pods that have been ready in current state
 	canaryReadyReplicas := c.clone.Status.UpdatedReadyReplicas
-	// the number of canary pods should have in current batch
-	canaryGoal := c.calculateCurrentCanary(c.releaseStatus.ObservedWorkloadReplicas)
-	// the number of stable pods should have in current batch
-	stableGoal := c.calculateCurrentStable(c.releaseStatus.ObservedWorkloadReplicas)
+	// the number of expected stable pods should have in current batch, but this number may
+	// be inconsistent with the real canary goal due to the accuracy of percent-type partition
+	expectedStableGoal := c.calculateCurrentStable(c.releaseStatus.ObservedWorkloadReplicas)
+	// the number of the real canary pods should have in current batch
+	originalGoal := &c.releasePlan.Batches[c.releaseStatus.CanaryStatus.CurrentBatch].CanaryReplicas
+	canaryGoal := CalculateRealCanaryReplicasGoal(expectedStableGoal, c.releaseStatus.ObservedWorkloadReplicas, originalGoal)
+	// the number of the real stable pods should have in current batch
+	stableGoal := c.releaseStatus.ObservedWorkloadReplicas - canaryGoal
 	// the number of max unavailable canary pods allowed by this workload
 	maxUnavailable := 0
 	if c.clone.Spec.UpdateStrategy.MaxUnavailable != nil {
@@ -200,6 +202,7 @@ func (c *CloneSetRolloutController) CheckOneBatchReplicas() (bool, error) {
 		"current-batch", c.releaseStatus.CanaryStatus.CurrentBatch, "canary-ready-replicas", canaryReadyReplicas,
 		"stable-replicas", stableReplicas, "max-unavailable", maxUnavailable, "canary-goal", canaryGoal, "stable-goal", stableGoal)
 
+	// maybe, the workload replicas was scaled, we should requeue and handle the workload scaling event
 	if c.clone.Status.Replicas != c.releaseStatus.ObservedWorkloadReplicas {
 		err := fmt.Errorf("CloneSet(%v) replicas don't match ObservedWorkloadReplicas, workload status replicas: %v, observed workload replicas: %v",
 			c.targetNamespacedName, c.clone.Status.Replicas, c.releaseStatus.ObservedWorkloadReplicas)
@@ -248,7 +251,7 @@ func (c *CloneSetRolloutController) FinalizeProgress(cleanup bool) bool {
 }
 
 // SyncWorkloadInfo return change type if workload was changed during release
-func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadChangeEventType, *WorkloadInfo, error) {
+func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *WorkloadInfo, error) {
 	// ignore the sync if the release plan is deleted
 	if c.parentController.DeletionTimestamp != nil {
 		return IgnoreWorkloadEvent, nil, nil
@@ -304,8 +307,7 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadChangeEventType,
 /* ----------------------------------
 The functions below are helper functions
 ------------------------------------- */
-
-// fetch cloneSet to c.clone
+// fetchCloneSet fetch cloneSet to c.clone
 func (c *CloneSetRolloutController) fetchCloneSet() error {
 	clone := &kruiseappsv1alpha1.CloneSet{}
 	if err := c.client.Get(context.TODO(), c.targetNamespacedName, clone); err != nil {
@@ -318,58 +320,8 @@ func (c *CloneSetRolloutController) fetchCloneSet() error {
 	return nil
 }
 
-// the canary workload size for the current batch
-func (c *CloneSetRolloutController) calculateCurrentCanary(totalSize int32) int32 {
-	targetSize := int32(util.CalculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
-	klog.InfoS("Calculated the number of pods in the target CloneSet after current batch",
-		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
-		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
-	return targetSize
-}
-
-// the source workload size for the current batch
-func (c *CloneSetRolloutController) calculateCurrentStable(totalSize int32) int32 {
-	sourceSize := totalSize - c.calculateCurrentCanary(totalSize)
-	klog.InfoS("Calculated the number of pods in the source CloneSet after current batch",
-		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
-		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
-	return sourceSize
-}
-
 func (c *CloneSetRolloutController) recordCloneSetRevisionAndReplicas() {
 	c.releaseStatus.ObservedWorkloadReplicas = *c.clone.Spec.Replicas
 	c.releaseStatus.StableRevision = c.clone.Status.CurrentRevision
 	c.releaseStatus.UpdateRevision = c.clone.Status.UpdateRevision
-}
-
-// ParseIntegerAsPercentageIfPossible will return a percentage type IntOrString, such as "20%", "33%", but "33.3%" is illegal.
-// Given A, B, return P that should try best to satisfy ⌈P * B⌉ == A, and we ensure that the error is less than 1%.
-// For examples:
-// * Given stableReplicas 1,  allReplicas 3,   return "33%";
-// * Given stableReplicas 98, allReplicas 99,  return "97%";
-// * Given stableReplicas 1,  allReplicas 101, return "1";
-func ParseIntegerAsPercentageIfPossible(stableReplicas, allReplicas int32, canaryReplicas *intstr.IntOrString) intstr.IntOrString {
-	if stableReplicas >= allReplicas {
-		return intstr.FromString("100%")
-	}
-
-	if stableReplicas <= 0 {
-		return intstr.FromString("0%")
-	}
-
-	pValue := stableReplicas * 100 / allReplicas
-	percent := intstr.FromString(fmt.Sprintf("%v%%", pValue))
-	restoredStableReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&percent, int(allReplicas), true)
-	// restoredStableReplicas == 0 is un-tolerated if user-defined canaryReplicas is not 0.
-	// we must make sure that at least one canary pod is created.
-	if restoredStableReplicas == 0 && canaryReplicas.StrVal != "0%" {
-		return intstr.FromString("1%")
-	}
-
-	// restoredStableReplicas == 0 is un-tolerated if user-defined canaryReplicas is not 100%.
-	if restoredStableReplicas == int(allReplicas) && canaryReplicas.StrVal != "100%" {
-		return intstr.FromInt(int(allReplicas) - 1)
-	}
-
-	return percent
 }

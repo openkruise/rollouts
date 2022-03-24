@@ -177,24 +177,20 @@ func refreshStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchRele
 	}
 }
 
-func isPlanUnhealthy(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
-	return isProgressingState(status) && int(status.CanaryStatus.CurrentBatch) >= len(plan.Batches)
-}
-
-func isPlanChanged(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
-	return isProgressingState(status) && status.ObservedReleasePlanHash != hashReleasePlanBatches(plan)
-}
-
 func isPlanTerminating(release *v1alpha1.BatchRelease, status *v1alpha1.BatchReleaseStatus) bool {
 	return release.DeletionTimestamp != nil || status.Phase == v1alpha1.RolloutPhaseTerminating
 }
 
-func isProgressingState(status *v1alpha1.BatchReleaseStatus) bool {
-	return status.Phase == v1alpha1.RolloutPhaseProgressing
+func isPlanChanged(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
+	return status.ObservedReleasePlanHash != hashReleasePlanBatches(plan) && status.Phase == v1alpha1.RolloutPhaseProgressing
+}
+
+func isPlanUnhealthy(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
+	return int(status.CanaryStatus.CurrentBatch) >= len(plan.Batches) && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
 func isPlanPaused(err error, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
-	return !isWorkloadGone(err, status) && isProgressingState(status) && plan.Paused
+	return plan.Paused && status.Phase == v1alpha1.RolloutPhaseProgressing && !isWorkloadGone(err, status)
 }
 
 func isGetWorkloadInfoError(err error) bool {
@@ -209,22 +205,22 @@ func isWorkloadGone(err error, status *v1alpha1.BatchReleaseStatus) bool {
 	return errors.IsNotFound(err) && status.Phase != v1alpha1.RolloutPhaseInitial
 }
 
-func isWorkloadScaling(event workloads.WorkloadChangeEventType, status *v1alpha1.BatchReleaseStatus) bool {
-	return event == workloads.WorkloadReplicasChanged && isProgressingState(status)
+func isWorkloadScaling(event workloads.WorkloadEventType, status *v1alpha1.BatchReleaseStatus) bool {
+	return event == workloads.WorkloadReplicasChanged && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
-func isWorkloadRollback(event workloads.WorkloadChangeEventType, status *v1alpha1.BatchReleaseStatus) bool {
-	return event == workloads.WorkloadRollback && isProgressingState(status)
+func isWorkloadRollback(event workloads.WorkloadEventType, status *v1alpha1.BatchReleaseStatus) bool {
+	return event == workloads.WorkloadRollback && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
-func isWorkloadChanged(event workloads.WorkloadChangeEventType, status *v1alpha1.BatchReleaseStatus) bool {
-	return event == workloads.WorkloadPodTemplateChanged && isProgressingState(status)
+func isWorkloadChanged(event workloads.WorkloadEventType, status *v1alpha1.BatchReleaseStatus) bool {
+	return event == workloads.WorkloadPodTemplateChanged && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
-func isWorkloadUnhealthy(event workloads.WorkloadChangeEventType, _ *v1alpha1.BatchReleaseStatus) bool {
+func isWorkloadUnhealthy(event workloads.WorkloadEventType, _ *v1alpha1.BatchReleaseStatus) bool {
 	return event == workloads.WorkloadUnHealthy
 }
 
-func isWorkloadUnstable(event workloads.WorkloadChangeEventType, _ *v1alpha1.BatchReleaseStatus) bool {
+func isWorkloadUnstable(event workloads.WorkloadEventType, _ *v1alpha1.BatchReleaseStatus) bool {
 	return event == workloads.WorkloadStillReconciling
 }

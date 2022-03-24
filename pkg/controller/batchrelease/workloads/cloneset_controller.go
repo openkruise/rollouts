@@ -157,3 +157,57 @@ func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.Cl
 
 	return nil
 }
+
+// the canary workload size for the current batch
+func (c *cloneSetController) calculateCurrentCanary(totalSize int32) int32 {
+	targetSize := int32(util.CalculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
+	klog.InfoS("Calculated the number of pods in the target CloneSet after current batch",
+		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
+		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
+	return targetSize
+}
+
+// the source workload size for the current batch
+func (c *cloneSetController) calculateCurrentStable(totalSize int32) int32 {
+	sourceSize := totalSize - c.calculateCurrentCanary(totalSize)
+	klog.InfoS("Calculated the number of pods in the source CloneSet after current batch",
+		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
+		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
+	return sourceSize
+}
+
+// ParseIntegerAsPercentageIfPossible will return a percentage type IntOrString, such as "20%", "33%", but "33.3%" is illegal.
+// Given A, B, return P that should try best to satisfy ⌈P * B⌉ == A, and we ensure that the error is less than 1%.
+// For examples:
+// * Given stableReplicas 1,  allReplicas 3,   return "33%";
+// * Given stableReplicas 98, allReplicas 99,  return "97%";
+// * Given stableReplicas 1,  allReplicas 101, return "1";
+func ParseIntegerAsPercentageIfPossible(stableReplicas, allReplicas int32, canaryReplicas *intstr.IntOrString) intstr.IntOrString {
+	if stableReplicas >= allReplicas {
+		return intstr.FromString("100%")
+	}
+
+	if stableReplicas <= 0 {
+		return intstr.FromString("0%")
+	}
+
+	pValue := stableReplicas * 100 / allReplicas
+	percent := intstr.FromString(fmt.Sprintf("%v%%", pValue))
+	restoredStableReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&percent, int(allReplicas), true)
+	// restoredStableReplicas == 0 is un-tolerated if user-defined canaryReplicas is not 100%.
+	// we must make sure that at least one canary pod is created.
+	if restoredStableReplicas <= 0 && canaryReplicas.StrVal != "100%" {
+		return intstr.FromString("1%")
+	}
+
+	return percent
+}
+
+func CalculateRealCanaryReplicasGoal(expectedStableReplicas, allReplicas int32, canaryReplicas *intstr.IntOrString) int32 {
+	if canaryReplicas.Type == intstr.Int {
+		return allReplicas - expectedStableReplicas
+	}
+	partition := ParseIntegerAsPercentageIfPossible(expectedStableReplicas, allReplicas, canaryReplicas)
+	realStableReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&partition, int(allReplicas), true)
+	return allReplicas - int32(realStableReplicas)
+}
