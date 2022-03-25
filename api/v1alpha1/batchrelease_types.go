@@ -40,21 +40,11 @@ type BatchRelease struct {
 
 // BatchReleaseSpec defines how to describe an update between different compRevision
 type BatchReleaseSpec struct {
-	Strategy ReleaseStrategy `json:"strategy,omitempty"`
 	// TargetRef contains the GVK and name of the workload that we need to upgrade to.
 	TargetRef ObjectRef `json:"targetReference"`
 	// ReleasePlan is the details on how to rollout the resources
 	ReleasePlan ReleasePlan `json:"releasePlan"`
 }
-
-type ReleaseStrategy struct {
-	// +optional
-	CloneSetStrategy CloneSetReleaseStrategyType `json:"cloneSetStrategy,omitempty"`
-	// +optional
-	DeploymentStrategy DeploymentReleaseStrategyType `json:"deploymentStrategy,omitempty"`
-}
-
-type CloneSetReleaseStrategyType string
 
 type DeploymentReleaseStrategyType string
 

@@ -98,13 +98,6 @@ spec:
                       paused util paused is false. default is false
                     type: boolean
                 type: object
-              strategy:
-                properties:
-                  cloneSetStrategy:
-                    type: string
-                  deploymentStrategy:
-                    type: string
-                type: object
               targetReference:
                 description: TargetRef contains the GVK and name of the workload that
                   we need to upgrade to.
