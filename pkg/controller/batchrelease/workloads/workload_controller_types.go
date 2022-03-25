@@ -23,15 +23,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type WorkloadChangeEventType string
+type WorkloadEventType string
 
 const (
-	IgnoreWorkloadEvent        WorkloadChangeEventType = "workload-not-cared"
-	WorkloadRollback           WorkloadChangeEventType = "workload-rollback"
-	WorkloadPodTemplateChanged WorkloadChangeEventType = "workload-pod-template-changed"
-	WorkloadReplicasChanged    WorkloadChangeEventType = "workload-replicas-changed"
-	WorkloadStillReconciling   WorkloadChangeEventType = "workload-is-reconciling"
-	WorkloadUnHealthy          WorkloadChangeEventType = "workload-is-unhealthy"
+	IgnoreWorkloadEvent        WorkloadEventType = "workload-not-cared"
+	WorkloadRollback           WorkloadEventType = "workload-is-rolling-back"
+	WorkloadPodTemplateChanged WorkloadEventType = "workload-pod-template-changed"
+	WorkloadReplicasChanged    WorkloadEventType = "workload-replicas-changed"
+	WorkloadStillReconciling   WorkloadEventType = "workload-is-reconciling"
+	WorkloadUnHealthy          WorkloadEventType = "workload-is-unhealthy"
 )
 
 type WorkloadStatus struct {
@@ -60,11 +60,12 @@ type workloadController struct {
 
 // WorkloadController is the interface that all type of cloneSet controller implements
 type WorkloadController interface {
-	// IfNeedToProgress makes sure that the resources can be upgraded according to the release plan.
-	// it returns 'true' if the verification is succeeded.
-	// it returns 'false' if the verification should retry.
+	// VerifyWorkload makes sure that the workload can be upgraded according to the release plan.
+	// it returns 'true', the controller will requeue the request and continue to reconcile after a short duration.
+	// it returns 'false', the controller will not requeue the request.
+	// if err == nil, if the verification is successful.
 	// it returns not-empty error if the verification has something wrong, and should not retry.
-	IfNeedToProgress() (bool, error)
+	VerifyWorkload() (bool, error)
 
 	// PrepareBeforeProgress make sure that the resource is ready to be progressed.
 	// this function is tasked to do any initialization work on the resources.
@@ -73,18 +74,18 @@ type WorkloadController interface {
 	// it returns not-empty error if the preparation has something wrong, and should not retry.
 	PrepareBeforeProgress() (bool, error)
 
-	// ProgressOneBatchReplicas tries to upgrade old replicas following the release plan.
+	// UpgradeOneBatch tries to upgrade old replicas following the release plan.
 	// it will upgrade the old replicas as the release plan allows in the current batch.
 	// it returns 'true' if the progress is succeeded.
 	// it returns 'false' if the progress should retry.
 	// it returns not-empty error if the progress has something wrong, and should not retry.
-	ProgressOneBatchReplicas() (bool, error)
+	UpgradeOneBatch() (bool, error)
 
-	// CheckOneBatchReplicas checks how many replicas are ready to serve requests in the current batch.
+	// CheckOneBatchReady checks how many replicas are ready to serve requests in the current batch.
 	// it returns 'true' if the batch has been ready.
 	// it returns 'false' if the batch should be reset and recheck.
 	// it returns not-empty error if the check operation has something wrong, and should not retry.
-	CheckOneBatchReplicas() (bool, error)
+	CheckOneBatchReady() (bool, error)
 
 	// FinalizeOneBatch makes sure that the rollout can start the next batch
 	// it returns 'true' if the operation is succeeded.
@@ -99,10 +100,10 @@ type WorkloadController interface {
 	// parameters:
 	// - pause: 'nil' means keep current state, 'true' means pause workload, 'false' means do not pause workload
 	// - cleanup: 'true' means clean up canary settings, 'false' means do not clean up.
-	FinalizeProgress(pause *bool, cleanup bool) bool
+	FinalizeProgress(cleanup bool) bool
 
 	// SyncWorkloadInfo will watch and compare the status recorded in BatchRelease.Status
 	// and the real-time workload info. If workload status is inconsistent with that recorded
-	// in release.status, will return the corresponding WorkloadChangeEventType and info.
-	SyncWorkloadInfo() (WorkloadChangeEventType, *WorkloadInfo, error)
+	// in release.status, will return the corresponding WorkloadEventType and info.
+	SyncWorkloadInfo() (WorkloadEventType, *WorkloadInfo, error)
 }

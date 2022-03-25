@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -72,7 +71,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		}
 		patchedBody, _ := json.Marshal(patchedInfo)
 		if err := c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchedBody)); err != nil {
-			klog.Errorf("Failed to patch controller info annotations to stable deployment(%v), error: %v", client.ObjectKeyFromObject(canaryDeploy), err)
+			klog.Errorf("Failed to patch controller info annotations to stable deployment(%v), error: %v", client.ObjectKeyFromObject(stableDeploy), err)
 			return canaryDeploy, err
 		}
 	}
@@ -80,33 +79,24 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 	// create canary deployment if it needs
 	if canaryDeploy == nil || !util.EqualIgnoreHash(&stableDeploy.Spec.Template, &canaryDeploy.Spec.Template) {
 		var err error
-		var collisionCount int32
-		if c.releaseStatus.CollisionCount != nil {
-			collisionCount = *c.releaseStatus.CollisionCount
-		}
-
 		for {
-			canaryDeploy, err = c.createCanaryDeployment(stableDeploy, &collisionCount)
-			if errors.IsAlreadyExists(err) {
-				collisionCount++
-				continue
-			} else if err != nil {
+			canaryDeploy, err = c.createCanaryDeployment(stableDeploy)
+			if err != nil {
+				if errors.IsAlreadyExists(err) {
+					continue
+				}
 				return nil, err
 			}
 			break
-		}
-
-		if collisionCount > 0 {
-			c.releaseStatus.CollisionCount = pointer.Int32Ptr(collisionCount)
 		}
 	}
 
 	return canaryDeploy, nil
 }
 
-func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deployment, collisionCount *int32) (*apps.Deployment, error) {
+func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deployment) (*apps.Deployment, error) {
 	// TODO: find a better way to generate canary deployment name
-	suffix := util.ShortRandomStr(collisionCount)
+	suffix := util.GenRandomStr(3)
 	canaryDeploy := &apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        fmt.Sprintf("%v-%v", c.canaryNamespacedName.Name, suffix),
@@ -129,8 +119,7 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	}
 
 	canaryDeploy.Finalizers = append(canaryDeploy.Finalizers, util.CanaryDeploymentFinalizer)
-	canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *metav1.NewControllerRef(
-		c.parentController, c.parentController.GroupVersionKind()))
+	canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *metav1.NewControllerRef(c.parentController, c.parentController.GroupVersionKind()))
 
 	// set extra labels & annotations
 	canaryDeploy.Labels[util.CanaryDeploymentLabelKey] = c.stableNamespacedName.Name
@@ -145,8 +134,8 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	canaryDeploy.Spec.Replicas = pointer.Int32Ptr(0)
 	canaryDeploy.Spec.Paused = false
 
-	canaryKey := client.ObjectKeyFromObject(canaryDeploy)
 	// create canary Deployment
+	canaryKey := client.ObjectKeyFromObject(canaryDeploy)
 	err := c.client.Create(context.TODO(), canaryDeploy)
 	if err != nil {
 		klog.Errorf("Failed to create canary Deployment(%v), error: %v", canaryKey, err)
@@ -155,29 +144,16 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 
 	canaryDeployInfo, _ := json.Marshal(canaryDeploy)
 	klog.V(3).Infof("Create canary Deployment(%v) successfully, details: %v", canaryKey, string(canaryDeployInfo))
-
-	// fetch the canary Deployment
-	var fetchedCanary *apps.Deployment
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		fetchedCanary = &apps.Deployment{}
-		return c.client.Get(context.TODO(), canaryKey, fetchedCanary)
-	})
-
-	return fetchedCanary, err
+	return canaryDeploy, err
 }
 
-func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, pause *bool, cleanup bool) (bool, error) {
+func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, cleanup bool) (bool, error) {
 	var patchErr, deleteErr error
 
 	// clean up control info for stable deployment if it needs
-	if stableDeploy != nil && (len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 || (pause != nil && stableDeploy.Spec.Paused != *pause)) {
+	if stableDeploy != nil && len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
 		var patchByte []byte
-		if pause == nil {
-			patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
-		} else {
-			patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}},"spec":{"paused":%v}}`, util.BatchReleaseControlAnnotation, *pause))
-		}
-
+		patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
 		patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
 		if patchErr != nil {
 			klog.Errorf("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
@@ -223,7 +199,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 }
 
 // scale the deployment
-func (c *deploymentController) patchCanaryReplicas(canaryDeploy *apps.Deployment, replicas int32) error {
+func (c *deploymentController) patchDeploymentReplicas(deploy *apps.Deployment, replicas int32) error {
 	patch := map[string]interface{}{
 		"spec": map[string]interface{}{
 			"replicas": pointer.Int32Ptr(replicas),
@@ -231,15 +207,66 @@ func (c *deploymentController) patchCanaryReplicas(canaryDeploy *apps.Deployment
 	}
 
 	patchByte, _ := json.Marshal(patch)
-	if err := c.client.Patch(context.TODO(), canaryDeploy, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
+	if err := c.client.Patch(context.TODO(), deploy, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "PatchPartitionFailed",
 			"Failed to update the canary Deployment to the correct canary replicas %d, error: %v", replicas, err)
 		return err
 	}
 
 	klog.InfoS("Submitted modified partition quest for canary Deployment", "Deployment",
-		client.ObjectKeyFromObject(canaryDeploy), "target canary replicas size", replicas, "batch", c.releaseStatus.CanaryStatus.CurrentBatch)
+		client.ObjectKeyFromObject(deploy), "target canary replicas size", replicas, "batch", c.releaseStatus.CanaryStatus.CurrentBatch)
 	return nil
+}
+
+// GetStablePodTemplateHash returns latest/stable revision hash of deployment
+func (c *deploymentController) GetStablePodTemplateHash(deploy *apps.Deployment) (string, error) {
+	if deploy == nil {
+		return "", fmt.Errorf("workload cannot be found, may be deleted or not be created yet")
+	}
+
+	rss, err := c.listReplicaSetsFor(deploy)
+	if err != nil {
+		return "", err
+	}
+
+	sort.Slice(rss, func(i, j int) bool {
+		return rss[i].CreationTimestamp.Before(&rss[j].CreationTimestamp)
+	})
+
+	for _, rs := range rss {
+		if rs.Spec.Replicas != nil && *rs.Spec.Replicas > 0 {
+			return rs.Labels[apps.DefaultDeploymentUniqueLabelKey], nil
+		}
+	}
+
+	return "", fmt.Errorf("cannot get stable pod-template-hash for deployment(%v)", client.ObjectKeyFromObject(deploy))
+}
+
+// listReplicaSetsFor list all owned replicaSets of deployment, including those have deletionTimestamp
+func (c *deploymentController) listReplicaSetsFor(deploy *apps.Deployment) ([]*apps.ReplicaSet, error) {
+	deploySelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	if err != nil {
+		return nil, err
+	}
+
+	rsList := &apps.ReplicaSetList{}
+	err = c.client.List(context.TODO(), rsList, &client.ListOptions{Namespace: deploy.Namespace, LabelSelector: deploySelector})
+	if err != nil {
+		return nil, err
+	}
+
+	var rss []*apps.ReplicaSet
+	for i := range rsList.Items {
+		rs := &rsList.Items[i]
+		if rs.DeletionTimestamp != nil {
+			continue
+		}
+		if owner := metav1.GetControllerOf(rs); owner == nil || owner.UID != deploy.UID {
+			continue
+		}
+		rss = append(rss, rs)
+	}
+	return rss, nil
 }
 
 func (c *deploymentController) listCanaryDeployment(options ...client.ListOption) ([]*apps.Deployment, error) {
@@ -259,4 +286,22 @@ func (c *deploymentController) listCanaryDeployment(options ...client.ListOption
 	}
 
 	return ds, nil
+}
+
+// the target workload size for the current batch
+func (c *deploymentController) calculateCurrentCanary(totalSize int32) int32 {
+	targetSize := int32(util.CalculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
+	klog.InfoS("Calculated the number of pods in the canary Deployment after current batch",
+		"Deployment", c.stableNamespacedName, "BatchRelease", c.releaseKey,
+		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
+	return targetSize
+}
+
+// the source workload size for the current batch
+func (c *deploymentController) calculateCurrentStable(totalSize int32) int32 {
+	sourceSize := totalSize - c.calculateCurrentCanary(totalSize)
+	klog.InfoS("Calculated the number of pods in the stable Deployment after current batch",
+		"Deployment", c.stableNamespacedName, "BatchRelease", c.releaseKey,
+		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
+	return sourceSize
 }

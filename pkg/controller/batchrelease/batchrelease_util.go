@@ -20,17 +20,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
+	"k8s.io/utils/integer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func HasTerminatingCondition(status v1alpha1.BatchReleaseStatus) bool {
 	for i := range status.Conditions {
 		c := status.Conditions[i]
-		if c.Status == v1.ConditionTrue && c.Reason == v1alpha1.TerminatingReasonInTerminating {
+		if c.Type == "Terminated" && c.Status == v1.ConditionTrue {
 			return true
 		}
 	}
@@ -49,52 +51,38 @@ func initializeStatusIfNeeds(status *v1alpha1.BatchReleaseStatus) {
 	}
 }
 
-func signalStart(status *v1alpha1.BatchReleaseStatus) bool {
-	if status.Phase == v1alpha1.RolloutPhaseHealthy {
-		return false
-	}
+func signalReinitializeBatch(status *v1alpha1.BatchReleaseStatus) {
+	status.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+}
+
+func signalLocated(status *v1alpha1.BatchReleaseStatus) {
 	status.Phase = v1alpha1.RolloutPhaseHealthy
-	return true
+	setCondition(status, v1alpha1.VerifyingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is verifying the workload")
 }
 
-func signalRestart(status *v1alpha1.BatchReleaseStatus) bool {
-	if status.Phase == v1alpha1.RolloutPhaseInitial {
-		return false
-	}
-	resetStatus(status)
-	return true
-}
-
-func signalRecalculate(status *v1alpha1.BatchReleaseStatus) bool {
-	if status.CanaryStatus.CurrentBatchState == v1alpha1.InitializeBatchState {
-		return false
-	}
-	status.CanaryStatus.CurrentBatchState = v1alpha1.InitializeBatchState
-	return true
-}
-
-func signalTerminating(status *v1alpha1.BatchReleaseStatus) bool {
-	if status.Phase == v1alpha1.RolloutPhaseTerminating {
-		return false
-	}
+func signalTerminating(status *v1alpha1.BatchReleaseStatus) {
 	status.Phase = v1alpha1.RolloutPhaseTerminating
-	return true
+	setCondition(status, v1alpha1.TerminatingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is terminating")
 }
 
-func signalFinalize(status *v1alpha1.BatchReleaseStatus) bool {
-	if status.Phase == v1alpha1.RolloutPhaseFinalizing {
-		return false
-	}
+func signalFinalize(status *v1alpha1.BatchReleaseStatus) {
 	status.Phase = v1alpha1.RolloutPhaseFinalizing
-	return true
+	setCondition(status, v1alpha1.FinalizingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is finalizing")
 }
 
-func signalAbort(status *v1alpha1.BatchReleaseStatus) bool {
-	if status.Phase == v1alpha1.RolloutPhaseAbort {
-		return false
+func signalRecalculate(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) {
+	// When BatchRelease plan was changed, rollout controller will update this batchRelease cr,
+	// and rollout controller will set BatchPartition as its expected current batch index.
+	currentBatch := int32(0)
+	if release.Spec.ReleasePlan.BatchPartition != nil {
+		// ensure current batch upper bound
+		currentBatch = integer.Int32Min(*release.Spec.ReleasePlan.BatchPartition, currentBatch)
 	}
-	status.Phase = v1alpha1.RolloutPhaseAbort
-	return true
+
+	klog.Infof("BatchRelease(%v) canary batch changed from %v to %v when the release plan changed",
+		client.ObjectKeyFromObject(release), newStatus.CanaryStatus.CurrentBatch, currentBatch)
+	newStatus.CanaryStatus.CurrentBatch = currentBatch
+	newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
 }
 
 func resetStatus(status *v1alpha1.BatchReleaseStatus) {
@@ -106,42 +94,43 @@ func resetStatus(status *v1alpha1.BatchReleaseStatus) {
 	status.CanaryStatus = v1alpha1.BatchReleaseCanaryStatus{}
 }
 
-func setCondition(status *v1alpha1.BatchReleaseStatus, reason, message string, conditionStatusType v1.ConditionStatus) {
+func setCondition(status *v1alpha1.BatchReleaseStatus, condType v1alpha1.RolloutConditionType, condStatus v1.ConditionStatus, reason, message string) {
 	if status == nil {
 		return
 	}
 
-	var suitableCondition *v1alpha1.RolloutCondition
-	for i := range status.Conditions {
-		condition := &status.Conditions[i]
-		if condition.Type == getConditionType(status.Phase) {
-			suitableCondition = condition
-		}
-	}
-
-	if suitableCondition == nil {
+	if len(status.Conditions) == 0 {
 		status.Conditions = append(status.Conditions, v1alpha1.RolloutCondition{
-			Type:           getConditionType(status.Phase),
-			Status:         conditionStatusType,
+			Type:           condType,
+			Status:         condStatus,
 			Reason:         reason,
 			Message:        message,
 			LastUpdateTime: metav1.Now(),
 		})
-	} else {
-		suitableCondition.Reason = reason
-		suitableCondition.Message = message
-		suitableCondition.LastUpdateTime = metav1.Now()
-		if suitableCondition.Status != conditionStatusType {
-			suitableCondition.LastTransitionTime = metav1.Now()
+		return
+	}
+
+	condition := &status.Conditions[0]
+	isConditionChanged := func() bool {
+		return condition.Type != condType || condition.Status != condStatus || condition.Reason != reason || condition.Message != message
+	}
+
+	if isConditionChanged() {
+		condition.Type = condType
+		condition.Reason = reason
+		condition.Message = message
+		condition.LastUpdateTime = metav1.Now()
+		if condition.Status != condStatus {
+			condition.LastTransitionTime = metav1.Now()
 		}
-		suitableCondition.Status = conditionStatusType
+		condition.Status = condStatus
 	}
 }
 
-func cleanupConditions(status *v1alpha1.BatchReleaseStatus) {
-	status.Conditions = nil
+func IsPartitioned(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
+	return plan.BatchPartition != nil && *plan.BatchPartition <= status.CanaryStatus.CurrentBatch
 }
 
-func getConditionType(phase v1alpha1.RolloutPhase) v1alpha1.RolloutConditionType {
-	return v1alpha1.RolloutConditionType(fmt.Sprintf("%sPhaseCompleted", phase))
+func IsAllBatchReady(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
+	return len(plan.Batches)-1 == int(status.CanaryStatus.CurrentBatch) && status.CanaryStatus.CurrentBatchState == v1alpha1.ReadyBatchState
 }

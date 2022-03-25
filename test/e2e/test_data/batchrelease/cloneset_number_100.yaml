@@ -13,11 +13,11 @@ spec:
     batches:
       - canaryReplicas: 1
         pauseSeconds: 20
-      - canaryReplicas: 2
-        pauseSeconds: 20
       - canaryReplicas: 3
         pauseSeconds: 20
-      - canaryReplicas: 5
+      - canaryReplicas: 6
+        pauseSeconds: 20
+      - canaryReplicas: 10
         pauseSeconds: 20
 
 

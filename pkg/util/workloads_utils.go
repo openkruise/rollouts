@@ -179,14 +179,6 @@ func UpdateFinalizer(c client.Client, object client.Object, op FinalizerOpType, 
 	})
 }
 
-func IsControlledByRollout(release *v1alpha1.BatchRelease) bool {
-	owner := metav1.GetControllerOf(release)
-	if owner != nil && owner.APIVersion == v1alpha1.GroupVersion.String() && owner.Kind == "Rollout" {
-		return true
-	}
-	return false
-}
-
 func FilterActiveDeployment(ds []*apps.Deployment) []*apps.Deployment {
 	var activeDs []*apps.Deployment
 	for i := range ds {
@@ -197,7 +189,7 @@ func FilterActiveDeployment(ds []*apps.Deployment) []*apps.Deployment {
 	return activeDs
 }
 
-func ShortRandomStr(collisionCount *int32) string {
-	randStr := rand.String(3)
+func GenRandomStr(length int) string {
+	randStr := rand.String(length)
 	return rand.SafeEncodeString(randStr)
 }

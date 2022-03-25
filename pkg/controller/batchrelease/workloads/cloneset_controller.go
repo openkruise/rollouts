@@ -87,14 +87,6 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 				util.BatchReleaseControlAnnotation: string(controlByte),
 			},
 		}
-
-		if clone.Spec.UpdateStrategy.Partition != nil {
-			partitionByte, _ := json.Marshal(clone.Spec.UpdateStrategy.Partition)
-			metadata := patch["metadata"].(map[string]interface{})
-			annotations := metadata["annotations"].(map[string]string)
-			annotations[util.StashCloneSetPartition] = string(partitionByte)
-			annotations[util.BatchReleaseControlAnnotation] = string(controlByte)
-		}
 	}
 
 	if len(patch) > 0 {
@@ -110,7 +102,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 }
 
 // remove the parent controller from the deployment's owner list
-func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet, pause *bool, cleanup bool) (bool, error) {
+func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet, cleanup bool) (bool, error) {
 	if clone == nil {
 		return true, nil
 	}
@@ -132,46 +124,22 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 		return true, nil
 	}
 
-	var patchByte string
-	switch {
-	case cleanup:
-		patchSpec := map[string]interface{}{
-			"updateStrategy": map[string]interface{}{
-				"partition": nil,
-			},
-		}
-
-		if len(clone.Annotations[util.StashCloneSetPartition]) > 0 {
-			restoredPartition := &intstr.IntOrString{}
-			if err := json.Unmarshal([]byte(clone.Annotations[util.StashCloneSetPartition]), restoredPartition); err == nil {
-				updateStrategy := patchSpec["updateStrategy"].(map[string]interface{})
-				updateStrategy["partition"] = restoredPartition
-			}
-		}
-
-		patchSpecByte, _ := json.Marshal(patchSpec)
-		patchByte = fmt.Sprintf(`{"metadata":{"annotations":{"%s":null, "%s":null}},"spec":%s}`,
-			util.BatchReleaseControlAnnotation, util.StashCloneSetPartition, string(patchSpecByte))
-
-	default:
-		patchByte = fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation)
-	}
-
-	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(patchByte))); err != nil {
+	patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation))
+	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ReleaseCloneSetFailed", err.Error())
 		return false, err
 	}
 
-	klog.V(3).Infof("Release CloneSet(%v) Successfully", client.ObjectKeyFromObject(clone))
+	klog.V(3).Infof("Release CloneSet(%v) Successfully", c.targetNamespacedName)
 	return true, nil
 }
 
 // scale the deployment
-func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.CloneSet, partition int32) error {
+func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.CloneSet, partition *intstr.IntOrString) error {
 	patch := map[string]interface{}{
 		"spec": map[string]interface{}{
 			"updateStrategy": map[string]interface{}{
-				"partition": &intstr.IntOrString{Type: intstr.Int, IntVal: partition},
+				"partition": partition,
 			},
 		},
 	}
@@ -188,4 +156,58 @@ func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.Cl
 		"target partition size", partition, "batch", c.releaseStatus.CanaryStatus.CurrentBatch)
 
 	return nil
+}
+
+// the canary workload size for the current batch
+func (c *cloneSetController) calculateCurrentCanary(totalSize int32) int32 {
+	targetSize := int32(util.CalculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
+	klog.InfoS("Calculated the number of pods in the target CloneSet after current batch",
+		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
+		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
+	return targetSize
+}
+
+// the source workload size for the current batch
+func (c *cloneSetController) calculateCurrentStable(totalSize int32) int32 {
+	sourceSize := totalSize - c.calculateCurrentCanary(totalSize)
+	klog.InfoS("Calculated the number of pods in the source CloneSet after current batch",
+		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
+		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
+	return sourceSize
+}
+
+// ParseIntegerAsPercentageIfPossible will return a percentage type IntOrString, such as "20%", "33%", but "33.3%" is illegal.
+// Given A, B, return P that should try best to satisfy ⌈P * B⌉ == A, and we ensure that the error is less than 1%.
+// For examples:
+// * Given stableReplicas 1,  allReplicas 3,   return "33%";
+// * Given stableReplicas 98, allReplicas 99,  return "97%";
+// * Given stableReplicas 1,  allReplicas 101, return "1";
+func ParseIntegerAsPercentageIfPossible(stableReplicas, allReplicas int32, canaryReplicas *intstr.IntOrString) intstr.IntOrString {
+	if stableReplicas >= allReplicas {
+		return intstr.FromString("100%")
+	}
+
+	if stableReplicas <= 0 {
+		return intstr.FromString("0%")
+	}
+
+	pValue := stableReplicas * 100 / allReplicas
+	percent := intstr.FromString(fmt.Sprintf("%v%%", pValue))
+	restoredStableReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&percent, int(allReplicas), true)
+	// restoredStableReplicas == 0 is un-tolerated if user-defined canaryReplicas is not 100%.
+	// we must make sure that at least one canary pod is created.
+	if restoredStableReplicas <= 0 && canaryReplicas.StrVal != "100%" {
+		return intstr.FromString("1%")
+	}
+
+	return percent
+}
+
+func CalculateRealCanaryReplicasGoal(expectedStableReplicas, allReplicas int32, canaryReplicas *intstr.IntOrString) int32 {
+	if canaryReplicas.Type == intstr.Int {
+		return allReplicas - expectedStableReplicas
+	}
+	partition := ParseIntegerAsPercentageIfPossible(expectedStableReplicas, allReplicas, canaryReplicas)
+	realStableReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&partition, int(allReplicas), true)
+	return allReplicas - int32(realStableReplicas)
 }

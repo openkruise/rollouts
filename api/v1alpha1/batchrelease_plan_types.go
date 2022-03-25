@@ -91,7 +91,7 @@ type BatchReleaseStatus struct {
 
 type BatchReleaseCanaryStatus struct {
 	// CurrentBatchState indicates the release state of the current batch.
-	CurrentBatchState ReleasingBatchStateType `json:"batchState,omitempty"`
+	CurrentBatchState BatchReleaseBatchStateType `json:"batchState,omitempty"`
 	// The current batch the rollout is working on/blocked, it starts from 0
 	CurrentBatch int32 `json:"currentBatch"`
 	// BatchReadyTime is the ready timestamp of the current batch or the last batch.
@@ -104,15 +104,39 @@ type BatchReleaseCanaryStatus struct {
 	UpdatedReadyReplicas int32 `json:"updatedReadyReplicas,omitempty"`
 }
 
-type ReleasingBatchStateType string
+type BatchReleaseBatchStateType string
 
 const (
-	// InitializeBatchState indicates that current batch is at initial state
-	InitializeBatchState ReleasingBatchStateType = "InitializeInBatch"
-	// DoCanaryBatchState indicates that current batch is at upgrading pod state
-	DoCanaryBatchState ReleasingBatchStateType = "DoCanaryInBatch"
-	// VerifyBatchState indicates that current batch is at verifying whether it's ready state
-	VerifyBatchState ReleasingBatchStateType = "VerifyInBatch"
+	// UpgradingBatchState indicates that current batch is at upgrading pod state
+	UpgradingBatchState BatchReleaseBatchStateType = "Upgrading"
+	// VerifyingBatchState indicates that current batch is at verifying whether it's ready state
+	VerifyingBatchState BatchReleaseBatchStateType = "Verifying"
 	// ReadyBatchState indicates that current batch is at batch ready state
-	ReadyBatchState ReleasingBatchStateType = "ReadyInBatch"
+	ReadyBatchState BatchReleaseBatchStateType = "Ready"
+)
+
+const (
+	// VerifyingBatchReleaseCondition indicates the controller is verifying whether workload
+	// is ready to do rollout.
+	VerifyingBatchReleaseCondition RolloutConditionType = "Verifying"
+	// PreparingBatchReleaseCondition indicates the controller is preparing something before executing
+	// release plan, such as create canary deployment and record stable & canary revisions.
+	PreparingBatchReleaseCondition RolloutConditionType = "Preparing"
+	// ProgressingBatchReleaseCondition indicates the controller is executing release plan.
+	ProgressingBatchReleaseCondition RolloutConditionType = "Progressing"
+	// FinalizingBatchReleaseCondition indicates the canary state is completed,
+	// and the controller is doing something, such as cleaning up canary deployment.
+	FinalizingBatchReleaseCondition RolloutConditionType = "Finalizing"
+	// TerminatingBatchReleaseCondition indicates the rollout is terminating when the
+	// BatchRelease cr is being deleted or cancelled.
+	TerminatingBatchReleaseCondition RolloutConditionType = "Terminating"
+	// TerminatedBatchReleaseCondition indicates the BatchRelease cr can be deleted.
+	TerminatedBatchReleaseCondition RolloutConditionType = "Terminated"
+	// CancelledBatchReleaseCondition indicates the release plan is cancelled during rollout.
+	CancelledBatchReleaseCondition RolloutConditionType = "Cancelled"
+	// CompletedBatchReleaseCondition indicates the release plan is completed successfully.
+	CompletedBatchReleaseCondition RolloutConditionType = "Completed"
+
+	SucceededBatchReleaseConditionReason = "Succeeded"
+	FailedBatchReleaseConditionReason    = "Failed"
 )

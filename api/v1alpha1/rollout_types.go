@@ -266,8 +266,6 @@ const (
 	RolloutPhaseCompleted RolloutPhase = "Completed"
 	// RolloutPhaseCancelled indicates a rollout is cancelled
 	RolloutPhaseCancelled RolloutPhase = "Cancelled"
-	// RolloutPhaseAbort indicates workload has been rollback
-	RolloutPhaseAbort RolloutPhase = "Abort"
 )
 
 // +genclient

@@ -206,7 +206,7 @@ func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 	}
 	if len(brNsn.Name) != 0 {
 		klog.V(5).Infof("Something related %s %s (%s/%s) happen and will reconcile BatchRelease (%v)",
-			action, gvk.Kind, workloadNamespacedName.Namespace, workloadNamespacedName.Namespace, brNsn)
+			action, gvk.Kind, workloadNamespacedName.Namespace, workloadNamespacedName.Name, brNsn)
 		q.Add(reconcile.Request{NamespacedName: brNsn})
 	}
 }
