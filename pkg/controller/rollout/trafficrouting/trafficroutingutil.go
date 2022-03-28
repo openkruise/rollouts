@@ -16,8 +16,8 @@ limitations under the License.
 
 package trafficrouting
 
-// TrafficRoutingController common function across all TrafficRouting implementation
-type TrafficRoutingController interface {
+// Controller common function across all TrafficRouting implementation
+type Controller interface {
 	// SetRoutes set canary ingress desired weight
 	SetRoutes(desiredWeight int32) error
 	// Verify check if canary ingress has been set desired weight

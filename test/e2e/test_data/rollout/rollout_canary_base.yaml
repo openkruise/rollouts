@@ -13,18 +13,17 @@ spec:
     type: canary
     canary:
       steps:
-        - weight: 20
-          pause: {}
-        - weight: 40
-          pause: {duration: 10}
-        - weight: 60
-          pause: {duration: 10}
-        - weight: 80
-          pause: {duration: 10}
-        - weight: 100
-          pause: {}
+      - weight: 20
+        pause: {}
+      - weight: 40
+        pause: {duration: 10}
+      - weight: 60
+        pause: {duration: 10}
+      - weight: 80
+        pause: {duration: 10}
+      - weight: 100
       trafficRouting:
-        service: echoserver
+      - service: echoserver
         type: nginx
-        nginx:
-          ingress: echoserver
+        ingress:
+          name: echoserver

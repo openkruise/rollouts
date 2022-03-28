@@ -77,7 +77,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			oldObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		err, changed := h.handlerCloneSet(newObj, oldObj)
+		changed, err := h.handlerCloneSet(newObj, oldObj)
 		if err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
@@ -105,7 +105,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			oldObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		err, changed := h.handlerDeployment(newObj, oldObj)
+		changed, err := h.handlerDeployment(newObj, oldObj)
 		if err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
@@ -121,7 +121,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 	return admission.Allowed("")
 }
 
-func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) (err error, changed bool) {
+func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) (changed bool, err error) {
 	// in rollout progressing
 	if state, _ := util.GetRolloutState(newObj.Annotations); state != nil {
 		// deployment paused=false is not allowed until the rollout is completed
@@ -168,6 +168,9 @@ func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) (er
 	newObj.Spec.Paused = true
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
+	if newObj.Annotations == nil {
+		newObj.Annotations = map[string]string{}
+	}
 	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
 	return
 }
@@ -198,17 +201,7 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.
 	return nil, nil
 }
 
-func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) (err error, changed bool) {
-	// in rollout progressing
-	if state, _ := util.GetRolloutState(newObj.Annotations); state != nil {
-		if newObj.Spec.UpdateStrategy.Paused == false {
-			changed = true
-			newObj.Spec.UpdateStrategy.Paused = true
-			klog.Warningf("cloneSet(%s/%s) is in rollout(%s) progressing, and set paused=true", newObj.Namespace, newObj.Name, state.RolloutName)
-		}
-		return
-	}
-
+func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) (changed bool, err error) {
 	// indicate whether the workload can enter the rollout process
 	// 1. replicas > 0
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
@@ -218,24 +211,23 @@ func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clo
 	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
 		return
 	}
-	// 3. the cloneSet must be in a stable version (only one version of pods)
-	if newObj.Status.UpdatedReplicas != newObj.Status.Replicas {
-		return
-	}
-	// 4. have matched rollout crd
+	// 3. have matched rollout crd
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
 		return
 	} else if rollout == nil {
 		return
 	}
-	klog.Infof("cloneSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
 
+	klog.Infof("cloneSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
 	changed = true
 	// need set workload paused = true
 	newObj.Spec.UpdateStrategy.Paused = true
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
+	if newObj.Annotations == nil {
+		newObj.Annotations = map[string]string{}
+	}
 	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
 	return
 }

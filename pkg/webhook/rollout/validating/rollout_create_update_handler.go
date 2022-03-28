@@ -24,7 +24,6 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	addmissionv1 "k8s.io/api/admission/v1"
-	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -83,22 +82,28 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 	if err != nil {
 		return field.ErrorList{field.InternalError(field.NewPath("Rollout"), err)}
 	}
+	if errorList := h.validateRollout(newObj); errorList != nil {
+		return errorList
+	}
 
 	switch latestObject.Status.Phase {
-	case "", appsv1alpha1.RolloutPhaseInitial, appsv1alpha1.RolloutPhaseHealthy:
+	// The workloadRef and TrafficRouting are not allowed to be modified in the Progressing, Terminating state
+	case appsv1alpha1.RolloutPhaseProgressing, appsv1alpha1.RolloutPhaseTerminating:
 		if !reflect.DeepEqual(oldObj.Spec.ObjectRef, newObj.Spec.ObjectRef) {
 			return field.ErrorList{field.Forbidden(field.NewPath("Spec.ObjectRef"), "Rollout 'ObjectRef' field is immutable")}
 		}
-	default:
-		// except spec.paused
-		oldObj.Spec.Strategy.Paused = false
-		newObj.Spec.Strategy.Paused = false
-		if !reflect.DeepEqual(oldObj.Spec, newObj.Spec) {
-			return field.ErrorList{field.Forbidden(field.NewPath("Status.Phase"), "Rollout is immutable because it is at Progressing/Terminating phase")}
+		if oldObj.Spec.Strategy.Type != newObj.Spec.Strategy.Type {
+			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy"), "Rollout 'Strategy.type' field is immutable")}
+		}
+		// canary strategy
+		if oldObj.Spec.Strategy.Type != appsv1alpha1.RolloutStrategyBlueGreen {
+			if !reflect.DeepEqual(oldObj.Spec.Strategy.Canary.TrafficRouting, newObj.Spec.Strategy.Canary.TrafficRouting) {
+				return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary.TrafficRouting"), "Rollout 'Strategy.Canary.TrafficRouting' field is immutable")}
+			}
 		}
 	}
 
-	if newObj.Status.CanaryStatus != nil && newObj.Status.CanaryStatus.CurrentStepState == appsv1alpha1.CanaryStepStateCompleted {
+	/*if newObj.Status.CanaryStatus != nil && newObj.Status.CanaryStatus.CurrentStepState == appsv1alpha1.CanaryStepStateReady {
 		if oldObj.Status.CanaryStatus != nil {
 			switch oldObj.Status.CanaryStatus.CurrentStepState {
 			case appsv1alpha1.CanaryStepStateCompleted, appsv1alpha1.CanaryStepStatePaused:
@@ -106,9 +111,9 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 				return field.ErrorList{field.Forbidden(field.NewPath("Status"), "CanaryStatus.CurrentStepState only allow to translate to 'StepInCompleted' from 'StepInPaused'")}
 			}
 		}
-	}
+	}*/
 
-	return h.validateRollout(newObj)
+	return nil
 }
 
 func (h *RolloutCreateUpdateHandler) validateRollout(rollout *appsv1alpha1.Rollout) field.ErrorList {
@@ -144,10 +149,8 @@ func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) fie
 func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *field.Path) field.ErrorList {
 	switch objectRef.Type {
 	case "", appsv1alpha1.WorkloadRefType:
-		if objectRef.WorkloadRef == nil ||
-			objectRef.WorkloadRef.Kind != "Deployment" ||
-			objectRef.WorkloadRef.APIVersion != apps.SchemeGroupVersion.String() {
-			return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef only support 'Deployments.apps/v1'")}
+		if objectRef.WorkloadRef == nil || (objectRef.WorkloadRef.Kind != "Deployment" && objectRef.WorkloadRef.Kind != "CloneSet") {
+			return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef only support 'Deployments', 'CloneSet'")}
 		}
 	default:
 		return field.ErrorList{field.Invalid(fldPath.Child("Type"), objectRef.Type, "ObjectRef only support 'workloadRef' type")}
@@ -170,7 +173,9 @@ func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldP
 	}
 
 	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"))
-	errList = append(errList, validateRolloutSpecCanaryTraffic(canary.TrafficRouting, fldPath.Child("TrafficRouting"))...)
+	for _, traffic := range canary.TrafficRouting {
+		errList = append(errList, validateRolloutSpecCanaryTraffic(traffic, fldPath.Child("TrafficRouting"))...)
+	}
 	return errList
 }
 
@@ -185,10 +190,10 @@ func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldP
 	}
 
 	switch traffic.Type {
-	case "", appsv1alpha1.TrafficRoutingNginx:
-		if traffic.Nginx == nil ||
-			len(traffic.Nginx.Ingress) == 0 {
-			errList = append(errList, field.Invalid(fldPath.Child("Nginx"), traffic.Nginx, "TrafficRouting.Nginx.Ingress cannot be empty"))
+	case "", "nginx":
+		if traffic.Ingress == nil ||
+			len(traffic.Ingress.Name) == 0 {
+			errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting.Ingress.Ingress cannot be empty"))
 		}
 	default:
 

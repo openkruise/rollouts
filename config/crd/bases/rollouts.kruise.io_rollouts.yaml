@@ -121,35 +121,41 @@ spec:
                       trafficRouting:
                         description: TrafficRouting hosts all the supported service
                           meshes supported to enable more fine-grained traffic routing
-                        properties:
-                          gracePeriodSeconds:
-                            description: Optional duration in seconds the traffic
-                              provider(e.g. nginx ingress controller) consumes the
-                              service, ingress configuration changes gracefully.
-                            format: int32
-                            type: integer
-                          nginx:
-                            description: Nginx holds Nginx Ingress specific configuration
-                              to route traffic
-                            properties:
-                              ingress:
-                                description: Ingress refers to the name of an `Ingress`
-                                  resource in the same namespace as the `Rollout`
-                                type: string
-                            required:
-                            - ingress
-                            type: object
-                          service:
-                            description: Service holds the name of a service which
-                              selects pods with stable version and don't select any
-                              pods with canary version.
-                            type: string
-                          type:
-                            description: Nginx, Alb, Istio etc.
-                            type: string
-                        required:
-                        - type
-                        type: object
+                          todo current only support one
+                        items:
+                          description: TrafficRouting hosts all the different configuration
+                            for supported service meshes to enable more fine-grained
+                            traffic routing
+                          properties:
+                            gracePeriodSeconds:
+                              description: Optional duration in seconds the traffic
+                                provider(e.g. nginx ingress controller) consumes the
+                                service, ingress configuration changes gracefully.
+                              format: int32
+                              type: integer
+                            ingress:
+                              description: Ingress holds Ingress specific configuration
+                                to route traffic, e.g. Nginx, Alb.
+                              properties:
+                                name:
+                                  description: Name refers to the name of an `Ingress`
+                                    resource in the same namespace as the `Rollout`
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            service:
+                              description: Service holds the name of a service which
+                                selects pods with stable version and don't select
+                                any pods with canary version.
+                              type: string
+                            type:
+                              description: nginx, alb etc.
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        type: array
                     type: object
                   paused:
                     description: Paused indicates that the Rollout is paused. Default
@@ -208,6 +214,9 @@ spec:
                       observed for this Rollout ref workload generation.
                     format: int64
                     type: integer
+                  rolloutHash:
+                    description: RolloutHash from rollout.spec object
+                    type: string
                 required:
                 - canaryReadyReplicas
                 - canaryReplicas

@@ -87,7 +87,8 @@ type RolloutStrategy struct {
 type RolloutStrategyType string
 
 const (
-	RolloutStrategyCanary RolloutStrategyType = "canary"
+	RolloutStrategyCanary    RolloutStrategyType = "canary"
+	RolloutStrategyBlueGreen RolloutStrategyType = "blueGreen"
 )
 
 // CanaryStrategy defines parameters for a Replica Based Canary
@@ -96,7 +97,8 @@ type CanaryStrategy struct {
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
 	// TrafficRouting hosts all the supported service meshes supported to enable more fine-grained traffic routing
-	TrafficRouting *TrafficRouting `json:"trafficRouting,omitempty"`
+	// todo current only support one
+	TrafficRouting []*TrafficRouting `json:"trafficRouting,omitempty"`
 	// MetricsAnalysis *MetricsAnalysisBackground `json:"metricsAnalysis,omitempty"`
 }
 
@@ -127,22 +129,16 @@ type TrafficRouting struct {
 	Service string `json:"service"`
 	// Optional duration in seconds the traffic provider(e.g. nginx ingress controller) consumes the service, ingress configuration changes gracefully.
 	GracePeriodSeconds int32 `json:"gracePeriodSeconds,omitempty"`
-	// Nginx, Alb, Istio etc.
-	Type TrafficRoutingType `json:"type"`
-	// Nginx holds Nginx Ingress specific configuration to route traffic
-	Nginx *NginxTrafficRouting `json:"nginx,omitempty"`
+	// nginx, alb etc.
+	Type string `json:"type"`
+	// Ingress holds Ingress specific configuration to route traffic, e.g. Nginx, Alb.
+	Ingress *IngressTrafficRouting `json:"ingress,omitempty"`
 }
 
-type TrafficRoutingType string
-
-const (
-	TrafficRoutingNginx TrafficRoutingType = "nginx"
-)
-
-// NginxTrafficRouting configuration for Nginx ingress controller to control traffic routing
-type NginxTrafficRouting struct {
-	// Ingress refers to the name of an `Ingress` resource in the same namespace as the `Rollout`
-	Ingress string `json:"ingress"`
+// IngressTrafficRouting configuration for ingress controller to control traffic routing
+type IngressTrafficRouting struct {
+	// Name refers to the name of an `Ingress` resource in the same namespace as the `Rollout`
+	Name string `json:"name"`
 }
 
 // RolloutStatus defines the observed state of Rollout
@@ -217,6 +213,8 @@ const (
 type CanaryStatus struct {
 	// observedWorkloadGeneration is the most recent generation observed for this Rollout ref workload generation.
 	ObservedWorkloadGeneration int64 `json:"observedWorkloadGeneration,omitempty"`
+	// RolloutHash from rollout.spec object
+	RolloutHash string `json:"rolloutHash,omitempty"`
 	// CanaryService holds the name of a service which selects pods with canary version and don't select any pods with stable version.
 	CanaryService string `json:"canaryService"`
 	// CanaryRevision the hash of the current pod template
@@ -239,11 +237,12 @@ type CanaryStatus struct {
 type CanaryStepState string
 
 const (
-	CanaryStepStateUpgrade         CanaryStepState = "StepInUpgrade"
-	CanaryStepStateTrafficRouting  CanaryStepState = "StepInTrafficRouting"
-	CanaryStepStateMetricsAnalysis CanaryStepState = "StepInMetricsAnalysis"
-	CanaryStepStatePaused          CanaryStepState = "StepInPaused"
-	CanaryStepStateCompleted       CanaryStepState = "StepInCompleted"
+	CanaryStepStateUpgrade         CanaryStepState = "StepUpgrade"
+	CanaryStepStateTrafficRouting  CanaryStepState = "StepTrafficRouting"
+	CanaryStepStateMetricsAnalysis CanaryStepState = "StepMetricsAnalysis"
+	CanaryStepStatePaused          CanaryStepState = "StepPaused"
+	CanaryStepStateReady           CanaryStepState = "StepReady"
+	CanaryStepStateCompleted       CanaryStepState = "Completed"
 )
 
 // RolloutPhase are a set of phases that this rollout

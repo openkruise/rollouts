@@ -41,9 +41,7 @@ import (
 )
 
 const (
-	// cloneSet pod revision label
-	CloneSetPodRevisionLabelKey = "controller-revision-hash"
-	// replicaSet pod revision label
+	// workload pod revision label
 	RsPodRevisionLabelKey         = "pod-template-hash"
 	CanaryDeploymentLabel         = "rollouts.kruise.io/canary-deployment"
 	BatchReleaseControlAnnotation = "batchrelease.rollouts.kruise.io/control-info"

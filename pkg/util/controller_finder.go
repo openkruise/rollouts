@@ -37,6 +37,8 @@ type Workload struct {
 	metav1.TypeMeta
 	metav1.ObjectMeta
 
+	// replicas
+	Replicas int32
 	// stable revision
 	StableRevision string
 	// canary revision
@@ -45,7 +47,7 @@ type Workload struct {
 	CanaryReplicas int32
 	// canary ready replicas
 	CanaryReadyReplicas int32
-	// deployment.spec.pod.template hash
+	// spec.pod.template hash
 	CurrentPodTemplateHash string
 
 	// indicate whether the workload can enter the rollout process
@@ -111,12 +113,14 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 		return nil, err
 	}
 	workload := &Workload{
-		StableRevision:      cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
-		CanaryRevision:      cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
-		CanaryReplicas:      cloneSet.Status.UpdatedReplicas,
-		CanaryReadyReplicas: cloneSet.Status.UpdatedReadyReplicas,
-		ObjectMeta:          cloneSet.ObjectMeta,
-		TypeMeta:            cloneSet.TypeMeta,
+		StableRevision:         cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
+		CanaryRevision:         cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
+		CanaryReplicas:         cloneSet.Status.UpdatedReplicas,
+		CanaryReadyReplicas:    cloneSet.Status.UpdatedReadyReplicas,
+		ObjectMeta:             cloneSet.ObjectMeta,
+		TypeMeta:               cloneSet.TypeMeta,
+		Replicas:               *cloneSet.Spec.Replicas,
+		CurrentPodTemplateHash: cloneSet.Status.UpdateRevision,
 	}
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
@@ -146,6 +150,7 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 	workload := &Workload{
 		ObjectMeta: stable.ObjectMeta,
 		TypeMeta:   stable.TypeMeta,
+		Replicas:   *stable.Spec.Replicas,
 	}
 	// stable replicaSet
 	stableRs, err := r.GetDeploymentStableRs(stable)
