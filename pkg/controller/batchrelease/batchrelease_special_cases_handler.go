@@ -21,6 +21,7 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
+	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
@@ -170,10 +171,9 @@ func refreshStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchRele
 			newStatus.CanaryStatus.UpdatedReplicas = workloadInfo.Status.UpdatedReplicas
 			newStatus.CanaryStatus.UpdatedReadyReplicas = workloadInfo.Status.UpdatedReadyReplicas
 		}
-		planHash := hashReleasePlanBatches(&release.Spec.ReleasePlan)
-		if newStatus.ObservedReleasePlanHash != planHash {
-			newStatus.ObservedReleasePlanHash = planHash
-		}
+	}
+	if len(newStatus.ObservedReleasePlanHash) == 0 {
+		newStatus.ObservedReleasePlanHash = util.HashReleasePlanBatches(&release.Spec.ReleasePlan)
 	}
 }
 
@@ -182,7 +182,7 @@ func isPlanTerminating(release *v1alpha1.BatchRelease, status *v1alpha1.BatchRel
 }
 
 func isPlanChanged(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
-	return status.ObservedReleasePlanHash != hashReleasePlanBatches(plan) && status.Phase == v1alpha1.RolloutPhaseProgressing
+	return status.ObservedReleasePlanHash != util.HashReleasePlanBatches(plan) && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
 func isPlanUnhealthy(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {

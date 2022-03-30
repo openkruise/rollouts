@@ -22,7 +22,8 @@ import rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 // but rather the ability to interact with the BatchRelease controller through the BatchRelease CRD to achieve a batch release
 type BatchRelease interface {
 	// Verify will create batchRelease or update batchRelease steps configuration
-	Verify(index int32) error
+	// isLatest(Bool) determines if the batchRelease configuration is the latest
+	Verify(index int32) (bool, error)
 
 	// 1. Promote release workload in step(index), 1<=index<=len(step)
 	// 2. Promote will resume stable workload if the last batch(index=-1) is finished

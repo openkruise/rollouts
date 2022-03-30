@@ -22,6 +22,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	utilpointer "k8s.io/utils/pointer"
 )
@@ -55,11 +56,43 @@ var (
 			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "echoserver",
-			Labels: map[string]string{},
+			Name:       "echoserver",
+			Labels:     map[string]string{},
+			Generation: 1,
+			UID:        types.UID("606132e0-85ef-460a-8cf5-cd8f915a8cc3"),
 		},
 		Spec: apps.DeploymentSpec{
 			Replicas: utilpointer.Int32(100),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "echoserver",
+				},
+			},
+		},
+		Status: apps.DeploymentStatus{
+			ObservedGeneration: 1,
+		},
+	}
+
+	rsDemo = &apps.ReplicaSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "ReplicaSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "echoserver-xxx",
+			Labels: map[string]string{
+				"app": "echoserver",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+					Name:       "echoserver",
+					UID:        types.UID("606132e0-85ef-460a-8cf5-cd8f915a8cc3"),
+					Controller: utilpointer.BoolPtr(true),
+				},
+			},
 		},
 	}
 

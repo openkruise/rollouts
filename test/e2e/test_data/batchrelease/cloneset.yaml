@@ -6,6 +6,9 @@ metadata:
   name: sample
 spec:
   replicas: 5
+  updateStrategy:
+    maxUnavailable: 0
+    maxSurge: 1
   selector:
     matchLabels:
       app: busybox

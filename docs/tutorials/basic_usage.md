@@ -105,7 +105,7 @@ spec:
         pause: {}
       # optional, The first step of released replicas. If not set, the default is to use 'weight', as shown above is 5%.
         replicas: 20%
-      trafficRouting:
+      trafficRoutings:
         # echoserver service name
       - service: echoserver
         # nginx ingress

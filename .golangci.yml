@@ -69,14 +69,10 @@ linters:
   disable-all: true
   enable:
     # TODO Enforce the below linters later
-    - deadcode
     - gofmt
-    - govet
     - goimports
     - ineffassign
     - misspell
-    - vet
-    - unconvert
 issues:
   exclude:
     # staticcheck

@@ -148,10 +148,11 @@ func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) (ch
 		return
 	}
 	// 4. the deployment must be in a stable version (only one version of rs)
-	stableRs, err := h.Finder.GetDeploymentStableRs(newObj)
+	rss, err := h.Finder.GetReplicaSetsForDeployment(newObj)
 	if err != nil {
 		return
-	} else if stableRs == nil {
+	} else if len(rss) != 1 {
+		klog.Warningf("deployment(%s/%s) contains len(%d) replicaSet, can't in rollout progressing", newObj.Namespace, newObj.Name, len(rss))
 		return
 	}
 	// 5. have matched rollout crd

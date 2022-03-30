@@ -33,6 +33,9 @@ spec:
       jsonPath: .status.message
       name: MESSAGE
       type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -118,8 +121,8 @@ spec:
                               type: integer
                           type: object
                         type: array
-                      trafficRouting:
-                        description: TrafficRouting hosts all the supported service
+                      trafficRoutings:
+                        description: TrafficRoutings hosts all the supported service
                           meshes supported to enable more fine-grained traffic routing
                           todo current only support one
                         items:
@@ -150,9 +153,10 @@ spec:
                                 any pods with canary version.
                               type: string
                             type:
-                              description: nginx, alb etc.
+                              description: nginx, alb, istio etc.
                               type: string
                           required:
+                          - service
                           - type
                           type: object
                         type: array
@@ -172,9 +176,6 @@ spec:
           status:
             description: RolloutStatus defines the observed state of Rollout
             properties:
-              canaryRevision:
-                description: CanaryRevision the hash of the canary pod template
-                type: string
               canaryStatus:
                 description: Canary describes the state of the canary rollout
                 properties:
@@ -188,7 +189,10 @@ spec:
                     format: int32
                     type: integer
                   canaryRevision:
-                    description: CanaryRevision the hash of the current pod template
+                    description: CanaryRevision is calculated by rollout based on
+                      podTemplateHash, and the internal logic flow uses It may be
+                      different from rs podTemplateHash in different k8s versions,
+                      so it cannot be used as service selector label
                     type: string
                   canaryService:
                     description: CanaryService holds the name of a service which selects
@@ -214,6 +218,9 @@ spec:
                       observed for this Rollout ref workload generation.
                     format: int64
                     type: integer
+                  podTemplateHash:
+                    description: pod template hash is used as service selector label
+                    type: string
                   rolloutHash:
                     description: RolloutHash from rollout.spec object
                     type: string
@@ -222,6 +229,7 @@ spec:
                 - canaryReplicas
                 - canaryService
                 - currentStepState
+                - podTemplateHash
                 type: object
               conditions:
                 description: Conditions a list of conditions a rollout can have.
@@ -272,8 +280,9 @@ spec:
                   Phase is the rollout phase.
                 type: string
               stableRevision:
-                description: StableRevision indicates the revision pods that has successfully
-                  rolled out
+                description: CanaryRevision the hash of the canary pod template CanaryRevision
+                  string `json:"canaryRevision,omitempty"` StableRevision indicates
+                  the revision pods that has successfully rolled out
                 type: string
             type: object
         type: object

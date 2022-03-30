@@ -678,7 +678,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}, 15*time.Minute, 5*time.Second).Should(BeTrue())
 		})
 
-		It("Rollback V1->V2->V1: Percentage, 100%, Succeeded", func() {
+		/*It("Rollback V1->V2->V1: Percentage, 100%, Succeeded", func() {
 			release := &rolloutsv1alpha1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
@@ -695,7 +695,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			stableRevision := GetUpdateRevision(cloneset)
 
 			cloneset.Spec.UpdateStrategy.Paused = true
-			cloneset.Spec.Replicas = pointer.Int32Ptr(10)
+			// todo
+			//cloneset.Spec.Replicas = pointer.Int32Ptr(10)
 			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.FailedImage)
 			UpdateCloneSet(cloneset)
 
@@ -708,6 +709,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			for i := 0; i < 30; i++ {
 				fetchedRelease := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, fetchedRelease)).NotTo(HaveOccurred())
+				Expect(fetchedRelease.Status.CanaryStatus.UpdatedReplicas).Should(Equal(int32(1)))
+				Expect(fetchedRelease.Status.CanaryStatus.UpdatedReadyReplicas).Should(Equal(int32(0)))
 				Expect(fetchedRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(int32(0)))
 				time.Sleep(time.Second)
 			}
@@ -723,7 +726,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
 			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCancelled))
-		})
+		})*/
 	})
 
 	KruiseDescribe("Deployment BatchRelease Checker", func() {
@@ -1286,7 +1289,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			stableRevisionV1 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 
 			deployment.Spec.Paused = true
-			deployment.Spec.Replicas = pointer.Int32Ptr(10)
+			//deployment.Spec.Replicas = pointer.Int32Ptr(10)
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.FailedImage)
 			UpdateDeployment(deployment)
 
@@ -1299,6 +1302,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			for i := 0; i < 30; i++ {
 				fetchedRelease := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, fetchedRelease)).NotTo(HaveOccurred())
+				Expect(fetchedRelease.Status.CanaryStatus.UpdatedReplicas).Should(Equal(int32(1)))
+				Expect(fetchedRelease.Status.CanaryStatus.UpdatedReadyReplicas).Should(Equal(int32(0)))
 				Expect(fetchedRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(int32(0)))
 				time.Sleep(time.Second)
 			}

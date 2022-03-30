@@ -135,6 +135,13 @@ spec:
               canaryStatus:
                 description: CanaryStatus describes the state of the canary rollout.
                 properties:
+                  batchReadyTime:
+                    description: BatchReadyTime is the ready timestamp of the current
+                      batch or the last batch. This field is updated once a batch
+                      ready, and the batches[x].pausedSeconds relies on this field
+                      to calculate the real-time duration.
+                    format: date-time
+                    type: string
                   batchState:
                     description: CurrentBatchState indicates the release state of
                       the current batch.
@@ -144,13 +151,6 @@ spec:
                       it starts from 0
                     format: int32
                     type: integer
-                  lastBatchReadyTime:
-                    description: BatchReadyTime is the ready timestamp of the current
-                      batch or the last batch. This field is updated once a batch
-                      ready, and the batches[x].pausedSeconds relies on this field
-                      to calculate the real-time duration.
-                    format: date-time
-                    type: string
                   updatedReadyReplicas:
                     description: UpdatedReadyReplicas is the number upgraded Pods
                       that have a Ready Condition.

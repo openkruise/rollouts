@@ -96,9 +96,9 @@ type CanaryStrategy struct {
 	// Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%)
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
-	// TrafficRouting hosts all the supported service meshes supported to enable more fine-grained traffic routing
+	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
 	// todo current only support one
-	TrafficRouting []*TrafficRouting `json:"trafficRouting,omitempty"`
+	TrafficRoutings []*TrafficRouting `json:"trafficRoutings,omitempty"`
 	// MetricsAnalysis *MetricsAnalysisBackground `json:"metricsAnalysis,omitempty"`
 }
 
@@ -125,11 +125,10 @@ type RolloutPause struct {
 // TrafficRouting hosts all the different configuration for supported service meshes to enable more fine-grained traffic routing
 type TrafficRouting struct {
 	// Service holds the name of a service which selects pods with stable version and don't select any pods with canary version.
-	// +optional
 	Service string `json:"service"`
 	// Optional duration in seconds the traffic provider(e.g. nginx ingress controller) consumes the service, ingress configuration changes gracefully.
 	GracePeriodSeconds int32 `json:"gracePeriodSeconds,omitempty"`
-	// nginx, alb etc.
+	// nginx, alb, istio etc.
 	Type string `json:"type"`
 	// Ingress holds Ingress specific configuration to route traffic, e.g. Nginx, Alb.
 	Ingress *IngressTrafficRouting `json:"ingress,omitempty"`
@@ -150,7 +149,7 @@ type RolloutStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// CanaryRevision the hash of the canary pod template
 	// +optional
-	CanaryRevision string `json:"canaryRevision,omitempty"`
+	//CanaryRevision string `json:"canaryRevision,omitempty"`
 	// StableRevision indicates the revision pods that has successfully rolled out
 	StableRevision string `json:"stableRevision,omitempty"`
 	// Conditions a list of conditions a rollout can have.
@@ -217,9 +216,12 @@ type CanaryStatus struct {
 	RolloutHash string `json:"rolloutHash,omitempty"`
 	// CanaryService holds the name of a service which selects pods with canary version and don't select any pods with stable version.
 	CanaryService string `json:"canaryService"`
-	// CanaryRevision the hash of the current pod template
+	// CanaryRevision is calculated by rollout based on podTemplateHash, and the internal logic flow uses
+	// It may be different from rs podTemplateHash in different k8s versions, so it cannot be used as service selector label
 	// +optional
 	CanaryRevision string `json:"canaryRevision"`
+	// pod template hash is used as service selector label
+	PodTemplateHash string `json:"podTemplateHash"`
 	// CanaryReplicas the numbers of canary revision pods
 	CanaryReplicas int32 `json:"canaryReplicas"`
 	// CanaryReadyReplicas the numbers of ready canary revision pods
@@ -274,6 +276,7 @@ const (
 // +kubebuilder:printcolumn:name="CANARY_STEP",type="integer",JSONPath=".status.canaryStatus.currentStepIndex",description="The rollout canary status step"
 // +kubebuilder:printcolumn:name="CANARY_STATE",type="string",JSONPath=".status.canaryStatus.currentStepState",description="The rollout canary status step state"
 // +kubebuilder:printcolumn:name="MESSAGE",type="string",JSONPath=".status.message",description="The rollout canary status message"
+// +kubebuilder:printcolumn:name="AGE",type=date,JSONPath=".metadata.creationTimestamp"
 
 // Rollout is the Schema for the rollouts API
 type Rollout struct {

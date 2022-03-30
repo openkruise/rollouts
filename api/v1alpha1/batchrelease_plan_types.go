@@ -97,7 +97,7 @@ type BatchReleaseCanaryStatus struct {
 	// BatchReadyTime is the ready timestamp of the current batch or the last batch.
 	// This field is updated once a batch ready, and the batches[x].pausedSeconds
 	// relies on this field to calculate the real-time duration.
-	BatchReadyTime metav1.Time `json:"lastBatchReadyTime,omitempty"`
+	BatchReadyTime *metav1.Time `json:"batchReadyTime,omitempty"`
 	// UpdatedReplicas is the number of upgraded Pods.
 	UpdatedReplicas int32 `json:"updatedReplicas,omitempty"`
 	// UpdatedReadyReplicas is the number upgraded Pods that have a Ready Condition.

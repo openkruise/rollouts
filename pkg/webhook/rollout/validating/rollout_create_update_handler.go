@@ -97,8 +97,8 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 		}
 		// canary strategy
 		if oldObj.Spec.Strategy.Type != appsv1alpha1.RolloutStrategyBlueGreen {
-			if !reflect.DeepEqual(oldObj.Spec.Strategy.Canary.TrafficRouting, newObj.Spec.Strategy.Canary.TrafficRouting) {
-				return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary.TrafficRouting"), "Rollout 'Strategy.Canary.TrafficRouting' field is immutable")}
+			if !reflect.DeepEqual(oldObj.Spec.Strategy.Canary.TrafficRoutings, newObj.Spec.Strategy.Canary.TrafficRoutings) {
+				return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary.TrafficRoutings"), "Rollout 'Strategy.Canary.TrafficRoutings' field is immutable")}
 			}
 		}
 	}
@@ -173,7 +173,7 @@ func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldP
 	}
 
 	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"))
-	for _, traffic := range canary.TrafficRouting {
+	for _, traffic := range canary.TrafficRoutings {
 		errList = append(errList, validateRolloutSpecCanaryTraffic(traffic, fldPath.Child("TrafficRouting"))...)
 	}
 	return errList
@@ -181,7 +181,7 @@ func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldP
 
 func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldPath *field.Path) field.ErrorList {
 	if traffic == nil {
-		return field.ErrorList{field.Invalid(fldPath, nil, "Canary.TrafficRouting cannot be empty")}
+		return field.ErrorList{field.Invalid(fldPath, nil, "Canary.TrafficRoutings cannot be empty")}
 	}
 
 	errList := field.ErrorList{}
