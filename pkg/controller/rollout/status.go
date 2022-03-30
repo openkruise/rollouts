@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout) error {
+func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout) (bool, error) {
 	newStatus := *rollout.Status.DeepCopy()
 	newStatus.ObservedGeneration = rollout.GetGeneration()
 	// delete rollout CRD
@@ -48,10 +48,14 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
-		return err
+		return false, err
 	} else if workload == nil && rollout.DeletionTimestamp.IsZero() {
 		resetStatus(&newStatus)
 		klog.Infof("rollout(%s/%s) workload not found, and reset status be Initial", rollout.Namespace, rollout.Name)
+		// workload status is not consistent
+	} else if workload != nil && !workload.IsStatusConsistent {
+		klog.Infof("rollout(%s/%s) workload status isn't consistent, then wait a moment", rollout.Namespace, rollout.Name)
+		return false, nil
 	} else if workload != nil {
 		newStatus.StableRevision = workload.StableRevision
 		newStatus.CanaryRevision = workload.CanaryRevision
@@ -88,14 +92,14 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 	err = r.updateRolloutStatusInternal(rollout, newStatus)
 	if err != nil {
 		klog.Errorf("update rollout(%s/%s) status failed: %s", rollout.Namespace, rollout.Name, err.Error())
-		return err
+		return false, err
 	}
 	err = r.calculateRolloutHash(rollout)
 	if err != nil {
-		return err
+		return false, err
 	}
 	rollout.Status = newStatus
-	return nil
+	return true, nil
 }
 
 func (r *RolloutReconciler) updateRolloutStatusInternal(rollout *rolloutv1alpha1.Rollout, newStatus rolloutv1alpha1.RolloutStatus) error {

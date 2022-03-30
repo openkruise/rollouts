@@ -161,7 +161,7 @@ func (r *innerBatchRelease) resumeStableWorkload(checkReady bool) (bool, error) 
 			return false, err
 		}
 		// default partition.IntVal=0
-		if !obj.Spec.UpdateStrategy.Paused && obj.Spec.UpdateStrategy.Partition.IntVal == 0 {
+		if !obj.Spec.UpdateStrategy.Paused && obj.Spec.UpdateStrategy.Partition.IntVal == 0 && obj.Spec.UpdateStrategy.Partition.Type == intstr.Int {
 			return true, nil
 		}
 

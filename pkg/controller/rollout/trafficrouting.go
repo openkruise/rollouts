@@ -39,6 +39,10 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 	if r.rollout.Spec.Strategy.Canary.TrafficRouting == nil {
 		return true, nil
 	}
+
+	if r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds <= 0 {
+		r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds = defaultGracePeriodSeconds
+	}
 	canaryStatus := r.newStatus.CanaryStatus
 	//fetch stable service
 	sName := r.rollout.Spec.Strategy.Canary.TrafficRouting[0].Service
@@ -129,6 +133,10 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 	if r.rollout.Spec.Strategy.Canary.TrafficRouting == nil {
 		return true, nil
 	}
+
+	if r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds <= 0 {
+		r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds = defaultGracePeriodSeconds
+	}
 	//fetch stable service
 	sName := r.rollout.Spec.Strategy.Canary.TrafficRouting[0].Service
 	r.stableService = &corev1.Service{}
@@ -169,6 +177,10 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 	if r.rollout.Spec.Strategy.Canary.TrafficRouting == nil {
 		return true, nil
+	}
+
+	if r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds <= 0 {
+		r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds = defaultGracePeriodSeconds
 	}
 	if r.newStatus.CanaryStatus == nil {
 		r.newStatus.CanaryStatus = &rolloutv1alpha1.CanaryStatus{}

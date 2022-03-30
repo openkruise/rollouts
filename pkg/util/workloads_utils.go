@@ -148,7 +148,7 @@ func UpdateFinalizer(c client.Client, object client.Object, op FinalizerOpType, 
 	switch op {
 	case AddFinalizerOpType, RemoveFinalizerOpType:
 	default:
-		panic(fmt.Sprintf("UpdateFinalizer Func 'op' parameter must be 'Add' or 'Remove'"))
+		panic("UpdateFinalizer Func 'op' parameter must be 'Add' or 'Remove'")
 	}
 
 	key := client.ObjectKeyFromObject(object)

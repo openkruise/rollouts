@@ -43,42 +43,41 @@ func (r *rolloutContext) runCanary() error {
 		canaryStatus.CurrentStepIndex = 1
 		canaryStatus.RolloutHash = r.rollout.Annotations[util.RolloutHashAnnotation]
 	}
-	if r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds <= 0 {
-		r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds = defaultGracePeriodSeconds
-	}
+
 	// update canary status
 	canaryStatus.CanaryReplicas = r.workload.CanaryReplicas
 	canaryStatus.CanaryReadyReplicas = r.workload.CanaryReadyReplicas
 	switch canaryStatus.CurrentStepState {
 	case rolloutv1alpha1.CanaryStepStateUpgrade:
 		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", r.rollout.Namespace, r.rollout.Name, rolloutv1alpha1.CanaryStepStateUpgrade)
-		done, err := r.doCanaryUpgrade()
-		if err != nil {
-			return err
-		} else if done {
-			canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateTrafficRouting
+		// If the last step is 100%, there is no need to execute the canary process at this time
+		if r.rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1].Weight == 100 {
+			klog.Infof("rollout(%s/%s) last step is 100%, there is no need to execute the canary process at this time, and set state=%s",
+				r.rollout.Namespace, r.rollout.Name, canaryStatus.CurrentStepIndex-1, canaryStatus.CurrentStepIndex, rolloutv1alpha1.CanaryStepStateCompleted)
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", r.rollout.Namespace, r.rollout.Name,
-				canaryStatus.CurrentStepIndex, rolloutv1alpha1.CanaryStepStateUpgrade, canaryStatus.CurrentStepState)
+			canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateCompleted
+		} else {
+			done, err := r.doCanaryUpgrade()
+			if err != nil {
+				return err
+			} else if done {
+				canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateTrafficRouting
+				canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+				klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", r.rollout.Namespace, r.rollout.Name,
+					canaryStatus.CurrentStepIndex, rolloutv1alpha1.CanaryStepStateUpgrade, canaryStatus.CurrentStepState)
+			}
 		}
+
 	case rolloutv1alpha1.CanaryStepStateTrafficRouting:
 		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", r.rollout.Namespace, r.rollout.Name, rolloutv1alpha1.CanaryStepStateTrafficRouting)
 		done, err := r.doCanaryTrafficRouting()
 		if err != nil {
 			return err
 		} else if done {
-			// if 100% completed
-			if len(r.rollout.Spec.Strategy.Canary.Steps) == int(canaryStatus.CurrentStepIndex) &&
-				r.rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1].Weight == 100 {
-				klog.Infof("rollout(%s/%s) canary run all steps, and completed", r.rollout.Namespace, r.rollout.Name, canaryStatus.CurrentStepIndex-1, canaryStatus.CurrentStepIndex)
-				canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-				canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateCompleted
-			} else {
-				canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-				canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateMetricsAnalysis
-				klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", r.rollout.Namespace, r.rollout.Name,
-					canaryStatus.CurrentStepIndex, rolloutv1alpha1.CanaryStepStateTrafficRouting, canaryStatus.CurrentStepState)
-			}
+			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+			canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateMetricsAnalysis
+			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", r.rollout.Namespace, r.rollout.Name,
+				canaryStatus.CurrentStepIndex, rolloutv1alpha1.CanaryStepStateTrafficRouting, canaryStatus.CurrentStepState)
 		}
 		expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
 		r.recheckTime = &expectedTime
@@ -217,9 +216,6 @@ func (r *rolloutContext) doCanaryFinalising() (bool, error) {
 	// when CanaryStatus is nil, which means canary action hasn't started yet, don't need doing cleanup
 	if r.newStatus.CanaryStatus == nil {
 		return true, nil
-	}
-	if r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds <= 0 {
-		r.rollout.Spec.Strategy.Canary.TrafficRouting[0].GracePeriodSeconds = defaultGracePeriodSeconds
 	}
 	// 1. rollout progressing complete, allow workload paused=false in webhook
 	err := r.removeRolloutStateInWorkload()

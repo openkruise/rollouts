@@ -87,9 +87,11 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 	// update rollout status
-	err = r.updateRolloutStatus(rollout)
+	done, err := r.updateRolloutStatus(rollout)
 	if err != nil {
 		return ctrl.Result{}, err
+	} else if !done {
+		return ctrl.Result{}, nil
 	}
 
 	var recheckTime *time.Time

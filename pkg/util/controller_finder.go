@@ -54,6 +54,10 @@ type Workload struct {
 	// 1. workload.Spec.Paused = true
 	// 2. the Deployment is not in a stable version (only one version of RS)
 	InRolloutProgressing bool
+
+	// whether the status consistent with the spec
+	// workload.generation == status.observedGeneration
+	IsStatusConsistent bool
 }
 
 // ControllerFinderFunc is a function type that maps a pod to a list of
@@ -112,6 +116,9 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 		}
 		return nil, err
 	}
+	if cloneSet.Generation != cloneSet.Status.ObservedGeneration {
+		return &Workload{IsStatusConsistent: false}, nil
+	}
 	workload := &Workload{
 		StableRevision:         cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
 		CanaryRevision:         cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
@@ -121,6 +128,7 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 		TypeMeta:               cloneSet.TypeMeta,
 		Replicas:               *cloneSet.Spec.Replicas,
 		CurrentPodTemplateHash: cloneSet.Status.UpdateRevision,
+		IsStatusConsistent:     true,
 	}
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
@@ -147,10 +155,14 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 		}
 		return nil, err
 	}
+	if stable.Generation != stable.Status.ObservedGeneration {
+		return &Workload{IsStatusConsistent: false}, nil
+	}
 	workload := &Workload{
-		ObjectMeta: stable.ObjectMeta,
-		TypeMeta:   stable.TypeMeta,
-		Replicas:   *stable.Spec.Replicas,
+		ObjectMeta:         stable.ObjectMeta,
+		TypeMeta:           stable.TypeMeta,
+		Replicas:           *stable.Spec.Replicas,
+		IsStatusConsistent: true,
 	}
 	// stable replicaSet
 	stableRs, err := r.GetDeploymentStableRs(stable)
