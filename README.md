@@ -2,9 +2,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
 ## Introduction
-Kruise Rollouts is a **Bypass** component which provides advanced deployment capabilities such as canary, traffic routing, and progressive delivery features, for a series of Kubernetes workloads, such as Deployment and CloneSet.
-
-![arch](docs/images/rollout-arch.jpg)
+Kruise Rollouts is **a Bypass component which provides advanced deployment capabilities such as canary, traffic routing, and progressive delivery features, for a series of Kubernetes workloads, such as Deployment and CloneSet.**
 
 ## Why Kruise Rollouts?
 - **Functionality**：
@@ -27,8 +25,8 @@ Kruise Rollouts is a **Bypass** component which provides advanced deployment cap
 - **Easy-integration**:
     - Easily integrate with classic or GitOps-style Kubernetes-based PaaS.
 
-## Documents
-Coming soon ...
+## Quick Start
+- [Getting Started](docs/getting_started/introduction.md)
 
 ## Community
 Active communication channels:
@@ -43,9 +41,9 @@ Active communication channels:
 - Bi-weekly Community Meeting (*English*): TODO
 
 ## Acknowledge
-- Part of the codes of this project is powered by [KubeVela Community](https://kubevela.io).
-- This project will be maintained and improved by both the communities of OpenKruise and KubeVela.
+- The global idea is from both OpenKruise and KubeVela communities, and the basic code of rollout is inherited from the KubeVela Rollout.
+- This project is maintained by both contributors from [OpenKruise](https://openkruise.io/) and [KubeVela](https://kubevela.io).
 
 ## License
-Kruise rollouts is licensed under the Apache License, Version 2.0. See [LICENSE](./LICENSE.md) for the full license text. 
+Kruise Rollout is licensed under the Apache License, Version 2.0. See [LICENSE](./LICENSE.md) for the full license text.
 
