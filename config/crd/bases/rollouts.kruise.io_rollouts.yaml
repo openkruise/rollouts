@@ -61,9 +61,6 @@ spec:
                   Important: Run "make" to regenerate code after modifying this file
                   ObjectRef indicates workload'
                 properties:
-                  type:
-                    description: workloadRef, revisionRef default is workloadRef
-                    type: string
                   workloadRef:
                     description: WorkloadRef contains enough information to let you
                       identify a workload for Rollout Batch release of the bypass
@@ -165,9 +162,6 @@ spec:
                     description: Paused indicates that the Rollout is paused. Default
                       value is false
                     type: boolean
-                  type:
-                    description: canary, BlueGreenPlan Default value is canary
-                    type: string
                 type: object
             required:
             - objectRef

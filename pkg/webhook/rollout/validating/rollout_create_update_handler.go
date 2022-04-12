@@ -92,14 +92,9 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 		if !reflect.DeepEqual(oldObj.Spec.ObjectRef, newObj.Spec.ObjectRef) {
 			return field.ErrorList{field.Forbidden(field.NewPath("Spec.ObjectRef"), "Rollout 'ObjectRef' field is immutable")}
 		}
-		if oldObj.Spec.Strategy.Type != newObj.Spec.Strategy.Type {
-			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy"), "Rollout 'Strategy.type' field is immutable")}
-		}
 		// canary strategy
-		if oldObj.Spec.Strategy.Type != appsv1alpha1.RolloutStrategyBlueGreen {
-			if !reflect.DeepEqual(oldObj.Spec.Strategy.Canary.TrafficRoutings, newObj.Spec.Strategy.Canary.TrafficRoutings) {
-				return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary.TrafficRoutings"), "Rollout 'Strategy.Canary.TrafficRoutings' field is immutable")}
-			}
+		if !reflect.DeepEqual(oldObj.Spec.Strategy.Canary.TrafficRoutings, newObj.Spec.Strategy.Canary.TrafficRoutings) {
+			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary.TrafficRoutings"), "Rollout 'Strategy.Canary.TrafficRoutings' field is immutable")}
 		}
 	}
 
@@ -147,24 +142,14 @@ func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) fie
 }
 
 func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *field.Path) field.ErrorList {
-	switch objectRef.Type {
-	case "", appsv1alpha1.WorkloadRefType:
-		if objectRef.WorkloadRef == nil || (objectRef.WorkloadRef.Kind != "Deployment" && objectRef.WorkloadRef.Kind != "CloneSet") {
-			return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef only support 'Deployments', 'CloneSet'")}
-		}
-	default:
-		return field.ErrorList{field.Invalid(fldPath.Child("Type"), objectRef.Type, "ObjectRef only support 'workloadRef' type")}
+	if objectRef.WorkloadRef == nil || (objectRef.WorkloadRef.Kind != "Deployment" && objectRef.WorkloadRef.Kind != "CloneSet") {
+		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef only support 'Deployments', 'CloneSet'")}
 	}
 	return nil
 }
 
 func validateRolloutSpecStrategy(strategy *appsv1alpha1.RolloutStrategy, fldPath *field.Path) field.ErrorList {
-	switch strategy.Type {
-	case "", appsv1alpha1.RolloutStrategyCanary:
-		return validateRolloutSpecCanaryStrategy(strategy.Canary, fldPath.Child("Canary"))
-	default:
-		return field.ErrorList{field.Invalid(fldPath.Child("Type"), strategy.Type, "Strategy type only support 'canary'")}
-	}
+	return validateRolloutSpecCanaryStrategy(strategy.Canary, fldPath.Child("Canary"))
 }
 
 func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
@@ -173,6 +158,9 @@ func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldP
 	}
 
 	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"))
+	if len(canary.TrafficRoutings) > 1 {
+		errList = append(errList, field.Invalid(fldPath, canary.TrafficRoutings, "Rollout currently only support single TrafficRouting."))
+	}
 	for _, traffic := range canary.TrafficRoutings {
 		errList = append(errList, validateRolloutSpecCanaryTraffic(traffic, fldPath.Child("TrafficRouting"))...)
 	}

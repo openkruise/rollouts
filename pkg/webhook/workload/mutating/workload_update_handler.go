@@ -185,8 +185,7 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.
 	}
 	for i := range rolloutList.Items {
 		rollout := &rolloutList.Items[i]
-		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.ObjectRef.Type == appsv1alpha1.RevisionRefType ||
-			rollout.Spec.ObjectRef.WorkloadRef == nil {
+		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.ObjectRef.WorkloadRef == nil {
 			continue
 		}
 		ref := rollout.Spec.ObjectRef.WorkloadRef

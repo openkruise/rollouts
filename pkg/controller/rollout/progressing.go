@@ -73,16 +73,16 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *rolloutv1alpha1
 		}
 
 	case rolloutv1alpha1.ProgressingReasonInRolling:
-		// paused rollout progress
-		if rollout.Spec.Strategy.Paused {
-			klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
-			progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonPaused, "Rollout has been paused, you can resume it by kube-cli")
-			// rollout canceled, indicates rollback(v1 -> v2 -> v1)
-		} else if workload.IsInRollback {
+		// rollout canceled, indicates rollback(v1 -> v2 -> v1)
+		if workload.IsInRollback {
 			newStatus.CanaryStatus.CanaryRevision = workload.CanaryRevision
 			r.Recorder.Eventf(rollout, corev1.EventTypeNormal, "Progressing", "workload has been rollback, then rollout is canceled")
 			klog.Infof("rollout(%s/%s) workload has been rollback, then rollout canceled", rollout.Namespace, rollout.Name)
 			progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonCancelling, "The workload has been rolled back and the rollout process will be cancelled")
+			// paused rollout progress
+		} else if rollout.Spec.Strategy.Paused {
+			klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
+			progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonPaused, "Rollout has been paused, you can resume it by kube-cli")
 			// In case of continuous publishing(v1 -> v2 -> v3), then restart publishing
 		} else if newStatus.CanaryStatus.CanaryRevision != "" && workload.CanaryRevision != newStatus.CanaryStatus.CanaryRevision {
 			r.Recorder.Eventf(rollout, corev1.EventTypeNormal, "Progressing", "workload continuous publishing canaryRevision, then restart publishing")
@@ -143,7 +143,14 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *rolloutv1alpha1
 		}
 
 	case rolloutv1alpha1.ProgressingReasonPaused:
-		if !rollout.Spec.Strategy.Paused {
+		// rollout canceled, indicates rollback(v1 -> v2 -> v1)
+		if workload.IsInRollback {
+			newStatus.CanaryStatus.CanaryRevision = workload.CanaryRevision
+			r.Recorder.Eventf(rollout, corev1.EventTypeNormal, "Progressing", "workload has been rollback, then rollout is canceled")
+			klog.Infof("rollout(%s/%s) workload has been rollback, then rollout canceled", rollout.Namespace, rollout.Name)
+			progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonCancelling, "The workload has been rolled back and the rollout process will be cancelled")
+			// from paused to inRolling
+		} else if !rollout.Spec.Strategy.Paused {
 			klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
 			progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonInRolling, "")
 		}
@@ -188,10 +195,7 @@ func progressingStateTransition(status *rolloutv1alpha1.RolloutStatus, condStatu
 
 func (r *RolloutReconciler) doProgressingInitializing(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (bool, string, error) {
 	// canary release
-	if rollout.Spec.Strategy.Type == "" || rollout.Spec.Strategy.Type == rolloutv1alpha1.RolloutStrategyCanary {
-		return r.verifyCanaryStrategy(rollout, newStatus)
-	}
-	return true, "", nil
+	return r.verifyCanaryStrategy(rollout, newStatus)
 }
 
 func (r *RolloutReconciler) doProgressingInRolling(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (*time.Time, error) {

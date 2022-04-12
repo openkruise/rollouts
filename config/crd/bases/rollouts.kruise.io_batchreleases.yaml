@@ -102,9 +102,6 @@ spec:
                 description: TargetRef contains the GVK and name of the workload that
                   we need to upgrade to.
                 properties:
-                  type:
-                    description: workloadRef, revisionRef default is workloadRef
-                    type: string
                   workloadRef:
                     description: WorkloadRef contains enough information to let you
                       identify a workload for Rollout Batch release of the bypass

@@ -29,7 +29,6 @@ var (
 		},
 		Spec: appsv1alpha1.RolloutSpec{
 			ObjectRef: appsv1alpha1.ObjectRef{
-				Type: appsv1alpha1.WorkloadRefType,
 				WorkloadRef: &appsv1alpha1.WorkloadRef{
 					APIVersion: apps.SchemeGroupVersion.String(),
 					Kind:       "Deployment",
@@ -37,7 +36,6 @@ var (
 				},
 			},
 			Strategy: appsv1alpha1.RolloutStrategy{
-				Type: appsv1alpha1.RolloutStrategyCanary,
 				Canary: &appsv1alpha1.CanaryStrategy{
 					Steps: []appsv1alpha1.CanaryStep{
 						{
@@ -234,24 +232,6 @@ func TestRolloutValidateCreate(t *testing.T) {
 		//		return []client.Object{object}
 		//	},
 		//},
-		{
-			Name:    "Wrong objectRef type",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Spec.ObjectRef.Type = "Whatever"
-				return []client.Object{object}
-			},
-		},
-		{
-			Name:    "Wrong strategy type",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Spec.Strategy.Type = "Whatever"
-				return []client.Object{object}
-			},
-		},
 		{
 			Name:    "Wrong Traffic type",
 			Succeed: false,

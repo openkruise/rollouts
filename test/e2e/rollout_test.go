@@ -122,15 +122,18 @@ var _ = SIGDescribe("Rollout", func() {
 	}
 
 	ResumeRolloutCanary := func(name string) {
-		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		Eventually(func() bool {
 			clone := &rolloutsv1alpha1.Rollout{}
-			err := GetObject(name, clone)
-			if err != nil {
-				return err
+			Expect(GetObject(name, clone)).NotTo(HaveOccurred())
+			if clone.Status.CanaryStatus.CurrentStepState != rolloutsv1alpha1.CanaryStepStatePaused {
+				fmt.Println("resume rollout success, and CurrentStepState", util.DumpJSON(clone.Status))
+				return true
 			}
+
 			body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, rolloutsv1alpha1.CanaryStepStateReady)
-			return k8sClient.Status().Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
-		})).NotTo(HaveOccurred())
+			Expect(k8sClient.Status().Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))).NotTo(HaveOccurred())
+			return false
+		}, 10*time.Second, time.Second).Should(BeTrue())
 	}
 
 	WaitDeploymentAllPodsReady := func(deployment *apps.Deployment) {

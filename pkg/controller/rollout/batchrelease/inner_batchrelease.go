@@ -276,7 +276,6 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rol
 		},
 		Spec: rolloutv1alpha1.BatchReleaseSpec{
 			TargetRef: rolloutv1alpha1.ObjectRef{
-				Type: rolloutv1alpha1.WorkloadRefType,
 				WorkloadRef: &rolloutv1alpha1.WorkloadRef{
 					APIVersion: rollout.Spec.ObjectRef.WorkloadRef.APIVersion,
 					Kind:       rollout.Spec.ObjectRef.WorkloadRef.Kind,

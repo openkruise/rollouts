@@ -201,7 +201,7 @@ func (r *rolloutContext) doCanaryPaused() (bool, error) {
 	// need manual confirmation
 	if currentStep.Pause.Duration == nil {
 		klog.Infof("rollout(%s/%s) don't set pause duration, and need manual confirmation", r.rollout.Namespace, r.rollout.Name)
-		cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and you need manually confirm(kube-cli approve) to enter the next step", canaryStatus.CurrentStepIndex, steps)
+		cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and you need manually confirm to enter the next step", canaryStatus.CurrentStepIndex, steps)
 		r.newStatus.Message = cond.Message
 		return false, nil
 	}

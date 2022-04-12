@@ -36,7 +36,7 @@ import (
 )
 
 func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
-	if r.rollout.Spec.Strategy.Canary.TrafficRoutings == nil {
+	if len(r.rollout.Spec.Strategy.Canary.TrafficRoutings) == 0 {
 		return true, nil
 	}
 
@@ -134,7 +134,7 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 }
 
 func (r *rolloutContext) restoreStableService() (bool, error) {
-	if r.rollout.Spec.Strategy.Canary.TrafficRoutings == nil {
+	if len(r.rollout.Spec.Strategy.Canary.TrafficRoutings) == 0 {
 		return true, nil
 	}
 
@@ -179,7 +179,7 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 }
 
 func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
-	if r.rollout.Spec.Strategy.Canary.TrafficRoutings == nil {
+	if len(r.rollout.Spec.Strategy.Canary.TrafficRoutings) == 0 {
 		return true, nil
 	}
 

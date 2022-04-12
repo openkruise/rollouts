@@ -37,7 +37,6 @@ var (
 		},
 		Spec: rolloutv1alpha1.RolloutSpec{
 			ObjectRef: rolloutv1alpha1.ObjectRef{
-				Type: rolloutv1alpha1.WorkloadRefType,
 				WorkloadRef: &rolloutv1alpha1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
@@ -103,7 +102,6 @@ var (
 		},
 		Spec: rolloutv1alpha1.BatchReleaseSpec{
 			TargetRef: rolloutv1alpha1.ObjectRef{
-				Type: rolloutv1alpha1.WorkloadRefType,
 				WorkloadRef: &rolloutv1alpha1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",

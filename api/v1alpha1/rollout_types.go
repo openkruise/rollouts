@@ -36,9 +36,6 @@ type RolloutSpec struct {
 }
 
 type ObjectRef struct {
-	// workloadRef, revisionRef
-	// default is workloadRef
-	Type ObjectRefType `json:"type,omitempty"`
 	// WorkloadRef contains enough information to let you identify a workload for Rollout
 	// Batch release of the bypass
 	WorkloadRef *WorkloadRef `json:"workloadRef,omitempty"`
@@ -75,9 +72,6 @@ type RolloutStrategy struct {
 	// Paused indicates that the Rollout is paused.
 	// Default value is false
 	Paused bool `json:"paused,omitempty"`
-	// canary, BlueGreenPlan
-	// Default value is canary
-	Type RolloutStrategyType `json:"type,omitempty"`
 	// +optional
 	Canary *CanaryStrategy `json:"canary,omitempty"`
 	// +optional

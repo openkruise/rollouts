@@ -159,7 +159,6 @@ var (
 		},
 		Spec: appsv1alpha1.RolloutSpec{
 			ObjectRef: appsv1alpha1.ObjectRef{
-				Type: appsv1alpha1.WorkloadRefType,
 				WorkloadRef: &appsv1alpha1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
