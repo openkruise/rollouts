@@ -6,6 +6,11 @@ metadata:
     app: busybox
 spec:
   replicas: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: busybox

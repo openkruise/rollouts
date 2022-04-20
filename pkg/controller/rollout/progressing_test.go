@@ -32,16 +32,16 @@ import (
 func TestReCalculateCanaryStepIndex(t *testing.T) {
 	cases := []struct {
 		name            string
-		getObj          func() *apps.Deployment
+		getObj          func() (*apps.Deployment, *apps.ReplicaSet)
 		getRollout      func() *rolloutv1alpha1.Rollout
 		getBatchRelease func() *rolloutv1alpha1.BatchRelease
 		expectStepIndex int32
 	}{
 		{
 			name: "steps changed v1",
-			getObj: func() *apps.Deployment {
+			getObj: func() (*apps.Deployment, *apps.ReplicaSet) {
 				obj := deploymentDemo.DeepCopy()
-				return obj
+				return obj, rsDemo.DeepCopy()
 			},
 			getRollout: func() *rolloutv1alpha1.Rollout {
 				obj := rolloutDemo.DeepCopy()
@@ -78,9 +78,9 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 		},
 		{
 			name: "steps changed v2",
-			getObj: func() *apps.Deployment {
+			getObj: func() (*apps.Deployment, *apps.ReplicaSet) {
 				obj := deploymentDemo.DeepCopy()
-				return obj
+				return obj, rsDemo.DeepCopy()
 			},
 			getRollout: func() *rolloutv1alpha1.Rollout {
 				obj := rolloutDemo.DeepCopy()
@@ -117,9 +117,9 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 		},
 		{
 			name: "steps changed v3",
-			getObj: func() *apps.Deployment {
+			getObj: func() (*apps.Deployment, *apps.ReplicaSet) {
 				obj := deploymentDemo.DeepCopy()
-				return obj
+				return obj, rsDemo.DeepCopy()
 			},
 			getRollout: func() *rolloutv1alpha1.Rollout {
 				obj := rolloutDemo.DeepCopy()
@@ -156,9 +156,9 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 		},
 		{
 			name: "steps changed v4",
-			getObj: func() *apps.Deployment {
+			getObj: func() (*apps.Deployment, *apps.ReplicaSet) {
 				obj := deploymentDemo.DeepCopy()
-				return obj
+				return obj, rsDemo.DeepCopy()
 			},
 			getRollout: func() *rolloutv1alpha1.Rollout {
 				obj := rolloutDemo.DeepCopy()
@@ -193,13 +193,59 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 			},
 			expectStepIndex: 2,
 		},
+		{
+			name: "steps changed v5",
+			getObj: func() (*apps.Deployment, *apps.ReplicaSet) {
+				obj := deploymentDemo.DeepCopy()
+				return obj, rsDemo.DeepCopy()
+			},
+			getRollout: func() *rolloutv1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.Canary.Steps = []rolloutv1alpha1.CanaryStep{
+					{
+						Weight: 2,
+						Replicas: &intstr.IntOrString{
+							Type:   intstr.String,
+							StrVal: "10%",
+						},
+					},
+					{
+						Weight: 3,
+						Replicas: &intstr.IntOrString{
+							Type:   intstr.String,
+							StrVal: "10%",
+						},
+					},
+				}
+				return obj
+			},
+			getBatchRelease: func() *rolloutv1alpha1.BatchRelease {
+				obj := batchDemo.DeepCopy()
+				obj.Spec.ReleasePlan.Batches = []rolloutv1alpha1.ReleaseBatch{
+					{
+						CanaryReplicas: intstr.FromString("10%"),
+					},
+					{
+						CanaryReplicas: intstr.FromString("20%"),
+					},
+					{
+						CanaryReplicas: intstr.FromString("30%"),
+					},
+				}
+				obj.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
+				return obj
+			},
+			expectStepIndex: 1,
+		},
 	}
 
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			client := fake.NewClientBuilder().WithScheme(scheme).Build()
 			client.Create(context.TODO(), cs.getBatchRelease())
-			client.Create(context.TODO(), cs.getObj())
+			dep, rs := cs.getObj()
+			client.Create(context.TODO(), dep)
+			client.Create(context.TODO(), rs)
 			client.Create(context.TODO(), cs.getRollout())
 
 			reconciler := &RolloutReconciler{

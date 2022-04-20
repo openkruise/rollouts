@@ -18,7 +18,9 @@ package util
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash"
@@ -41,8 +43,6 @@ import (
 )
 
 const (
-	// workload pod revision label
-	RsPodRevisionLabelKey         = "pod-template-hash"
 	CanaryDeploymentLabel         = "rollouts.kruise.io/canary-deployment"
 	BatchReleaseControlAnnotation = "batchrelease.rollouts.kruise.io/control-info"
 	StashCloneSetPartition        = "batchrelease.rollouts.kruise.io/stash-partition"
@@ -137,6 +137,12 @@ func EqualIgnoreHash(template1, template2 *v1.PodTemplateSpec) bool {
 	return apiequality.Semantic.DeepEqual(t1Copy, t2Copy)
 }
 
+func HashReleasePlanBatches(releasePlan *v1alpha1.ReleasePlan) string {
+	by, _ := json.Marshal(releasePlan.Batches)
+	md5Hash := sha256.Sum256(by)
+	return hex.EncodeToString(md5Hash[:])
+}
+
 type FinalizerOpType string
 
 const (
@@ -148,7 +154,7 @@ func UpdateFinalizer(c client.Client, object client.Object, op FinalizerOpType, 
 	switch op {
 	case AddFinalizerOpType, RemoveFinalizerOpType:
 	default:
-		panic(fmt.Sprintf("UpdateFinalizer Func 'op' parameter must be 'Add' or 'Remove'"))
+		panic("UpdateFinalizer Func 'op' parameter must be 'Add' or 'Remove'")
 	}
 
 	key := client.ObjectKeyFromObject(object)

@@ -59,7 +59,7 @@ func NewInnerBatchController(c client.Client, rollout *rolloutv1alpha1.Rollout) 
 	return r
 }
 
-func (r *innerBatchRelease) Verify(index int32) error {
+func (r *innerBatchRelease) Verify(index int32) (bool, error) {
 	index = index - 1
 	batch := &rolloutv1alpha1.BatchRelease{}
 	err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: r.batchName}, batch)
@@ -68,42 +68,42 @@ func (r *innerBatchRelease) Verify(index int32) error {
 		br := createBatchRelease(r.rollout, r.batchName)
 		if err = r.Create(context.TODO(), br); err != nil && !errors.IsAlreadyExists(err) {
 			klog.Errorf("rollout(%s/%s) create BatchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
-			return err
+			return false, err
 		}
 		data := util.DumpJSON(br)
 		klog.Infof("rollout(%s/%s) create BatchRelease(%s) success", r.rollout.Namespace, r.rollout.Name, data)
-		return nil
+		return false, nil
 	} else if err != nil {
 		klog.Errorf("rollout(%s/%s) fetch BatchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
-		return err
+		return false, err
 	}
 
 	// check whether batchRelease configuration is the latest
 	newBr := createBatchRelease(r.rollout, r.batchName)
 	if reflect.DeepEqual(batch.Spec.ReleasePlan.Batches, newBr.Spec.ReleasePlan.Batches) {
-		klog.Infof("rollout(%s/%s) batchRelease is initialize done", r.rollout.Namespace, r.rollout.Name)
-		return nil
+		klog.Infof("rollout(%s/%s) batchRelease(generation:%d) configuration is the latest", r.rollout.Namespace, r.rollout.Name, batch.Generation)
+		return true, nil
 	}
 
 	// update batchRelease to the latest version
-	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		if err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: r.batchName}, batch); err != nil {
+	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if err = r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: r.batchName}, batch); err != nil {
 			klog.Errorf("error getting updated BatchRelease(%s/%s) from client", batch.Namespace, batch.Name)
 			return err
 		}
 		batch.Spec.ReleasePlan.Batches = newBr.Spec.ReleasePlan.Batches
 		batch.Spec.ReleasePlan.BatchPartition = utilpointer.Int32Ptr(index)
-		if err := r.Client.Update(context.TODO(), batch); err != nil {
+		if err = r.Client.Update(context.TODO(), batch); err != nil {
 			return err
 		}
 		return nil
 	}); err != nil {
 		klog.Errorf("rollout(%s/%s) update batchRelease configuration failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
-		return err
+		return false, err
 	}
 	data := util.DumpJSON(batch)
 	klog.Infof("rollout(%s/%s) update batchRelease configuration(%s) to the latest", r.rollout.Namespace, r.rollout.Name, data)
-	return nil
+	return false, nil
 }
 
 func (r *innerBatchRelease) FetchBatchRelease() (*rolloutv1alpha1.BatchRelease, error) {
@@ -161,7 +161,7 @@ func (r *innerBatchRelease) resumeStableWorkload(checkReady bool) (bool, error) 
 			return false, err
 		}
 		// default partition.IntVal=0
-		if !obj.Spec.UpdateStrategy.Paused && obj.Spec.UpdateStrategy.Partition.IntVal == 0 {
+		if !obj.Spec.UpdateStrategy.Paused && obj.Spec.UpdateStrategy.Partition.IntVal == 0 && obj.Spec.UpdateStrategy.Partition.Type == intstr.Int {
 			return true, nil
 		}
 
@@ -276,7 +276,6 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rol
 		},
 		Spec: rolloutv1alpha1.BatchReleaseSpec{
 			TargetRef: rolloutv1alpha1.ObjectRef{
-				Type: rolloutv1alpha1.WorkloadRefType,
 				WorkloadRef: &rolloutv1alpha1.WorkloadRef{
 					APIVersion: rollout.Spec.ObjectRef.WorkloadRef.APIVersion,
 					Kind:       rollout.Spec.ObjectRef.WorkloadRef.Kind,

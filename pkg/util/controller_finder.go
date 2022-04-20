@@ -43,17 +43,23 @@ type Workload struct {
 	StableRevision string
 	// canary revision
 	CanaryRevision string
+	// pod template hash is used as service selector hash
+	PodTemplateHash string
 	// canary replicas
 	CanaryReplicas int32
 	// canary ready replicas
 	CanaryReadyReplicas int32
-	// spec.pod.template hash
-	CurrentPodTemplateHash string
 
+	// Is it in rollback phase
+	IsInRollback bool
 	// indicate whether the workload can enter the rollout process
 	// 1. workload.Spec.Paused = true
 	// 2. the Deployment is not in a stable version (only one version of RS)
 	InRolloutProgressing bool
+
+	// whether the status consistent with the spec
+	// workload.generation == status.observedGeneration
+	IsStatusConsistent bool
 }
 
 // ControllerFinderFunc is a function type that maps a pod to a list of
@@ -112,15 +118,19 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 		}
 		return nil, err
 	}
+	if cloneSet.Generation != cloneSet.Status.ObservedGeneration {
+		return &Workload{IsStatusConsistent: false}, nil
+	}
 	workload := &Workload{
-		StableRevision:         cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
-		CanaryRevision:         cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
-		CanaryReplicas:         cloneSet.Status.UpdatedReplicas,
-		CanaryReadyReplicas:    cloneSet.Status.UpdatedReadyReplicas,
-		ObjectMeta:             cloneSet.ObjectMeta,
-		TypeMeta:               cloneSet.TypeMeta,
-		Replicas:               *cloneSet.Spec.Replicas,
-		CurrentPodTemplateHash: cloneSet.Status.UpdateRevision,
+		StableRevision:      cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
+		CanaryRevision:      cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
+		CanaryReplicas:      cloneSet.Status.UpdatedReplicas,
+		CanaryReadyReplicas: cloneSet.Status.UpdatedReadyReplicas,
+		ObjectMeta:          cloneSet.ObjectMeta,
+		TypeMeta:            cloneSet.TypeMeta,
+		Replicas:            *cloneSet.Spec.Replicas,
+		PodTemplateHash:     cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
+		IsStatusConsistent:  true,
 	}
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
@@ -128,6 +138,10 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 	}
 	// in rollout progressing
 	workload.InRolloutProgressing = true
+	// Is it in rollback phase
+	if cloneSet.Status.CurrentRevision == cloneSet.Status.UpdateRevision && cloneSet.Status.UpdatedReplicas != cloneSet.Status.Replicas {
+		workload.IsInRollback = true
+	}
 	return workload, nil
 }
 
@@ -147,21 +161,23 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 		}
 		return nil, err
 	}
-	workload := &Workload{
-		ObjectMeta: stable.ObjectMeta,
-		TypeMeta:   stable.TypeMeta,
-		Replicas:   *stable.Spec.Replicas,
+	if stable.Generation != stable.Status.ObservedGeneration {
+		return &Workload{IsStatusConsistent: false}, nil
 	}
 	// stable replicaSet
-	stableRs, err := r.GetDeploymentStableRs(stable)
+	stableRs, err := r.getDeploymentStableRs(stable)
 	if err != nil || stableRs == nil {
-		return workload, err
+		return &Workload{IsStatusConsistent: false}, err
 	}
-	// stable revision
-	workload.StableRevision = stableRs.Labels[RsPodRevisionLabelKey]
-	// canary revision
-	workload.CanaryRevision = ComputeHash(&stable.Spec.Template, nil)
-	workload.CurrentPodTemplateHash = workload.CanaryRevision
+
+	workload := &Workload{
+		ObjectMeta:         stable.ObjectMeta,
+		TypeMeta:           stable.TypeMeta,
+		Replicas:           *stable.Spec.Replicas,
+		IsStatusConsistent: true,
+		StableRevision:     stableRs.Labels[apps.DefaultDeploymentUniqueLabelKey],
+		CanaryRevision:     ComputeHash(&stable.Spec.Template, nil),
+	}
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
@@ -171,24 +187,24 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 	workload.InRolloutProgressing = true
 	// workload is continuous release, indicates rollback(v1 -> v2 -> v1)
 	// delete auto-generated labels
-	delete(stableRs.Spec.Template.Labels, RsPodRevisionLabelKey)
+	delete(stableRs.Spec.Template.Labels, apps.DefaultDeploymentUniqueLabelKey)
 	if EqualIgnoreHash(&stableRs.Spec.Template, &stable.Spec.Template) {
-		workload.CanaryRevision = workload.StableRevision
+		workload.IsInRollback = true
 		return workload, nil
 	}
 
-	// canary workload status
+	// canary deployment
 	canary, err := r.getLatestCanaryDeployment(stable)
-	if err != nil {
-		return nil, err
-	} else if canary != nil {
-		workload.CanaryReplicas = canary.Status.Replicas
-		workload.CanaryReadyReplicas = canary.Status.ReadyReplicas
-		canaryRs, err := r.GetDeploymentStableRs(canary)
-		if err != nil || canaryRs == nil {
-			return workload, err
-		}
+	if err != nil || canary == nil {
+		return workload, err
 	}
+	workload.CanaryReplicas = canary.Status.Replicas
+	workload.CanaryReadyReplicas = canary.Status.ReadyReplicas
+	canaryRs, err := r.getDeploymentStableRs(canary)
+	if err != nil || canaryRs == nil {
+		return workload, err
+	}
+	workload.PodTemplateHash = canaryRs.Labels[apps.DefaultDeploymentUniqueLabelKey]
 	return workload, err
 }
 
@@ -204,10 +220,16 @@ func (r *ControllerFinder) getLatestCanaryDeployment(stable *apps.Deployment) (*
 	sort.Slice(canaryList.Items, func(i, j int) bool {
 		return canaryList.Items[j].CreationTimestamp.Before(&canaryList.Items[i].CreationTimestamp)
 	})
-	return &canaryList.Items[0], nil
+	for i := range canaryList.Items {
+		obj := &canaryList.Items[i]
+		if obj.DeletionTimestamp.IsZero() {
+			return obj, nil
+		}
+	}
+	return nil, nil
 }
 
-func (r *ControllerFinder) getReplicaSetsForDeployment(obj *apps.Deployment) ([]apps.ReplicaSet, error) {
+func (r *ControllerFinder) GetReplicaSetsForDeployment(obj *apps.Deployment) ([]apps.ReplicaSet, error) {
 	// List ReplicaSets owned by this Deployment
 	rsList := &apps.ReplicaSetList{}
 	selector, err := metav1.LabelSelectorAsSelector(obj.Spec.Selector)
@@ -219,6 +241,7 @@ func (r *ControllerFinder) getReplicaSetsForDeployment(obj *apps.Deployment) ([]
 	if err != nil {
 		return nil, err
 	}
+
 	rss := make([]apps.ReplicaSet, 0)
 	for i := range rsList.Items {
 		rs := rsList.Items[i]
@@ -234,14 +257,18 @@ func (r *ControllerFinder) getReplicaSetsForDeployment(obj *apps.Deployment) ([]
 	return rss, nil
 }
 
-func (r *ControllerFinder) GetDeploymentStableRs(obj *apps.Deployment) (*apps.ReplicaSet, error) {
-	rss, err := r.getReplicaSetsForDeployment(obj)
+func (r *ControllerFinder) getDeploymentStableRs(obj *apps.Deployment) (*apps.ReplicaSet, error) {
+	rss, err := r.GetReplicaSetsForDeployment(obj)
 	if err != nil {
 		return nil, err
 	}
-	if len(rss) != 1 {
+	if len(rss) == 0 {
 		return nil, nil
 	}
+	// get oldest rs
+	sort.Slice(rss, func(i, j int) bool {
+		return rss[i].CreationTimestamp.Before(&rss[j].CreationTimestamp)
+	})
 	return &rss[0], nil
 }
 

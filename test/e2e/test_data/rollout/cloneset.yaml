@@ -20,10 +20,12 @@ spec:
       containers:
         - name: echoserver
           image: cilium/echoserver:latest
-          imagePullPolicy: IfNotPresent
+          # imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:
+            - name: PORT
+              value: '8080'
             - name: POD_NAME
               valueFrom:
                 fieldRef:

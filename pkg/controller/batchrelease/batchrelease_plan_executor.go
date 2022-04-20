@@ -205,7 +205,8 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 			setCondition(status, "Progressing", v1.ConditionFalse, "VerifyBatchFailed", err.Error())
 		case verified:
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
-			status.CanaryStatus.BatchReadyTime = metav1.Now()
+			now := metav1.Now()
+			status.CanaryStatus.BatchReadyTime = &now
 			status.CanaryStatus.CurrentBatchState = v1alpha1.ReadyBatchState
 		default:
 			status.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState

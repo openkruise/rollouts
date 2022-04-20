@@ -17,11 +17,8 @@ limitations under the License.
 package batchrelease
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -37,12 +34,6 @@ func HasTerminatingCondition(status v1alpha1.BatchReleaseStatus) bool {
 		}
 	}
 	return false
-}
-
-func hashReleasePlanBatches(releasePlan *v1alpha1.ReleasePlan) string {
-	by, _ := json.Marshal(releasePlan.Batches)
-	md5Hash := sha256.Sum256(by)
-	return hex.EncodeToString(md5Hash[:])
 }
 
 func initializeStatusIfNeeds(status *v1alpha1.BatchReleaseStatus) {
@@ -76,13 +67,14 @@ func signalRecalculate(release *v1alpha1.BatchRelease, newStatus *v1alpha1.Batch
 	currentBatch := int32(0)
 	if release.Spec.ReleasePlan.BatchPartition != nil {
 		// ensure current batch upper bound
-		currentBatch = integer.Int32Min(*release.Spec.ReleasePlan.BatchPartition, currentBatch)
+		currentBatch = integer.Int32Min(*release.Spec.ReleasePlan.BatchPartition, int32(len(release.Spec.ReleasePlan.Batches)-1))
 	}
 
 	klog.Infof("BatchRelease(%v) canary batch changed from %v to %v when the release plan changed",
 		client.ObjectKeyFromObject(release), newStatus.CanaryStatus.CurrentBatch, currentBatch)
 	newStatus.CanaryStatus.CurrentBatch = currentBatch
 	newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+	newStatus.ObservedReleasePlanHash = util.HashReleasePlanBatches(&release.Spec.ReleasePlan)
 }
 
 func resetStatus(status *v1alpha1.BatchReleaseStatus) {
@@ -101,11 +93,12 @@ func setCondition(status *v1alpha1.BatchReleaseStatus, condType v1alpha1.Rollout
 
 	if len(status.Conditions) == 0 {
 		status.Conditions = append(status.Conditions, v1alpha1.RolloutCondition{
-			Type:           condType,
-			Status:         condStatus,
-			Reason:         reason,
-			Message:        message,
-			LastUpdateTime: metav1.Now(),
+			Type:               condType,
+			Status:             condStatus,
+			Reason:             reason,
+			Message:            message,
+			LastUpdateTime:     metav1.Now(),
+			LastTransitionTime: metav1.Now(),
 		})
 		return
 	}

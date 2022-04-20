@@ -33,9 +33,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout) error {
+func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout) (done bool, err error) {
 	newStatus := *rollout.Status.DeepCopy()
 	newStatus.ObservedGeneration = rollout.GetGeneration()
+	defer func() {
+		err = r.updateRolloutStatusInternal(rollout, newStatus)
+		if err != nil {
+			klog.Errorf("update rollout(%s/%s) status failed: %s", rollout.Namespace, rollout.Name, err.Error())
+			return
+		}
+		err = r.calculateRolloutHash(rollout)
+		if err != nil {
+			return
+		}
+		rollout.Status = newStatus
+	}()
+
 	// delete rollout CRD
 	if !rollout.DeletionTimestamp.IsZero() && newStatus.Phase != rolloutv1alpha1.RolloutPhaseTerminating {
 		newStatus.Phase = rolloutv1alpha1.RolloutPhaseTerminating
@@ -48,29 +61,36 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
-		return err
-	} else if workload == nil && rollout.DeletionTimestamp.IsZero() {
-		resetStatus(&newStatus)
-		klog.Infof("rollout(%s/%s) workload not found, and reset status be Initial", rollout.Namespace, rollout.Name)
-	} else if workload != nil {
-		newStatus.StableRevision = workload.StableRevision
-		newStatus.CanaryRevision = workload.CanaryRevision
-		// update workload generation to canaryStatus.ObservedWorkloadGeneration
-		// rollout is a target ref bypass, so there needs to be a field to identify the rollout execution process or results,
-		// which version of deployment is targeted, ObservedWorkloadGeneration that is to compare with the workload generation
-		if newStatus.CanaryStatus != nil && newStatus.CanaryStatus.CanaryRevision != "" &&
-			newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision {
-			newStatus.CanaryStatus.ObservedWorkloadGeneration = workload.Generation
+		return
+	} else if workload == nil {
+		if rollout.DeletionTimestamp.IsZero() {
+			resetStatus(&newStatus)
+			klog.Infof("rollout(%s/%s) workload not found, and reset status be Initial", rollout.Namespace, rollout.Name)
 		}
+		done = true
+		return
+	}
+
+	// workload status is not consistent
+	if !workload.IsStatusConsistent {
+		klog.Infof("rollout(%s/%s) workload status isn't consistent, then wait a moment", rollout.Namespace, rollout.Name)
+		done = false
+		return
+	}
+	newStatus.StableRevision = workload.StableRevision
+	// update workload generation to canaryStatus.ObservedWorkloadGeneration
+	// rollout is a target ref bypass, so there needs to be a field to identify the rollout execution process or results,
+	// which version of deployment is targeted, ObservedWorkloadGeneration that is to compare with the workload generation
+	if newStatus.CanaryStatus != nil && newStatus.CanaryStatus.CanaryRevision != "" &&
+		newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision {
+		newStatus.CanaryStatus.ObservedWorkloadGeneration = workload.Generation
 	}
 
 	switch newStatus.Phase {
 	case rolloutv1alpha1.RolloutPhaseInitial:
-		if workload != nil {
-			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, rolloutv1alpha1.RolloutPhaseInitial, rolloutv1alpha1.RolloutPhaseHealthy)
-			newStatus.Phase = rolloutv1alpha1.RolloutPhaseHealthy
-			newStatus.Message = "rollout is healthy"
-		}
+		klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, rolloutv1alpha1.RolloutPhaseInitial, rolloutv1alpha1.RolloutPhaseHealthy)
+		newStatus.Phase = rolloutv1alpha1.RolloutPhaseHealthy
+		newStatus.Message = "rollout is healthy"
 	case rolloutv1alpha1.RolloutPhaseHealthy:
 		// from healthy to progressing
 		if workload.InRolloutProgressing {
@@ -85,17 +105,8 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 			newStatus.Phase = rolloutv1alpha1.RolloutPhaseHealthy
 		}
 	}
-	err = r.updateRolloutStatusInternal(rollout, newStatus)
-	if err != nil {
-		klog.Errorf("update rollout(%s/%s) status failed: %s", rollout.Namespace, rollout.Name, err.Error())
-		return err
-	}
-	err = r.calculateRolloutHash(rollout)
-	if err != nil {
-		return err
-	}
-	rollout.Status = newStatus
-	return nil
+	done = true
+	return
 }
 
 func (r *RolloutReconciler) updateRolloutStatusInternal(rollout *rolloutv1alpha1.Rollout, newStatus rolloutv1alpha1.RolloutStatus) error {
@@ -124,9 +135,8 @@ func (r *RolloutReconciler) updateRolloutStatusInternal(rollout *rolloutv1alpha1
 
 // ResetStatus resets the status of the rollout to start from beginning
 func resetStatus(status *rolloutv1alpha1.RolloutStatus) {
-	status.CanaryRevision = ""
 	status.StableRevision = ""
-	util.RemoveRolloutCondition(status, rolloutv1alpha1.RolloutConditionProgressing)
+	//util.RemoveRolloutCondition(status, rolloutv1alpha1.RolloutConditionProgressing)
 	status.Phase = rolloutv1alpha1.RolloutPhaseInitial
 	status.Message = "workload not found"
 }

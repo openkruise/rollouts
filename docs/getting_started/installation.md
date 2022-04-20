@@ -1,7 +1,7 @@
 # Installation
 
 ## Requirements
-- Install Kubernetes Cluster, requires **Kubernetes version >= 1.16**.
+- Install Kubernetes Cluster, requires **Kubernetes version >= 1.19**.
 - (Optional, If Use CloneSet) Helm installation of OpenKruise, **Since v1.1.0**, Reference [Install OpenKruise](https://openkruise.io/docs/installation).
 
 ## Install with helm

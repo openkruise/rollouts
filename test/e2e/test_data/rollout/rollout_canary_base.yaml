@@ -22,7 +22,7 @@ spec:
       - weight: 80
         pause: {duration: 10}
       - weight: 100
-      trafficRouting:
+      trafficRoutings:
       - service: echoserver
         type: nginx
         ingress:

@@ -29,7 +29,6 @@ var (
 		},
 		Spec: appsv1alpha1.RolloutSpec{
 			ObjectRef: appsv1alpha1.ObjectRef{
-				Type: appsv1alpha1.WorkloadRefType,
 				WorkloadRef: &appsv1alpha1.WorkloadRef{
 					APIVersion: apps.SchemeGroupVersion.String(),
 					Kind:       "Deployment",
@@ -37,7 +36,6 @@ var (
 				},
 			},
 			Strategy: appsv1alpha1.RolloutStrategy{
-				Type: appsv1alpha1.RolloutStrategyCanary,
 				Canary: &appsv1alpha1.CanaryStrategy{
 					Steps: []appsv1alpha1.CanaryStep{
 						{
@@ -58,7 +56,7 @@ var (
 							Weight: 100,
 						},
 					},
-					TrafficRouting: []*appsv1alpha1.TrafficRouting{
+					TrafficRoutings: []*appsv1alpha1.TrafficRouting{
 						{
 							Type:    "nginx",
 							Service: "service-demo",
@@ -126,7 +124,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting[0].Service = ""
+				object.Spec.Strategy.Canary.TrafficRoutings[0].Service = ""
 				return []client.Object{object}
 			},
 		},
@@ -135,7 +133,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting[0].Ingress.Name = ""
+				object.Spec.Strategy.Canary.TrafficRoutings[0].Ingress.Name = ""
 				return []client.Object{object}
 			},
 		},
@@ -235,29 +233,11 @@ func TestRolloutValidateCreate(t *testing.T) {
 		//	},
 		//},
 		{
-			Name:    "Wrong objectRef type",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Spec.ObjectRef.Type = "Whatever"
-				return []client.Object{object}
-			},
-		},
-		{
-			Name:    "Wrong strategy type",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Spec.Strategy.Type = "Whatever"
-				return []client.Object{object}
-			},
-		},
-		{
 			Name:    "Wrong Traffic type",
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRouting[0].Type = "Whatever"
+				object.Spec.Strategy.Canary.TrafficRoutings[0].Type = "Whatever"
 				return []client.Object{object}
 			},
 		},
@@ -390,7 +370,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
 				object.Status.Phase = appsv1alpha1.RolloutPhaseTerminating
-				object.Spec.Strategy.Canary.TrafficRouting[0].Type = "alb"
+				object.Spec.Strategy.Canary.TrafficRoutings[0].Type = "alb"
 				return object
 			},
 		},
