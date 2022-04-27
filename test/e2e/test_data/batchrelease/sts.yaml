@@ -1,0 +1,71 @@
+apiVersion: rollouts.kruise.io/v1alpha1
+kind: Rollout
+metadata:
+  name: sts-demo
+spec:
+  objectRef:
+    workloadRef:
+      apiVersion: apps/v1
+      kind: StatefulSet
+      name: sts-demo
+  strategy:
+    canary:
+      steps:
+      - weight: 20
+        pause: {}
+      - weight: 40
+        pause: {duration: 10}
+      - weight: 60
+        pause: {duration: 10}
+      - weight: 80
+        pause: {duration: 10}
+      - weight: 100
+--- 
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sts-demo
+spec:
+  selector:
+    matchLabels:
+      app: sts-demo
+  serviceName: sts-demo
+  replicas: 5
+  template:
+    metadata:
+      labels:
+        app: sts-demo
+    spec:
+      containers:
+      - name: myapp
+        image: busybox:1.33
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/sh", "-c", "sleep 100000000"]
+        ports:
+        - containerPort: 80
+          name: web
+        volumeMounts:
+        - name: www
+          mountPath: /usr/share/nginx/html
+  volumeClaimTemplates:
+  - metadata:
+      name: www
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 20Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sts-demo
+  labels:
+    app: sts-demo
+spec:
+  ports:
+  - port: 80
+    name: web
+  clusterIP: None
+  selector:
+    app: myapp

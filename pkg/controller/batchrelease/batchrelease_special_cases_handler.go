@@ -49,7 +49,7 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	case isPlanTerminating(r.release, r.releaseStatus):
 		// handle the case that the plan is deleted or is terminating
 		reason = "PlanTerminating"
-		message = "Release plan is deleted, then terminate"
+		message = "Release plan is deleted or cancelled, then terminate"
 		signalTerminating(r.releaseStatus)
 
 	case isPlanPaused(err, r.releasePlan, r.releaseStatus):
@@ -105,12 +105,7 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 		reason = "ReplicasChanged"
 		message = "workload is scaling, then reinitialize batch status"
 		signalReinitializeBatch(r.releaseStatus)
-
-	case isWorkloadRollback(workloadEvent, r.releaseStatus):
-		// handle the case that workload is rolling back during progressing
-		reason = "StableOrRollback"
-		message = "workload is stable or rolling back, then abort"
-		signalFinalize(r.releaseStatus)
+		r.releaseStatus.ObservedWorkloadReplicas = *workloadInfo.Replicas
 
 	case isWorkloadChanged(workloadEvent, r.releaseStatus):
 		// handle the case of continuous release v1 -> v2 -> v3
@@ -158,15 +153,9 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	return needStopThisRound, result
 }
 
-func refreshStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadInfo *workloads.WorkloadInfo) {
+func refreshStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadInfo *util.WorkloadInfo) {
 	// refresh workload info for status
 	if workloadInfo != nil {
-		if workloadInfo.Replicas != nil {
-			newStatus.ObservedWorkloadReplicas = *workloadInfo.Replicas
-		}
-		if workloadInfo.UpdateRevision != nil {
-			newStatus.UpdateRevision = *workloadInfo.UpdateRevision
-		}
 		if workloadInfo.Status != nil {
 			newStatus.CanaryStatus.UpdatedReplicas = workloadInfo.Status.UpdatedReplicas
 			newStatus.CanaryStatus.UpdatedReadyReplicas = workloadInfo.Status.UpdatedReadyReplicas
@@ -209,16 +198,12 @@ func isWorkloadScaling(event workloads.WorkloadEventType, status *v1alpha1.Batch
 	return event == workloads.WorkloadReplicasChanged && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
-func isWorkloadRollback(event workloads.WorkloadEventType, status *v1alpha1.BatchReleaseStatus) bool {
-	return event == workloads.WorkloadRollback && status.Phase == v1alpha1.RolloutPhaseProgressing
-}
-
 func isWorkloadChanged(event workloads.WorkloadEventType, status *v1alpha1.BatchReleaseStatus) bool {
 	return event == workloads.WorkloadPodTemplateChanged && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
-func isWorkloadUnhealthy(event workloads.WorkloadEventType, _ *v1alpha1.BatchReleaseStatus) bool {
-	return event == workloads.WorkloadUnHealthy
+func isWorkloadUnhealthy(event workloads.WorkloadEventType, status *v1alpha1.BatchReleaseStatus) bool {
+	return event == workloads.WorkloadUnHealthy && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
 func isWorkloadUnstable(event workloads.WorkloadEventType, _ *v1alpha1.BatchReleaseStatus) bool {

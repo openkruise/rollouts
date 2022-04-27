@@ -21,6 +21,7 @@ import (
 	"time"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
@@ -123,6 +124,20 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		if err = c.Watch(&source.Kind{Type: &appsv1alpha1.CloneSet{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}); err != nil {
 			return err
 		}
+	}
+
+	if util.DiscoverGVK(util.AStatefulSetGVK) {
+		//// Watch changes to Advanced StatefulSet
+		err = c.Watch(&source.Kind{Type: &kruiseappsv1beta1.StatefulSet{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme})
+		if err != nil {
+			return err
+		}
+	}
+
+	// Watch changes to Native StatefulSet
+	err = c.Watch(&source.Kind{Type: &apps.StatefulSet{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme})
+	if err != nil {
+		return err
 	}
 
 	// Watch for changes to deployment

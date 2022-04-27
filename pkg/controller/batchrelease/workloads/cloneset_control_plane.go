@@ -22,6 +22,7 @@ import (
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -231,11 +232,6 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 	return true, nil
 }
 
-// FinalizeOneBatch isn't needed in this mode.
-func (c *CloneSetRolloutController) FinalizeOneBatch() (bool, error) {
-	return true, nil
-}
-
 // FinalizeProgress makes sure the CloneSet is all upgraded
 func (c *CloneSetRolloutController) FinalizeProgress(cleanup bool) bool {
 	if err := c.fetchCloneSet(); client.IgnoreNotFound(err) != nil {
@@ -251,7 +247,7 @@ func (c *CloneSetRolloutController) FinalizeProgress(cleanup bool) bool {
 }
 
 // SyncWorkloadInfo return change type if workload was changed during release
-func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *WorkloadInfo, error) {
+func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *util.WorkloadInfo, error) {
 	// ignore the sync if the release plan is deleted
 	if c.parentController.DeletionTimestamp != nil {
 		return IgnoreWorkloadEvent, nil, nil
@@ -268,8 +264,8 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *Work
 		return WorkloadStillReconciling, nil, nil
 	}
 
-	workloadInfo := &WorkloadInfo{
-		Status: &WorkloadStatus{
+	workloadInfo := &util.WorkloadInfo{
+		Status: &util.WorkloadStatus{
 			UpdatedReplicas:      c.clone.Status.UpdatedReplicas,
 			UpdatedReadyReplicas: c.clone.Status.UpdatedReadyReplicas,
 		},
@@ -278,12 +274,6 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *Work
 	// in case of that the updated revision of the workload is promoted
 	if c.clone.Status.UpdatedReplicas == c.clone.Status.Replicas {
 		return IgnoreWorkloadEvent, workloadInfo, nil
-	}
-
-	// in case of that the workload is rolling back
-	if c.clone.Status.CurrentRevision == c.clone.Status.UpdateRevision && c.parentController.Status.UpdateRevision != c.clone.Status.UpdateRevision {
-		klog.Warningf("CloneSet(%v) is rolling back", c.targetNamespacedName)
-		return WorkloadRollback, workloadInfo, nil
 	}
 
 	// in case of that the workload is scaling

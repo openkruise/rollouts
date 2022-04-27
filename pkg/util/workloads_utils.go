@@ -28,16 +28,20 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -55,8 +59,29 @@ const (
 )
 
 var (
-	CloneSetGVK = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	CloneSetGVK     = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	AStatefulSetGVK = appsv1beta1.SchemeGroupVersion.WithKind("StatefulSet")
 )
+
+type WorkloadStatus struct {
+	Replicas             int32
+	ReadyReplicas        int32
+	UpdatedReplicas      int32
+	UpdatedReadyReplicas int32
+	AvailableReplicas    int32
+	ObservedGeneration   int64
+	UpdateRevision       string
+	StableRevision       string
+}
+
+type WorkloadInfo struct {
+	Paused         bool
+	Replicas       *int32
+	GVKWithName    string
+	MaxUnavailable *intstr.IntOrString
+	Metadata       *metav1.ObjectMeta
+	Status         *WorkloadStatus
+}
 
 // DeepHashObject writes specified object to hash using the spew library
 // which follows pointers and prints actual values of the nested objects
@@ -196,4 +221,168 @@ func FilterActiveDeployment(ds []*apps.Deployment) []*apps.Deployment {
 func GenRandomStr(length int) string {
 	randStr := rand.String(length)
 	return rand.SafeEncodeString(randStr)
+}
+
+func PatchUpdateStrategy(c client.Client, object client.Object, updateStrategy map[string]interface{}) error {
+	patch := map[string]interface{}{
+		"spec": map[string]interface{}{
+			"updateStrategy": updateStrategy,
+		},
+	}
+
+	patchByte, _ := json.Marshal(patch)
+	clone := object.DeepCopyObject().(client.Object)
+	return c.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte))
+}
+
+func ReleaseWorkload(c client.Client, object client.Object) error {
+	_, found := object.GetAnnotations()[BatchReleaseControlAnnotation]
+	if !found {
+		klog.V(3).Infof("Workload(%v) is already released", client.ObjectKeyFromObject(object))
+		return nil
+	}
+
+	clone := object.DeepCopyObject().(client.Object)
+	patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, BatchReleaseControlAnnotation))
+	return c.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte))
+}
+
+func ClaimWorkload(c client.Client, planController *v1alpha1.BatchRelease, object client.Object, patchUpdateStrategy map[string]interface{}) error {
+	if controlInfo, ok := object.GetAnnotations()[BatchReleaseControlAnnotation]; ok && controlInfo != "" {
+		ref := &metav1.OwnerReference{}
+		err := json.Unmarshal([]byte(controlInfo), ref)
+		if err == nil && ref.UID == planController.UID {
+			klog.V(3).Infof("Workload(%v) has been controlled by this BatchRelease(%v), no need to claim again",
+				client.ObjectKeyFromObject(object), client.ObjectKeyFromObject(planController))
+			return nil
+		} else {
+			klog.Errorf("Failed to parse controller info from Workload(%v) annotation, error: %v, controller info: %+v",
+				client.ObjectKeyFromObject(object), err, *ref)
+		}
+	}
+
+	controlInfo, _ := json.Marshal(metav1.NewControllerRef(planController, planController.GetObjectKind().GroupVersionKind()))
+	patch := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"annotations": map[string]string{
+				BatchReleaseControlAnnotation: string(controlInfo),
+			},
+		},
+		"spec": map[string]interface{}{
+			"updateStrategy": patchUpdateStrategy,
+		},
+	}
+
+	patchByte, _ := json.Marshal(patch)
+	clone := object.DeepCopyObject().(client.Object)
+	return c.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte))
+}
+
+func IsRollingUpdateStrategy(object *unstructured.Unstructured) bool {
+	t, _, err := unstructured.NestedString(object.Object, "spec", "updateStrategy", "type")
+	if err != nil {
+		return false
+	}
+	return t == "" || t == string(apps.RollingUpdateStatefulSetStrategyType)
+}
+
+func ParseReplicasFrom(object *unstructured.Unstructured) int32 {
+	replicas := int32(1)
+	field, found, err := unstructured.NestedInt64(object.Object, "spec", "replicas")
+	if err == nil && found {
+		replicas = int32(field)
+	}
+	return replicas
+}
+
+func ParseInt32PartitionFrom(object *unstructured.Unstructured) int32 {
+	partition := int32(0)
+	field, found, err := unstructured.NestedInt64(object.Object, "spec", "updateStrategy", "rollingUpdate", "partition")
+	if err == nil && found {
+		partition = int32(field)
+	}
+	return partition
+}
+
+func ParseStatusIntFrom(object *unstructured.Unstructured, field string) int64 {
+	value, found, err := unstructured.NestedInt64(object.Object, "status", field)
+	if err == nil && found {
+		return value
+	}
+	return 0
+}
+
+func ParseStatusStringFrom(object *unstructured.Unstructured, field string) string {
+	value, found, err := unstructured.NestedFieldNoCopy(object.Object, "status", field)
+	if err == nil && found {
+		return value.(string)
+	}
+	return ""
+}
+
+func ParseMetadataFrom(object *unstructured.Unstructured) *metav1.ObjectMeta {
+	m, found, err := unstructured.NestedMap(object.Object, "metadata")
+	if err != nil || !found {
+		return nil
+	}
+	data, _ := json.Marshal(m)
+	meta := &metav1.ObjectMeta{}
+	_ = json.Unmarshal(data, meta)
+	return meta
+}
+
+func ParseMaxUnavailableFrom(object *unstructured.Unstructured) *intstr.IntOrString {
+	// case 1: object is statefulset
+	m, found, err := unstructured.NestedFieldCopy(object.Object, "spec", "updateStrategy", "rollingUpdate", "maxUnavailable")
+	if err == nil && found {
+		return parseIntStr(m)
+	}
+
+	// case2: object is cloneset
+	m, found, err = unstructured.NestedFieldCopy(object.Object, "spec", "updateStrategy", "maxUnavailable")
+	if err == nil && found {
+		return parseIntStr(m)
+	}
+
+	// case2: object is deployment
+	m, found, err = unstructured.NestedFieldCopy(object.Object, "spec", "strategy", "rollingUpdate", "maxUnavailable")
+	if err == nil && found {
+		return parseIntStr(m)
+	}
+
+	return nil
+}
+func parseIntStr(m interface{}) *intstr.IntOrString {
+	field := &intstr.IntOrString{}
+	data, _ := json.Marshal(m)
+	_ = json.Unmarshal(data, field)
+	return field
+}
+
+func ParseWorkloadInfo(object *unstructured.Unstructured, namespacedName types.NamespacedName) *WorkloadInfo {
+	updateRevision := ParseStatusStringFrom(object, "updateRevision")
+	if len(updateRevision) > 0 {
+		updateRevision = updateRevision[len(object.GetName())+1:]
+	}
+	stableRevision := ParseStatusStringFrom(object, "currentRevision")
+	if len(stableRevision) > 0 {
+		stableRevision = stableRevision[len(object.GetName())+1:]
+	}
+
+	return &WorkloadInfo{
+		Metadata:       ParseMetadataFrom(object),
+		MaxUnavailable: ParseMaxUnavailableFrom(object),
+		Replicas:       pointer.Int32(ParseReplicasFrom(object)),
+		GVKWithName:    fmt.Sprintf("%v(%v)", object.GroupVersionKind().String(), namespacedName),
+		Status: &WorkloadStatus{
+			ObservedGeneration:   int64(ParseStatusIntFrom(object, "observedGeneration")),
+			Replicas:             int32(ParseStatusIntFrom(object, "replicas")),
+			ReadyReplicas:        int32(ParseStatusIntFrom(object, "readyReplicas")),
+			UpdatedReplicas:      int32(ParseStatusIntFrom(object, "updatedReplicas")),
+			AvailableReplicas:    int32(ParseStatusIntFrom(object, "availableReplicas")),
+			UpdatedReadyReplicas: int32(ParseStatusIntFrom(object, "updatedReadyReplicas")),
+			UpdateRevision:       updateRevision,
+			StableRevision:       stableRevision,
+		},
+	}
 }

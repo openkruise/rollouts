@@ -22,11 +22,14 @@ import (
 	"strings"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -34,7 +37,6 @@ import (
 // Workload is used to return (controller, scale, selector) fields from the
 // controller finder functions.
 type Workload struct {
-	metav1.TypeMeta
 	metav1.ObjectMeta
 
 	// replicas
@@ -94,12 +96,14 @@ func (r *ControllerFinder) GetWorkloadForRef(namespace string, ref *rolloutv1alp
 }
 
 func (r *ControllerFinder) finders() []ControllerFinderFunc {
-	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getDeployment}
+	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getDeployment, r.getStatefulSetLikeWorkload}
 }
 
 var (
-	ControllerKindDep      = apps.SchemeGroupVersion.WithKind("Deployment")
-	ControllerKruiseKindCS = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	ControllerKindDep       = apps.SchemeGroupVersion.WithKind("Deployment")
+	ControllerKindSts       = apps.SchemeGroupVersion.WithKind("StatefulSet")
+	ControllerKruiseKindCS  = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	ControllerKruiseKindSts = appsv1beta1.SchemeGroupVersion.WithKind("StatefulSet")
 )
 
 // getKruiseCloneSet returns the kruise cloneSet referenced by the provided controllerRef.
@@ -127,7 +131,6 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 		CanaryReplicas:      cloneSet.Status.UpdatedReplicas,
 		CanaryReadyReplicas: cloneSet.Status.UpdatedReadyReplicas,
 		ObjectMeta:          cloneSet.ObjectMeta,
-		TypeMeta:            cloneSet.TypeMeta,
 		Replicas:            *cloneSet.Spec.Replicas,
 		PodTemplateHash:     cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
 		IsStatusConsistent:  true,
@@ -172,7 +175,6 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 
 	workload := &Workload{
 		ObjectMeta:         stable.ObjectMeta,
-		TypeMeta:           stable.TypeMeta,
 		Replicas:           *stable.Spec.Replicas,
 		IsStatusConsistent: true,
 		StableRevision:     stableRs.Labels[apps.DefaultDeploymentUniqueLabelKey],
@@ -206,6 +208,46 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 	}
 	workload.PodTemplateHash = canaryRs.Labels[apps.DefaultDeploymentUniqueLabelKey]
 	return workload, err
+}
+
+func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
+	if ref == nil || ref.Kind != AStatefulSetGVK.Kind {
+		return nil, nil
+	}
+
+	unifiedObject := &unstructured.Unstructured{}
+	unifiedObjectKey := types.NamespacedName{Name: ref.Name, Namespace: namespace}
+	unifiedObject.SetGroupVersionKind(schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind))
+	err := r.Get(context.TODO(), unifiedObjectKey, unifiedObject)
+	if err != nil {
+		// when error is NotFound, it is ok here.
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	workloadInfo := ParseWorkloadInfo(unifiedObject, unifiedObjectKey)
+	if workloadInfo.Metadata.Generation != workloadInfo.Status.ObservedGeneration {
+		return &Workload{IsStatusConsistent: false}, nil
+	}
+	workload := &Workload{
+		StableRevision:      workloadInfo.Status.StableRevision,
+		CanaryRevision:      workloadInfo.Status.UpdateRevision,
+		CanaryReplicas:      workloadInfo.Status.UpdatedReplicas,
+		CanaryReadyReplicas: workloadInfo.Status.UpdatedReadyReplicas,
+		ObjectMeta:          *workloadInfo.Metadata,
+		Replicas:            *workloadInfo.Replicas,
+		PodTemplateHash:     workloadInfo.Status.UpdateRevision,
+		IsStatusConsistent:  true,
+	}
+	// not in rollout progressing
+	if _, ok := workload.Annotations[InRolloutProgressingAnnotation]; !ok {
+		return workload, nil
+	}
+	// in rollout progressing
+	workload.InRolloutProgressing = true
+	return workload, nil
 }
 
 func (r *ControllerFinder) getLatestCanaryDeployment(stable *apps.Deployment) (*apps.Deployment, error) {

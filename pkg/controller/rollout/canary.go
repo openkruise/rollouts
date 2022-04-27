@@ -21,16 +21,15 @@ import (
 	"fmt"
 	"time"
 
-	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
-	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (r *rolloutContext) runCanary() error {
@@ -260,20 +259,15 @@ func (r *rolloutContext) doCanaryFinalising() (bool, error) {
 }
 
 func (r *rolloutContext) removeRolloutStateInWorkload() error {
-	if r.workload == nil {
+	if r.workload == nil || r.rollout.Spec.ObjectRef.WorkloadRef == nil {
 		return nil
 	}
 	if _, ok := r.workload.Annotations[util.InRolloutProgressingAnnotation]; !ok {
 		return nil
 	}
-	var obj client.Object
-	// cloneSet
-	if r.workload.Kind == util.ControllerKruiseKindCS.Kind {
-		obj = &appsv1alpha1.CloneSet{}
-		// deployment
-	} else {
-		obj = &apps.Deployment{}
-	}
+	obj := &unstructured.Unstructured{}
+	gvk := schema.FromAPIVersionAndKind(r.rollout.Spec.ObjectRef.WorkloadRef.APIVersion, r.rollout.Spec.ObjectRef.WorkloadRef.Kind)
+	obj.SetGroupVersionKind(gvk)
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		if err := r.Get(context.TODO(), types.NamespacedName{Name: r.workload.Name, Namespace: r.workload.Namespace}, obj); err != nil {
 			klog.Errorf("getting updated workload(%s.%s) failed: %s", r.workload.Namespace, r.workload.Name, err.Error())

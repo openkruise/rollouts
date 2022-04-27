@@ -208,11 +208,6 @@ func (c *DeploymentsRolloutController) CheckOneBatchReady() (bool, error) {
 	return true, nil
 }
 
-// FinalizeOneBatch isn't needed in this mode.
-func (c *DeploymentsRolloutController) FinalizeOneBatch() (bool, error) {
-	return true, nil
-}
-
 // FinalizeProgress makes sure restore deployments and clean up some canary settings
 func (c *DeploymentsRolloutController) FinalizeProgress(cleanup bool) bool {
 	if err := c.fetchStableDeployment(); client.IgnoreNotFound(err) != nil {
@@ -232,7 +227,7 @@ func (c *DeploymentsRolloutController) FinalizeProgress(cleanup bool) bool {
 
 // SyncWorkloadInfo return workloadInfo if workload info is changed during rollout
 // TODO: abstract a WorkloadEventTypeJudge interface for these following `if` clauses
-func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadEventType, *WorkloadInfo, error) {
+func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadEventType, *util.WorkloadInfo, error) {
 	// ignore the sync if the release plan is deleted
 	if c.parentController.DeletionTimestamp != nil {
 		return IgnoreWorkloadEvent, nil, nil
@@ -249,9 +244,9 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadEventType, *W
 		return "", nil, err
 	}
 
-	workloadInfo := &WorkloadInfo{}
+	workloadInfo := &util.WorkloadInfo{}
 	if c.canary != nil {
-		workloadInfo.Status = &WorkloadStatus{
+		workloadInfo.Status = &util.WorkloadStatus{
 			UpdatedReplicas:      c.canary.Status.Replicas,
 			UpdatedReadyReplicas: c.canary.Status.AvailableReplicas,
 		}
@@ -272,11 +267,6 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadEventType, *W
 	// in case of that the workload has been promoted
 	if !c.stable.Spec.Paused && c.stable.Status.UpdatedReplicas == c.stable.Status.Replicas {
 		return IgnoreWorkloadEvent, workloadInfo, nil
-	}
-
-	// in case of that the workload needs to rollback
-	if needsRollBack, _ := c.isDeploymentRollBack(); needsRollBack {
-		return WorkloadRollback, workloadInfo, nil
 	}
 
 	// in case of that the workload is scaling up/down
@@ -370,30 +360,4 @@ func (c *DeploymentsRolloutController) recordDeploymentRevisionAndReplicas() err
 	c.releaseStatus.UpdateRevision = updateRevision
 	c.releaseStatus.ObservedWorkloadReplicas = *c.stable.Spec.Replicas
 	return nil
-}
-
-// isDeploymentRollBack returns 'true' if the workload needs to rollback
-func (c *DeploymentsRolloutController) isDeploymentRollBack() (bool, error) {
-	if c.canary != nil {
-		return false, nil
-	}
-
-	rss, err := c.listReplicaSetsFor(c.stable)
-	if err != nil {
-		return false, err
-	}
-
-	var stableRS *apps.ReplicaSet
-	for _, rs := range rss {
-		if rs.Spec.Replicas != nil && *rs.Spec.Replicas > 0 &&
-			rs.Labels[apps.DefaultDeploymentUniqueLabelKey] == c.releaseStatus.StableRevision {
-			stableRS = rs
-			break
-		}
-	}
-
-	if stableRS != nil && util.EqualIgnoreHash(&stableRS.Spec.Template, &c.stable.Spec.Template) {
-		return true, nil
-	}
-	return false, nil
 }

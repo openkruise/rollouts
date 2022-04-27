@@ -24,6 +24,7 @@ import (
 	"time"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
@@ -105,6 +106,21 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		}
 	}
 
+	if util.DiscoverGVK(util.AStatefulSetGVK) {
+		klog.Infof("Found Advanced StatefulSet")
+		//// Watch changes to Advanced StatefulSet
+		err = c.Watch(&source.Kind{Type: &kruiseappsv1beta1.StatefulSet{}}, &workloadEventHandler{Reader: mgr.GetCache()})
+		if err != nil {
+			return err
+		}
+	}
+
+	// Watch changes to Native StatefulSet
+	err = c.Watch(&source.Kind{Type: &apps.StatefulSet{}}, &workloadEventHandler{Reader: mgr.GetCache()})
+	if err != nil {
+		return err
+	}
+
 	// Watch changes to Deployment
 	err = c.Watch(&source.Kind{Type: &apps.Deployment{}}, &workloadEventHandler{Reader: mgr.GetCache()})
 	if err != nil {
@@ -132,6 +148,10 @@ type BatchReleaseReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=replicasets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=statefulsets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=apps.kruise.io,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps.kruise.io,resources=statefulsets/status,verbs=get;update;patch
 
 // Reconcile reads that state of the cluster for a Rollout object and makes changes based on the state read
 // and what is in the Rollout.Spec

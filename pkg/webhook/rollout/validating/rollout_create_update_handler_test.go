@@ -98,15 +98,15 @@ func TestRolloutValidateCreate(t *testing.T) {
 		/***********************************************************
 			The following cases may lead to controller panic
 		 **********************************************************/
-		{
-			Name:    "WorkloadRef is nil",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Spec.ObjectRef.WorkloadRef = nil
-				return []client.Object{object}
-			},
-		},
+		//{
+		//	Name:    "WorkloadRef is nil",
+		//	Succeed: false,
+		//	GetObject: func() []client.Object {
+		//		object := rollout.DeepCopy()
+		//		object.Spec.ObjectRef.WorkloadRef = nil
+		//		return []client.Object{object}
+		//	},
+		//},
 		{
 			Name:    "Canary is nil",
 			Succeed: false,
@@ -148,7 +148,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 		},
 		{
 			Name:    "WorkloadRef is not Deployment kind",
-			Succeed: false,
+			Succeed: true,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
 				object.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{

@@ -4,7 +4,6 @@ metadata:
   name: release-deployment-number-100
 spec:
   targetReference:
-    type: workloadRef
     workloadRef:
       apiVersion: apps/v1
       kind: Deployment

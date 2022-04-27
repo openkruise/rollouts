@@ -136,8 +136,8 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1alph
 }
 
 func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
-	errList := validateRolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
-	errList = append(errList, validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
+	//errList := validateRolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
+	errList := validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))
 	return errList
 }
 

@@ -18,7 +18,7 @@ package workloads
 
 import (
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -27,28 +27,11 @@ type WorkloadEventType string
 
 const (
 	IgnoreWorkloadEvent        WorkloadEventType = "workload-not-cared"
-	WorkloadRollback           WorkloadEventType = "workload-is-rolling-back"
 	WorkloadPodTemplateChanged WorkloadEventType = "workload-pod-template-changed"
 	WorkloadReplicasChanged    WorkloadEventType = "workload-replicas-changed"
 	WorkloadStillReconciling   WorkloadEventType = "workload-is-reconciling"
 	WorkloadUnHealthy          WorkloadEventType = "workload-is-unhealthy"
 )
-
-type WorkloadStatus struct {
-	Replicas             int32
-	ReadyReplicas        int32
-	UpdatedReplicas      int32
-	UpdatedReadyReplicas int32
-	ObservedGeneration   int64
-}
-
-type WorkloadInfo struct {
-	Paused         bool
-	Replicas       *int32
-	UpdateRevision *string
-	Status         *WorkloadStatus
-	Metadata       *metav1.ObjectMeta
-}
 
 type workloadController struct {
 	client           client.Client
@@ -87,12 +70,6 @@ type WorkloadController interface {
 	// it returns not-empty error if the check operation has something wrong, and should not retry.
 	CheckOneBatchReady() (bool, error)
 
-	// FinalizeOneBatch makes sure that the rollout can start the next batch
-	// it returns 'true' if the operation is succeeded.
-	// it returns 'false' if the operation should be retried.
-	// it returns not-empty error if the check operation has something wrong, and should not retry.
-	FinalizeOneBatch() (bool, error)
-
 	// FinalizeProgress makes sure the resources are in a good final state.
 	// It might depend on if the rollout succeeded or not.
 	// For example, we may remove the objects which created by batchRelease.
@@ -105,5 +82,5 @@ type WorkloadController interface {
 	// SyncWorkloadInfo will watch and compare the status recorded in BatchRelease.Status
 	// and the real-time workload info. If workload status is inconsistent with that recorded
 	// in release.status, will return the corresponding WorkloadEventType and info.
-	SyncWorkloadInfo() (WorkloadEventType, *WorkloadInfo, error)
+	SyncWorkloadInfo() (WorkloadEventType, *util.WorkloadInfo, error)
 }

@@ -21,11 +21,13 @@ import (
 	"encoding/json"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
 	"github.com/openkruise/rollouts/pkg/util"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
@@ -44,8 +46,10 @@ const (
 )
 
 var (
-	controllerKruiseKindCS = kruiseappsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
-	controllerKindDep      = appsv1.SchemeGroupVersion.WithKind("Deployment")
+	controllerKruiseKindCS  = kruiseappsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	controllerKruiseKindSts = kruiseappsv1beta1.SchemeGroupVersion.WithKind("StatefulSet")
+	controllerKindDep       = appsv1.SchemeGroupVersion.WithKind("Deployment")
+	controllerKindSts       = appsv1.SchemeGroupVersion.WithKind("StatefulSet")
 )
 
 var _ handler.EventHandler = &workloadEventHandler{}
@@ -59,90 +63,32 @@ func (w workloadEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimi
 }
 
 func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
-	var oldAccessor, newAccessor *workloads.WorkloadInfo
 	var gvk schema.GroupVersionKind
-
 	switch evt.ObjectNew.(type) {
-	case *kruiseappsv1alpha1.CloneSet:
-		gvk = controllerKruiseKindCS
-		oldClone := evt.ObjectOld.(*kruiseappsv1alpha1.CloneSet)
-		newClone := evt.ObjectNew.(*kruiseappsv1alpha1.CloneSet)
-
-		var oldReplicas, newReplicas int32
-		if oldClone.Spec.Replicas != nil {
-			oldReplicas = *oldClone.Spec.Replicas
-		}
-		if newClone.Spec.Replicas != nil {
-			newReplicas = *newClone.Spec.Replicas
-		}
-
-		oldAccessor = &workloads.WorkloadInfo{
-			Replicas: &oldReplicas,
-			Paused:   oldClone.Spec.UpdateStrategy.Paused,
-			Status: &workloads.WorkloadStatus{
-				Replicas:             oldClone.Status.Replicas,
-				ReadyReplicas:        oldClone.Status.ReadyReplicas,
-				UpdatedReplicas:      oldClone.Status.UpdatedReplicas,
-				UpdatedReadyReplicas: oldClone.Status.UpdatedReadyReplicas,
-				ObservedGeneration:   oldClone.Status.ObservedGeneration,
-			},
-			Metadata: &oldClone.ObjectMeta,
-		}
-
-		newAccessor = &workloads.WorkloadInfo{
-			Replicas: &newReplicas,
-			Paused:   newClone.Spec.UpdateStrategy.Paused,
-			Status: &workloads.WorkloadStatus{
-				Replicas:             newClone.Status.Replicas,
-				ReadyReplicas:        newClone.Status.ReadyReplicas,
-				UpdatedReplicas:      newClone.Status.UpdatedReplicas,
-				UpdatedReadyReplicas: newClone.Status.UpdatedReadyReplicas,
-				ObservedGeneration:   newClone.Status.ObservedGeneration,
-			},
-			Metadata: &newClone.ObjectMeta,
-		}
-
 	case *appsv1.Deployment:
 		gvk = controllerKindDep
-		oldDeploy := evt.ObjectOld.(*appsv1.Deployment)
-		newDeploy := evt.ObjectNew.(*appsv1.Deployment)
-
-		var oldReplicas, newReplicas int32
-		if oldDeploy.Spec.Replicas != nil {
-			oldReplicas = *oldDeploy.Spec.Replicas
-		}
-		if newDeploy.Spec.Replicas != nil {
-			newReplicas = *newDeploy.Spec.Replicas
-		}
-
-		oldAccessor = &workloads.WorkloadInfo{
-			Replicas: &oldReplicas,
-			Paused:   oldDeploy.Spec.Paused,
-			Status: &workloads.WorkloadStatus{
-				Replicas:           oldDeploy.Status.Replicas,
-				ReadyReplicas:      oldDeploy.Status.AvailableReplicas,
-				UpdatedReplicas:    oldDeploy.Status.UpdatedReplicas,
-				ObservedGeneration: oldDeploy.Status.ObservedGeneration,
-			},
-			Metadata: &oldDeploy.ObjectMeta,
-		}
-
-		newAccessor = &workloads.WorkloadInfo{
-			Replicas: &newReplicas,
-			Paused:   newDeploy.Spec.Paused,
-			Status: &workloads.WorkloadStatus{
-				Replicas:           newDeploy.Status.Replicas,
-				ReadyReplicas:      newDeploy.Status.AvailableReplicas,
-				UpdatedReplicas:    newDeploy.Status.UpdatedReplicas,
-				ObservedGeneration: newDeploy.Status.ObservedGeneration,
-			},
-			Metadata: &newDeploy.ObjectMeta,
-		}
-
+	case *appsv1.StatefulSet:
+		gvk = controllerKindSts
+	case *kruiseappsv1alpha1.CloneSet:
+		gvk = controllerKruiseKindCS
+	case *kruiseappsv1beta1.StatefulSet:
+		gvk = controllerKruiseKindSts
 	default:
 		return
 	}
 
+	oldObject, err := runtime.DefaultUnstructuredConverter.ToUnstructured(evt.ObjectOld)
+	if err != nil {
+		return
+	}
+	newObject, err := runtime.DefaultUnstructuredConverter.ToUnstructured(evt.ObjectNew)
+	if err != nil {
+		return
+	}
+
+	objectKey := client.ObjectKeyFromObject(evt.ObjectNew)
+	oldAccessor := util.ParseWorkloadInfo(&unstructured.Unstructured{Object: oldObject}, objectKey)
+	newAccessor := util.ParseWorkloadInfo(&unstructured.Unstructured{Object: newObject}, objectKey)
 	if newAccessor.Metadata.ResourceVersion == oldAccessor.Metadata.ResourceVersion {
 		return
 	}
@@ -179,21 +125,22 @@ func (w workloadEventHandler) Delete(evt event.DeleteEvent, q workqueue.RateLimi
 func (w workloadEventHandler) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
-	obj client.Object, action EventAction) {
-	var controlInfo string
+func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface, obj client.Object, action EventAction) {
 	var gvk schema.GroupVersionKind
 	switch obj.(type) {
 	case *kruiseappsv1alpha1.CloneSet:
 		gvk = controllerKruiseKindCS
-		controlInfo = obj.(*kruiseappsv1alpha1.CloneSet).Annotations[util.BatchReleaseControlAnnotation]
 	case *appsv1.Deployment:
 		gvk = controllerKindDep
-		controlInfo = obj.(*appsv1.Deployment).Annotations[util.BatchReleaseControlAnnotation]
+	case *appsv1.StatefulSet:
+		gvk = controllerKindSts
+	case *kruiseappsv1beta1.StatefulSet:
+		gvk = controllerKruiseKindSts
 	default:
 		return
 	}
 
+	controlInfo := obj.GetAnnotations()[util.BatchReleaseControlAnnotation]
 	workloadNamespacedName := types.NamespacedName{
 		Namespace: obj.GetNamespace(),
 		Name:      obj.GetName(),
@@ -250,17 +197,17 @@ func (w *workloadEventHandler) getBatchRelease(workloadNamespaceName types.Names
 	return
 }
 
-func observeGenerationChanged(newOne, oldOne *workloads.WorkloadInfo) bool {
+func observeGenerationChanged(newOne, oldOne *util.WorkloadInfo) bool {
 	return newOne.Metadata.Generation != oldOne.Metadata.Generation
 }
 
-func observeLatestGeneration(newOne, oldOne *workloads.WorkloadInfo) bool {
+func observeLatestGeneration(newOne, oldOne *util.WorkloadInfo) bool {
 	oldNot := oldOne.Metadata.Generation != oldOne.Status.ObservedGeneration
 	newDid := newOne.Metadata.Generation == newOne.Status.ObservedGeneration
 	return oldNot && newDid
 }
 
-func observeScaleEventDone(newOne, oldOne *workloads.WorkloadInfo) bool {
+func observeScaleEventDone(newOne, oldOne *util.WorkloadInfo) bool {
 	_, controlled := newOne.Metadata.Annotations[util.BatchReleaseControlAnnotation]
 	if !controlled {
 		return false
@@ -273,7 +220,7 @@ func observeScaleEventDone(newOne, oldOne *workloads.WorkloadInfo) bool {
 	return oldScaling && newDone
 }
 
-func observeReplicasChanged(newOne, oldOne *workloads.WorkloadInfo) bool {
+func observeReplicasChanged(newOne, oldOne *util.WorkloadInfo) bool {
 	_, controlled := newOne.Metadata.Annotations[util.BatchReleaseControlAnnotation]
 	if !controlled {
 		return false
@@ -283,5 +230,6 @@ func observeReplicasChanged(newOne, oldOne *workloads.WorkloadInfo) bool {
 		oldOne.Status.Replicas != newOne.Status.Replicas ||
 		oldOne.Status.ReadyReplicas != newOne.Status.ReadyReplicas ||
 		oldOne.Status.UpdatedReplicas != newOne.Status.UpdatedReplicas ||
+		oldOne.Status.AvailableReplicas != newOne.Status.AvailableReplicas ||
 		oldOne.Status.UpdatedReadyReplicas != newOne.Status.UpdatedReadyReplicas
 }
