@@ -110,8 +110,12 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	case isWorkloadChanged(workloadEvent, r.releaseStatus):
 		// handle the case of continuous release v1 -> v2 -> v3
 		reason = "TargetRevisionChanged"
-		message = "workload revision was changed, then abort"
-		signalFinalize(r.releaseStatus)
+		message = "workload revision was changed"
+		if util.DisableQuicklyRollbackPolicy(r.release.Spec.TargetRef.WorkloadRef, r.release.Annotations) {
+			r.releaseStatus.UpdateRevision = workloadInfo.Status.UpdateRevision
+		} else {
+			signalFinalize(r.releaseStatus)
+		}
 
 	case isWorkloadUnhealthy(workloadEvent, r.releaseStatus):
 		// handle the case that workload is unhealthy, and rollout plan cannot go on

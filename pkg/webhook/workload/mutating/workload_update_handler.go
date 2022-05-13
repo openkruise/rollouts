@@ -90,10 +90,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 				return admission.Errored(http.StatusInternalServerError, err)
 			}
 			return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
-		}
 
-	case kruiseappsv1beta1.SchemeGroupVersion.Group:
-		switch req.Kind.Kind {
 		case util.ControllerKruiseKindSts.Kind:
 			// check advanced statefulset
 			newObj := &kruiseappsv1beta1.StatefulSet{}
@@ -196,7 +193,7 @@ func (h *WorkloadHandler) handlerAdvancedStatefulSet(newObj, oldObj *kruiseappsv
 		return
 	}
 
-	klog.Infof("StatefulSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
+	klog.Infof("Advanced StatefulSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
 
 	if newObj.Spec.UpdateStrategy.Type != apps.RollingUpdateStatefulSetStrategyType {
 		return

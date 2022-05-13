@@ -35,12 +35,15 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/integer"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -243,7 +246,9 @@ func ReleaseWorkload(c client.Client, object client.Object) error {
 	}
 
 	clone := object.DeepCopyObject().(client.Object)
-	patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, BatchReleaseControlAnnotation))
+	patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null,"%s":null}}}`,
+		BatchReleaseControlAnnotation,
+		WorkloadRollingUpdateAnnotation))
 	return c.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte))
 }
 
@@ -344,7 +349,7 @@ func ParseMaxUnavailableFrom(object *unstructured.Unstructured) *intstr.IntOrStr
 		return parseIntStr(m)
 	}
 
-	// case2: object is deployment
+	// case3: object is deployment
 	m, found, err = unstructured.NestedFieldCopy(object.Object, "spec", "strategy", "rollingUpdate", "maxUnavailable")
 	if err == nil && found {
 		return parseIntStr(m)
@@ -352,6 +357,70 @@ func ParseMaxUnavailableFrom(object *unstructured.Unstructured) *intstr.IntOrStr
 
 	return nil
 }
+
+func ParseExpectedUpdatedReplicasFrom(object *unstructured.Unstructured) int32 {
+	m, found, err := unstructured.NestedInt64(object.Object, "status", "expectedUpdatedReplicas")
+	if err == nil && found {
+		return int32(m)
+	}
+
+	return integer.Int32Max(ParseReplicasFrom(object)-ParsePartitionFrom(object), 0)
+}
+
+func ParseSelector(object *unstructured.Unstructured) (labels.Selector, error) {
+	m, found, err := unstructured.NestedFieldNoCopy(object.Object, "spec", "selector")
+	if err != nil || !found {
+		return nil, err
+	}
+	byteInfo, _ := json.Marshal(m)
+	labelSelector := &metav1.LabelSelector{}
+	_ = json.Unmarshal(byteInfo, labelSelector)
+	return metav1.LabelSelectorAsSelector(labelSelector)
+}
+
+func GetEmptyWorkloadObject(gvk schema.GroupVersionKind) client.Object {
+	switch gvk.Kind {
+	case ControllerKindDep.Kind:
+		return &apps.Deployment{}
+	case ControllerKruiseKindCS.Kind:
+		return &appsv1alpha1.CloneSet{}
+	default:
+		unstructuredObject := &unstructured.Unstructured{}
+		unstructuredObject.SetGroupVersionKind(gvk)
+		return unstructuredObject
+	}
+}
+
+func ParsePartitionFrom(object *unstructured.Unstructured) int32 {
+	replicas := ParseReplicasFrom(object)
+
+	// case 1: object is statefulset
+	m, found, err := unstructured.NestedInt64(object.Object, "spec", "updateStrategy", "rollingUpdate", "partition")
+	if err == nil && found {
+		return int32(m)
+	}
+
+	// case2: object is cloneset
+	v, found, err := unstructured.NestedFieldCopy(object.Object, "spec", "updateStrategy", "partition")
+	if err == nil && found {
+		pValue, err := intstr.GetScaledValueFromIntOrPercent(parseIntStr(v), int(replicas), true)
+		if err == nil {
+			return int32(pValue)
+		}
+	}
+
+	// case3: object is deployment
+	v, found, err = unstructured.NestedFieldCopy(object.Object, "spec", "strategy", "rollingUpdate", "partition")
+	if err == nil && found {
+		pValue, err := intstr.GetScaledValueFromIntOrPercent(parseIntStr(v), int(replicas), true)
+		if err == nil {
+			return int32(pValue)
+		}
+	}
+
+	return 0
+}
+
 func parseIntStr(m interface{}) *intstr.IntOrString {
 	field := &intstr.IntOrString{}
 	data, _ := json.Marshal(m)
@@ -385,4 +454,17 @@ func ParseWorkloadInfo(object *unstructured.Unstructured, namespacedName types.N
 			StableRevision:       stableRevision,
 		},
 	}
+}
+
+func ParseUpdateStrategyType(object *unstructured.Unstructured) string {
+	t, found, err := unstructured.NestedString(object.Object, "spec", "updateStrategy", "type")
+	if err == nil && found {
+		return t
+	}
+
+	t, found, err = unstructured.NestedString(object.Object, "spec", "strategy", "type")
+	if err == nil && found {
+		return t
+	}
+	return ""
 }

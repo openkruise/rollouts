@@ -278,7 +278,8 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadEventType, *u
 	}
 
 	// in case of that the workload revision was changed
-	if util.ComputeHash(&c.stable.Spec.Template, nil) != c.releaseStatus.UpdateRevision {
+	if hashRevision := util.ComputeHash(&c.stable.Spec.Template, nil); hashRevision != c.releaseStatus.UpdateRevision {
+		workloadInfo.Status.UpdateRevision = hashRevision
 		klog.Warningf("Deployment(%v) updateRevision changed during releasing", c.stableNamespacedName)
 		return WorkloadPodTemplateChanged, workloadInfo, nil
 	}

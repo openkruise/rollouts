@@ -286,6 +286,7 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *util
 
 	// in case of that the workload was changed
 	if c.clone.Status.UpdateRevision != c.releaseStatus.UpdateRevision {
+		workloadInfo.Status.UpdateRevision = c.clone.Status.UpdateRevision
 		klog.Warningf("CloneSet(%v) updateRevision changed during releasing, should try to restart the release plan, "+
 			"updateRevision from: %v -> %v", c.targetNamespacedName, c.releaseStatus.UpdateRevision, c.clone.Status.UpdateRevision)
 		return WorkloadPodTemplateChanged, workloadInfo, nil

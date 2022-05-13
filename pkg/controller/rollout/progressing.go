@@ -19,7 +19,6 @@ package rollout
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -29,9 +28,14 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/integer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var defaultGracePeriodSeconds int32 = 3
@@ -74,11 +78,28 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *rolloutv1alpha1
 
 	case rolloutv1alpha1.ProgressingReasonInRolling:
 		// rollout canceled, indicates rollback(v1 -> v2 -> v1)
-		if workload.IsInRollback {
-			newStatus.CanaryStatus.CanaryRevision = workload.CanaryRevision
-			r.Recorder.Eventf(rollout, corev1.EventTypeNormal, "Progressing", "workload has been rollback, then rollout is canceled")
-			klog.Infof("rollout(%s/%s) workload has been rollback, then rollout canceled", rollout.Namespace, rollout.Name)
-			progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonCancelling, "The workload has been rolled back and the rollout process will be cancelled")
+		if workload.IsInRollback && workload.CanaryRevision != rollout.Status.CanaryStatus.CanaryRevision {
+			if util.DisableQuicklyRollbackPolicy(rollout.Spec.ObjectRef.WorkloadRef, rollout.Annotations) {
+				batchControl := batchrelease.NewInnerBatchController(r.Client, rollout)
+				newStepIndex, err := r.reCalculateCanaryStepIndex(rollout, batchControl, true)
+				if err != nil {
+					klog.Errorf("rollout(%s/%s) reCalculate Canary StepIndex failed: %s", rollout.Namespace, rollout.Name, err.Error())
+					return nil, err
+				}
+				// canary step configuration change causes current step index change
+				newStatus.CanaryStatus.CurrentStepIndex = newStepIndex
+				newStatus.CanaryStatus.CanaryRevision = workload.CanaryRevision
+				newStatus.CanaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateUpgrade
+				newStatus.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+				newStatus.CanaryStatus.RolloutHash = rollout.Annotations[util.RolloutHashAnnotation]
+				r.Recorder.Eventf(rollout, corev1.EventTypeNormal, "Progressing", "workload has been rollback(disable quickly rollback policy), then recalculate index as %v", newStepIndex)
+				klog.Infof("rollout(%s/%s) workload has been rollback(disable quickly rollback policy), then recalculate batch index as %d", rollout.Namespace, rollout.Name, newStepIndex)
+			} else {
+				newStatus.CanaryStatus.CanaryRevision = workload.CanaryRevision
+				r.Recorder.Eventf(rollout, corev1.EventTypeNormal, "Progressing", "workload has been rollback, then rollout is canceled")
+				klog.Infof("rollout(%s/%s) workload has been rollback(quickly rollback policy), then rollout canceled", rollout.Namespace, rollout.Name)
+				progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonCancelling, "The workload has been rolled back and the rollout process will be cancelled")
+			}
 			// paused rollout progress
 		} else if rollout.Spec.Strategy.Paused {
 			klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
@@ -104,7 +125,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *rolloutv1alpha1
 			// rollout canary steps configuration change
 		} else if newStatus.CanaryStatus.RolloutHash != "" && newStatus.CanaryStatus.RolloutHash != rollout.Annotations[util.RolloutHashAnnotation] {
 			batchControl := batchrelease.NewInnerBatchController(r.Client, rollout)
-			newStepIndex, err := r.reCalculateCanaryStepIndex(rollout, batchControl)
+			newStepIndex, err := r.reCalculateCanaryStepIndex(rollout, batchControl, false)
 			if err != nil {
 				klog.Errorf("rollout(%s/%s) reCalculate Canary StepIndex failed: %s", rollout.Namespace, rollout.Name, err.Error())
 				return nil, err
@@ -308,34 +329,37 @@ func (r *RolloutReconciler) verifyTrafficRouting(ns string, tr *rolloutv1alpha1.
 	return true, "", nil
 }
 
-func (r *RolloutReconciler) reCalculateCanaryStepIndex(rollout *rolloutv1alpha1.Rollout, batchControl batchrelease.BatchRelease) (int32, error) {
+func (r *RolloutReconciler) reCalculateCanaryStepIndex(rollout *rolloutv1alpha1.Rollout, batchControl batchrelease.BatchRelease, isRollback bool) (int32, error) {
 	batch, err := batchControl.FetchBatchRelease()
 	if errors.IsNotFound(err) {
 		return 1, nil
 	} else if err != nil {
 		return 0, err
 	}
-	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
+	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
+	workloadGVK := schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
+	workloadObj := util.GetEmptyWorkloadObject(workloadGVK)
+	err = r.Get(context.TODO(), types.NamespacedName{Namespace: rollout.Namespace, Name: workloadRef.Name}, workloadObj)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return 0, err
 	}
-	currentReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&batch.Spec.ReleasePlan.Batches[*batch.Spec.ReleasePlan.BatchPartition].CanaryReplicas, int(workload.Replicas), true)
 
-	var stepIndex int32
-	for i := range rollout.Spec.Strategy.Canary.Steps {
-		step := rollout.Spec.Strategy.Canary.Steps[i]
-		var desiredReplicas int
-		if step.Replicas != nil {
-			desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(step.Replicas, int(workload.Replicas), true)
-		} else {
-			replicas := intstr.FromString(strconv.Itoa(int(step.Weight)) + "%")
-			desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(&replicas, int(workload.Replicas), true)
-		}
-		stepIndex = int32(i + 1)
-		if currentReplicas <= desiredReplicas {
-			break
-		}
+	unstructuredInfo, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(workloadObj)
+	unstructuredObj := &unstructured.Unstructured{Object: unstructuredInfo}
+	var currentReplicas int
+	workloadReplicas := util.ParseReplicasFrom(unstructuredObj)
+	if !isRollback {
+		currentReplicas, _ = intstr.GetScaledValueFromIntOrPercent(&batch.Spec.ReleasePlan.Batches[*batch.Spec.ReleasePlan.BatchPartition].CanaryReplicas, int(workloadReplicas), true)
+		return util.ReCalculateCanaryStepIndex(rollout, int(workloadReplicas), currentReplicas), nil
 	}
-	return stepIndex, nil
+	// currently, only cloneset allow
+	switch workloadRef.Kind {
+	case util.ControllerKruiseKindCS.Kind:
+		expect := util.ParseExpectedUpdatedReplicasFrom(unstructuredObj)
+		actual := util.ParseStatusIntFrom(unstructuredObj, "updatedReplicas")
+		klog.Infof("CloneSet(%v) expectedUpdatedReplicas: %v, updatedReplicas: %v", client.ObjectKeyFromObject(workloadObj), expect, actual)
+		currentReplicas = integer.IntMax(int(expect), int(actual))
+	}
+	return util.ReCalculateCanaryStepIndex(rollout, int(workloadReplicas), currentReplicas), nil
 }

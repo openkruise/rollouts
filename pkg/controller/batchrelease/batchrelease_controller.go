@@ -23,11 +23,9 @@ import (
 	"reflect"
 	"time"
 
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
-	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -98,35 +96,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	if util.DiscoverGVK(util.CloneSetGVK) {
-		// Watch changes to CloneSet
-		err = c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, &workloadEventHandler{Reader: mgr.GetCache()})
-		if err != nil {
-			return err
-		}
-	}
-
-	if util.DiscoverGVK(util.AStatefulSetGVK) {
-		klog.Infof("Found Advanced StatefulSet")
-		//// Watch changes to Advanced StatefulSet
-		err = c.Watch(&source.Kind{Type: &kruiseappsv1beta1.StatefulSet{}}, &workloadEventHandler{Reader: mgr.GetCache()})
-		if err != nil {
-			return err
-		}
-	}
-
-	// Watch changes to Native StatefulSet
-	err = c.Watch(&source.Kind{Type: &apps.StatefulSet{}}, &workloadEventHandler{Reader: mgr.GetCache()})
+	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &podEventHandler{Reader: mgr.GetCache()})
 	if err != nil {
 		return err
 	}
 
-	// Watch changes to Deployment
-	err = c.Watch(&source.Kind{Type: &apps.Deployment{}}, &workloadEventHandler{Reader: mgr.GetCache()})
-	if err != nil {
-		return err
-	}
-	return nil
+	return util.BuildWorkloadWatcher(c, &workloadEventHandler{Reader: mgr.GetCache()})
 }
 
 var _ reconcile.Reconciler = &BatchReleaseReconciler{}
