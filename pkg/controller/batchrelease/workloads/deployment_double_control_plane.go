@@ -244,11 +244,17 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadEventType, *u
 		return "", nil, err
 	}
 
-	workloadInfo := &util.WorkloadInfo{}
+	var workloadInfo *util.WorkloadInfo
 	if c.canary != nil {
-		workloadInfo.Status = &util.WorkloadStatus{
-			UpdatedReplicas:      c.canary.Status.Replicas,
-			UpdatedReadyReplicas: c.canary.Status.AvailableReplicas,
+		workloadInfo = &util.WorkloadInfo{
+			Status: &util.WorkloadStatus{
+				UpdatedReplicas:      c.canary.Status.Replicas,
+				UpdatedReadyReplicas: c.canary.Status.AvailableReplicas,
+			},
+		}
+	} else {
+		workloadInfo = &util.WorkloadInfo{
+			Status: &util.WorkloadStatus{},
 		}
 	}
 
@@ -278,7 +284,7 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadEventType, *u
 	}
 
 	// in case of that the workload revision was changed
-	if util.ComputeHash(&c.stable.Spec.Template, nil) != c.releaseStatus.UpdateRevision {
+	if hashRevision := util.ComputeHash(&c.stable.Spec.Template, nil); hashRevision != c.releaseStatus.UpdateRevision {
 		klog.Warningf("Deployment(%v) updateRevision changed during releasing", c.stableNamespacedName)
 		return WorkloadPodTemplateChanged, workloadInfo, nil
 	}

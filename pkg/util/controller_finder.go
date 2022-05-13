@@ -247,6 +247,11 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 	}
 	// in rollout progressing
 	workload.InRolloutProgressing = true
+
+	if workloadInfo.Status.UpdateRevision == workloadInfo.Status.StableRevision && workloadInfo.Status.UpdatedReplicas != workloadInfo.Status.Replicas {
+		workload.IsInRollback = true
+	}
+
 	return workload, nil
 }
 

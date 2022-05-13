@@ -22,8 +22,10 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -41,6 +43,7 @@ type StatefulSetLikeController struct {
 	namespacedName types.NamespacedName
 	gvk            schema.GroupVersionKind
 	statefulSet    *unstructured.Unstructured
+	pods           []*v1.Pod
 }
 
 func NewStatefulSetLikeController(c client.Client, r record.EventRecorder, p *appsv1alpha1.BatchRelease, n types.NamespacedName, gvk schema.GroupVersionKind) UnifiedWorkloadController {
@@ -71,9 +74,7 @@ func (c *StatefulSetLikeController) GetWorkloadInfo() (*util.WorkloadInfo, error
 	}
 
 	workloadInfo := util.ParseWorkloadInfo(set, c.namespacedName)
-	if util.ParseInt32PartitionFrom(set) == *workloadInfo.Replicas {
-		workloadInfo.Paused = true
-	}
+	workloadInfo.Paused = true
 	return workloadInfo, nil
 }
 
@@ -159,21 +160,85 @@ func (c *StatefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableRepli
 		return false, err
 	}
 
-	// make sure all pod is available, and the canary goal is met
-	ready := workloadInfo.Status.ReadyReplicas == workloadInfo.Status.Replicas &&
-		workloadInfo.Status.UpdatedReplicas >= canaryReplicasGoal
-
-	// if status has UpdatedReadyReplicas field, check it.
-	// advanced statefulSet required.
-	if workloadInfo.Status.UpdatedReadyReplicas > 0 {
-		maxUnavailable := 0
-		if workloadInfo.MaxUnavailable != nil {
-			maxUnavailable, _ = intstr.GetScaledValueFromIntOrPercent(workloadInfo.MaxUnavailable, int(canaryReplicasGoal), true)
-		}
-		ready = ready && workloadInfo.Status.UpdatedReadyReplicas+int32(maxUnavailable) >= canaryReplicasGoal
-	} else {
-		ready = ready && workloadInfo.Status.Replicas == workloadInfo.Status.ReadyReplicas
+	// ignore this corner case
+	if canaryReplicasGoal <= 0 {
+		return true, nil
 	}
 
-	return ready, nil
+	// first: make sure all pod is available, and the canary goal is met
+	firstCheckPointReady := workloadInfo.Status.ReadyReplicas == workloadInfo.Status.Replicas &&
+		workloadInfo.Status.UpdatedReplicas >= canaryReplicasGoal
+	if !firstCheckPointReady {
+		return false, nil
+	}
+
+	updatedReadyReplicas := int32(0)
+	if workloadInfo.Status.UpdatedReadyReplicas > 0 {
+		updatedReadyReplicas = workloadInfo.Status.UpdatedReadyReplicas
+	} else {
+		updatedReadyReplicas, err = c.CountUpdatedReadyPods(workloadInfo.Status.UpdateRevision)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	maxUnavailable := 0
+	if workloadInfo.MaxUnavailable != nil {
+		maxUnavailable, _ = intstr.GetScaledValueFromIntOrPercent(workloadInfo.MaxUnavailable, int(canaryReplicasGoal), true)
+	}
+
+	// second: make sure the updated replicas are available
+	secondCheckPointReady := updatedReadyReplicas+int32(maxUnavailable) >= canaryReplicasGoal
+	return secondCheckPointReady, nil
+}
+
+func (c *StatefulSetLikeController) listOwnedPods() error {
+	if c.pods != nil {
+		return nil
+	}
+	set, err := c.GetWorkloadObject()
+	if err != nil {
+		return err
+	}
+	selector, err := util.ParseSelector(set)
+	if err != nil || selector == nil {
+		return err
+	}
+	podLister := &v1.PodList{}
+	err = c.List(context.TODO(), podLister, &client.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return err
+	}
+	c.pods = make([]*v1.Pod, 0)
+	for i := range podLister.Items {
+		pod := &podLister.Items[i]
+		owner := metav1.GetControllerOf(pod)
+		if owner == nil || owner.UID != set.GetUID() {
+			continue
+		}
+		c.pods = append(c.pods, pod)
+	}
+	return nil
+}
+
+func (c *StatefulSetLikeController) CountUpdatedReadyPods(updateRevision string) (int32, error) {
+	err := c.listOwnedPods()
+	if err != nil {
+		return 0, err
+	}
+	updatedReadyReplicas := int32(0)
+	for _, pod := range c.pods {
+		switch updateRevision {
+		case pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey], pod.Labels[appsv1.ControllerRevisionHashLabelKey]:
+			updatedReadyReplicas++
+			continue
+		}
+
+		switch fmt.Sprintf("%v-%v", c.statefulSet.GetName(), updateRevision) {
+		case pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey], pod.Labels[appsv1.ControllerRevisionHashLabelKey]:
+			updatedReadyReplicas++
+			continue
+		}
+	}
+	return updatedReadyReplicas, nil
 }

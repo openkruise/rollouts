@@ -254,7 +254,7 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				Finder: util.NewControllerFinder(client),
 			}
 			batchControl := batchrelease.NewInnerBatchController(client, cs.getRollout())
-			newStepIndex, err := reconciler.reCalculateCanaryStepIndex(cs.getRollout(), batchControl)
+			newStepIndex, err := reconciler.reCalculateCanaryStepIndex(cs.getRollout(), batchControl, false)
 			if err != nil {
 				t.Fatalf(err.Error())
 			}

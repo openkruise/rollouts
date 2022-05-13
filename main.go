@@ -20,8 +20,8 @@ import (
 	"flag"
 	"os"
 
-	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
-	kruisev1beta "github.com/openkruise/kruise-api/apps/v1beta1"
+	kruisev1aplphal1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruisev1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
 	"github.com/openkruise/rollouts/pkg/controller/rollout"
@@ -48,8 +48,8 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(kruisev1aplphal.AddToScheme(scheme))
-	utilruntime.Must(kruisev1beta.AddToScheme(scheme))
+	utilruntime.Must(kruisev1aplphal1.AddToScheme(scheme))
+	utilruntime.Must(kruisev1beta1.AddToScheme(scheme))
 	utilruntime.Must(rolloutsv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }

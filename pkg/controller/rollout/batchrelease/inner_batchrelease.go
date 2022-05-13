@@ -18,6 +18,7 @@ package batchrelease
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strconv"
 
@@ -27,6 +28,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -149,7 +151,8 @@ func (r *innerBatchRelease) Promote(index int32, checkReady bool) (bool, error) 
 
 func (r *innerBatchRelease) resumeStableWorkload(checkReady bool) (bool, error) {
 	// cloneSet
-	if r.rollout.Spec.ObjectRef.WorkloadRef.Kind == util.ControllerKruiseKindCS.Kind {
+	switch r.rollout.Spec.ObjectRef.WorkloadRef.Kind {
+	case util.ControllerKruiseKindCS.Kind:
 		dName := r.rollout.Spec.ObjectRef.WorkloadRef.Name
 		obj := &appsv1alpha1.CloneSet{}
 		err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj)
@@ -179,48 +182,79 @@ func (r *innerBatchRelease) resumeStableWorkload(checkReady bool) (bool, error) 
 		}
 		klog.Infof("resume rollout(%s/%s) cloneSet(paused=false,partition=nil) success", r.rollout.Namespace, r.rollout.Name)
 		return true, nil
-	}
 
-	// deployment
-	dName := r.rollout.Spec.ObjectRef.WorkloadRef.Name
-	obj := &apps.Deployment{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			klog.Warningf("rollout(%s/%s) stable deployment(%s) not found, and return true", r.rollout.Namespace, r.rollout.Name, dName)
-			return true, nil
-		}
-		return false, err
-	}
-	// set deployment paused=false
-	if obj.Spec.Paused {
-		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-			if err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj); err != nil {
-				return err
-			}
-			obj.Spec.Paused = false
-			return r.Update(context.TODO(), obj)
-		})
+	case util.ControllerKindDep.Kind:
+		// deployment
+		dName := r.rollout.Spec.ObjectRef.WorkloadRef.Name
+		obj := &apps.Deployment{}
+		err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj)
 		if err != nil {
-			klog.Errorf("update rollout(%s/%s) stable deployment failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
+			if errors.IsNotFound(err) {
+				klog.Warningf("rollout(%s/%s) stable deployment(%s) not found, and return true", r.rollout.Namespace, r.rollout.Name, dName)
+				return true, nil
+			}
 			return false, err
 		}
-		klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) success", r.rollout.Namespace, r.rollout.Name)
-	}
+		// set deployment paused=false
+		if obj.Spec.Paused {
+			err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+				if err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj); err != nil {
+					return err
+				}
+				obj.Spec.Paused = false
+				return r.Update(context.TODO(), obj)
+			})
+			if err != nil {
+				klog.Errorf("update rollout(%s/%s) stable deployment failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
+				return false, err
+			}
+			klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) success", r.rollout.Namespace, r.rollout.Name)
+		}
 
-	// Whether to wait for pods are ready
-	if !checkReady {
+		// Whether to wait for pods are ready
+		if !checkReady {
+			return true, nil
+		}
+		data := util.DumpJSON(obj.Status)
+		// wait for all pods are ready
+		maxUnavailable, _ := intstr.GetScaledValueFromIntOrPercent(obj.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*obj.Spec.Replicas), true)
+		if obj.Status.ObservedGeneration != obj.Generation || obj.Status.UpdatedReplicas != *obj.Spec.Replicas ||
+			obj.Status.Replicas != *obj.Spec.Replicas || *obj.Spec.Replicas-obj.Status.AvailableReplicas > int32(maxUnavailable) {
+			klog.Infof("rollout(%s/%s) stable deployment status(%s), and wait a moment", r.rollout.Namespace, r.rollout.Name, data)
+			return false, nil
+		}
+		klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) status(%s) success", r.rollout.Namespace, r.rollout.Name, data)
+		return true, nil
+
+	case util.ControllerKindSts.Kind:
+		// statefulset-like workloads
+		workloadRef := r.rollout.Spec.ObjectRef.WorkloadRef
+		workloadNsn := types.NamespacedName{Namespace: r.rollout.Namespace, Name: workloadRef.Name}
+		workloadGVK := schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(workloadGVK)
+		err := r.Get(context.TODO(), workloadNsn, obj)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				klog.Warningf("rollout(%s/%s) statefulset(%s) not found, and return true", r.rollout.Namespace, r.rollout.Name, workloadNsn.Name)
+				return true, nil
+			}
+			return false, err
+		}
+
+		if util.ParseInt32PartitionFrom(obj) == 0 {
+			return true, nil
+		}
+
+		body := fmt.Sprintf(`{"spec":{"updateStrategy":{"rollingUpdate":{"partition":0}}}}`)
+		err = r.Patch(context.TODO(), obj, client.RawPatch(types.MergePatchType, []byte(body)))
+		if err != nil {
+			klog.Errorf("patch rollout(%s/%s) statefulset failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
+			return false, err
+		}
+		klog.Infof("resume rollout(%s/%s) statefulset(partition=0) success", r.rollout.Namespace, r.rollout.Name)
 		return true, nil
 	}
-	data := util.DumpJSON(obj.Status)
-	// wait for all pods are ready
-	maxUnavailable, _ := intstr.GetScaledValueFromIntOrPercent(obj.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*obj.Spec.Replicas), true)
-	if obj.Status.ObservedGeneration != obj.Generation || obj.Status.UpdatedReplicas != *obj.Spec.Replicas ||
-		obj.Status.Replicas != *obj.Spec.Replicas || *obj.Spec.Replicas-obj.Status.AvailableReplicas > int32(maxUnavailable) {
-		klog.Infof("rollout(%s/%s) stable deployment status(%s), and wait a moment", r.rollout.Namespace, r.rollout.Name, data)
-		return false, nil
-	}
-	klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) status(%s) success", r.rollout.Namespace, r.rollout.Name, data)
 	return true, nil
 }
 
@@ -287,6 +321,11 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rol
 				BatchPartition: utilpointer.Int32Ptr(0),
 			},
 		},
+	}
+	if v, ok := rollout.Annotations[util.DisableQuicklyRollbackPolicyAnnotation]; ok {
+		br.Annotations = map[string]string{
+			util.DisableQuicklyRollbackPolicyAnnotation: v,
+		}
 	}
 	return br
 }

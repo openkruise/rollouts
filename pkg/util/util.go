@@ -18,12 +18,22 @@ package util
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
+	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 const (
@@ -33,7 +43,9 @@ const (
 	// finalizer
 	KruiseRolloutFinalizer = "rollouts.kruise.io/rollout"
 	// rollout spec hash
-	RolloutHashAnnotation = "rollouts.kruise.io/hash"
+	RolloutHashAnnotation                  = "rollouts.kruise.io/hash"
+	DisableQuicklyRollbackPolicyAnnotation = "rollouts.kruise.io/disable-quickly-rollback"
+	WorkloadRollingUpdateAnnotation        = "rollouts.kruise.io/rolling-update-info"
 )
 
 // RolloutState is annotation[rollouts.kruise.io/in-progressing] value
@@ -49,6 +61,70 @@ func GetRolloutState(annotations map[string]string) (*RolloutState, error) {
 	var obj *RolloutState
 	err := json.Unmarshal([]byte(value), &obj)
 	return obj, err
+}
+
+func DisableQuicklyRollbackPolicy(workloadRef *rolloutv1alpha1.WorkloadRef, annotations map[string]string) bool {
+	if workloadRef.Kind == ControllerKruiseKindCS.Kind {
+		value, ok := annotations[DisableQuicklyRollbackPolicyAnnotation]
+		if ok && value == "true" {
+			return true
+		}
+	}
+	return false
+}
+
+func BuildWorkloadWatcher(c controller.Controller, handler handler.EventHandler) error {
+	if DiscoverGVK(CloneSetGVK) {
+		// Watch changes to CloneSet
+		err := c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, handler)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Watch changes to Deployment
+	err := c.Watch(&source.Kind{Type: &apps.Deployment{}}, handler)
+	if err != nil {
+		return err
+	}
+
+	// Watch changes to Advanced StatefulSet, use unstructured informer
+	if DiscoverGVK(AStatefulSetGVK) {
+		objectType := &unstructured.Unstructured{}
+		objectType.SetGroupVersionKind(kruiseappsv1beta1.SchemeGroupVersion.WithKind("StatefulSet"))
+		err = c.Watch(&source.Kind{Type: objectType}, handler)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Watch changes to Native StatefulSet, use unstructured informer
+	objectType := &unstructured.Unstructured{}
+	objectType.SetGroupVersionKind(apps.SchemeGroupVersion.WithKind("StatefulSet"))
+	err = c.Watch(&source.Kind{Type: objectType}, handler)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func ReCalculateCanaryStepIndex(rollout *rolloutv1alpha1.Rollout, workloadReplicas, currentReplicas int) int32 {
+	var stepIndex int32
+	for i := range rollout.Spec.Strategy.Canary.Steps {
+		step := rollout.Spec.Strategy.Canary.Steps[i]
+		var desiredReplicas int
+		if step.Replicas != nil {
+			desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(step.Replicas, workloadReplicas, true)
+		} else {
+			replicas := intstr.FromString(strconv.Itoa(int(step.Weight)) + "%")
+			desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(&replicas, workloadReplicas, true)
+		}
+		stepIndex = int32(i + 1)
+		if currentReplicas <= desiredReplicas {
+			break
+		}
+	}
+	return stepIndex
 }
 
 func DiscoverGVK(gvk schema.GroupVersionKind) bool {

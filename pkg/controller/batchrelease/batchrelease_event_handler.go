@@ -25,6 +25,7 @@ import (
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -53,6 +54,59 @@ var (
 )
 
 var _ handler.EventHandler = &workloadEventHandler{}
+var _ handler.EventHandler = &podEventHandler{}
+
+type podEventHandler struct {
+	client.Reader
+}
+
+func (p podEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+}
+func (p podEventHandler) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+}
+func (p podEventHandler) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+}
+func (p podEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+	oldPod := evt.ObjectOld.(*corev1.Pod)
+	newPod := evt.ObjectNew.(*corev1.Pod)
+	if oldPod.ResourceVersion != newPod.ResourceVersion ||
+		util.IsPodReady(oldPod) == util.IsPodReady(newPod) {
+		return
+	}
+
+	klog.Infof("Pod %v ready condition changed, then enqueue", client.ObjectKeyFromObject(newPod))
+	p.enqueue(newPod, q)
+}
+
+func (p podEventHandler) enqueue(pod *corev1.Pod, q workqueue.RateLimitingInterface) {
+	owner := metav1.GetControllerOfNoCopy(pod)
+	if owner == nil {
+		return
+	}
+	workloadNamespacedName := types.NamespacedName{
+		Name: owner.Name, Namespace: pod.Namespace,
+	}
+	workloadGVK := schema.FromAPIVersionAndKind(owner.APIVersion, owner.Kind)
+	workloadObj := util.GetEmptyWorkloadObject(workloadGVK)
+	err := p.Get(context.TODO(), workloadNamespacedName, workloadObj)
+	if err != nil {
+		return
+	}
+
+	controlInfo := workloadObj.GetAnnotations()[util.BatchReleaseControlAnnotation]
+	brNsn, err := getBatchRelease(p.Reader, workloadNamespacedName, workloadGVK, controlInfo)
+	if err != nil {
+		klog.Errorf("unable to get BatchRelease related with %s (%s/%s), error: %v",
+			workloadGVK.Kind, workloadNamespacedName.Namespace, workloadNamespacedName.Name, err)
+		return
+	}
+
+	if len(brNsn.Name) != 0 {
+		klog.V(3).Infof("Pod (%s/%s) ready condition changed, managed by BatchRelease (%v)",
+			workloadNamespacedName.Namespace, workloadNamespacedName.Name, brNsn)
+		q.Add(reconcile.Request{NamespacedName: brNsn})
+	}
+}
 
 type workloadEventHandler struct {
 	client.Reader
@@ -73,6 +127,8 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 		gvk = controllerKruiseKindCS
 	case *kruiseappsv1beta1.StatefulSet:
 		gvk = controllerKruiseKindSts
+	case *unstructured.Unstructured:
+		gvk = evt.ObjectNew.(*unstructured.Unstructured).GroupVersionKind()
 	default:
 		return
 	}
@@ -103,7 +159,7 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 			Name:      newAccessor.Metadata.Name,
 		}
 
-		brNsn, err := w.getBatchRelease(workloadNamespacedName, gvk, newAccessor.Metadata.Annotations[util.BatchReleaseControlAnnotation])
+		brNsn, err := getBatchRelease(w.Reader, workloadNamespacedName, gvk, newAccessor.Metadata.Annotations[util.BatchReleaseControlAnnotation])
 		if err != nil {
 			klog.Errorf("unable to get BatchRelease related with %s (%s/%s), error: %v",
 				gvk.Kind, workloadNamespacedName.Namespace, workloadNamespacedName.Name, err)
@@ -136,6 +192,8 @@ func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 		gvk = controllerKindSts
 	case *kruiseappsv1beta1.StatefulSet:
 		gvk = controllerKruiseKindSts
+	case *unstructured.Unstructured:
+		gvk = obj.(*unstructured.Unstructured).GroupVersionKind()
 	default:
 		return
 	}
@@ -145,7 +203,7 @@ func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 		Namespace: obj.GetNamespace(),
 		Name:      obj.GetName(),
 	}
-	brNsn, err := w.getBatchRelease(workloadNamespacedName, gvk, controlInfo)
+	brNsn, err := getBatchRelease(w.Reader, workloadNamespacedName, gvk, controlInfo)
 	if err != nil {
 		klog.Errorf("Unable to get BatchRelease related with %s (%s/%s), err: %v",
 			gvk.Kind, workloadNamespacedName.Namespace, workloadNamespacedName.Name, err)
@@ -158,7 +216,7 @@ func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 	}
 }
 
-func (w *workloadEventHandler) getBatchRelease(workloadNamespaceName types.NamespacedName, gvk schema.GroupVersionKind, controlInfo string) (nsn types.NamespacedName, err error) {
+func getBatchRelease(c client.Reader, workloadNamespaceName types.NamespacedName, gvk schema.GroupVersionKind, controlInfo string) (nsn types.NamespacedName, err error) {
 	if len(controlInfo) > 0 {
 		br := &metav1.OwnerReference{}
 		err = json.Unmarshal([]byte(controlInfo), br)
@@ -175,7 +233,7 @@ func (w *workloadEventHandler) getBatchRelease(workloadNamespaceName types.Names
 
 	brList := &v1alpha1.BatchReleaseList{}
 	listOptions := &client.ListOptions{Namespace: workloadNamespaceName.Namespace}
-	if err = w.List(context.TODO(), brList, listOptions); err != nil {
+	if err = c.List(context.TODO(), brList, listOptions); err != nil {
 		klog.Errorf("List BatchRelease failed: %s", err.Error())
 		return
 	}

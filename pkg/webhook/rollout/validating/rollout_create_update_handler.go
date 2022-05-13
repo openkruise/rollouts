@@ -136,15 +136,18 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1alph
 }
 
 func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
-	//errList := validateRolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
-	errList := validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))
+	errList := validateRolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
+	errList = append(errList, validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
 	return errList
 }
 
 func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *field.Path) field.ErrorList {
-	if objectRef.WorkloadRef == nil || (objectRef.WorkloadRef.Kind != "Deployment" && objectRef.WorkloadRef.Kind != "CloneSet") {
-		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef only support 'Deployments', 'CloneSet'")}
+	if objectRef.WorkloadRef == nil {
+		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef must be not nil")}
 	}
+	//if objectRef.WorkloadRef == nil || (objectRef.WorkloadRef.Kind != "Deployment" && objectRef.WorkloadRef.Kind != "CloneSet") {
+	//	return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef only support 'Deployments', 'CloneSet'")}
+	//}
 	return nil
 }
 
@@ -199,9 +202,9 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 
 	for i := range steps {
 		s := &steps[i]
-		if s.Weight <= 0 || s.Weight > 100 {
+		if s.Weight < 0 || s.Weight > 100 {
 			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Weight"),
-				s.Weight, `Weight must be a positive number with "0" < weight <= "100"`)}
+				s.Weight, `Weight must be a positive number with "0" <= weight <= "100"`)}
 		}
 		if s.Replicas != nil {
 			canaryReplicas, err := intstr.GetScaledValueFromIntOrPercent(s.Replicas, 100, true)

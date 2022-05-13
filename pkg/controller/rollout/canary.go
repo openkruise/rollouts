@@ -25,7 +25,6 @@ import (
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -171,7 +170,7 @@ func (r *rolloutContext) doCanaryUpgrade() (bool, error) {
 
 	// check whether batchRelease is ready
 	if batch.Status.CanaryStatus.CurrentBatchState != rolloutv1alpha1.ReadyBatchState ||
-		batch.Status.CanaryStatus.CurrentBatch+1 != canaryStatus.CurrentStepIndex {
+		batch.Status.CanaryStatus.CurrentBatch+1 < canaryStatus.CurrentStepIndex {
 		klog.Infof("rollout(%s/%s) batch(%s) state(%s), and wait a moment",
 			r.rollout.Namespace, r.rollout.Name, batchData, batch.Status.CanaryStatus.CurrentBatchState)
 		return false, nil
@@ -265,10 +264,10 @@ func (r *rolloutContext) removeRolloutStateInWorkload() error {
 	if _, ok := r.workload.Annotations[util.InRolloutProgressingAnnotation]; !ok {
 		return nil
 	}
-	obj := &unstructured.Unstructured{}
-	gvk := schema.FromAPIVersionAndKind(r.rollout.Spec.ObjectRef.WorkloadRef.APIVersion, r.rollout.Spec.ObjectRef.WorkloadRef.Kind)
-	obj.SetGroupVersionKind(gvk)
+	workloadRef := r.rollout.Spec.ObjectRef.WorkloadRef
+	workloadGVK := schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		obj := util.GetEmptyWorkloadObject(workloadGVK)
 		if err := r.Get(context.TODO(), types.NamespacedName{Name: r.workload.Name, Namespace: r.workload.Namespace}, obj); err != nil {
 			klog.Errorf("getting updated workload(%s.%s) failed: %s", r.workload.Namespace, r.workload.Name, err.Error())
 			return err

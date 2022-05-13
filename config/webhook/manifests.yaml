@@ -73,8 +73,8 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-apps-kruise-io-statefulset
-  failurePolicy: Fail
+      path: /mutate-apps-kruise-io-v1beta1-statefulset
+  failurePolicy: Ignore
   name: madvancedstatefulset.kb.io
   rules:
   - apiGroups:
