@@ -24,17 +24,28 @@ import (
 	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 var (
 	concurrentReconciles = 3
+	watchedSet           = sets.NewString()
+	rolloutController    controller.Controller
+	workloadHandler      handler.EventHandler
 )
+
+func init() {
+	watchedSet.Insert(util.ControllerKindDep.String())
+	watchedSet.Insert(util.ControllerKindSts.String())
+	watchedSet.Insert(util.ControllerKruiseKindCS.String())
+}
 
 // RolloutReconciler reconciles a Rollout object
 type RolloutReconciler struct {
@@ -77,6 +88,13 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
+	}
+
+	watched, err := util.DynamicWatchCRD(rolloutController, workloadHandler, watchedSet, rollout.Spec.ObjectRef.WorkloadRef)
+	if err != nil {
+		return reconcile.Result{}, err
+	} else if watched {
+		watchedSet.Insert(util.GetGVKFrom(rollout.Spec.ObjectRef.WorkloadRef).String())
 	}
 
 	// handle finalizer
@@ -125,7 +143,9 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
-	if err = util.BuildWorkloadWatcher(c, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}); err != nil {
+	rolloutController = c
+	workloadHandler = &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}
+	if err = util.BuildWorkloadWatcher(c, workloadHandler); err != nil {
 		return err
 	}
 	return nil

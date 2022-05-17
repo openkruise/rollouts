@@ -22,7 +22,6 @@ import (
 	"time"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -30,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -91,15 +91,15 @@ func BuildWorkloadWatcher(c controller.Controller, handler handler.EventHandler)
 		return err
 	}
 
-	// Watch changes to Advanced StatefulSet, use unstructured informer
-	if DiscoverGVK(AStatefulSetGVK) {
-		objectType := &unstructured.Unstructured{}
-		objectType.SetGroupVersionKind(kruiseappsv1beta1.SchemeGroupVersion.WithKind("StatefulSet"))
-		err = c.Watch(&source.Kind{Type: objectType}, handler)
-		if err != nil {
-			return err
-		}
-	}
+	//// Watch changes to Advanced StatefulSet, use unstructured informer
+	//if DiscoverGVK(AStatefulSetGVK) {
+	//	objectType := &unstructured.Unstructured{}
+	//	objectType.SetGroupVersionKind(kruiseappsv1beta1.SchemeGroupVersion.WithKind("StatefulSet"))
+	//	err = c.Watch(&source.Kind{Type: objectType}, handler)
+	//	if err != nil {
+	//		return err
+	//	}
+	//}
 
 	// Watch changes to Native StatefulSet, use unstructured informer
 	objectType := &unstructured.Unstructured{}
@@ -171,6 +171,31 @@ func IsMatchRolloutID(pod *corev1.Pod, rolloutID string) bool {
 func GetRolloutID(workloadLabels map[string]string) (string, bool) {
 	rolloutID, exist := workloadLabels[RolloutIDLabel]
 	return rolloutID, exist
+}
+
+func GetGVKFrom(workloadRef *rolloutv1alpha1.WorkloadRef) schema.GroupVersionKind {
+	if workloadRef == nil {
+		return schema.GroupVersionKind{}
+	}
+	return schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
+}
+
+func DynamicWatchCRD(c controller.Controller, h handler.EventHandler, WatchedSet sets.String, workloadRef *rolloutv1alpha1.WorkloadRef) (bool, error) {
+	if workloadRef == nil {
+		return false, nil
+	}
+	gvk := schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
+	if WatchedSet.Has(gvk.String()) {
+		return true, nil
+	}
+	if !DiscoverGVK(gvk) {
+		klog.Errorf("Failed to find GVK(%v) in cluster", gvk.String())
+		return false, nil
+	}
+
+	object := &unstructured.Unstructured{}
+	object.SetGroupVersionKind(gvk)
+	return true, c.Watch(&source.Kind{Type: object}, h)
 }
 
 func DumpJSON(o interface{}) string {

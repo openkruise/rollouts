@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -100,10 +99,9 @@ func (r *ControllerFinder) finders() []ControllerFinderFunc {
 }
 
 var (
-	ControllerKindDep       = apps.SchemeGroupVersion.WithKind("Deployment")
-	ControllerKindSts       = apps.SchemeGroupVersion.WithKind("StatefulSet")
-	ControllerKruiseKindCS  = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
-	ControllerKruiseKindSts = appsv1beta1.SchemeGroupVersion.WithKind("StatefulSet")
+	ControllerKindDep      = apps.SchemeGroupVersion.WithKind("Deployment")
+	ControllerKindSts      = apps.SchemeGroupVersion.WithKind("StatefulSet")
+	ControllerKruiseKindCS = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
 )
 
 // getKruiseCloneSet returns the kruise cloneSet referenced by the provided controllerRef.

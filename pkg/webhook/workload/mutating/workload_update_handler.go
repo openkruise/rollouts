@@ -22,14 +22,13 @@ import (
 	"net/http"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	admissionv1 "k8s.io/api/admission/v1"
 	apps "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -78,32 +77,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 				oldObj); err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
-			changed, err := h.handlerCloneSet(newObj, oldObj)
-			if err != nil {
-				return admission.Errored(http.StatusBadRequest, err)
-			}
-			if !changed {
-				return admission.Allowed("")
-			}
-			marshalled, err := json.Marshal(newObj)
-			if err != nil {
-				return admission.Errored(http.StatusInternalServerError, err)
-			}
-			return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
-
-		case util.ControllerKruiseKindSts.Kind:
-			// check advanced statefulset
-			newObj := &kruiseappsv1beta1.StatefulSet{}
-			if err := h.Decoder.Decode(req, newObj); err != nil {
-				return admission.Errored(http.StatusBadRequest, err)
-			}
-			oldObj := &kruiseappsv1beta1.StatefulSet{}
-			if err := h.Decoder.Decode(
-				admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
-				oldObj); err != nil {
-				return admission.Errored(http.StatusBadRequest, err)
-			}
-			changed, err := h.handlerAdvancedStatefulSet(newObj, oldObj)
+			changed, err := h.handleCloneSet(newObj, oldObj)
 			if err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
@@ -116,7 +90,6 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			}
 			return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
 		}
-
 	// native k8s deloyment
 	case apps.SchemeGroupVersion.Group:
 		switch req.Kind.Kind {
@@ -132,32 +105,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 				oldObj); err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
-			changed, err := h.handlerDeployment(newObj, oldObj)
-			if err != nil {
-				return admission.Errored(http.StatusBadRequest, err)
-			}
-			if !changed {
-				return admission.Allowed("")
-			}
-			marshalled, err := json.Marshal(newObj)
-			if err != nil {
-				return admission.Errored(http.StatusInternalServerError, err)
-			}
-			return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
-
-		case util.ControllerKindSts.Kind:
-			// check advanced statefulset
-			newObj := &apps.StatefulSet{}
-			if err := h.Decoder.Decode(req, newObj); err != nil {
-				return admission.Errored(http.StatusBadRequest, err)
-			}
-			oldObj := &apps.StatefulSet{}
-			if err := h.Decoder.Decode(
-				admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
-				oldObj); err != nil {
-				return admission.Errored(http.StatusBadRequest, err)
-			}
-			changed, err := h.handlerStatefulSet(newObj, oldObj)
+			changed, err := h.handleDeployment(newObj, oldObj)
 			if err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
@@ -172,17 +120,50 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 		}
 	}
 
-	return admission.Allowed("")
+	newObj := &unstructured.Unstructured{}
+	newObj.SetGroupVersionKind(schema.GroupVersionKind{Group: req.Kind.Group, Version: req.Kind.Version, Kind: req.Kind.Kind})
+	if err := h.Decoder.Decode(req, newObj); err != nil {
+		return admission.Errored(http.StatusBadRequest, err)
+	}
+	oldObj := &unstructured.Unstructured{}
+	oldObj.SetGroupVersionKind(schema.GroupVersionKind{Group: req.Kind.Group, Version: req.Kind.Version, Kind: req.Kind.Kind})
+	if err := h.Decoder.Decode(
+		admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
+		oldObj); err != nil {
+		return admission.Errored(http.StatusBadRequest, err)
+	}
+	changed, err := h.handleStatefulSetLikeWorkload(newObj, oldObj)
+	if err != nil {
+		return admission.Errored(http.StatusBadRequest, err)
+	}
+	if !changed {
+		return admission.Allowed("")
+	}
+	marshalled, err := json.Marshal(newObj.Object)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
+	}
+	return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
 }
 
-func (h *WorkloadHandler) handlerAdvancedStatefulSet(newObj, oldObj *kruiseappsv1beta1.StatefulSet) (changed bool, err error) {
+func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstructured.Unstructured) (changed bool, err error) {
 	// indicate whether the workload can enter the rollout process
 	// 1. replicas > 0
-	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
-		return
+	replicas := util.ParseReplicasFrom(newObj)
+	if replicas == 0 {
+		return false, nil
 	}
+	oldTemplate := util.ParsePodTemplate(oldObj)
+	if oldTemplate == nil {
+		return false, nil
+	}
+	newTemplate := util.ParsePodTemplate(newObj)
+	if newTemplate == nil {
+		return false, nil
+	}
+
 	// 2. statefulset.spec.PodTemplate is changed
-	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
+	if util.EqualIgnoreHash(oldTemplate, newTemplate) {
 		return
 	}
 	// 3. have matched rollout crd
@@ -193,81 +174,25 @@ func (h *WorkloadHandler) handlerAdvancedStatefulSet(newObj, oldObj *kruiseappsv
 		return
 	}
 
-	klog.Infof("Advanced StatefulSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
-
-	if newObj.Spec.UpdateStrategy.Type != apps.RollingUpdateStatefulSetStrategyType {
+	klog.Infof("StatefulSet-Like Workload(%s/%s) will be in rollout progressing, and paused", newObj.GetNamespace(), newObj.GetName())
+	if !util.IsRollingUpdateStrategy(newObj) {
 		return
 	}
 
 	changed = true
-	replicas := int32(1)
-	if newObj.Spec.Replicas != nil {
-		replicas = *newObj.Spec.Replicas
-	}
-	if newObj.Spec.UpdateStrategy.RollingUpdate == nil {
-		newObj.Spec.UpdateStrategy.RollingUpdate = &kruiseappsv1beta1.RollingUpdateStatefulSetStrategy{
-			Partition: pointer.Int32(replicas),
-		}
-	} else {
-		newObj.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32(replicas)
-	}
-
+	util.SetStatefulSetPartition(newObj, replicas)
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
-	if newObj.Annotations == nil {
-		newObj.Annotations = map[string]string{}
+	annotation := newObj.GetAnnotations()
+	if annotation == nil {
+		annotation = map[string]string{}
 	}
-	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
+	annotation[util.InRolloutProgressingAnnotation] = string(by)
+	newObj.SetAnnotations(annotation)
 	return
 }
 
-func (h *WorkloadHandler) handlerStatefulSet(newObj, oldObj *apps.StatefulSet) (changed bool, err error) {
-	// indicate whether the workload can enter the rollout process
-	// 1. replicas > 0
-	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
-		return
-	}
-	// 2. StatefulSet.spec.PodTemplate is changed
-	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
-		return
-	}
-	// 3. have matched rollout crd
-	rollout, err := h.fetchMatchedRollout(newObj)
-	if err != nil {
-		return
-	} else if rollout == nil {
-		return
-	}
-
-	klog.Infof("StatefulSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
-
-	if newObj.Spec.UpdateStrategy.Type != apps.RollingUpdateStatefulSetStrategyType {
-		return
-	}
-
-	changed = true
-	replicas := int32(1)
-	if newObj.Spec.Replicas != nil {
-		replicas = *newObj.Spec.Replicas
-	}
-	if newObj.Spec.UpdateStrategy.RollingUpdate == nil {
-		newObj.Spec.UpdateStrategy.RollingUpdate = &apps.RollingUpdateStatefulSetStrategy{
-			Partition: pointer.Int32(replicas),
-		}
-	} else {
-		newObj.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32(replicas)
-	}
-
-	state := &util.RolloutState{RolloutName: rollout.Name}
-	by, _ := json.Marshal(state)
-	if newObj.Annotations == nil {
-		newObj.Annotations = map[string]string{}
-	}
-	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
-	return
-}
-
-func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) (changed bool, err error) {
+func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (changed bool, err error) {
 	// in rollout progressing
 	if state, _ := util.GetRolloutState(newObj.Annotations); state != nil {
 		// deployment paused=false is not allowed until the rollout is completed
@@ -322,32 +247,7 @@ func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) (ch
 	return
 }
 
-func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.Rollout, error) {
-	oGv := obj.GetObjectKind().GroupVersionKind()
-	rolloutList := &appsv1alpha1.RolloutList{}
-	if err := h.Client.List(context.TODO(), rolloutList, &client.ListOptions{Namespace: obj.GetNamespace()}); err != nil {
-		klog.Errorf("WorkloadHandler List rollout failed: %s", err.Error())
-		return nil, err
-	}
-	for i := range rolloutList.Items {
-		rollout := &rolloutList.Items[i]
-		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.ObjectRef.WorkloadRef == nil {
-			continue
-		}
-		ref := rollout.Spec.ObjectRef.WorkloadRef
-		gv, err := schema.ParseGroupVersion(ref.APIVersion)
-		if err != nil {
-			klog.Warningf("ParseGroupVersion rollout(%s/%s) ref failed: %s", rollout.Namespace, rollout.Name, err.Error())
-			continue
-		}
-		if oGv.Group == gv.Group && oGv.Kind == ref.Kind && obj.GetName() == ref.Name {
-			return rollout, nil
-		}
-	}
-	return nil, nil
-}
-
-func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) (changed bool, err error) {
+func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) (changed bool, err error) {
 	// indicate whether the workload can enter the rollout process
 	// 1. replicas > 0
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
@@ -376,6 +276,31 @@ func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clo
 	}
 	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
 	return
+}
+
+func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.Rollout, error) {
+	oGv := obj.GetObjectKind().GroupVersionKind()
+	rolloutList := &appsv1alpha1.RolloutList{}
+	if err := h.Client.List(context.TODO(), rolloutList, &client.ListOptions{Namespace: obj.GetNamespace()}); err != nil {
+		klog.Errorf("WorkloadHandler List rollout failed: %s", err.Error())
+		return nil, err
+	}
+	for i := range rolloutList.Items {
+		rollout := &rolloutList.Items[i]
+		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.ObjectRef.WorkloadRef == nil {
+			continue
+		}
+		ref := rollout.Spec.ObjectRef.WorkloadRef
+		gv, err := schema.ParseGroupVersion(ref.APIVersion)
+		if err != nil {
+			klog.Warningf("ParseGroupVersion rollout(%s/%s) ref failed: %s", rollout.Namespace, rollout.Name, err.Error())
+			continue
+		}
+		if oGv.Group == gv.Group && oGv.Kind == ref.Kind && obj.GetName() == ref.Name {
+			return rollout, nil
+		}
+	}
+	return nil, nil
 }
 
 var _ inject.Client = &WorkloadHandler{}

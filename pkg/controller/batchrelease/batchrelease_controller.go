@@ -28,6 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
@@ -44,8 +45,17 @@ import (
 )
 
 var (
-	concurrentReconciles = 3
+	concurrentReconciles   = 3
+	WatchedSet             = sets.NewString()
+	batchReleaseController controller.Controller
+	workloadHandler        handler.EventHandler
 )
+
+func init() {
+	WatchedSet.Insert(util.ControllerKindDep.String())
+	WatchedSet.Insert(util.ControllerKindSts.String())
+	WatchedSet.Insert(util.ControllerKruiseKindCS.String())
+}
 
 const ReleaseFinalizer = "rollouts.kruise.io/batch-release-finalizer"
 
@@ -101,7 +111,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	return util.BuildWorkloadWatcher(c, &workloadEventHandler{Reader: mgr.GetCache()})
+	batchReleaseController = c
+	workloadHandler = &workloadEventHandler{Reader: mgr.GetCache()}
+	return util.BuildWorkloadWatcher(c, workloadHandler)
 }
 
 var _ reconcile.Reconciler = &BatchReleaseReconciler{}
@@ -144,6 +156,13 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	klog.Infof("Begin to reconcile BatchRelease(%v/%v), release-phase: %v", release.Namespace, release.Name, release.Status.Phase)
+
+	watched, err := util.DynamicWatchCRD(batchReleaseController, workloadHandler, WatchedSet, release.Spec.TargetRef.WorkloadRef)
+	if err != nil {
+		return reconcile.Result{}, err
+	} else if watched {
+		WatchedSet.Insert(util.GetGVKFrom(release.Spec.TargetRef.WorkloadRef).String())
+	}
 
 	// finalizer will block the deletion of batchRelease
 	// util all canary resources and settings are cleaned up.

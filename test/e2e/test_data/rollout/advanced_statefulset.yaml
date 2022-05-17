@@ -4,6 +4,7 @@ metadata:
   name: echoserver
   labels:
     apps: echoserver
+    rollouts.kruise.io/unified-worload: "true"
 spec:
   selector:
     matchLabels:

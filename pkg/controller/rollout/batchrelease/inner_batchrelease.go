@@ -226,7 +226,7 @@ func (r *innerBatchRelease) resumeStableWorkload(checkReady bool) (bool, error) 
 		klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) status(%s) success", r.rollout.Namespace, r.rollout.Name, data)
 		return true, nil
 
-	case util.ControllerKindSts.Kind:
+	default:
 		// statefulset-like workloads
 		workloadRef := r.rollout.Spec.ObjectRef.WorkloadRef
 		workloadNsn := types.NamespacedName{Namespace: r.rollout.Namespace, Name: workloadRef.Name}
@@ -255,7 +255,6 @@ func (r *innerBatchRelease) resumeStableWorkload(checkReady bool) (bool, error) 
 		klog.Infof("resume rollout(%s/%s) statefulset(partition=0) success", r.rollout.Namespace, r.rollout.Name)
 		return true, nil
 	}
-	return true, nil
 }
 
 func (r *innerBatchRelease) Finalize() (bool, error) {

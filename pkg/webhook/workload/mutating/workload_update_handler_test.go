@@ -23,15 +23,19 @@ import (
 	"testing"
 
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -129,6 +133,7 @@ var (
 			Annotations: map[string]string{},
 		},
 		Spec: kruisev1aplphal.CloneSetSpec{
+			Replicas: pointer.Int32(10),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": "echoserver",
@@ -149,6 +154,57 @@ var (
 					},
 				},
 			},
+		},
+	}
+
+	statefulset = &kruiseappsv1beta1.StatefulSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps.kruise.io/v1beta1",
+			Kind:       "StatefulSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "echoserver",
+			Generation:  32,
+			Annotations: map[string]string{},
+		},
+		Spec: kruiseappsv1beta1.StatefulSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "test-demo",
+				},
+			},
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "echoserver",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "echoserver",
+							Image: "echoserver:v1",
+						},
+					},
+				},
+			},
+			Replicas: pointer.Int32(10),
+			UpdateStrategy: kruiseappsv1beta1.StatefulSetUpdateStrategy{
+				Type: apps.RollingUpdateStatefulSetStrategyType,
+				RollingUpdate: &kruiseappsv1beta1.RollingUpdateStatefulSetStrategy{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
+					Partition:      pointer.Int32(7),
+				},
+			},
+		},
+		Status: kruiseappsv1beta1.StatefulSetStatus{
+			Replicas:           10,
+			ReadyReplicas:      10,
+			UpdatedReplicas:    3,
+			AvailableReplicas:  10,
+			ObservedGeneration: 31,
+			CurrentRevision:    "test-name-" + "121212",
+			UpdateRevision:     "test-name-" + "123123",
 		},
 	}
 
@@ -339,7 +395,7 @@ func TestHandlerDeployment(t *testing.T) {
 			}
 
 			oldObj, newObj := cs.getObjs()
-			_, err := h.handlerDeployment(newObj, oldObj)
+			_, err := h.handleDeployment(newObj, oldObj)
 			if cs.isError && err == nil {
 				t.Fatal("handlerDeployment failed")
 			} else if !cs.isError && err != nil {
@@ -403,7 +459,7 @@ func TestHandlerCloneSet(t *testing.T) {
 			}
 
 			oldObj, newObj := cs.getObjs()
-			_, err := h.handlerCloneSet(newObj, oldObj)
+			_, err := h.handleCloneSet(newObj, oldObj)
 			if cs.isError && err == nil {
 				t.Fatal("handlerCloneSet failed")
 			} else if !cs.isError && err != nil {
@@ -411,6 +467,82 @@ func TestHandlerCloneSet(t *testing.T) {
 			}
 			if !reflect.DeepEqual(newObj, cs.expectObj()) {
 				by, _ := json.Marshal(newObj)
+				t.Fatalf("handlerCloneSet failed, and new(%s)", string(by))
+			}
+		})
+	}
+}
+
+func TestHandleStatefulSet(t *testing.T) {
+	cases := []struct {
+		name       string
+		getObjs    func() (*kruiseappsv1beta1.StatefulSet, *kruiseappsv1beta1.StatefulSet)
+		expectObj  func() *kruiseappsv1beta1.StatefulSet
+		getRollout func() *appsv1alpha1.Rollout
+		isError    bool
+	}{
+		{
+			name: "cloneSet image v1->v2, matched rollout",
+			getObjs: func() (*kruiseappsv1beta1.StatefulSet, *kruiseappsv1beta1.StatefulSet) {
+				oldObj := statefulset.DeepCopy()
+				newObj := statefulset.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *kruiseappsv1beta1.StatefulSet {
+				obj := statefulset.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32(10)
+				return obj
+			},
+			getRollout: func() *appsv1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{
+					APIVersion: "apps.kruise.io/v1beta1",
+					Kind:       "StatefulSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+	}
+
+	decoder, _ := admission.NewDecoder(scheme)
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			client := fake.NewClientBuilder().WithScheme(scheme).Build()
+			h := WorkloadHandler{
+				Client:  client,
+				Decoder: decoder,
+				Finder:  util.NewControllerFinder(client),
+			}
+			rollout := cs.getRollout()
+			if err := client.Create(context.TODO(), rollout); err != nil {
+				t.Errorf(err.Error())
+			}
+
+			oldObj, newObj := cs.getObjs()
+			oldO, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(oldObj)
+			newO, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(newObj)
+			oldUnstructured := &unstructured.Unstructured{Object: oldO}
+			newUnstructured := &unstructured.Unstructured{Object: newO}
+			oldUnstructured.SetGroupVersionKind(newObj.GroupVersionKind())
+			newUnstructured.SetGroupVersionKind(newObj.GroupVersionKind())
+			_, err := h.handleStatefulSetLikeWorkload(newUnstructured, oldUnstructured)
+			if cs.isError && err == nil {
+				t.Fatal("handleStatefulSetLikeWorkload failed")
+			} else if !cs.isError && err != nil {
+				t.Fatalf(err.Error())
+			}
+			newStructured := &kruiseappsv1beta1.StatefulSet{}
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(newUnstructured.Object, newStructured)
+			if err != nil {
+				t.Fatal("DefaultUnstructuredConvert failed")
+			}
+			expect := cs.expectObj()
+			if !reflect.DeepEqual(newStructured, expect) {
+				by, _ := json.Marshal(newStructured)
 				t.Fatalf("handlerCloneSet failed, and new(%s)", string(by))
 			}
 		})

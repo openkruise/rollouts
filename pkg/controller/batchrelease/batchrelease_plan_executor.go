@@ -280,14 +280,12 @@ func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error)
 		}
 	}
 
-	if targetRef.Kind == "StatefulSet" {
-		klog.InfoS("using statefulset-like batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-		return workloads.NewUnifiedWorkloadRolloutControlPlane(workloads.NewStatefulSetLikeController, r.client, r.recorder, r.release, r.releaseStatus, targetKey, gvk), nil
-	}
-
-	message := fmt.Sprintf("the workload `%v.%v/%v` is not supported", targetRef.APIVersion, targetRef.Kind, targetRef.Name)
-	r.recorder.Event(r.release, v1.EventTypeWarning, "UnsupportedWorkload", message)
-	return nil, fmt.Errorf(message)
+	klog.InfoS("using statefulset-like batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+	return workloads.NewUnifiedWorkloadRolloutControlPlane(workloads.NewStatefulSetLikeController, r.client, r.recorder, r.release, r.releaseStatus, targetKey, gvk), nil
+	//
+	//message := fmt.Sprintf("the workload `%v.%v/%v` is not supported", targetRef.APIVersion, targetRef.Kind, targetRef.Name)
+	//r.recorder.Event(r.release, v1.EventTypeWarning, "UnsupportedWorkload", message)
+	//return nil, fmt.Errorf(message)
 }
 
 func (r *Executor) moveToNextBatch() bool {
