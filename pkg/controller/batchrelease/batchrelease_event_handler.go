@@ -70,12 +70,22 @@ func (p podEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingI
 	oldPod := evt.ObjectOld.(*corev1.Pod)
 	newPod := evt.ObjectNew.(*corev1.Pod)
 	if oldPod.ResourceVersion != newPod.ResourceVersion ||
-		util.IsPodReady(oldPod) == util.IsPodReady(newPod) {
+		(!IsRolloutIDChanged(oldPod, newPod) && util.IsPodReady(oldPod) == util.IsPodReady(newPod)) {
 		return
 	}
 
 	klog.Infof("Pod %v ready condition changed, then enqueue", client.ObjectKeyFromObject(newPod))
 	p.enqueue(newPod, q)
+}
+
+func IsRolloutIDChanged(oldPod, newPod *corev1.Pod) bool {
+	if oldPod.Labels[util.RolloutIDLabel] != newPod.Labels[util.RolloutIDLabel] {
+		return true
+	}
+	if oldPod.Labels[util.RolloutBatchIDLabel] != newPod.Labels[util.RolloutBatchIDLabel] {
+		return true
+	}
+	return false
 }
 
 func (p podEventHandler) enqueue(pod *corev1.Pod, q workqueue.RateLimitingInterface) {

@@ -25,13 +25,17 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadController) (needStopThisRound bool, result reconcile.Result) {
+func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadController) (bool, reconcile.Result, error) {
+	var err error
 	var reason string
 	var message string
 	var needRetry bool
+	needStopThisRound := false
+	result := reconcile.Result{}
 
 	// sync the workload info and watch the workload change event
 	workloadEvent, workloadInfo, err := controller.SyncWorkloadInfo()
@@ -86,7 +90,6 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 		// handle the case of IgnoreNotFound(err) != nil
 		reason = "GetWorkloadError"
 		message = err.Error()
-		needRetry = true
 
 	case isWorkloadGone(err, r.releaseStatus):
 		// handle the case that the workload is deleted
@@ -149,12 +152,13 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	}
 
 	// will retry after 50ms
-	if needRetry {
+	err = client.IgnoreNotFound(err)
+	if needRetry && err == nil {
 		needStopThisRound = true
 		result = reconcile.Result{RequeueAfter: DefaultDuration}
 	}
 
-	return needStopThisRound, result
+	return needStopThisRound, result, err
 }
 
 func refreshStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadInfo *util.WorkloadInfo) {

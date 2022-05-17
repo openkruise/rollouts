@@ -74,7 +74,7 @@ func (r *Executor) SetReleaseInfo(release *v1alpha1.BatchRelease) {
 }
 
 // Do execute the release plan
-func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
+func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus, error) {
 	klog.InfoS("Starting one round of reconciling release plan",
 		"BatchRelease", client.ObjectKeyFromObject(r.release),
 		"phase", r.releaseStatus.Phase,
@@ -83,18 +83,19 @@ func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
 
 	workloadController, err := r.GetWorkloadController()
 	if err != nil || workloadController == nil {
-		return reconcile.Result{}, r.releaseStatus
+		return reconcile.Result{}, r.releaseStatus, nil
 	}
 
-	shouldStopThisRound, result := r.checkHealthBeforeExecution(workloadController)
-	if shouldStopThisRound {
-		return result, r.releaseStatus
+	shouldStopThisRound, result, err := r.checkHealthBeforeExecution(workloadController)
+	if shouldStopThisRound || err != nil {
+		return result, r.releaseStatus, err
 	}
 
 	return r.executeBatchReleasePlan(workloadController)
 }
 
-func (r *Executor) executeBatchReleasePlan(workloadController workloads.WorkloadController) (reconcile.Result, *v1alpha1.BatchReleaseStatus) {
+func (r *Executor) executeBatchReleasePlan(workloadController workloads.WorkloadController) (reconcile.Result, *v1alpha1.BatchReleaseStatus, error) {
+	var err error
 	status := r.releaseStatus
 	result := reconcile.Result{}
 
@@ -107,44 +108,50 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 
 	case v1alpha1.RolloutPhaseHealthy:
 		// verify whether the workload is ready to execute the release plan in this state.
-		requeue, err := workloadController.VerifyWorkload()
-		if err != nil {
+		var verifiedDone bool
+		verifiedDone, err = workloadController.VerifyWorkload()
+		switch {
+		case err != nil:
 			setCondition(status, v1alpha1.VerifyingBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
-		} else {
+		case verifiedDone:
 			status.Phase = v1alpha1.RolloutPhasePreparing
-			setCondition(status, v1alpha1.PreparingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is preparing for progress")
-		}
-		if requeue {
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
+			setCondition(status, v1alpha1.PreparingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is preparing for progress")
 		}
 
 	case v1alpha1.RolloutPhasePreparing:
 		// prepare and initialize something before progressing in this state.
-		done, err := workloadController.PrepareBeforeProgress()
+		var preparedDone bool
+		preparedDone, err = workloadController.PrepareBeforeProgress()
 		switch {
 		case err != nil:
 			setCondition(status, v1alpha1.PreparingBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
-		case done:
-			setCondition(status, v1alpha1.ProgressingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is progressing")
+		case preparedDone:
 			status.Phase = v1alpha1.RolloutPhaseProgressing
-			fallthrough
-		default:
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
+			setCondition(status, v1alpha1.ProgressingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is progressing")
 		}
 
 	case v1alpha1.RolloutPhaseProgressing:
 		// progress the release plan in this state.
 		var progressDone bool
-		if progressDone, result = r.progressBatches(workloadController); progressDone {
-			setCondition(status, v1alpha1.FinalizingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is finalizing")
+		progressDone, result, err = r.progressBatches(workloadController)
+		switch {
+		case progressDone:
 			status.Phase = v1alpha1.RolloutPhaseFinalizing
+			setCondition(status, v1alpha1.FinalizingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is finalizing")
 		}
 
 	case v1alpha1.RolloutPhaseFinalizing:
 		// finalize canary the resources when progressing done.
 		// Do not clean the canary resources, because rollout
 		// controller should set the traffic routing first.
-		if succeed := workloadController.FinalizeProgress(false); succeed {
+		var finalizedDone bool
+		finalizedDone, err = workloadController.FinalizeProgress(false)
+		switch {
+		case err != nil:
+			setCondition(status, v1alpha1.CompletedBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
+		case finalizedDone:
 			if IsAllBatchReady(r.releasePlan, r.releaseStatus) {
 				status.Phase = v1alpha1.RolloutPhaseCompleted
 				setCondition(status, v1alpha1.CompletedBatchReleaseCondition, v1.ConditionTrue, v1alpha1.SucceededBatchReleaseConditionReason, "BatchRelease is completed")
@@ -152,15 +159,19 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 				status.Phase = v1alpha1.RolloutPhaseCancelled
 				setCondition(status, v1alpha1.CancelledBatchReleaseCondition, v1.ConditionTrue, v1alpha1.SucceededBatchReleaseConditionReason, "BatchRelease is cancelled")
 			}
-		} else {
+		default:
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
 		}
 
 	case v1alpha1.RolloutPhaseTerminating:
-		// when batchRelease is deleted, should clean up extra canary resources
-		if succeed := workloadController.FinalizeProgress(true); succeed {
+		var finalizedDone bool
+		finalizedDone, err = workloadController.FinalizeProgress(true)
+		switch {
+		case err != nil:
+			setCondition(status, v1alpha1.CompletedBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
+		case finalizedDone:
 			setCondition(status, v1alpha1.TerminatedBatchReleaseCondition, v1.ConditionTrue, v1alpha1.SucceededBatchReleaseConditionReason, "BatchRelease is terminated")
-		} else {
+		default:
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
 		}
 
@@ -172,11 +183,12 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		panic(fmt.Sprintf("illegal release status %+v", status))
 	}
 
-	return result, status
+	return result, status, err
 }
 
 // reconcile logic when we are in the middle of release, we have to go through finalizing state before succeed or fail
-func (r *Executor) progressBatches(workloadController workloads.WorkloadController) (bool, reconcile.Result) {
+func (r *Executor) progressBatches(workloadController workloads.WorkloadController) (bool, reconcile.Result, error) {
+	var err error
 	progressDone := false
 	status := r.releaseStatus
 	result := reconcile.Result{}
@@ -186,28 +198,28 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 	switch status.CanaryStatus.CurrentBatchState {
 	case "", v1alpha1.UpgradingBatchState:
 		// modify workload replicas/partition based on release plan in this state.
-		upgradeDone, err := workloadController.UpgradeOneBatch()
+		upgradeDone, upgradeErr := workloadController.UpgradeOneBatch()
 		switch {
-		case err != nil:
+		case upgradeErr != nil:
+			err = upgradeErr
 			setCondition(status, "Progressing", v1.ConditionFalse, "UpgradeBatchFailed", err.Error())
 		case upgradeDone:
-			status.CanaryStatus.CurrentBatchState = v1alpha1.VerifyingBatchState
-			fallthrough
-		default:
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
+			status.CanaryStatus.CurrentBatchState = v1alpha1.VerifyingBatchState
 		}
 
 	case v1alpha1.VerifyingBatchState:
 		// TODO: metrics analysis
 		// replicas/partition has been modified, should wait pod ready in this state.
-		verified, err := workloadController.CheckOneBatchReady()
+		verified, verifiedErr := workloadController.CheckOneBatchReady()
 		switch {
-		case err != nil:
+		case verifiedErr != nil:
+			err = verifiedErr
 			setCondition(status, "Progressing", v1.ConditionFalse, "VerifyBatchFailed", err.Error())
 		case verified:
-			result = reconcile.Result{RequeueAfter: DefaultDuration}
 			now := metav1.Now()
 			status.CanaryStatus.BatchReadyTime = &now
+			result = reconcile.Result{RequeueAfter: DefaultDuration}
 			status.CanaryStatus.CurrentBatchState = v1alpha1.ReadyBatchState
 		default:
 			status.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
@@ -238,7 +250,7 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 		panic(fmt.Sprintf("illegal status %+v", r.releaseStatus))
 	}
 
-	return progressDone, result
+	return progressDone, result, err
 }
 
 // GetWorkloadController pick the right workload controller to work on the workload

@@ -22,7 +22,6 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
-	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -192,22 +191,22 @@ func (c *StatefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableRepli
 	return secondCheckPointReady, nil
 }
 
-func (c *StatefulSetLikeController) listOwnedPods() error {
+func (c *StatefulSetLikeController) ListOwnedPods() ([]*v1.Pod, error) {
 	if c.pods != nil {
-		return nil
+		return c.pods, nil
 	}
 	set, err := c.GetWorkloadObject()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	selector, err := util.ParseSelector(set)
 	if err != nil || selector == nil {
-		return err
+		return nil, err
 	}
 	podLister := &v1.PodList{}
 	err = c.List(context.TODO(), podLister, &client.ListOptions{LabelSelector: selector})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	c.pods = make([]*v1.Pod, 0)
 	for i := range podLister.Items {
@@ -218,26 +217,18 @@ func (c *StatefulSetLikeController) listOwnedPods() error {
 		}
 		c.pods = append(c.pods, pod)
 	}
-	return nil
+	return c.pods, nil
 }
 
 func (c *StatefulSetLikeController) CountUpdatedReadyPods(updateRevision string) (int32, error) {
-	err := c.listOwnedPods()
+	pods, err := c.ListOwnedPods()
 	if err != nil {
 		return 0, err
 	}
 	updatedReadyReplicas := int32(0)
-	for _, pod := range c.pods {
-		switch updateRevision {
-		case pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey], pod.Labels[appsv1.ControllerRevisionHashLabelKey]:
+	for _, pod := range pods {
+		if util.IsUpdateRevision(pod, updateRevision) {
 			updatedReadyReplicas++
-			continue
-		}
-
-		switch fmt.Sprintf("%v-%v", c.statefulSet.GetName(), updateRevision) {
-		case pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey], pod.Labels[appsv1.ControllerRevisionHashLabelKey]:
-			updatedReadyReplicas++
-			continue
 		}
 	}
 	return updatedReadyReplicas, nil

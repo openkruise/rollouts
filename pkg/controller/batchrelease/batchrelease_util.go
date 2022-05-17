@@ -29,7 +29,7 @@ import (
 func HasTerminatingCondition(status v1alpha1.BatchReleaseStatus) bool {
 	for i := range status.Conditions {
 		c := status.Conditions[i]
-		if c.Type == "Terminated" && c.Status == v1.ConditionTrue {
+		if c.Type == v1alpha1.TerminatedBatchReleaseCondition && c.Status == v1.ConditionTrue {
 			return true
 		}
 	}

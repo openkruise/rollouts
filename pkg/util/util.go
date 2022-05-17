@@ -25,6 +25,7 @@ import (
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -44,8 +45,10 @@ const (
 	KruiseRolloutFinalizer = "rollouts.kruise.io/rollout"
 	// rollout spec hash
 	RolloutHashAnnotation                  = "rollouts.kruise.io/hash"
-	DisableQuicklyRollbackPolicyAnnotation = "rollouts.kruise.io/disable-quickly-rollback"
+	DisableQuicklyRollbackPolicyAnnotation = "rollouts.kruise.io/disable-quick-rollback"
 	WorkloadRollingUpdateAnnotation        = "rollouts.kruise.io/rolling-update-info"
+	RolloutBatchIDLabel                    = "apps.kruise.io/rollout-batch-id"
+	RolloutIDLabel                         = "apps.kruise.io/rollout-id"
 )
 
 // RolloutState is annotation[rollouts.kruise.io/in-progressing] value
@@ -159,6 +162,15 @@ func DiscoverGVK(gvk schema.GroupVersionKind) bool {
 	}
 
 	return true
+}
+
+func IsMatchRolloutID(pod *corev1.Pod, rolloutID string) bool {
+	return pod.Labels[RolloutIDLabel] == rolloutID
+}
+
+func GetRolloutID(workloadLabels map[string]string) (string, bool) {
+	rolloutID, exist := workloadLabels[RolloutIDLabel]
+	return rolloutID, exist
 }
 
 func DumpJSON(o interface{}) string {

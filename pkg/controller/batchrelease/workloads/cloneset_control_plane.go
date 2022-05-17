@@ -57,34 +57,34 @@ func NewCloneSetRolloutController(cli client.Client, recorder record.EventRecord
 
 // VerifyWorkload verifies that the workload is ready to execute release plan
 func (c *CloneSetRolloutController) VerifyWorkload() (bool, error) {
-	var err error
+	var message string
 	defer func() {
-		if err != nil {
-			klog.Warningf(err.Error())
-			c.recorder.Event(c.parentController, v1.EventTypeWarning, "VerifyFailed", err.Error())
+		if message != "" {
+			klog.Warningf(message)
+			c.recorder.Event(c.parentController, v1.EventTypeWarning, "VerifyFailed", message)
 		}
 	}()
 
-	if err = c.fetchCloneSet(); err != nil {
-		return true, err
+	if err := c.fetchCloneSet(); err != nil {
+		return false, err
 	}
 
 	// if the workload status is untrustworthy
 	if c.clone.Status.ObservedGeneration != c.clone.Generation {
-		err = fmt.Errorf("CloneSet(%v) is still reconciling, wait for it to be done", c.targetNamespacedName)
-		return false, err
+		message = fmt.Sprintf("CloneSet(%v) is still reconciling, wait for it to be done", c.targetNamespacedName)
+		return false, nil
 	}
 
 	// if the cloneSet has been promoted, no need to go on
 	if c.clone.Status.UpdatedReplicas == *c.clone.Spec.Replicas {
-		err = fmt.Errorf("CloneSet(%v) update revision has been promoted, no need to reconcile", c.targetNamespacedName)
-		return false, err
+		message = fmt.Sprintf("CloneSet(%v) update revision has been promoted, no need to reconcile", c.targetNamespacedName)
+		return false, nil
 	}
 
 	// if the cloneSet is not paused and is not under our control
 	if !c.clone.Spec.UpdateStrategy.Paused {
-		err = fmt.Errorf("CloneSet(%v) should be paused before execute the release plan", c.targetNamespacedName)
-		return false, err
+		message = fmt.Sprintf("CloneSet(%v) should be paused before execute the release plan", c.targetNamespacedName)
+		return false, nil
 	}
 
 	klog.V(3).Infof("Verified CloneSet(%v) Successfully,", c.targetNamespacedName)
@@ -95,13 +95,12 @@ func (c *CloneSetRolloutController) VerifyWorkload() (bool, error) {
 // PrepareBeforeProgress makes sure that the source and target CloneSet is under our control
 func (c *CloneSetRolloutController) PrepareBeforeProgress() (bool, error) {
 	if err := c.fetchCloneSet(); err != nil {
-		//c.releaseStatus.RolloutRetry(err.Error())
-		return false, nil
+		return false, err
 	}
 
 	// claim the cloneSet is under our control
 	if _, err := c.claimCloneSet(c.clone); err != nil {
-		return false, nil
+		return false, err
 	}
 
 	// record revisions and replicas info to BatchRelease.Status
@@ -115,7 +114,7 @@ func (c *CloneSetRolloutController) PrepareBeforeProgress() (bool, error) {
 // and then set the partition accordingly
 func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 	if err := c.fetchCloneSet(); err != nil {
-		return false, nil
+		return false, err
 	}
 
 	if c.releaseStatus.ObservedWorkloadReplicas == 0 {
@@ -128,6 +127,7 @@ func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 		return false, nil
 	}
 
+	currentBatch := c.parentController.Status.CanaryStatus.CurrentBatch
 	// the number of canary pods should have in current batch
 	canaryGoal := c.calculateCurrentCanary(c.releaseStatus.ObservedWorkloadReplicas)
 	// the number of stable pods should have in current batch
@@ -139,26 +139,36 @@ func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 		int(c.releaseStatus.ObservedWorkloadReplicas), true)
 
 	// in case of no need to upgrade pods
-	if currentCanaryReplicas >= canaryGoal && int32(workloadPartition) <= stableGoal {
-		klog.V(3).InfoS("upgraded one batch, but no need to update partition of cloneset",
-			"BatchRelease", c.releasePlanKey, "current-batch", c.releaseStatus.CanaryStatus.CurrentBatch,
-			"canary-goal", canaryGoal, "stable-goal", stableGoal, "canary-replicas", currentCanaryReplicas, "partition", workloadPartition)
-		return true, nil
+	IsUpgradedDone := func() bool {
+		return currentCanaryReplicas >= canaryGoal && int32(workloadPartition) <= stableGoal
 	}
+	if !IsUpgradedDone() {
+		// if canaryReplicas is int, then we use int;
+		// if canaryReplicas is percentage, then we use percentage.
+		var partitionGoal intstr.IntOrString
+		canaryIntOrStr := c.releasePlan.Batches[c.releaseStatus.CanaryStatus.CurrentBatch].CanaryReplicas
+		if canaryIntOrStr.Type == intstr.Int {
+			partitionGoal = intstr.FromInt(int(stableGoal))
+		} else if c.releaseStatus.ObservedWorkloadReplicas > 0 {
+			partitionGoal = ParseIntegerAsPercentageIfPossible(stableGoal, c.releaseStatus.ObservedWorkloadReplicas, &canaryIntOrStr)
+		}
 
-	// if canaryReplicas is int, then we use int;
-	// if canaryReplicas is percentage, then we use percentage.
-	var partitionGoal intstr.IntOrString
-	canaryIntOrStr := c.releasePlan.Batches[c.releaseStatus.CanaryStatus.CurrentBatch].CanaryReplicas
-	if canaryIntOrStr.Type == intstr.Int {
-		partitionGoal = intstr.FromInt(int(stableGoal))
-	} else if c.releaseStatus.ObservedWorkloadReplicas > 0 {
-		partitionGoal = ParseIntegerAsPercentageIfPossible(stableGoal, c.releaseStatus.ObservedWorkloadReplicas, &canaryIntOrStr)
-	}
-
-	// upgrade pods
-	if err := c.patchCloneSetPartition(c.clone, &partitionGoal); err != nil {
+		// upgrade pods
+		if err := c.patchCloneSetPartition(c.clone, &partitionGoal); err != nil {
+			return false, err
+		}
 		return false, nil
+	} else {
+		klog.V(3).InfoS("upgraded one batch, but no need to update partition of cloneset",
+			"BatchRelease", c.releasePlanKey, "current-batch", currentBatch, "canary-goal",
+			canaryGoal, "stable-goal", stableGoal, "canary-replicas", currentCanaryReplicas, "partition", workloadPartition)
+	}
+
+	rolloutID, exist := util.GetRolloutID(c.clone.Labels)
+	if exist {
+		if patchDone, err := c.PatchPodBatchLabel(rolloutID, currentBatch+1, canaryGoal); err != nil || !patchDone {
+			return false, err
+		}
 	}
 
 	klog.V(3).InfoS("upgraded one batch", "BatchRelease", c.releasePlanKey,
@@ -168,10 +178,55 @@ func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 	return true, nil
 }
 
+func (c *CloneSetRolloutController) PatchPodBatchLabel(rolloutID string, currentID int32, canaryGoal int32) (bool, error) {
+	pods, err := util.ListOwnedPods(c.client, c.clone)
+	if err != nil {
+		klog.Errorf("Failed to list pod when patching pod batch label, err: %v", err)
+		return false, err
+	}
+
+	updateRevision := c.parentController.Status.UpdateRevision
+
+	patchedCount := int32(0)
+	for _, pod := range pods {
+		if !util.IsUpdateRevision(pod, updateRevision) {
+			continue
+		}
+		if !util.IsMatchRolloutID(pod, rolloutID) {
+			continue
+		}
+		patchedCount++
+	}
+
+	klog.V(3).Infof("BatchRelease(%v) patch %d pods with batchID, goal is %d pods", patchedCount, canaryGoal)
+
+	if patchedCount >= canaryGoal {
+		return true, nil
+	}
+
+	for _, pod := range pods {
+		if !util.IsUpdateRevision(pod, updateRevision) {
+			continue
+		}
+		if util.IsMatchRolloutID(pod, rolloutID) {
+			continue
+		}
+		podClone := pod.DeepCopy()
+		by := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s","%s":"%d"}}}`,
+			util.RolloutIDLabel, rolloutID, util.RolloutBatchIDLabel, currentID)
+		err := c.client.Patch(context.TODO(), podClone, client.RawPatch(types.StrategicMergePatchType, []byte(by)))
+		if err != nil {
+			klog.Errorf("Failed to patch Pod(%v) batchID, err: %v", client.ObjectKeyFromObject(podClone), err)
+			return false, err
+		}
+	}
+	return false, nil
+}
+
 // CheckOneBatchReady checks to see if the pods are all available according to the rollout plan
 func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 	if err := c.fetchCloneSet(); err != nil {
-		return false, nil
+		return false, err
 	}
 
 	// if the workload status is untrustworthy
@@ -233,17 +288,17 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 }
 
 // FinalizeProgress makes sure the CloneSet is all upgraded
-func (c *CloneSetRolloutController) FinalizeProgress(cleanup bool) bool {
+func (c *CloneSetRolloutController) FinalizeProgress(cleanup bool) (bool, error) {
 	if err := c.fetchCloneSet(); client.IgnoreNotFound(err) != nil {
-		return false
+		return false, client.IgnoreNotFound(err)
 	}
 
 	if _, err := c.releaseCloneSet(c.clone, cleanup); err != nil {
-		return false
+		return false, err
 	}
 
 	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "FinalizedSuccessfully", "Rollout resource are finalized: cleanup=%v", cleanup)
-	return true
+	return true, nil
 }
 
 // SyncWorkloadInfo return change type if workload was changed during release

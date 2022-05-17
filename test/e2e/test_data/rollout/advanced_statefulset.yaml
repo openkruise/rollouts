@@ -2,6 +2,8 @@ apiVersion: apps.kruise.io/v1beta1
 kind: StatefulSet
 metadata:
   name: echoserver
+  labels:
+    apps: echoserver
 spec:
   selector:
     matchLabels:

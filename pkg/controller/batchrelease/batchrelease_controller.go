@@ -157,7 +157,10 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// executor start to execute the batch release plan.
 	startTimestamp := time.Now()
-	result, currentStatus := r.executor.Do()
+	result, currentStatus, err := r.executor.Do()
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 
 	defer func() {
 		klog.InfoS("Finished one round of reconciling release plan",

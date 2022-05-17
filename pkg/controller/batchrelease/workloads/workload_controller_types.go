@@ -77,7 +77,7 @@ type WorkloadController interface {
 	// parameters:
 	// - pause: 'nil' means keep current state, 'true' means pause workload, 'false' means do not pause workload
 	// - cleanup: 'true' means clean up canary settings, 'false' means do not clean up.
-	FinalizeProgress(cleanup bool) bool
+	FinalizeProgress(cleanup bool) (bool, error)
 
 	// SyncWorkloadInfo will watch and compare the status recorded in BatchRelease.Status
 	// and the real-time workload info. If workload status is inconsistent with that recorded

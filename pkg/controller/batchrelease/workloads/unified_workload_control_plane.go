@@ -32,6 +32,7 @@ limitations under the License.
 package workloads
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -53,6 +54,7 @@ type UnifiedWorkloadController interface {
 	UpgradeBatch(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
 	IsBatchUpgraded(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
 	IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
+	ListOwnedPods() ([]*v1.Pod, error)
 }
 
 // UnifiedWorkloadRolloutControlPlane is responsible for handling rollout StatefulSet type of workloads
@@ -79,35 +81,35 @@ func NewUnifiedWorkloadRolloutControlPlane(f NewUnifiedControllerFunc, c client.
 
 // VerifyWorkload verifies that the workload is ready to execute release plan
 func (c *UnifiedWorkloadRolloutControlPlane) VerifyWorkload() (bool, error) {
-	var err error
+	var message string
 	defer func() {
-		if err != nil {
-			klog.Warningf(err.Error())
-			c.recorder.Event(c.planController, v1.EventTypeWarning, "VerifyFailed", err.Error())
+		if message != "" {
+			klog.Warning(message)
+			c.recorder.Event(c.planController, v1.EventTypeWarning, "VerifyFailed", message)
 		}
 	}()
 
 	workloadInfo, err := c.GetWorkloadInfo()
 	if err != nil {
-		return true, err
+		return false, err
 	}
 
 	// If the workload status is untrustworthy
 	if workloadInfo.Status.ObservedGeneration != workloadInfo.Metadata.Generation {
-		err = fmt.Errorf("%v is still reconciling, wait for it to be done", workloadInfo.GVKWithName)
-		return false, err
+		message = fmt.Sprintf("%v is still reconciling, wait for it to be done", workloadInfo.GVKWithName)
+		return false, nil
 	}
 
 	// If the workload has been promoted, no need to go on
 	if workloadInfo.Status.UpdatedReplicas == *workloadInfo.Replicas {
-		err = fmt.Errorf("%v update revision has been promoted, no need to reconcile", workloadInfo.GVKWithName)
-		return false, err
+		message = fmt.Sprintf("%v update revision has been promoted, no need to reconcile", workloadInfo.GVKWithName)
+		return false, nil
 	}
 
 	// If the workload is not paused and is not under our control
 	if !workloadInfo.Paused {
-		err = fmt.Errorf("%v should be paused before execute the release plan", workloadInfo.GVKWithName)
-		return false, err
+		message = fmt.Sprintf("%v should be paused before execute the release plan", workloadInfo.GVKWithName)
+		return false, nil
 	}
 
 	klog.V(3).Infof("Verified %v Successfully,", workloadInfo.GVKWithName)
@@ -124,7 +126,8 @@ func (c *UnifiedWorkloadRolloutControlPlane) PrepareBeforeProgress() (bool, erro
 	}
 
 	// record revisions and replicas info to BatchRelease.Status
-	if err := c.RecordWorkloadRevisionAndReplicas(); err != nil {
+	err = c.RecordWorkloadRevisionAndReplicas()
+	if err != nil {
 		return false, err
 	}
 
@@ -137,7 +140,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) PrepareBeforeProgress() (bool, erro
 func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 	workloadInfo, err := c.GetWorkloadInfo()
 	if err != nil {
-		return false, nil
+		return false, err
 	}
 
 	if c.planController.Status.ObservedWorkloadReplicas == 0 {
@@ -150,6 +153,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 		return false, nil
 	}
 
+	currentBatch := c.newStatus.CanaryStatus.CurrentBatch
 	// the number of canary pods should have in current batch
 	canaryGoal := c.calculateCurrentCanary(c.planController.Status.ObservedWorkloadReplicas)
 	// the number of stable pods should have in current batch
@@ -158,30 +162,83 @@ func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 	currentCanaryReplicas := workloadInfo.Status.UpdatedReplicas
 
 	// in case of no need to upgrade pods
-	if upgradeDone, _ := c.IsBatchUpgraded(canaryGoal, stableGoal); upgradeDone {
-		klog.V(3).InfoS("upgraded one batch, but no need to update partition of cloneset",
-			"BatchRelease", client.ObjectKeyFromObject(c.planController), "current-batch", c.planController.Status.CanaryStatus.CurrentBatch,
-			"canary-goal", canaryGoal, "stable-goal", stableGoal, "canary-replicas", currentCanaryReplicas)
-		return true, nil
-	}
-
-	// upgrade pods
-	if upgradeDone, err := c.UpgradeBatch(canaryGoal, stableGoal); err != nil || !upgradeDone {
+	if upgradeDone, _ := c.IsBatchUpgraded(canaryGoal, stableGoal); !upgradeDone {
+		// upgrade pods
+		if upgradeDone, err = c.UpgradeBatch(canaryGoal, stableGoal); err != nil || !upgradeDone {
+			return false, nil
+		}
+		klog.V(3).InfoS("upgraded one batch", "BatchRelease", client.ObjectKeyFromObject(c.planController),
+			"current batch", c.planController.Status.CanaryStatus.CurrentBatch, "updateRevision size", canaryGoal)
 		return false, nil
+	} else {
+		klog.V(3).InfoS("upgraded one batch, but no need to update partition of cloneset",
+			"BatchRelease", client.ObjectKeyFromObject(c.planController), "current-batch",
+			currentBatch, "canary-goal", canaryGoal, "stable-goal", stableGoal, "canary-replicas", currentCanaryReplicas)
 	}
 
-	klog.V(3).InfoS("upgraded one batch", "BatchRelease", client.ObjectKeyFromObject(c.planController),
-		"current batch", c.planController.Status.CanaryStatus.CurrentBatch, "updateRevision size", canaryGoal)
+	rolloutID, exist := util.GetRolloutID(workloadInfo.Metadata.Labels)
+	if exist {
+		if patchDone, err := c.PatchPodBatchLabel(rolloutID, currentBatch+1, canaryGoal); err != nil || !patchDone {
+			return false, err
+		}
+	}
+
 	c.recorder.Eventf(c.planController, v1.EventTypeNormal, "SetBatchDone",
 		"Finished submitting all upgrade quests for batch %d", c.planController.Status.CanaryStatus.CurrentBatch)
 	return true, nil
+}
+
+func (c *UnifiedWorkloadRolloutControlPlane) PatchPodBatchLabel(rolloutID string, currentID int32, canaryGoal int32) (bool, error) {
+	pods, err := c.ListOwnedPods()
+	if err != nil {
+		klog.Errorf("Failed to list pod when patching pod batch label, err: %v", err)
+		return false, err
+	}
+
+	updateRevision := c.planController.Status.UpdateRevision
+
+	patchedCount := int32(0)
+	for _, pod := range pods {
+		if !util.IsUpdateRevision(pod, updateRevision) {
+			continue
+		}
+		if !util.IsMatchRolloutID(pod, rolloutID) {
+			continue
+		}
+		patchedCount++
+	}
+
+	klog.V(3).Infof("BatchRelease(%v) patch %d pods with batchID, goal is %d pods",
+		client.ObjectKeyFromObject(c.planController), patchedCount, canaryGoal)
+
+	if patchedCount >= canaryGoal {
+		return true, nil
+	}
+
+	for _, pod := range pods {
+		if !util.IsUpdateRevision(pod, updateRevision) {
+			continue
+		}
+		if util.IsMatchRolloutID(pod, rolloutID) {
+			continue
+		}
+		podClone := pod.DeepCopy()
+		by := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s","%s":"%d"}}}`,
+			util.RolloutIDLabel, rolloutID, util.RolloutBatchIDLabel, currentID)
+		err := c.client.Patch(context.TODO(), podClone, client.RawPatch(types.StrategicMergePatchType, []byte(by)))
+		if err != nil {
+			klog.Errorf("Failed to patch Pod(%v) batchID, err: %v", client.ObjectKeyFromObject(podClone), err)
+			return false, err
+		}
+	}
+	return false, nil
 }
 
 // CheckOneBatchReady checks to see if the pods are all available according to the rollout plan
 func (c *UnifiedWorkloadRolloutControlPlane) CheckOneBatchReady() (bool, error) {
 	workloadInfo, err := c.GetWorkloadInfo()
 	if err != nil {
-		return false, nil
+		return false, err
 	}
 
 	if c.planController.Status.ObservedWorkloadReplicas == 0 {
@@ -235,12 +292,12 @@ func (c *UnifiedWorkloadRolloutControlPlane) CheckOneBatchReady() (bool, error) 
 }
 
 // FinalizeProgress makes sure the CloneSet is all upgraded
-func (c *UnifiedWorkloadRolloutControlPlane) FinalizeProgress(cleanup bool) bool {
+func (c *UnifiedWorkloadRolloutControlPlane) FinalizeProgress(cleanup bool) (bool, error) {
 	if _, err := c.ReleaseWorkload(cleanup); err != nil {
-		return false
+		return false, err
 	}
 	c.recorder.Eventf(c.planController, v1.EventTypeNormal, "FinalizedSuccessfully", "Rollout resource are finalized: cleanup=%v", cleanup)
-	return true
+	return true, nil
 }
 
 // SyncWorkloadInfo return change type if workload was changed during release
@@ -256,7 +313,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventTy
 	}
 
 	info, _ := json.Marshal(workloadInfo)
-	klog.Infof("%s", string(info))
+	klog.Infof("WorkloadInfo: %s", string(info))
 
 	// in case that the cloneSet status is untrustworthy
 	if workloadInfo.Status.ObservedGeneration != workloadInfo.Metadata.Generation {

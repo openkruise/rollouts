@@ -81,9 +81,16 @@ type WorkloadInfo struct {
 	Paused         bool
 	Replicas       *int32
 	GVKWithName    string
+	Selector       labels.Selector
 	MaxUnavailable *intstr.IntOrString
 	Metadata       *metav1.ObjectMeta
 	Status         *WorkloadStatus
+}
+
+func NewWorkloadInfo() *WorkloadInfo {
+	return &WorkloadInfo{
+		Status: &WorkloadStatus{},
+	}
 }
 
 // DeepHashObject writes specified object to hash using the spew library
@@ -429,6 +436,7 @@ func parseIntStr(m interface{}) *intstr.IntOrString {
 }
 
 func ParseWorkloadInfo(object *unstructured.Unstructured, namespacedName types.NamespacedName) *WorkloadInfo {
+	workloadGVKWithName := fmt.Sprintf("%v(%v)", object.GroupVersionKind().String(), namespacedName)
 	updateRevision := ParseStatusStringFrom(object, "updateRevision")
 	if len(updateRevision) > 0 {
 		updateRevision = updateRevision[len(object.GetName())+1:]
@@ -437,12 +445,16 @@ func ParseWorkloadInfo(object *unstructured.Unstructured, namespacedName types.N
 	if len(stableRevision) > 0 {
 		stableRevision = stableRevision[len(object.GetName())+1:]
 	}
-
+	selector, err := ParseSelector(object)
+	if err != nil {
+		klog.Errorf("Failed to parse selector for workload(%v)", workloadGVKWithName)
+	}
 	return &WorkloadInfo{
 		Metadata:       ParseMetadataFrom(object),
 		MaxUnavailable: ParseMaxUnavailableFrom(object),
 		Replicas:       pointer.Int32(ParseReplicasFrom(object)),
-		GVKWithName:    fmt.Sprintf("%v(%v)", object.GroupVersionKind().String(), namespacedName),
+		GVKWithName:    workloadGVKWithName,
+		Selector:       selector,
 		Status: &WorkloadStatus{
 			ObservedGeneration:   int64(ParseStatusIntFrom(object, "observedGeneration")),
 			Replicas:             int32(ParseStatusIntFrom(object, "replicas")),

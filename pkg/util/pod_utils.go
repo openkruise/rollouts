@@ -1,10 +1,16 @@
 package util
 
 import (
+	"context"
+	"strings"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // IsPodAvailable returns true if a pod is available; false otherwise.
@@ -64,4 +70,46 @@ func GetPodConditionFromList(conditions []v1.PodCondition, conditionType v1.PodC
 		}
 	}
 	return -1, nil
+}
+
+func IsUpdateRevision(pod *v1.Pod, updateRevision string) bool {
+	if strings.HasSuffix(pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey], updateRevision) {
+		return true
+	}
+	if strings.HasSuffix(pod.Labels[appsv1.ControllerRevisionHashLabelKey], updateRevision) {
+		return true
+	}
+	return false
+}
+
+func ListOwnedPods(c client.Client, object client.Object) ([]*v1.Pod, error) {
+	un, ok := object.(*unstructured.Unstructured)
+	if !ok {
+		unMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(object)
+		if err != nil {
+			return nil, nil
+		}
+		un = &unstructured.Unstructured{Object: unMap}
+	}
+
+	selector, err := ParseSelector(un)
+	if err != nil {
+		return nil, err
+	}
+
+	podLister := &v1.PodList{}
+	err = c.List(context.TODO(), podLister, &client.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return nil, err
+	}
+	pods := make([]*v1.Pod, 0)
+	for i := range podLister.Items {
+		pod := &podLister.Items[i]
+		owner := metav1.GetControllerOf(pod)
+		if owner == nil || owner.UID != object.GetUID() {
+			continue
+		}
+		pods = append(pods, pod)
+	}
+	return pods, nil
 }
