@@ -314,7 +314,6 @@ var _ = SIGDescribe("Rollout", func() {
 	})
 
 	KruiseDescribe("Deployment rollout canary nginx", func() {
-		return
 		It("V1->V2: Percentage 20%,40%,60%,80%,90%, and replicas=3", func() {
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
@@ -1602,7 +1601,6 @@ var _ = SIGDescribe("Rollout", func() {
 	})
 
 	KruiseDescribe("CloneSet rollout canary nginx", func() {
-		return
 		It("V1->V2: Percentage, 20%,60% Succeeded", func() {
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
