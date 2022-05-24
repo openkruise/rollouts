@@ -160,7 +160,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(deployment.Name, clone)).NotTo(HaveOccurred())
 			return clone.Status.ObservedGeneration == clone.Generation &&
 				*clone.Spec.Replicas == clone.Status.ReadyReplicas && *clone.Spec.Replicas == clone.Status.Replicas
-		}, 5*time.Minute, time.Second).Should(BeTrue())
+		}, 10*time.Minute, time.Second).Should(BeTrue())
 	}
 
 	WaitRolloutCanaryStepPaused := func(name string, stepIndex int32) {

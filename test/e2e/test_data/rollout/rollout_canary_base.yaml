@@ -4,13 +4,11 @@ metadata:
   name: rollouts-demo
 spec:
   objectRef:
-    type: workloadRef
     workloadRef:
       apiVersion: apps/v1
       kind: Deployment
       name: echoserver
   strategy:
-    type: canary
     canary:
       steps:
       - weight: 20

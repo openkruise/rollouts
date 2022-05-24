@@ -34,7 +34,6 @@ import (
 // Workload is used to return (controller, scale, selector) fields from the
 // controller finder functions.
 type Workload struct {
-	metav1.TypeMeta
 	metav1.ObjectMeta
 
 	// replicas
@@ -127,7 +126,6 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 		CanaryReplicas:      cloneSet.Status.UpdatedReplicas,
 		CanaryReadyReplicas: cloneSet.Status.UpdatedReadyReplicas,
 		ObjectMeta:          cloneSet.ObjectMeta,
-		TypeMeta:            cloneSet.TypeMeta,
 		Replicas:            *cloneSet.Spec.Replicas,
 		PodTemplateHash:     cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
 		IsStatusConsistent:  true,
@@ -172,7 +170,6 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 
 	workload := &Workload{
 		ObjectMeta:         stable.ObjectMeta,
-		TypeMeta:           stable.TypeMeta,
 		Replicas:           *stable.Spec.Replicas,
 		IsStatusConsistent: true,
 		StableRevision:     stableRs.Labels[apps.DefaultDeploymentUniqueLabelKey],

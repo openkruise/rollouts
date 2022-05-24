@@ -97,7 +97,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	if util.DiscoverGVK(util.CloneSetGVK) {
+	if util.DiscoverGVK(util.ControllerKruiseKindCS) {
 		// Watch changes to CloneSet
 		err = c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, &workloadEventHandler{Reader: mgr.GetCache()})
 		if err != nil {
@@ -162,7 +162,10 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// executor start to execute the batch release plan.
 	startTimestamp := time.Now()
-	result, currentStatus := r.executor.Do()
+	result, currentStatus, err := r.executor.Do()
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 
 	defer func() {
 		klog.InfoS("Finished one round of reconciling release plan",

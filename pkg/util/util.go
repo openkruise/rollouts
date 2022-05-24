@@ -38,7 +38,7 @@ const (
 
 // RolloutState is annotation[rollouts.kruise.io/in-progressing] value
 type RolloutState struct {
-	RolloutName string
+	RolloutName string `json:"rolloutName"`
 }
 
 func GetRolloutState(annotations map[string]string) (*RolloutState, error) {

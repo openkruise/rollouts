@@ -33,11 +33,16 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -54,9 +59,32 @@ const (
 	alphanums = "bcdfghjklmnpqrstvwxz2456789"
 )
 
-var (
-	CloneSetGVK = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
-)
+type WorkloadStatus struct {
+	Replicas             int32
+	ReadyReplicas        int32
+	UpdatedReplicas      int32
+	UpdatedReadyReplicas int32
+	AvailableReplicas    int32
+	ObservedGeneration   int64
+	UpdateRevision       string
+	StableRevision       string
+}
+
+type WorkloadInfo struct {
+	Paused         bool
+	Replicas       *int32
+	GVKWithName    string
+	Selector       labels.Selector
+	MaxUnavailable *intstr.IntOrString
+	Metadata       *metav1.ObjectMeta
+	Status         *WorkloadStatus
+}
+
+func NewWorkloadInfo() *WorkloadInfo {
+	return &WorkloadInfo{
+		Status: &WorkloadStatus{},
+	}
+}
 
 // DeepHashObject writes specified object to hash using the spew library
 // which follows pointers and prints actual values of the nested objects
@@ -97,20 +125,6 @@ func SafeEncodeString(s string) string {
 		r[i] = alphanums[(int(b) % len(alphanums))]
 	}
 	return string(r)
-}
-
-func IsControlledBy(object, owner metav1.Object) bool {
-	controlInfo, controlled := object.GetAnnotations()[BatchReleaseControlAnnotation]
-	if !controlled {
-		return false
-	}
-
-	o := &metav1.OwnerReference{}
-	if err := json.Unmarshal([]byte(controlInfo), o); err != nil {
-		return false
-	}
-
-	return o.UID == owner.GetUID()
 }
 
 func CalculateNewBatchTarget(rolloutSpec *v1alpha1.ReleasePlan, workloadReplicas, currentBatch int) int {
@@ -196,4 +210,126 @@ func FilterActiveDeployment(ds []*apps.Deployment) []*apps.Deployment {
 func GenRandomStr(length int) string {
 	randStr := rand.String(length)
 	return rand.SafeEncodeString(randStr)
+}
+
+func ParseReplicasFrom(object *unstructured.Unstructured) int32 {
+	replicas := int32(1)
+	field, found, err := unstructured.NestedInt64(object.Object, "spec", "replicas")
+	if err == nil && found {
+		replicas = int32(field)
+	}
+	return replicas
+}
+
+func ParseStatusIntFrom(object *unstructured.Unstructured, field string) int64 {
+	value, found, err := unstructured.NestedInt64(object.Object, "status", field)
+	if err == nil && found {
+		return value
+	}
+	return 0
+}
+
+func ParseStatusStringFrom(object *unstructured.Unstructured, field string) string {
+	value, found, err := unstructured.NestedFieldNoCopy(object.Object, "status", field)
+	if err == nil && found {
+		return value.(string)
+	}
+	return ""
+}
+
+func ParseMetadataFrom(object *unstructured.Unstructured) *metav1.ObjectMeta {
+	m, found, err := unstructured.NestedMap(object.Object, "metadata")
+	if err != nil || !found {
+		return nil
+	}
+	data, _ := json.Marshal(m)
+	meta := &metav1.ObjectMeta{}
+	_ = json.Unmarshal(data, meta)
+	return meta
+}
+
+func ParseMaxUnavailableFrom(object *unstructured.Unstructured) *intstr.IntOrString {
+	// case 1: object is statefulset
+	m, found, err := unstructured.NestedFieldCopy(object.Object, "spec", "updateStrategy", "rollingUpdate", "maxUnavailable")
+	if err == nil && found {
+		return parseIntStr(m)
+	}
+
+	// case2: object is cloneset
+	m, found, err = unstructured.NestedFieldCopy(object.Object, "spec", "updateStrategy", "maxUnavailable")
+	if err == nil && found {
+		return parseIntStr(m)
+	}
+
+	// case3: object is deployment
+	m, found, err = unstructured.NestedFieldCopy(object.Object, "spec", "strategy", "rollingUpdate", "maxUnavailable")
+	if err == nil && found {
+		return parseIntStr(m)
+	}
+
+	return nil
+}
+
+func ParseSelector(object *unstructured.Unstructured) (labels.Selector, error) {
+	m, found, err := unstructured.NestedFieldNoCopy(object.Object, "spec", "selector")
+	if err != nil || !found {
+		return nil, err
+	}
+	byteInfo, _ := json.Marshal(m)
+	labelSelector := &metav1.LabelSelector{}
+	_ = json.Unmarshal(byteInfo, labelSelector)
+	return metav1.LabelSelectorAsSelector(labelSelector)
+}
+
+func GetEmptyWorkloadObject(gvk schema.GroupVersionKind) client.Object {
+	switch gvk.Kind {
+	case ControllerKindDep.Kind:
+		return &apps.Deployment{}
+	case ControllerKruiseKindCS.Kind:
+		return &appsv1alpha1.CloneSet{}
+	default:
+		unstructuredObject := &unstructured.Unstructured{}
+		unstructuredObject.SetGroupVersionKind(gvk)
+		return unstructuredObject
+	}
+}
+
+func parseIntStr(m interface{}) *intstr.IntOrString {
+	field := &intstr.IntOrString{}
+	data, _ := json.Marshal(m)
+	_ = json.Unmarshal(data, field)
+	return field
+}
+
+func ParseWorkloadInfo(object *unstructured.Unstructured, namespacedName types.NamespacedName) *WorkloadInfo {
+	workloadGVKWithName := fmt.Sprintf("%v(%v)", object.GroupVersionKind().String(), namespacedName)
+	updateRevision := ParseStatusStringFrom(object, "updateRevision")
+	if len(updateRevision) > 0 {
+		updateRevision = updateRevision[len(object.GetName())+1:]
+	}
+	stableRevision := ParseStatusStringFrom(object, "currentRevision")
+	if len(stableRevision) > 0 {
+		stableRevision = stableRevision[len(object.GetName())+1:]
+	}
+	selector, err := ParseSelector(object)
+	if err != nil {
+		klog.Errorf("Failed to parse selector for workload(%v)", workloadGVKWithName)
+	}
+	return &WorkloadInfo{
+		Metadata:       ParseMetadataFrom(object),
+		MaxUnavailable: ParseMaxUnavailableFrom(object),
+		Replicas:       pointer.Int32(ParseReplicasFrom(object)),
+		GVKWithName:    workloadGVKWithName,
+		Selector:       selector,
+		Status: &WorkloadStatus{
+			ObservedGeneration:   int64(ParseStatusIntFrom(object, "observedGeneration")),
+			Replicas:             int32(ParseStatusIntFrom(object, "replicas")),
+			ReadyReplicas:        int32(ParseStatusIntFrom(object, "readyReplicas")),
+			UpdatedReplicas:      int32(ParseStatusIntFrom(object, "updatedReplicas")),
+			AvailableReplicas:    int32(ParseStatusIntFrom(object, "availableReplicas")),
+			UpdatedReadyReplicas: int32(ParseStatusIntFrom(object, "updatedReadyReplicas")),
+			UpdateRevision:       updateRevision,
+			StableRevision:       stableRevision,
+		},
+	}
 }

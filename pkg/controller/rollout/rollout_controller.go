@@ -118,7 +118,7 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
-	if util.DiscoverGVK(util.CloneSetGVK) {
+	if util.DiscoverGVK(util.ControllerKruiseKindCS) {
 		// Watch for changes to cloneset
 		if err = c.Watch(&source.Kind{Type: &appsv1alpha1.CloneSet{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}); err != nil {
 			return err
