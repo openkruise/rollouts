@@ -43,6 +43,21 @@ import (
 var _ = SIGDescribe("BatchRelease", func() {
 	var namespace string
 
+	DumpAllResources := func() {
+		rollout := &rolloutsv1alpha1.RolloutList{}
+		k8sClient.List(context.TODO(), rollout, client.InNamespace(namespace))
+		fmt.Println(workloads.DumpJSON(rollout))
+		batch := &rolloutsv1alpha1.BatchReleaseList{}
+		k8sClient.List(context.TODO(), batch, client.InNamespace(namespace))
+		fmt.Println(workloads.DumpJSON(batch))
+		deploy := &apps.DeploymentList{}
+		k8sClient.List(context.TODO(), deploy, client.InNamespace(namespace))
+		fmt.Println(workloads.DumpJSON(deploy))
+		rs := &apps.ReplicaSetList{}
+		k8sClient.List(context.TODO(), rs, client.InNamespace(namespace))
+		fmt.Println(workloads.DumpJSON(rs))
+	}
+
 	CreateObject := func(object client.Object, options ...client.CreateOption) {
 		object.SetNamespace(namespace)
 		Expect(k8sClient.Create(context.TODO(), object)).NotTo(HaveOccurred())
@@ -157,6 +172,20 @@ var _ = SIGDescribe("BatchRelease", func() {
 		}, 20*time.Minute, time.Second).Should(BeTrue())
 	}
 
+	WaitBatchReleaseProgressing := func(object *rolloutsv1alpha1.BatchRelease) {
+		startTime := time.Now()
+		Eventually(func() rolloutsv1alpha1.RolloutPhase {
+			release := &rolloutsv1alpha1.BatchRelease{}
+			Expect(GetObject(object.Namespace, object.Name, release)).NotTo(HaveOccurred())
+			if startTime.Add(time.Minute * 5).Before(time.Now()) {
+				DumpAllResources()
+				Fail("Timeout waiting batchRelease to 'Progressing' phase")
+			}
+			fmt.Println(release.Status.Phase)
+			return release.Status.Phase
+		}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
+	}
+
 	BeforeEach(func() {
 		namespace = randomNamespaceName("batchrelease")
 		ns := v1.Namespace{
@@ -170,7 +199,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 	AfterEach(func() {
 		By("[TEST] Clean up resources after an integration test")
 		k8sClient.DeleteAllOf(context.TODO(), &apps.Deployment{}, client.InNamespace(namespace))
-		if workloads.DiscoverGVK(workloads.CloneSetGVK) {
+		if workloads.DiscoverGVK(workloads.ControllerKruiseKindCS) {
 			k8sClient.DeleteAllOf(context.TODO(), &kruiseappsv1alpha1.CloneSet{}, client.InNamespace(namespace))
 		}
 		k8sClient.DeleteAllOf(context.TODO(), &rolloutsv1alpha1.BatchRelease{}, client.InNamespace(namespace))
@@ -178,7 +207,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 	})
 
 	KruiseDescribe("CloneSet BatchRelease Checker", func() {
-
 		It("V1->V2: Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
 			release := &rolloutsv1alpha1.BatchRelease{}
@@ -279,90 +307,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 				return clone.Status.UpdatedReplicas
 			}, 15*time.Minute, 5*time.Second).Should(Equal(int32(expectedReplicas)))
 		})
-
-		//It("V1->V2(Completed)->V3: Percentage, 100%, Succeeded", func() {
-		//	By("Creating BatchRelease....")
-		//	By("Creating BatchRelease...")
-		//	release := &rolloutsv1alpha1.BatchRelease{}
-		//	Expect(ReadYamlToObject("./test_data/batchrelease/cloneset_percentage_100.yaml", release)).ToNot(HaveOccurred())
-		//	CreateObject(release)
-		//
-		//	By("Creating CloneSet and waiting for all pods ready....")
-		//	By("Creating workload and waiting for all pods ready...")
-		//	cloneset := &kruiseappsv1alpha1.CloneSet{}
-		//	Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
-		//	cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
-		//	CreateObject(cloneset)
-		//	WaitCloneSetAllPodsReady(cloneset)
-		//	stableRevisionV1 := GetUpdateRevision(cloneset)
-		//
-		//	/*************************************************************************************
-		//					Start to release V1->V2
-		//	 *************************************************************************************/
-		//	By("Start to release V1->V2....")
-		//	cloneset.Spec.UpdateStrategy.Paused = true
-		//	cloneset.Spec.Replicas = pointer.Int32Ptr(5)
-		//	cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV2)
-		//	UpdateCloneSet(cloneset)
-		//
-		//	// record canary revision --> v2
-		//	canaryRevisionV2 := GetUpdateRevision(cloneset)
-		//	Expect(canaryRevisionV2).ShouldNot(Equal(stableRevisionV1))
-		//
-		//	By("V1->V2: Checking CloneSet updated replicas...")
-		//	for i := range release.Spec.ReleasePlan.Batches {
-		//		By(fmt.Sprintf("\tWaiting for batch[%v] completed...", i))
-		//		batch := &release.Spec.ReleasePlan.Batches[i]
-		//		expectedUpdatedReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&batch.CanaryReplicas, int(*cloneset.Spec.Replicas), true)
-		//		Eventually(func() int32 {
-		//			clone := &kruiseappsv1alpha1.CloneSet{}
-		//			Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
-		//			return clone.Status.UpdatedReplicas
-		//		}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
-		//		time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
-		//	}
-		//
-		//	By("V1->V2: Checking BatchRelease status...")
-		//	Eventually(func() rolloutsv1alpha1.RolloutPhase {
-		//		clone := &rolloutsv1alpha1.BatchRelease{}
-		//		Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
-		//		return clone.Status.Phase
-		//	}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
-		//
-		//	/*************************************************************************************
-		//					V1->V2 Succeeded, Start to release V2->V3
-		//	 *************************************************************************************/
-		//	By("Start to release V2->V3....")
-		//	cloneset.Spec.UpdateStrategy.Paused = true
-		//	cloneset.Spec.Replicas = pointer.Int32Ptr(5)
-		//	cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV3)
-		//	UpdateCloneSet(cloneset)
-		//
-		//	// record canary revision --> v3
-		//	canaryRevisionV3 := GetUpdateRevision(cloneset)
-		//	Expect(canaryRevisionV3).ShouldNot(Equal(stableRevisionV1))
-		//	Expect(canaryRevisionV3).ShouldNot(Equal(canaryRevisionV2))
-		//
-		//	By("V2->V3: Checking CloneSet updated replicas...")
-		//	for i := range release.Spec.ReleasePlan.Batches {
-		//		By(fmt.Sprintf("\tWaiting for batch[%v] completed...", i))
-		//		batch := &release.Spec.ReleasePlan.Batches[i]
-		//		expectedUpdatedReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&batch.CanaryReplicas, int(*cloneset.Spec.Replicas), true)
-		//		Eventually(func() int32 {
-		//			clone := &kruiseappsv1alpha1.CloneSet{}
-		//			Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
-		//			return clone.Status.UpdatedReplicas
-		//		}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
-		//		time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
-		//	}
-		//
-		//	By("V2->V3: Checking BatchRelease status...")
-		//	Eventually(func() rolloutsv1alpha1.RolloutPhase {
-		//		clone := &rolloutsv1alpha1.BatchRelease{}
-		//		Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
-		//		return clone.Status.Phase
-		//	}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
-		//})
 
 		It("V1->V2(UnCompleted)->V3: Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease....")
@@ -677,56 +621,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 				return clone.Status.UpdatedReplicas == *clone.Spec.Replicas
 			}, 15*time.Minute, 5*time.Second).Should(BeTrue())
 		})
-
-		/*It("Rollback V1->V2->V1: Percentage, 100%, Succeeded", func() {
-			release := &rolloutsv1alpha1.BatchRelease{}
-			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset_percentage_100.yaml", release)).ToNot(HaveOccurred())
-			CreateObject(release)
-
-			By("Creating workload and waiting for all pods ready...")
-			cloneset := &kruiseappsv1alpha1.CloneSet{}
-			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset.yaml", cloneset)).ToNot(HaveOccurred())
-			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
-			cloneset.Spec.Template.Spec.Containers[0].ImagePullPolicy = v1.PullIfNotPresent
-			CreateObject(cloneset)
-			WaitCloneSetAllPodsReady(cloneset)
-
-			// record stable revision --> v1
-			stableRevision := GetUpdateRevision(cloneset)
-
-			cloneset.Spec.UpdateStrategy.Paused = true
-			// todo
-			//cloneset.Spec.Replicas = pointer.Int32Ptr(10)
-			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.FailedImage)
-			UpdateCloneSet(cloneset)
-
-			// record canary revision --> v2
-			canaryRevision := GetUpdateRevision(cloneset)
-			Expect(canaryRevision).ShouldNot(Equal(stableRevision))
-
-			By("Waiting a minute and checking failed revision...")
-			time.Sleep(time.Minute)
-			for i := 0; i < 30; i++ {
-				fetchedRelease := &rolloutsv1alpha1.BatchRelease{}
-				Expect(GetObject(release.Namespace, release.Name, fetchedRelease)).NotTo(HaveOccurred())
-				Expect(fetchedRelease.Status.CanaryStatus.UpdatedReplicas).Should(Equal(int32(1)))
-				Expect(fetchedRelease.Status.CanaryStatus.UpdatedReadyReplicas).Should(Equal(int32(0)))
-				Expect(fetchedRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(int32(0)))
-				time.Sleep(time.Second)
-			}
-
-			By("Updating cloneset to V1...")
-			cloneset.Spec.UpdateStrategy.Partition = nil
-			cloneset.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
-			UpdateCloneSet(cloneset)
-
-			By("Checking BatchRelease completed status phase...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
-				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
-				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCancelled))
-		})*/
 	})
 
 	KruiseDescribe("Deployment BatchRelease Checker", func() {
@@ -751,15 +645,13 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Replicas = pointer.Int32Ptr(5)
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV2)
 			UpdateDeployment(deployment)
+			WaitBatchReleaseProgressing(release)
 
 			// record canary revision --> v2
 			canaryRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 			Expect(canaryRevision).ShouldNot(Equal(stableRevision))
 
 			By("Checking Deployment updated replicas...")
-			Eventually(func() *apps.Deployment {
-				return GetCanaryDeployment(release)
-			}, 5*time.Minute, time.Second).ShouldNot(BeNil())
 			for i := range release.Spec.ReleasePlan.Batches {
 				By(fmt.Sprintf("\tWaiting for batch[%v] completed...", i))
 				batch := &release.Spec.ReleasePlan.Batches[i]
@@ -804,11 +696,9 @@ var _ = SIGDescribe("BatchRelease", func() {
 			// record canary revision --> v2
 			canaryRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 			Expect(canaryRevision).ShouldNot(Equal(stableRevision))
+			WaitBatchReleaseProgressing(release)
 
 			By("Checking Deployment updated replicas...")
-			Eventually(func() *apps.Deployment {
-				return GetCanaryDeployment(release)
-			}, 5*time.Minute, time.Second).ShouldNot(BeNil())
 			for i := range release.Spec.ReleasePlan.Batches {
 				By(fmt.Sprintf("\tWaiting for batch[%v] completed...", i))
 				batch := &release.Spec.ReleasePlan.Batches[i]
@@ -838,88 +728,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}, 15*time.Minute, 5*time.Second).Should(Equal(int32(expectedReplicas)))
 		})
 
-		//It("V1->V2(Completed)->V3: Percentage, 100%, Succeeded", func() {
-		//	By("Creating BatchRelease....")
-		//	By("Creating BatchRelease...")
-		//	release := &rolloutsv1alpha1.BatchRelease{}
-		//	Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_100.yaml", release)).ToNot(HaveOccurred())
-		//	CreateObject(release)
-		//
-		//	By("Creating Deployment and waiting for all pods ready....")
-		//	By("Creating workload and waiting for all pods ready...")
-		//	deployment := &apps.Deployment{}
-		//	Expect(ReadYamlToObject("./test_data/batchrelease/deployment.yaml", deployment)).ToNot(HaveOccurred())
-		//	deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
-		//	CreateObject(deployment)
-		//	WaitDeploymentAllPodsReady(deployment)
-		//	stableRevisionV1 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
-		//
-		//	/*************************************************************************************
-		//					Start to release V1->V2
-		//	 *************************************************************************************/
-		//	By("Start to release V1->V2....")
-		//	deployment.Spec.Paused = true
-		//	deployment.Spec.Replicas = pointer.Int32Ptr(5)
-		//	deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV2)
-		//	UpdateDeployment(deployment)
-		//
-		//	// record canary revision --> v2
-		//	canaryRevisionV2 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
-		//	Expect(canaryRevisionV2).ShouldNot(Equal(stableRevisionV1))
-		//
-		//	By("V1->V2: Checking Deployment updated replicas...")
-		//	for i := range release.Spec.ReleasePlan.Batches {
-		//		By(fmt.Sprintf("\tWaiting for batch[%v] completed...", i))
-		//		batch := &release.Spec.ReleasePlan.Batches[i]
-		//		expectedUpdatedReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&batch.CanaryReplicas, int(*deployment.Spec.Replicas), true)
-		//		Eventually(func() int32 {
-		//			clone := GetCanaryDeployment(release)
-		//			return clone.Status.UpdatedReplicas
-		//		}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
-		//		time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
-		//	}
-		//
-		//	By("V1->V2: Checking BatchRelease status...")
-		//	Eventually(func() rolloutsv1alpha1.RolloutPhase {
-		//		clone := &rolloutsv1alpha1.BatchRelease{}
-		//		Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
-		//		return clone.Status.Phase
-		//	}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
-		//
-		//	/*************************************************************************************
-		//					V1->V2 Succeeded, Start to release V2->V3
-		//	 *************************************************************************************/
-		//	By("Start to release V2->V3....")
-		//	deployment.Spec.Paused = true
-		//	deployment.Spec.Replicas = pointer.Int32Ptr(5)
-		//	deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV3)
-		//	UpdateDeployment(deployment)
-		//
-		//	// record canary revision --> v3
-		//	canaryRevisionV3 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
-		//	Expect(canaryRevisionV3).ShouldNot(Equal(stableRevisionV1))
-		//	Expect(canaryRevisionV3).ShouldNot(Equal(canaryRevisionV2))
-		//
-		//	By("V2->V3: Checking Deployment updated replicas...")
-		//	for i := range release.Spec.ReleasePlan.Batches {
-		//		By(fmt.Sprintf("\tWaiting for batch[%v] completed...", i))
-		//		batch := &release.Spec.ReleasePlan.Batches[i]
-		//		expectedUpdatedReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&batch.CanaryReplicas, int(*deployment.Spec.Replicas), true)
-		//		Eventually(func() int32 {
-		//			clone := GetCanaryDeployment(release)
-		//			return clone.Status.UpdatedReplicas
-		//		}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
-		//		time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
-		//	}
-		//
-		//	By("V2->V3: Checking BatchRelease status...")
-		//	Eventually(func() rolloutsv1alpha1.RolloutPhase {
-		//		clone := &rolloutsv1alpha1.BatchRelease{}
-		//		Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
-		//		return clone.Status.Phase
-		//	}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
-		//})
-
 		It("V1->V2(UnCompleted)->V3: Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease....")
 			By("Creating BatchRelease...")
@@ -944,15 +752,13 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Replicas = pointer.Int32Ptr(5)
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV2)
 			UpdateDeployment(deployment)
+			WaitBatchReleaseProgressing(release)
 
 			// record canary revision --> v2
 			canaryRevisionV2 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 			Expect(canaryRevisionV2).ShouldNot(Equal(stableRevisionV1))
 
 			By("V1->V2: Checking Deployment updated replicas...")
-			Eventually(func() *apps.Deployment {
-				return GetCanaryDeployment(release)
-			}, 5*time.Minute, time.Second).ShouldNot(BeNil())
 			for i := 0; i < len(release.Spec.ReleasePlan.Batches)-2; i++ {
 				By(fmt.Sprintf("\tWaiting for batch[%v] completed...", i))
 				batch := &release.Spec.ReleasePlan.Batches[i]
@@ -1012,15 +818,13 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Replicas = pointer.Int32Ptr(5)
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV2)
 			UpdateDeployment(deployment)
+			WaitBatchReleaseProgressing(release)
 
 			// record canary revision --> v2
 			canaryRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 			Expect(canaryRevision).ShouldNot(Equal(stableRevision))
 
 			By("Checking Deployment updated replicas...")
-			Eventually(func() *apps.Deployment {
-				return GetCanaryDeployment(release)
-			}, 5*time.Minute, time.Second).ShouldNot(BeNil())
 			for i := range release.Spec.ReleasePlan.Batches {
 				By(fmt.Sprintf("\tWaiting for batch[%v] completed...", i))
 				batch := &release.Spec.ReleasePlan.Batches[i]
@@ -1082,15 +886,13 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Replicas = pointer.Int32Ptr(10)
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV2)
 			UpdateDeployment(deployment)
+			WaitBatchReleaseProgressing(release)
 
 			// record canary revision --> v2
 			canaryRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 			Expect(canaryRevision).ShouldNot(Equal(stableRevision))
 
 			By("Checking Deployment updated replicas...")
-			Eventually(func() *apps.Deployment {
-				return GetCanaryDeployment(release)
-			}, 5*time.Minute, time.Second).ShouldNot(BeNil())
 			for i := range release.Spec.ReleasePlan.Batches {
 				By(fmt.Sprintf("\tWaiting for batch[%v] completed...", i))
 				batch := &release.Spec.ReleasePlan.Batches[i]
@@ -1152,15 +954,13 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Replicas = pointer.Int32Ptr(5)
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV2)
 			UpdateDeployment(deployment)
+			WaitBatchReleaseProgressing(release)
 
 			// record canary revision --> v2
 			canaryRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 			Expect(canaryRevision).ShouldNot(Equal(stableRevision))
 
 			By("Checking Deployment updated replicas...")
-			Eventually(func() *apps.Deployment {
-				return GetCanaryDeployment(release)
-			}, 5*time.Minute, time.Second).ShouldNot(BeNil())
 			for i := range release.Spec.ReleasePlan.Batches {
 				batch := &release.Spec.ReleasePlan.Batches[i]
 				fetchedDeployment := &apps.Deployment{}
@@ -1221,15 +1021,13 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Replicas = pointer.Int32Ptr(5)
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV2)
 			UpdateDeployment(deployment)
+			WaitBatchReleaseProgressing(release)
 
 			// record canary revision --> v2
 			canaryRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 			Expect(canaryRevision).ShouldNot(Equal(stableRevision))
 
 			By("Checking Deployment updated replicas...")
-			Eventually(func() *apps.Deployment {
-				return GetCanaryDeployment(release)
-			}, 5*time.Minute, time.Second).ShouldNot(BeNil())
 			for i := range release.Spec.ReleasePlan.Batches {
 				By(fmt.Sprintf("\tWaiting for batch[%v] completed...", i))
 				batch := &release.Spec.ReleasePlan.Batches[i]
@@ -1292,6 +1090,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			//deployment.Spec.Replicas = pointer.Int32Ptr(10)
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.FailedImage)
 			UpdateDeployment(deployment)
+			WaitBatchReleaseProgressing(release)
 
 			// record canary revision --> v2
 			canaryRevisionV2 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -1342,9 +1141,10 @@ var _ = SIGDescribe("BatchRelease", func() {
 			// record stable revision --> v1
 			stableRevisionV1 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 
-			deployment.Spec.Paused = false
+			deployment.Spec.Paused = true
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.FailedImage)
 			UpdateDeployment(deployment)
+			WaitBatchReleaseProgressing(release)
 
 			// record canary revision --> v2
 			canaryRevisionV2 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -1409,6 +1209,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			// record canary revision --> v2
 			canaryRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 			Expect(canaryRevision).ShouldNot(Equal(stableRevision))
+			WaitBatchReleaseProgressing(release)
 
 			var fetchedRelease *rolloutsv1alpha1.BatchRelease
 			Eventually(func() bool {
@@ -1440,9 +1241,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
-			Eventually(func() *apps.Deployment {
-				return GetCanaryDeployment(release)
-			}, 5*time.Minute, time.Second).ShouldNot(BeNil())
 			Expect(GetObject(deployment.Namespace, deployment.Name, deployment)).NotTo(HaveOccurred())
 			Eventually(func() int32 {
 				canary := GetCanaryDeployment(release)

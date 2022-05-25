@@ -21,6 +21,7 @@ import (
 	"os"
 
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruisev1beta "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
 	"github.com/openkruise/rollouts/pkg/controller/rollout"
@@ -48,6 +49,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(kruisev1aplphal.AddToScheme(scheme))
+	utilruntime.Must(kruisev1beta.AddToScheme(scheme))
 	utilruntime.Must(rolloutsv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
@@ -92,6 +94,7 @@ func main() {
 		Recorder: mgr.GetEventRecorderFor("rollout-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Rollout")
+		os.Exit(1)
 	}
 
 	if err = br.Add(mgr); err != nil {
