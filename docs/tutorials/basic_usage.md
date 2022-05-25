@@ -30,7 +30,8 @@ spec:
     spec:
       containers:
       - name: echoserver
-        image: cilium/echoserver:1.10.2
+         # mac m1 should choics image can support arm64,such as image e2eteam/echoserver:2.2-linux-arm64
+        image: cilium/echoserver:1.10.2 
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
@@ -129,6 +130,7 @@ spec:
   ...
   containers:
   - name: echoserver
+    # mac m1 can choice image e2eteam/echoserver:2.2-linux-arm
     image: cilium/echoserver:1.10.3
     imagePullPolicy: IfNotPresent
 ```
@@ -138,11 +140,11 @@ As shown in the figure below, replicas(5)*replicas(20%)=1 new versions of Pods a
 
 ![upgrade](../images/upgrade_echoserver.png)
 
-## 4. Approve Rollout (Release Success)
+## 4.   (Release Success)
 **The Rollout status shows that the current rollout status is *StepPaused*, which means that the first 20% of Pods are released success and 5% of traffic is routed to the new version.**
 
 After that, developers can use some other methods, such as prometheus metrics business metrics,
-to determine that the release meets expectations and then continue the subsequent releases via **kubectl-kruise rollout approve rollout/rollouts-demo -n default** and wait deployment release is complete, as follows:
+to determine that the release meets expectations and then continue the subsequent releases via **[kubectl-kruise](https://github.com/openkruise/kruise-tools) rollout approve rollout/rollouts-demo -n default** and wait deployment release is complete, as follows:
 
 ![approve](../images/approve_rollout.png)
 
@@ -181,6 +183,7 @@ spec:
   ...
   containers:
   - name: echoserver
+    # m1 should rollback to e2eteam/echoserver:2.2-linux-arm64
     image: cilium/echoserver:1.10.2
     imagePullPolicy: IfNotPresent
 ```
@@ -199,6 +202,7 @@ spec:
   ...
   containers:
   - name: echoserver
+    # m1 can choice image e2eteam/echoserver:2.2-linux-arm
     image: cilium/echoserver:1.10.3
     imagePullPolicy: IfNotPresent
 ```
