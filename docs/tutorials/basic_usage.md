@@ -140,7 +140,7 @@ As shown in the figure below, replicas(5)*replicas(20%)=1 new versions of Pods a
 
 ![upgrade](../images/upgrade_echoserver.png)
 
-## 4.   (Release Success)
+## 4. Approve Rollout (Release Success)
 **The Rollout status shows that the current rollout status is *StepPaused*, which means that the first 20% of Pods are released success and 5% of traffic is routed to the new version.**
 
 After that, developers can use some other methods, such as prometheus metrics business metrics,
