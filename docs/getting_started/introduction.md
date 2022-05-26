@@ -38,3 +38,4 @@ The native Kubernetes Deployment Object supports the **RollingUpdate** strategy 
 Here are some recommended next steps:
 - Start to [Install Kruise Rollout](./installation.md).
 - Learn Kruise Rollout's [Basic Usage](../tutorials/basic_usage.md).
+- [Demo video](https://www.bilibili.com/video/BV1wT4y1Q7eD?spm_id_from=333.880.my_history.page.click)
