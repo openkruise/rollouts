@@ -21,6 +21,7 @@ import (
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/rollout/batchrelease"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -79,8 +80,7 @@ func (w *enqueueRequestForWorkload) handleEvent(q workqueue.RateLimitingInterfac
 
 func (w *enqueueRequestForWorkload) getRolloutForWorkload(key types.NamespacedName, gvk schema.GroupVersionKind) (*rolloutv1alpha1.Rollout, error) {
 	rList := &rolloutv1alpha1.RolloutList{}
-	listOptions := &client.ListOptions{Namespace: key.Namespace}
-	if err := w.reader.List(context.TODO(), rList, listOptions); err != nil {
+	if err := w.reader.List(context.TODO(), rList, client.InNamespace(key.Namespace), utilclient.DisableDeepCopy); err != nil {
 		klog.Errorf("List WorkloadSpread failed: %s", err.Error())
 		return nil, err
 	}

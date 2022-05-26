@@ -151,11 +151,15 @@ func (r *RolloutReconciler) calculateRolloutHash(rollout *rolloutv1alpha1.Rollou
 		return nil
 	}
 	// update rollout hash in annotation
+	cloneObj := rollout.DeepCopy()
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`, util.RolloutHashAnnotation, hash)
-	err := r.Patch(context.TODO(), rollout, client.RawPatch(types.MergePatchType, []byte(body)))
+	err := r.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, []byte(body)))
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) patch(%s) failed: %s", rollout.Namespace, rollout.Name, body, err.Error())
 		return err
+	}
+	if rollout.Annotations == nil {
+		rollout.Annotations = map[string]string{}
 	}
 	rollout.Annotations[util.RolloutHashAnnotation] = hash
 	klog.Infof("rollout(%s/%s) patch annotation(%s=%s) success", rollout.Namespace, rollout.Name, util.RolloutHashAnnotation, hash)

@@ -27,6 +27,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -259,6 +260,7 @@ func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error)
 		return nil, nil
 	}
 
+	gvk := schema.FromAPIVersionAndKind(targetRef.APIVersion, targetRef.Kind)
 	targetKey := types.NamespacedName{
 		Namespace: r.release.Namespace,
 		Name:      targetRef.Name,
@@ -277,9 +279,9 @@ func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error)
 			return workloads.NewDeploymentRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
 		}
 	}
-	message := fmt.Sprintf("the workload `%v.%v/%v` is not supported", targetRef.APIVersion, targetRef.Kind, targetRef.Name)
-	r.recorder.Event(r.release, v1.EventTypeWarning, "UnsupportedWorkload", message)
-	return nil, fmt.Errorf(message)
+
+	klog.InfoS("using statefulset-like batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+	return workloads.NewUnifiedWorkloadRolloutControlPlane(workloads.NewStatefulSetLikeController, r.client, r.recorder, r.release, r.releaseStatus, targetKey, gvk), nil
 }
 
 func (r *Executor) moveToNextBatch() bool {

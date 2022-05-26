@@ -148,7 +148,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 		},
 		{
 			Name:    "WorkloadRef is not Deployment kind",
-			Succeed: false,
+			Succeed: true,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
 				object.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{

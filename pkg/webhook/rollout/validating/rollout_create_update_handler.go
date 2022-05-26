@@ -23,6 +23,7 @@ import (
 	"reflect"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	addmissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -120,7 +121,7 @@ func (h *RolloutCreateUpdateHandler) validateRollout(rollout *appsv1alpha1.Rollo
 func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1alpha1.Rollout, path *field.Path) field.ErrorList {
 	errList := field.ErrorList{}
 	rolloutList := &appsv1alpha1.RolloutList{}
-	err := h.Client.List(context.TODO(), rolloutList, client.InNamespace(rollout.Namespace))
+	err := h.Client.List(context.TODO(), rolloutList, client.InNamespace(rollout.Namespace), utilclient.DisableDeepCopy)
 	if err != nil {
 		return append(errList, field.InternalError(path, err))
 	}
@@ -142,8 +143,8 @@ func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) fie
 }
 
 func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *field.Path) field.ErrorList {
-	if objectRef.WorkloadRef == nil || (objectRef.WorkloadRef.Kind != "Deployment" && objectRef.WorkloadRef.Kind != "CloneSet") {
-		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef only support 'Deployments', 'CloneSet'")}
+	if objectRef.WorkloadRef == nil {
+		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef is required")}
 	}
 	return nil
 }

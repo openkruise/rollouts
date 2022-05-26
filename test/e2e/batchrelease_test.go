@@ -88,6 +88,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 	}
 
 	UpdateCloneSet := func(object *kruiseappsv1alpha1.CloneSet) *kruiseappsv1alpha1.CloneSet {
+		object = object.DeepCopy()
 		var clone *kruiseappsv1alpha1.CloneSet
 		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			clone = &kruiseappsv1alpha1.CloneSet{}
@@ -95,6 +96,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			if err != nil {
 				return err
 			}
+			object.Spec.UpdateStrategy = clone.Spec.UpdateStrategy
 			clone.Spec = *object.Spec.DeepCopy()
 			return k8sClient.Update(context.TODO(), clone)
 		})).NotTo(HaveOccurred())
@@ -122,6 +124,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 	}
 
 	UpdateDeployment := func(object *apps.Deployment) *apps.Deployment {
+		object = object.DeepCopy()
 		var clone *apps.Deployment
 		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			clone = &apps.Deployment{}
@@ -129,6 +132,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			if err != nil {
 				return err
 			}
+			object.Spec.Strategy = clone.Spec.Strategy
 			clone.Spec = *object.Spec.DeepCopy()
 			return k8sClient.Update(context.TODO(), clone)
 		})).NotTo(HaveOccurred())
@@ -637,6 +641,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
+			Expect(GetObject(release.Namespace, release.Name, release))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -684,6 +690,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
+			Expect(GetObject(release.Namespace, release.Name, release))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -742,6 +750,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
+			Expect(GetObject(release.Namespace, release.Name, release))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
 			stableRevisionV1 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 
 			/*************************************************************************************
@@ -810,6 +820,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
+			Expect(GetObject(release.Namespace, release.Name, release))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -878,6 +890,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
+			Expect(GetObject(release.Namespace, release.Name, release))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -946,6 +960,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
+			Expect(GetObject(release.Namespace, release.Name, release))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -1013,6 +1029,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Template.Spec.Containers[0].Image = images.GetE2EImage(images.BusyBoxV1)
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
+			Expect(GetObject(release.Namespace, release.Name, release))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -1082,6 +1100,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Template.Spec.Containers[0].ImagePullPolicy = v1.PullIfNotPresent
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
+			Expect(GetObject(release.Namespace, release.Name, release))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevisionV1 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -1137,6 +1157,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			deployment.Spec.Template.Spec.Containers[0].ImagePullPolicy = v1.PullIfNotPresent
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
+			Expect(GetObject(release.Namespace, release.Name, release))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevisionV1 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -1198,6 +1220,8 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
+			Expect(GetObject(release.Namespace, release.Name, release))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)

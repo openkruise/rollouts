@@ -80,8 +80,9 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 	// update service selector
 	// update service selector specific revision pods
 	if r.canaryService.Spec.Selector[r.podRevisionLabelKey()] != canaryStatus.PodTemplateHash {
+		cloneObj := r.canaryService.DeepCopy()
 		body := fmt.Sprintf(`{"spec":{"selector":{"%s":"%s"}}}`, r.podRevisionLabelKey(), canaryStatus.PodTemplateHash)
-		if err = r.Patch(context.TODO(), r.canaryService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+		if err = r.Patch(context.TODO(), cloneObj, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
 			klog.Errorf("rollout(%s/%s) patch canary service(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, r.canaryService.Name, err.Error())
 			return false, err
 		}
@@ -91,8 +92,9 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 			r.rollout.Namespace, r.rollout.Name, r.canaryService.Name, r.podRevisionLabelKey(), canaryStatus.PodTemplateHash)
 	}
 	if r.stableService.Spec.Selector[r.podRevisionLabelKey()] != r.newStatus.StableRevision {
+		cloneObj := r.stableService.DeepCopy()
 		body := fmt.Sprintf(`{"spec":{"selector":{"%s":"%s"}}}`, r.podRevisionLabelKey(), r.newStatus.StableRevision)
-		if err = r.Patch(context.TODO(), r.stableService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+		if err = r.Patch(context.TODO(), cloneObj, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
 			klog.Errorf("rollout(%s/%s) patch stable service(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, r.stableService.Name, err.Error())
 			return false, err
 		}
@@ -158,8 +160,9 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 	}
 	//restore stable service configuration，remove hash revision selector
 	if r.stableService.Spec.Selector != nil && r.stableService.Spec.Selector[r.podRevisionLabelKey()] != "" {
+		cloneObj := r.stableService.DeepCopy()
 		body := fmt.Sprintf(`{"spec":{"selector":{"%s":null}}}`, r.podRevisionLabelKey())
-		if err = r.Patch(context.TODO(), r.stableService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+		if err = r.Patch(context.TODO(), cloneObj, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
 			klog.Errorf("rollout(%s/%s) patch stable service(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, r.stableService.Name, err.Error())
 			return false, err
 		}

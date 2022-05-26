@@ -20,12 +20,13 @@ import (
 	"flag"
 	"os"
 
-	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
-	kruisev1beta "github.com/openkruise/kruise-api/apps/v1beta1"
+	kruisev1aplphal1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruisev1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
 	"github.com/openkruise/rollouts/pkg/controller/rollout"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	"github.com/openkruise/rollouts/pkg/webhook"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -48,8 +49,8 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(kruisev1aplphal.AddToScheme(scheme))
-	utilruntime.Must(kruisev1beta.AddToScheme(scheme))
+	utilruntime.Must(kruisev1aplphal1.AddToScheme(scheme))
+	utilruntime.Must(kruisev1beta1.AddToScheme(scheme))
 	utilruntime.Must(rolloutsv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
@@ -68,7 +69,7 @@ func main() {
 	ctrl.SetLogger(klogr.New())
 
 	setupLog.Info("new clientset registry")
-	err := util.NewRegistry(ctrl.GetConfigOrDie())
+	err := utilclient.NewRegistry(ctrl.GetConfigOrDie())
 	if err != nil {
 		setupLog.Error(err, "unable to init clientset and informer")
 		os.Exit(1)
@@ -81,6 +82,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "71ddec2c.kruise.io",
+		NewClient:              utilclient.NewClient,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
