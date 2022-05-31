@@ -89,14 +89,12 @@ metadata:
   # namespace: xxxx
 spec:
   objectRef:
-    type: workloadRef
     # rollout of published workloads, currently only supports Deployment, CloneSet
     workloadRef:
       apiVersion: apps/v1
       kind: Deployment
       name: echoserver
   strategy:
-    type: canary
     canary:
       # canary published, e.g. 20%, 40%, 60% ...
       steps:
