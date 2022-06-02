@@ -23,10 +23,9 @@ import (
 	"reflect"
 	"time"
 
-	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
-	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -97,20 +96,13 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	if util.DiscoverGVK(util.ControllerKruiseKindCS) {
-		// Watch changes to CloneSet
-		err = c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, &workloadEventHandler{Reader: mgr.GetCache()})
-		if err != nil {
-			return err
-		}
-	}
-
-	// Watch changes to Deployment
-	err = c.Watch(&source.Kind{Type: &apps.Deployment{}}, &workloadEventHandler{Reader: mgr.GetCache()})
+	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &podEventHandler{Reader: mgr.GetCache()})
 	if err != nil {
 		return err
 	}
-	return nil
+
+	workloadHandler := &workloadEventHandler{Reader: mgr.GetCache()}
+	return util.AddWorkloadWatcher(c, workloadHandler)
 }
 
 var _ reconcile.Reconciler = &BatchReleaseReconciler{}
@@ -132,6 +124,10 @@ type BatchReleaseReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=replicasets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=statefulsets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=apps.kruise.io,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps.kruise.io,resources=statefulsets/status,verbs=get;update;patch
 
 // Reconcile reads that state of the cluster for a Rollout object and makes changes based on the state read
 // and what is in the Rollout.Spec

@@ -203,7 +203,7 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 	// the number of max unavailable canary pods allowed by this workload
 	maxUnavailable := 0
 	if c.clone.Spec.UpdateStrategy.MaxUnavailable != nil {
-		maxUnavailable, _ = intstr.GetValueFromIntOrPercent(c.clone.Spec.UpdateStrategy.MaxUnavailable, int(c.releaseStatus.ObservedWorkloadReplicas), true)
+		maxUnavailable, _ = intstr.GetValueFromIntOrPercent(c.clone.Spec.UpdateStrategy.MaxUnavailable, int(canaryGoal), true)
 	}
 
 	klog.InfoS("checking the batch releasing progress",
@@ -247,7 +247,7 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 // FinalizeProgress makes sure the CloneSet is all upgraded
 func (c *CloneSetRolloutController) FinalizeProgress(cleanup bool) (bool, error) {
 	if err := c.fetchCloneSet(); client.IgnoreNotFound(err) != nil {
-		return false, client.IgnoreNotFound(err)
+		return false, err
 	}
 
 	if _, err := c.releaseCloneSet(c.clone, cleanup); err != nil {
@@ -266,6 +266,9 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *util
 	}
 
 	if err := c.fetchCloneSet(); err != nil {
+		if apierrors.IsNotFound(err) {
+			return WorkloadHasGone, nil, err
+		}
 		return "", nil, err
 	}
 

@@ -36,6 +36,7 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	var needRetry bool
 	needStopThisRound := false
 	result := reconcile.Result{}
+	oldStatus := r.releaseStatus.DeepCopy()
 
 	// sync the workload info and watch the workload change event
 	workloadEvent, workloadInfo, err := controller.SyncWorkloadInfo()
@@ -56,7 +57,7 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 		message = "Release plan is deleted or cancelled, then terminate"
 		signalTerminating(r.releaseStatus)
 
-	case isPlanPaused(err, r.releasePlan, r.releaseStatus):
+	case isPlanPaused(workloadEvent, r.releasePlan, r.releaseStatus):
 		// handle the case that releasePlan.paused = true
 		reason = "PlanPaused"
 		message = "release plan is paused, then stop reconcile"
@@ -91,7 +92,7 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 		reason = "GetWorkloadError"
 		message = err.Error()
 
-	case isWorkloadGone(err, r.releaseStatus):
+	case isWorkloadGone(workloadEvent, r.releaseStatus):
 		// handle the case that the workload is deleted
 		reason = "WorkloadGone"
 		message = "target workload has gone, then terminate"
@@ -138,7 +139,6 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	}
 
 	// sync workload info with status
-	oldStatus := r.releaseStatus.DeepCopy()
 	refreshStatus(r.release, r.releaseStatus, workloadInfo)
 
 	// If it needs to retry or status phase or state changed, should
@@ -184,8 +184,8 @@ func isPlanUnhealthy(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseSt
 	return int(status.CanaryStatus.CurrentBatch) >= len(plan.Batches) && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
-func isPlanPaused(err error, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
-	return plan.Paused && status.Phase == v1alpha1.RolloutPhaseProgressing && !isWorkloadGone(err, status)
+func isPlanPaused(event workloads.WorkloadEventType, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
+	return plan.Paused && status.Phase == v1alpha1.RolloutPhaseProgressing && !isWorkloadGone(event, status)
 }
 
 func isGetWorkloadInfoError(err error) bool {
@@ -196,8 +196,8 @@ func isWorkloadLocated(err error, status *v1alpha1.BatchReleaseStatus) bool {
 	return err == nil && status.Phase == v1alpha1.RolloutPhaseInitial
 }
 
-func isWorkloadGone(err error, status *v1alpha1.BatchReleaseStatus) bool {
-	return errors.IsNotFound(err) && status.Phase != v1alpha1.RolloutPhaseInitial
+func isWorkloadGone(event workloads.WorkloadEventType, status *v1alpha1.BatchReleaseStatus) bool {
+	return event == workloads.WorkloadHasGone && status.Phase != v1alpha1.RolloutPhaseInitial
 }
 
 func isWorkloadScaling(event workloads.WorkloadEventType, status *v1alpha1.BatchReleaseStatus) bool {

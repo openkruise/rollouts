@@ -26,11 +26,18 @@ import (
 type WorkloadEventType string
 
 const (
-	IgnoreWorkloadEvent        WorkloadEventType = "workload-not-cared"
+	// IgnoreWorkloadEvent means workload event should be ignored.
+	IgnoreWorkloadEvent WorkloadEventType = "workload-event-ignore"
+	// WorkloadPodTemplateChanged means workload revision changed, should be stopped to execute batch release plan.
 	WorkloadPodTemplateChanged WorkloadEventType = "workload-pod-template-changed"
-	WorkloadReplicasChanged    WorkloadEventType = "workload-replicas-changed"
-	WorkloadStillReconciling   WorkloadEventType = "workload-is-reconciling"
-	WorkloadUnHealthy          WorkloadEventType = "workload-is-unhealthy"
+	// WorkloadReplicasChanged means workload is scaling during rollout, should recalculate upgraded pods in current batch.
+	WorkloadReplicasChanged WorkloadEventType = "workload-replicas-changed"
+	// WorkloadStillReconciling means workload status is untrusted Untrustworthy, we should wait workload controller to reconcile.
+	WorkloadStillReconciling WorkloadEventType = "workload-is-reconciling"
+	// WorkloadHasGone means workload is deleted during rollout, we should do something finalizing works if this event occurs.
+	WorkloadHasGone WorkloadEventType = "workload-has-gone"
+	// WorkloadUnHealthy means workload is at some unexpected state that our controller cannot handle, we should stop reconcile.
+	WorkloadUnHealthy WorkloadEventType = "workload-is-unhealthy"
 )
 
 type workloadController struct {

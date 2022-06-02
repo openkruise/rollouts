@@ -90,8 +90,9 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 	}
 
 	if len(patch) > 0 {
+		cloneObj := clone.DeepCopy()
 		patchByte, _ := json.Marshal(patch)
-		if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
+		if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 			c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ClaimCloneSetFailed", err.Error())
 			return false, err
 		}
@@ -124,8 +125,9 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 		return true, nil
 	}
 
+	cloneObj := clone.DeepCopy()
 	patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation))
-	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
+	if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ReleaseCloneSetFailed", err.Error())
 		return false, err
 	}
@@ -144,8 +146,9 @@ func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.Cl
 		},
 	}
 
+	cloneObj := clone.DeepCopy()
 	patchByte, _ := json.Marshal(patch)
-	if err := c.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
+	if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "PatchPartitionFailed",
 			"Failed to update the CloneSet(%v) to the correct target partition %d, error: %v",
 			c.targetNamespacedName, partition, err)

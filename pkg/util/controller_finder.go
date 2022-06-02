@@ -22,11 +22,15 @@ import (
 	"strings"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -48,6 +52,8 @@ type Workload struct {
 	CanaryReplicas int32
 	// canary ready replicas
 	CanaryReadyReplicas int32
+	// Revision hash key
+	RevisionLabelKey string
 
 	// Is it in rollback phase
 	IsInRollback bool
@@ -93,12 +99,14 @@ func (r *ControllerFinder) GetWorkloadForRef(namespace string, ref *rolloutv1alp
 }
 
 func (r *ControllerFinder) finders() []ControllerFinderFunc {
-	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getDeployment}
+	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getDeployment, r.getStatefulSetLikeWorkload}
 }
 
 var (
-	ControllerKindDep      = apps.SchemeGroupVersion.WithKind("Deployment")
-	ControllerKruiseKindCS = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	ControllerKindDep       = apps.SchemeGroupVersion.WithKind("Deployment")
+	ControllerKindSts       = apps.SchemeGroupVersion.WithKind("StatefulSet")
+	ControllerKruiseKindCS  = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	ControllerKruiseKindSts = appsv1beta1.SchemeGroupVersion.WithKind("StatefulSet")
 )
 
 // getKruiseCloneSet returns the kruise cloneSet referenced by the provided controllerRef.
@@ -121,6 +129,7 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 		return &Workload{IsStatusConsistent: false}, nil
 	}
 	workload := &Workload{
+		RevisionLabelKey:    apps.DefaultDeploymentUniqueLabelKey,
 		StableRevision:      cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
 		CanaryRevision:      cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
 		CanaryReplicas:      cloneSet.Status.UpdatedReplicas,
@@ -174,6 +183,7 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 		IsStatusConsistent: true,
 		StableRevision:     stableRs.Labels[apps.DefaultDeploymentUniqueLabelKey],
 		CanaryRevision:     ComputeHash(&stable.Spec.Template, nil),
+		RevisionLabelKey:   apps.DefaultDeploymentUniqueLabelKey,
 	}
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
@@ -205,10 +215,56 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 	return workload, err
 }
 
+func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
+	if ref == nil {
+		return nil, nil
+	}
+
+	unifiedObject := &unstructured.Unstructured{}
+	unifiedObjectKey := types.NamespacedName{Name: ref.Name, Namespace: namespace}
+	unifiedObject.SetGroupVersionKind(schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind))
+	err := r.Get(context.TODO(), unifiedObjectKey, unifiedObject)
+	if err != nil {
+		// when error is NotFound, it is ok here.
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	workloadInfo := ParseStatefulSetInfo(unifiedObject, unifiedObjectKey)
+	if workloadInfo.Metadata.Generation != workloadInfo.Status.ObservedGeneration {
+		return &Workload{IsStatusConsistent: false}, nil
+	}
+	workload := &Workload{
+		RevisionLabelKey:    apps.ControllerRevisionHashLabelKey,
+		StableRevision:      workloadInfo.Status.StableRevision,
+		CanaryRevision:      workloadInfo.Status.UpdateRevision,
+		CanaryReplicas:      workloadInfo.Status.UpdatedReplicas,
+		CanaryReadyReplicas: workloadInfo.Status.UpdatedReadyReplicas,
+		ObjectMeta:          *workloadInfo.Metadata,
+		Replicas:            *workloadInfo.Replicas,
+		PodTemplateHash:     workloadInfo.Status.UpdateRevision,
+		IsStatusConsistent:  true,
+	}
+	// not in rollout progressing
+	if _, ok := workload.Annotations[InRolloutProgressingAnnotation]; !ok {
+		return workload, nil
+	}
+	// in rollout progressing
+	workload.InRolloutProgressing = true
+
+	if workloadInfo.Status.UpdateRevision == workloadInfo.Status.StableRevision && workloadInfo.Status.UpdatedReplicas != workloadInfo.Status.Replicas {
+		workload.IsInRollback = true
+	}
+
+	return workload, nil
+}
+
 func (r *ControllerFinder) getLatestCanaryDeployment(stable *apps.Deployment) (*apps.Deployment, error) {
 	canaryList := &apps.DeploymentList{}
 	selector, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{CanaryDeploymentLabel: stable.Name}})
-	err := r.List(context.TODO(), canaryList, &client.ListOptions{LabelSelector: selector})
+	err := r.List(context.TODO(), canaryList, &client.ListOptions{LabelSelector: selector}, utilclient.DisableDeepCopy)
 	if err != nil {
 		return nil, err
 	} else if len(canaryList.Items) == 0 {
@@ -220,7 +276,7 @@ func (r *ControllerFinder) getLatestCanaryDeployment(stable *apps.Deployment) (*
 	for i := range canaryList.Items {
 		obj := &canaryList.Items[i]
 		if obj.DeletionTimestamp.IsZero() {
-			return obj, nil
+			return obj.DeepCopy(), nil
 		}
 	}
 	return nil, nil
@@ -234,7 +290,8 @@ func (r *ControllerFinder) GetReplicaSetsForDeployment(obj *apps.Deployment) ([]
 		klog.Errorf("Deployment (%s/%s) get labelSelector failed: %s", obj.Namespace, obj.Name, err.Error())
 		return nil, nil
 	}
-	err = r.List(context.TODO(), rsList, &client.ListOptions{Namespace: obj.Namespace, LabelSelector: selector})
+	err = r.List(context.TODO(), rsList, utilclient.DisableDeepCopy,
+		&client.ListOptions{Namespace: obj.Namespace, LabelSelector: selector})
 	if err != nil {
 		return nil, err
 	}

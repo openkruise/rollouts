@@ -23,6 +23,7 @@ import (
 	"sort"
 
 	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -69,8 +70,9 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 				},
 			},
 		}
+		cloneObj := stableDeploy.DeepCopy()
 		patchedBody, _ := json.Marshal(patchedInfo)
-		if err := c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchedBody)); err != nil {
+		if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.StrategicMergePatchType, patchedBody)); err != nil {
 			klog.Errorf("Failed to patch controller info annotations to stable deployment(%v), error: %v", client.ObjectKeyFromObject(stableDeploy), err)
 			return canaryDeploy, err
 		}
@@ -122,7 +124,7 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *metav1.NewControllerRef(c.parentController, c.parentController.GroupVersionKind()))
 
 	// set extra labels & annotations
-	canaryDeploy.Labels[util.CanaryDeploymentLabelKey] = c.stableNamespacedName.Name
+	canaryDeploy.Labels[util.CanaryDeploymentLabel] = c.stableNamespacedName.Name
 	owner := metav1.NewControllerRef(c.parentController, c.parentController.GroupVersionKind())
 	if owner != nil {
 		ownerInfo, _ := json.Marshal(owner)
@@ -153,8 +155,9 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 	// clean up control info for stable deployment if it needs
 	if stableDeploy != nil && len(stableDeploy.Annotations[util.BatchReleaseControlAnnotation]) > 0 {
 		var patchByte []byte
+		cloneObj := stableDeploy.DeepCopy()
 		patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
-		patchErr = c.client.Patch(context.TODO(), stableDeploy, client.RawPatch(types.StrategicMergePatchType, patchByte))
+		patchErr = c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.StrategicMergePatchType, patchByte))
 		if patchErr != nil {
 			klog.Errorf("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
 			return false, patchErr
@@ -206,8 +209,9 @@ func (c *deploymentController) patchDeploymentReplicas(deploy *apps.Deployment, 
 		},
 	}
 
+	cloneObj := deploy.DeepCopy()
 	patchByte, _ := json.Marshal(patch)
-	if err := c.client.Patch(context.TODO(), deploy, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
+	if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "PatchPartitionFailed",
 			"Failed to update the canary Deployment to the correct canary replicas %d, error: %v", replicas, err)
 		return err
@@ -250,7 +254,8 @@ func (c *deploymentController) listReplicaSetsFor(deploy *apps.Deployment) ([]*a
 	}
 
 	rsList := &apps.ReplicaSetList{}
-	err = c.client.List(context.TODO(), rsList, &client.ListOptions{Namespace: deploy.Namespace, LabelSelector: deploySelector})
+	err = c.client.List(context.TODO(), rsList, utilclient.DisableDeepCopy,
+		&client.ListOptions{Namespace: deploy.Namespace, LabelSelector: deploySelector})
 	if err != nil {
 		return nil, err
 	}

@@ -22,11 +22,15 @@ import (
 
 // +kubebuilder:webhook:path=/mutate-apps-kruise-io-v1alpha1-cloneset,mutating=true,failurePolicy=Ignore,sideEffects=None,admissionReviewVersions=v1;v1beta1,groups=apps.kruise.io,resources=clonesets,verbs=update,versions=v1alpha1,name=mcloneset.kb.io
 // +kubebuilder:webhook:path=/mutate-apps-v1-deployment,mutating=true,failurePolicy=Ignore,sideEffects=None,admissionReviewVersions=v1;v1beta1,groups=apps,resources=deployments,verbs=update,versions=v1,name=mdeployment.kb.io
+// +kubebuilder:webhook:path=/mutate-apps-v1-statefulset,mutating=true,failurePolicy=Ignore,sideEffects=None,admissionReviewVersions=v1;v1beta1,groups=apps,resources=statefulsets,verbs=update,versions=v1,name=mstatefulset.kb.io
+// +kubebuilder:webhook:path=/mutate-apps-kruise-io-statefulset,mutating=true,failurePolicy=Ignore,sideEffects=None,admissionReviewVersions=v1;v1beta1,groups=apps.kruise.io,resources=statefulsets,verbs=create;update,versions=v1alpha1;v1beta1,name=madvancedstatefulset.kb.io
 
 var (
 	// HandlerMap contains admission webhook handlers
 	HandlerMap = map[string]admission.Handler{
 		"mutate-apps-kruise-io-v1alpha1-cloneset": &WorkloadHandler{},
 		"mutate-apps-v1-deployment":               &WorkloadHandler{},
+		"mutate-apps-v1-statefulset":              &WorkloadHandler{},
+		"mutate-apps-kruise-io-statefulset":       &WorkloadHandler{},
 	}
 )

@@ -24,8 +24,10 @@ import (
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	admissionv1 "k8s.io/api/admission/v1"
 	apps "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -63,65 +65,139 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 	switch req.Kind.Group {
 	// kruise cloneSet
 	case kruiseappsv1alpha1.GroupVersion.Group:
-		if req.Kind.Kind != util.ControllerKruiseKindCS.Kind {
-			return admission.Allowed("")
+		switch req.Kind.Kind {
+		case util.ControllerKruiseKindCS.Kind:
+			// check cloneset
+			newObj := &kruiseappsv1alpha1.CloneSet{}
+			if err := h.Decoder.Decode(req, newObj); err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			oldObj := &kruiseappsv1alpha1.CloneSet{}
+			if err := h.Decoder.Decode(
+				admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
+				oldObj); err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			changed, err := h.handleCloneSet(newObj, oldObj)
+			if err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			if !changed {
+				return admission.Allowed("")
+			}
+			marshalled, err := json.Marshal(newObj)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError, err)
+			}
+			return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
 		}
-		// check cloneset
-		newObj := &kruiseappsv1alpha1.CloneSet{}
-		if err := h.Decoder.Decode(req, newObj); err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		oldObj := &kruiseappsv1alpha1.CloneSet{}
-		if err := h.Decoder.Decode(
-			admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
-			oldObj); err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		changed, err := h.handlerCloneSet(newObj, oldObj)
-		if err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		if !changed {
-			return admission.Allowed("")
-		}
-		marshalled, err := json.Marshal(newObj)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError, err)
-		}
-		return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
+
 	// native k8s deloyment
 	case apps.SchemeGroupVersion.Group:
-		if req.Kind.Kind != util.ControllerKindDep.Kind {
-			return admission.Allowed("")
+		switch req.Kind.Kind {
+		case util.ControllerKindDep.Kind:
+			// check deployment
+			newObj := &apps.Deployment{}
+			if err := h.Decoder.Decode(req, newObj); err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			oldObj := &apps.Deployment{}
+			if err := h.Decoder.Decode(
+				admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
+				oldObj); err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			changed, err := h.handleDeployment(newObj, oldObj)
+			if err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			if !changed {
+				return admission.Allowed("")
+			}
+			marshalled, err := json.Marshal(newObj)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError, err)
+			}
+			return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
 		}
-		// check deployment
-		newObj := &apps.Deployment{}
+	}
+
+	// other statefulset-like workload, including advanced statefulset
+	{
+		newObj := &unstructured.Unstructured{}
+		newObj.SetGroupVersionKind(schema.GroupVersionKind{Group: req.Kind.Group, Version: req.Kind.Version, Kind: req.Kind.Kind})
 		if err := h.Decoder.Decode(req, newObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		oldObj := &apps.Deployment{}
+		oldObj := &unstructured.Unstructured{}
+		oldObj.SetGroupVersionKind(schema.GroupVersionKind{Group: req.Kind.Group, Version: req.Kind.Version, Kind: req.Kind.Kind})
 		if err := h.Decoder.Decode(
 			admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
 			oldObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		changed, err := h.handlerDeployment(newObj, oldObj)
+		changed, err := h.handleStatefulSetLikeWorkload(newObj, oldObj)
 		if err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
 		if !changed {
 			return admission.Allowed("")
 		}
-		marshalled, err := json.Marshal(newObj)
+		marshalled, err := json.Marshal(newObj.Object)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
 		return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
 	}
-	return admission.Allowed("")
 }
 
-func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) (changed bool, err error) {
+func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstructured.Unstructured) (changed bool, err error) {
+	// indicate whether the workload can enter the rollout process
+	// 1. replicas > 0
+	replicas := util.ParseReplicasFrom(newObj)
+	if replicas == 0 {
+		return false, nil
+	}
+	oldTemplate := util.ParseTemplateFrom(oldObj)
+	if oldTemplate == nil {
+		return false, nil
+	}
+	newTemplate := util.ParseTemplateFrom(newObj)
+	if newTemplate == nil {
+		return false, nil
+	}
+
+	// 2. statefulset.spec.template is changed
+	if util.EqualIgnoreHash(oldTemplate, newTemplate) {
+		return
+	}
+	// 3. have matched rollout crd
+	rollout, err := h.fetchMatchedRollout(newObj)
+	if err != nil {
+		return
+	} else if rollout == nil {
+		return
+	}
+
+	klog.Infof("StatefulSet-Like Workload(%s/%s) will be in rollout progressing, and paused", newObj.GetNamespace(), newObj.GetName())
+	if !util.IsStatefulSetRollingUpdate(newObj) {
+		return
+	}
+
+	changed = true
+	util.SetStatefulSetPartition(newObj, replicas)
+	state := &util.RolloutState{RolloutName: rollout.Name}
+	by, _ := json.Marshal(state)
+	annotation := newObj.GetAnnotations()
+	if annotation == nil {
+		annotation = map[string]string{}
+	}
+	annotation[util.InRolloutProgressingAnnotation] = string(by)
+	newObj.SetAnnotations(annotation)
+	return
+}
+
+func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (changed bool, err error) {
 	// in rollout progressing
 	if state, _ := util.GetRolloutState(newObj.Annotations); state != nil {
 		// deployment paused=false is not allowed until the rollout is completed
@@ -176,32 +252,7 @@ func (h *WorkloadHandler) handlerDeployment(newObj, oldObj *apps.Deployment) (ch
 	return
 }
 
-func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.Rollout, error) {
-	oGv := obj.GetObjectKind().GroupVersionKind()
-	rolloutList := &appsv1alpha1.RolloutList{}
-	if err := h.Client.List(context.TODO(), rolloutList, &client.ListOptions{Namespace: obj.GetNamespace()}); err != nil {
-		klog.Errorf("WorkloadHandler List rollout failed: %s", err.Error())
-		return nil, err
-	}
-	for i := range rolloutList.Items {
-		rollout := &rolloutList.Items[i]
-		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.ObjectRef.WorkloadRef == nil {
-			continue
-		}
-		ref := rollout.Spec.ObjectRef.WorkloadRef
-		gv, err := schema.ParseGroupVersion(ref.APIVersion)
-		if err != nil {
-			klog.Warningf("ParseGroupVersion rollout(%s/%s) ref failed: %s", rollout.Namespace, rollout.Name, err.Error())
-			continue
-		}
-		if oGv.Group == gv.Group && oGv.Kind == ref.Kind && obj.GetName() == ref.Name {
-			return rollout, nil
-		}
-	}
-	return nil, nil
-}
-
-func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) (changed bool, err error) {
+func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) (changed bool, err error) {
 	// indicate whether the workload can enter the rollout process
 	// 1. replicas > 0
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
@@ -230,6 +281,32 @@ func (h *WorkloadHandler) handlerCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clo
 	}
 	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
 	return
+}
+
+func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.Rollout, error) {
+	oGv := obj.GetObjectKind().GroupVersionKind()
+	rolloutList := &appsv1alpha1.RolloutList{}
+	if err := h.Client.List(context.TODO(), rolloutList, utilclient.DisableDeepCopy,
+		&client.ListOptions{Namespace: obj.GetNamespace()}); err != nil {
+		klog.Errorf("WorkloadHandler List rollout failed: %s", err.Error())
+		return nil, err
+	}
+	for i := range rolloutList.Items {
+		rollout := &rolloutList.Items[i]
+		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.ObjectRef.WorkloadRef == nil {
+			continue
+		}
+		ref := rollout.Spec.ObjectRef.WorkloadRef
+		gv, err := schema.ParseGroupVersion(ref.APIVersion)
+		if err != nil {
+			klog.Warningf("ParseGroupVersion rollout(%s/%s) ref failed: %s", rollout.Namespace, rollout.Name, err.Error())
+			continue
+		}
+		if oGv.Group == gv.Group && oGv.Kind == ref.Kind && obj.GetName() == ref.Name {
+			return rollout, nil
+		}
+	}
+	return nil, nil
 }
 
 var _ inject.Client = &WorkloadHandler{}

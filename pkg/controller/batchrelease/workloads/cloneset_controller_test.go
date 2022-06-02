@@ -202,8 +202,6 @@ func TestCloneSetController(t *testing.T) {
 			Expect(reflect.DeepEqual(oldObject.Spec, newObject.Spec)).Should(BeTrue())
 			Expect(reflect.DeepEqual(oldObject.Labels, newObject.Labels)).Should(BeTrue())
 			Expect(reflect.DeepEqual(oldObject.Finalizers, newObject.Finalizers)).Should(BeTrue())
-			oldObject.Annotations[util.StashCloneSetPartition] = ""
-			newObject.Annotations[util.StashCloneSetPartition] = ""
 			Expect(reflect.DeepEqual(oldObject.Annotations, newObject.Annotations)).Should(BeTrue())
 		})
 	}

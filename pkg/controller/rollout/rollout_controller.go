@@ -20,10 +20,8 @@ import (
 	"context"
 	"time"
 
-	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
-	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -118,17 +116,6 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
-	if util.DiscoverGVK(util.ControllerKruiseKindCS) {
-		// Watch for changes to cloneset
-		if err = c.Watch(&source.Kind{Type: &appsv1alpha1.CloneSet{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}); err != nil {
-			return err
-		}
-	}
-
-	// Watch for changes to deployment
-	if err = c.Watch(&source.Kind{Type: &apps.Deployment{}}, &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}); err != nil {
-		return err
-	}
 	// Watch for changes to rollout
 	if err = c.Watch(&source.Kind{Type: &rolloutv1alpha1.Rollout{}}, &handler.EnqueueRequestForObject{}); err != nil {
 		return err
@@ -137,5 +124,7 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err = c.Watch(&source.Kind{Type: &rolloutv1alpha1.BatchRelease{}}, &enqueueRequestForBatchRelease{reader: mgr.GetCache()}); err != nil {
 		return err
 	}
-	return nil
+
+	workloadHandler := &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}
+	return util.AddWorkloadWatcher(c, workloadHandler)
 }

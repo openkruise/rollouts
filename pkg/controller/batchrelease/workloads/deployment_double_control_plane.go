@@ -23,6 +23,7 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -238,6 +239,9 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadEventType, *u
 	var err error
 	err = c.fetchStableDeployment()
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return WorkloadHasGone, nil, err
+		}
 		return "", nil, err
 	}
 
@@ -300,9 +304,6 @@ func (c *DeploymentsRolloutController) fetchStableDeployment() error {
 
 	stable := &apps.Deployment{}
 	if err := c.client.Get(context.TODO(), c.stableNamespacedName, stable); err != nil {
-		//if !apierrors.IsNotFound(err) {
-		//c.recorder.Event(c.parentController, v1.EventTypeWarning, "GetStableDeploymentFailed", err.Error())
-		//}
 		klog.Errorf("BatchRelease(%v) get stable deployment error: %v", c.releaseKey, err)
 		return err
 	}
@@ -324,7 +325,7 @@ func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
 		return err
 	}
 
-	ds, err := c.listCanaryDeployment(client.InNamespace(c.stable.Namespace))
+	ds, err := c.listCanaryDeployment(client.InNamespace(c.stable.Namespace), utilclient.DisableDeepCopy)
 	if err != nil {
 		return err
 	}
@@ -339,11 +340,10 @@ func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
 			Group:    apps.SchemeGroupVersion.Group,
 			Resource: c.stable.Kind,
 		}, fmt.Sprintf("%v-canary", c.canaryNamespacedName.Name))
-		//c.recorder.Event(c.parentController, v1.EventTypeWarning, "GetCanaryDeploymentFailed", err.Error())
 		return err
 	}
 
-	c.canary = ds[0]
+	c.canary = ds[0].DeepCopy()
 	return nil
 }
 

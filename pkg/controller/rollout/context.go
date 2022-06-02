@@ -22,7 +22,6 @@ import (
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/rollout/batchrelease"
 	"github.com/openkruise/rollouts/pkg/util"
-	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -75,5 +74,8 @@ func (r *rolloutContext) finalising() (bool, error) {
 }
 
 func (r *rolloutContext) podRevisionLabelKey() string {
-	return apps.DefaultDeploymentUniqueLabelKey
+	if r.workload == nil {
+		return ""
+	}
+	return r.workload.RevisionLabelKey
 }

@@ -910,7 +910,7 @@ func getCanaryWithStage(workload client.Object, version string, stage int, ready
 		d.UID = uuid.NewUUID()
 		d.Spec.Paused = false
 		d.ResourceVersion = strconv.Itoa(rand.Intn(100000000000))
-		d.Labels[util.CanaryDeploymentLabelKey] = "87076677"
+		d.Labels[util.CanaryDeploymentLabel] = "87076677"
 		d.Finalizers = []string{util.CanaryDeploymentFinalizer}
 		d.Spec.Replicas = pointer.Int32Ptr(int32(stageReplicas))
 		d.Spec.Template.Spec.Containers = containers(version)
