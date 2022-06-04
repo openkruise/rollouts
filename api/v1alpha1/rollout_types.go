@@ -94,7 +94,7 @@ type CanaryStrategy struct {
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
 	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
-	// todo current only support one
+	// todo current only support one TrafficRouting
 	TrafficRoutings []*TrafficRouting `json:"trafficRoutings,omitempty"`
 	// MetricsAnalysis *MetricsAnalysisBackground `json:"metricsAnalysis,omitempty"`
 }
@@ -102,7 +102,11 @@ type CanaryStrategy struct {
 // CanaryStep defines a step of a canary workload.
 type CanaryStep struct {
 	// SetWeight sets what percentage of the canary pods should receive
-	Weight int32 `json:"weight,omitempty"`
+
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	Weight *int32 `json:"weight,omitempty"`
 	// Replicas is the number of expected canary pods in this batch
 	// it can be an absolute number (ex: 5) or a percentage of total pods.
 	Replicas *intstr.IntOrString `json:"replicas,omitempty"`
@@ -116,6 +120,7 @@ type CanaryStep struct {
 type RolloutPause struct {
 	// Duration the amount of time to wait before moving to the next step.
 	// +optional
+	// +kubebuilder:validation:Minimum=0
 	Duration *int32 `json:"duration,omitempty"`
 }
 
@@ -124,17 +129,30 @@ type TrafficRouting struct {
 	// Service holds the name of a service which selects pods with stable version and don't select any pods with canary version.
 	Service string `json:"service"`
 	// Optional duration in seconds the traffic provider(e.g. nginx ingress controller) consumes the service, ingress configuration changes gracefully.
+	// +kubebuilder:validation:Minimum=0
 	GracePeriodSeconds int32 `json:"gracePeriodSeconds,omitempty"`
-	// nginx, alb, istio etc.
-	Type string `json:"type"`
 	// Ingress holds Ingress specific configuration to route traffic, e.g. Nginx, Alb.
 	Ingress *IngressTrafficRouting `json:"ingress,omitempty"`
+	// Gateway holds Gateway specific configuration to route traffic
+	// Gateway configuration only supports >= v0.4.0 (v1alpha2).
+	Gateway *GatewayTrafficRouting `json:"gateway,omitempty"`
 }
 
 // IngressTrafficRouting configuration for ingress controller to control traffic routing
 type IngressTrafficRouting struct {
+	// ClassType refers to the class type of an `Ingress`, e.g. Nginx
+	// +kubebuilder:default=Nginx
+	ClassType string `json:"classType"`
 	// Name refers to the name of an `Ingress` resource in the same namespace as the `Rollout`
 	Name string `json:"name"`
+}
+
+// GatewayTrafficRouting configuration for gateway api
+type GatewayTrafficRouting struct {
+	// HTTPRouteName refers to the name of an `HTTPRoute` resource in the same namespace as the `Rollout`
+	HTTPRouteName *string `json:"httpRouteName,omitempty"`
+	// TCPRouteName *string `json:"tcpRouteName,omitempty"`
+	// UDPRouteName *string `json:"udpRouteName,omitempty"`
 }
 
 // RolloutStatus defines the observed state of Rollout
@@ -231,8 +249,7 @@ type CanaryStatus struct {
 	CurrentStepIndex int32           `json:"currentStepIndex"`
 	CurrentStepState CanaryStepState `json:"currentStepState"`
 	Message          string          `json:"message,omitempty"`
-	// The last time this step pods is ready.
-	LastUpdateTime *metav1.Time `json:"lastReadyTime,omitempty"`
+	LastUpdateTime   *metav1.Time    `json:"lastUpdateTime,omitempty"`
 }
 
 type CanaryStepState string

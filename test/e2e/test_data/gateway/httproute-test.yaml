@@ -1,0 +1,21 @@
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: HTTPRoute
+metadata:
+  name: echoserver
+spec:
+  hostnames:
+  - test.app.domain
+  rules:
+  - backendRefs:
+    - group: ""
+      name: echoserver
+      port: 80
+    # - group: ""
+    #   kind: Service
+    #   name: echoserver-canary
+    #   port: 80
+    #   weight: 20
+    matches:
+    - path:
+        type: PathPrefix
+        value: /apis/echo

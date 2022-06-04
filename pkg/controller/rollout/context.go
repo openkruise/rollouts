@@ -17,12 +17,12 @@ limitations under the License.
 package rollout
 
 import (
+	"fmt"
 	"time"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/rollout/batchrelease"
 	"github.com/openkruise/rollouts/pkg/util"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,9 +37,9 @@ type rolloutContext struct {
 
 	isComplete bool
 
-	stableService *corev1.Service
+	stableService string
 
-	canaryService *corev1.Service
+	canaryService string
 
 	workload *util.Workload
 
@@ -48,6 +48,22 @@ type rolloutContext struct {
 	recheckTime *time.Time
 
 	recorder record.EventRecorder
+}
+
+func newRolloutContext(client client.Client, recorder record.EventRecorder, rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus, workload *util.Workload) *rolloutContext {
+	rolloutCon := &rolloutContext{
+		Client:       client,
+		rollout:      rollout,
+		newStatus:    newStatus,
+		batchControl: batchrelease.NewInnerBatchController(client, rollout),
+		workload:     workload,
+		recorder:     recorder,
+	}
+	if len(rolloutCon.rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
+		rolloutCon.stableService = rolloutCon.rollout.Spec.Strategy.Canary.TrafficRoutings[0].Service
+		rolloutCon.canaryService = fmt.Sprintf("%s-canary", rolloutCon.stableService)
+	}
+	return rolloutCon
 }
 
 func (r *rolloutContext) reconcile() error {

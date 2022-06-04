@@ -32,6 +32,7 @@ import (
 	kruisev1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	crdv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -40,6 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"sigs.k8s.io/yaml"
 )
 
@@ -68,12 +70,24 @@ var _ = BeforeSuite(func(done Done) {
 	Expect(err).Should(BeNil())
 	err = kruisev1alpha1.AddToScheme(scheme)
 	Expect(err).Should(BeNil())
+	err = gatewayv1alpha2.AddToScheme(scheme)
+	Expect(err).Should(BeNil())
 	By("Setting up kubernetes client")
 	k8sClient, err = client.New(config.GetConfigOrDie(), client.Options{Scheme: scheme})
 	if err != nil {
 		logf.Log.Error(err, "failed to create k8sClient")
 		Fail("setup failed")
 	}
+	By("Create the CRDs")
+	var httprouteCRD crdv1.CustomResourceDefinition
+	err = ReadYamlToObject("./test_data/crds/httproutes.yaml", &httprouteCRD)
+	Expect(err).Should(BeNil())
+	err = k8sClient.Create(context.TODO(), &httprouteCRD)
+	if errors.IsAlreadyExists(err) {
+		err = nil
+	}
+	Expect(err).Should(BeNil())
+
 	close(done)
 	By("Finished setting up test environment")
 }, 300)

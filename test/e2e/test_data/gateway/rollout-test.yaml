@@ -20,9 +20,7 @@ spec:
       - weight: 80
         pause: {duration: 10}
       - weight: 100
-        pause: {duration: 0}
       trafficRoutings:
       - service: echoserver
-        ingress:
-          classType: nginx
-          name: echoserver
+        gateway:
+          httpRouteName: echoserver
