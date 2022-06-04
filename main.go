@@ -35,6 +35,7 @@ import (
 	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -52,6 +53,7 @@ func init() {
 	utilruntime.Must(kruisev1aplphal1.AddToScheme(scheme))
 	utilruntime.Must(kruisev1beta1.AddToScheme(scheme))
 	utilruntime.Must(rolloutsv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1alpha2.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 

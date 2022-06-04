@@ -58,10 +58,10 @@ var (
 					},
 					TrafficRoutings: []*appsv1alpha1.TrafficRouting{
 						{
-							Type:    "nginx",
 							Service: "service-demo",
 							Ingress: &appsv1alpha1.IngressTrafficRouting{
-								Name: "ingress-nginx-demo",
+								ClassType: "nginx",
+								Name:      "ingress-nginx-demo",
 							},
 						},
 					},
@@ -237,7 +237,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRoutings[0].Type = "Whatever"
+				object.Spec.Strategy.Canary.TrafficRoutings[0].Ingress.ClassType = "Whatever"
 				return []client.Object{object}
 			},
 		},
@@ -370,7 +370,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
 				object.Status.Phase = appsv1alpha1.RolloutPhaseTerminating
-				object.Spec.Strategy.Canary.TrafficRoutings[0].Type = "alb"
+				object.Spec.Strategy.Canary.TrafficRoutings[0].Ingress.ClassType = "alb"
 				return object
 			},
 		},

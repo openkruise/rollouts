@@ -24,9 +24,9 @@ import (
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/rollout/batchrelease"
+	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
-	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -195,8 +195,19 @@ func progressingStateTransition(status *rolloutv1alpha1.RolloutStatus, condStatu
 }
 
 func (r *RolloutReconciler) doProgressingInitializing(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (bool, string, error) {
+	rolloutCon := &rolloutContext{
+		Client:       r.Client,
+		rollout:      rollout,
+		newStatus:    newStatus,
+		batchControl: batchrelease.NewInnerBatchController(r.Client, rollout),
+		recorder:     r.Recorder,
+	}
+	trController, err := rolloutCon.newTrafficRoutingController(rolloutCon)
+	if err != nil {
+		return false, "", err
+	}
 	// canary release
-	return r.verifyCanaryStrategy(rollout, newStatus)
+	return r.verifyCanaryStrategy(rollout, newStatus, trController)
 }
 
 func (r *RolloutReconciler) doProgressingInRolling(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (*time.Time, error) {
@@ -260,11 +271,11 @@ func (r *RolloutReconciler) doProgressingReset(rollout *rolloutv1alpha1.Rollout,
 	return true, nil
 }
 
-func (r *RolloutReconciler) verifyCanaryStrategy(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (bool, string, error) {
+func (r *RolloutReconciler) verifyCanaryStrategy(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus, c trafficrouting.Controller) (bool, string, error) {
 	canary := rollout.Spec.Strategy.Canary
 	// Traffic routing
 	if canary.TrafficRoutings != nil {
-		if ok, msg, err := r.verifyTrafficRouting(rollout.Namespace, canary.TrafficRoutings[0]); !ok {
+		if ok, msg, err := r.verifyTrafficRouting(rollout.Namespace, canary.TrafficRoutings[0], c); !ok {
 			return ok, msg, err
 		}
 	}
@@ -281,7 +292,7 @@ func (r *RolloutReconciler) verifyCanaryStrategy(rollout *rolloutv1alpha1.Rollou
 	return true, "", nil
 }
 
-func (r *RolloutReconciler) verifyTrafficRouting(ns string, tr *rolloutv1alpha1.TrafficRouting) (bool, string, error) {
+func (r *RolloutReconciler) verifyTrafficRouting(ns string, tr *rolloutv1alpha1.TrafficRouting, c trafficrouting.Controller) (bool, string, error) {
 	// check service
 	service := &corev1.Service{}
 	err := r.Get(context.TODO(), types.NamespacedName{Namespace: ns, Name: tr.Service}, service)
@@ -292,21 +303,12 @@ func (r *RolloutReconciler) verifyTrafficRouting(ns string, tr *rolloutv1alpha1.
 		return false, "", err
 	}
 
-	// check ingress
-	var ingressName string
-	switch tr.Type {
-	case "nginx":
-		ingressName = tr.Ingress.Name
-	}
-	ingress := &netv1.Ingress{}
-	err = r.Get(context.TODO(), types.NamespacedName{Namespace: ns, Name: ingressName}, ingress)
+	// check the traffic routing configuration
+	health, err := c.TrafficRouting()
 	if err != nil {
-		if errors.IsNotFound(err) {
-			return false, fmt.Sprintf("Ingress(%s/%s) is Not Found", ns, ingressName), nil
-		}
 		return false, "", err
 	}
-	return true, "", nil
+	return health, "", nil
 }
 
 func (r *RolloutReconciler) reCalculateCanaryStepIndex(rollout *rolloutv1alpha1.Rollout, batchControl batchrelease.BatchRelease) (int32, error) {

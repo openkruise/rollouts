@@ -125,16 +125,24 @@ type TrafficRouting struct {
 	Service string `json:"service"`
 	// Optional duration in seconds the traffic provider(e.g. nginx ingress controller) consumes the service, ingress configuration changes gracefully.
 	GracePeriodSeconds int32 `json:"gracePeriodSeconds,omitempty"`
-	// nginx, alb, istio etc.
-	Type string `json:"type"`
 	// Ingress holds Ingress specific configuration to route traffic, e.g. Nginx, Alb.
 	Ingress *IngressTrafficRouting `json:"ingress,omitempty"`
+	// Gateway holds Gateway specific configuration to route traffic
+	Gateway *GatewayTrafficRouting `json:"gateway,omitempty"`
 }
 
 // IngressTrafficRouting configuration for ingress controller to control traffic routing
 type IngressTrafficRouting struct {
+	// ClassType refers to the class type of an `Ingress`, e.g. Nginx
+	ClassType string `json:"classType"`
 	// Name refers to the name of an `Ingress` resource in the same namespace as the `Rollout`
 	Name string `json:"name"`
+}
+
+// GatewayTrafficRouting
+type GatewayTrafficRouting struct {
+	// HTTPRouteName refers to the name of an `HTTPRoute` resource in the same namespace as the `Rollout`
+	HTTPRouteName string `json:"httpRouteName,omitempty"`
 }
 
 // RolloutStatus defines the observed state of Rollout

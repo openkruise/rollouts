@@ -16,12 +16,16 @@ limitations under the License.
 
 package trafficrouting
 
+import "context"
+
 // Controller common function across all TrafficRouting implementation
 type Controller interface {
-	// SetRoutes set canary ingress desired weight
-	SetRoutes(desiredWeight int32) error
-	// Verify check if canary ingress has been set desired weight
+	// SetRoutes set canary desired weight
+	SetRoutes(ctx context.Context, desiredWeight int32) error
+	// Verify check if canary has been set desired weight
 	Verify(desiredWeight int32) (bool, error)
 	// Finalise will do some cleanup work, such as delete canary ingress
 	Finalise() error
+	// TrafficRouting will check the traffic routing resource
+	TrafficRouting() (bool, error)
 }

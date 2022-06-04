@@ -23,6 +23,7 @@ import (
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting"
+	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting/gateway"
 	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting/nginx"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
@@ -129,7 +130,7 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 		return false, err
 	} else if !verify {
 		r.recorder.Eventf(r.rollout, corev1.EventTypeNormal, "Progressing", fmt.Sprintf("traffic route weight(%d) done", desiredWeight))
-		return false, trController.SetRoutes(desiredWeight)
+		return false, trController.SetRoutes(context.Background(), desiredWeight)
 	}
 	klog.Infof("rollout(%s/%s) do step(%d) trafficRouting(%d) success", r.rollout.Namespace, r.rollout.Name, r.newStatus.CanaryStatus.CurrentStepIndex, desiredWeight)
 	return true, nil
@@ -203,7 +204,7 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 		return false, err
 	} else if !verify {
 		r.newStatus.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		err = trController.SetRoutes(0)
+		err = trController.SetRoutes(context.Background(), 0)
 		if err != nil && errors.IsNotFound(err) {
 			klog.Warningf("rollout(%s/%s) VerifyTrafficRouting(-1), and stable ingress not found", r.rollout.Namespace, r.rollout.Name)
 			return false, nil
@@ -244,8 +245,7 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 
 func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (trafficrouting.Controller, error) {
 	canary := roCtx.rollout.Spec.Strategy.Canary
-	switch canary.TrafficRoutings[0].Type {
-	case "nginx":
+	if canary.TrafficRoutings[0].Ingress != nil && canary.TrafficRoutings[0].Ingress.ClassType == "nginx" {
 		gvk := schema.GroupVersionKind{Group: rolloutv1alpha1.GroupVersion.Group, Version: rolloutv1alpha1.GroupVersion.Version, Kind: "Rollout"}
 		return nginx.NewNginxTrafficRouting(r.Client, r.newStatus, nginx.Config{
 			RolloutName:   r.rollout.Name,
@@ -256,8 +256,19 @@ func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (tra
 			OwnerRef:      *metav1.NewControllerRef(r.rollout, gvk),
 		})
 	}
+	if canary.TrafficRoutings[0].Gateway != nil {
+		gvk := schema.GroupVersionKind{Group: rolloutv1alpha1.GroupVersion.Group, Version: rolloutv1alpha1.GroupVersion.Version, Kind: "Rollout"}
+		return gateway.NewGatewayTrafficRouting(r.Client, r.newStatus, gateway.Config{
+			RolloutName:   r.rollout.Name,
+			RolloutNs:     r.rollout.Namespace,
+			CanaryService: r.canaryService,
+			StableService: r.stableService,
+			TrafficConf:   r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].Gateway,
+			OwnerRef:      *metav1.NewControllerRef(r.rollout, gvk),
+		})
+	}
 
-	return nil, fmt.Errorf("TrafficRouting(%s) not support", canary.TrafficRoutings[0].Type)
+	return nil, fmt.Errorf("TrafficRouting support the Ingress or Gateway")
 }
 
 func (r *rolloutContext) createCanaryService() error {

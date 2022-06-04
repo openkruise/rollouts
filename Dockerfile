@@ -11,6 +11,8 @@ COPY go.sum go.sum
 COPY main.go main.go
 COPY api/ api/
 COPY pkg/ pkg/
+ARG GOPROXY
+ENV GOPROXY=${GOPROXY:-https://goproxy.cn}
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go

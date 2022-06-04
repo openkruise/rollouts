@@ -132,6 +132,16 @@ spec:
                             for supported service meshes to enable more fine-grained
                             traffic routing
                           properties:
+                            gateway:
+                              description: Gateway holds Gateway specific configuration
+                                to route traffic
+                              properties:
+                                httpRouteName:
+                                  description: HTTPRouteName refers to the name of
+                                    an `HTTPRoute` resource in the same namespace
+                                    as the `Rollout`
+                                  type: string
+                              type: object
                             gracePeriodSeconds:
                               description: Optional duration in seconds the traffic
                                 provider(e.g. nginx ingress controller) consumes the
@@ -142,11 +152,16 @@ spec:
                               description: Ingress holds Ingress specific configuration
                                 to route traffic, e.g. Nginx, Alb.
                               properties:
+                                classType:
+                                  description: ClassType refers to the class type
+                                    of an `Ingress`, e.g. Nginx
+                                  type: string
                                 name:
                                   description: Name refers to the name of an `Ingress`
                                     resource in the same namespace as the `Rollout`
                                   type: string
                               required:
+                              - classType
                               - name
                               type: object
                             service:
@@ -154,12 +169,8 @@ spec:
                                 selects pods with stable version and don't select
                                 any pods with canary version.
                               type: string
-                            type:
-                              description: nginx, alb, istio etc.
-                              type: string
                           required:
                           - service
-                          - type
                           type: object
                         type: array
                     type: object

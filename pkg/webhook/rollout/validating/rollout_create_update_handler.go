@@ -185,15 +185,22 @@ func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldP
 		errList = append(errList, field.Invalid(fldPath.Child("Service"), traffic.Service, "TrafficRouting.Service cannot be empty"))
 	}
 
-	switch traffic.Type {
-	case "", "nginx":
-		if traffic.Ingress == nil ||
-			len(traffic.Ingress.Name) == 0 {
+	if traffic.Gateway == nil && traffic.Ingress == nil {
+		errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting must set the gateway or ingress"))
+	}
+
+	if traffic.Ingress != nil {
+		if len(traffic.Ingress.Name) == 0 {
 			errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting.Ingress.Ingress cannot be empty"))
 		}
-	default:
-
-		errList = append(errList, field.Invalid(fldPath.Child("Type"), traffic.Type, "TrafficRouting only support 'nginx' type"))
+		if traffic.Ingress.ClassType != "nginx" {
+			errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting.Ingress.ClassType only support nginx"))
+		}
+	}
+	if traffic.Gateway != nil {
+		if traffic.Gateway.HTTPRouteName == "" {
+			errList = append(errList, field.Invalid(fldPath.Child("Gateway"), traffic.Gateway, "TrafficRouting.Gateway must set the name of HTTPRoute or HTTPsRoute"))
+		}
 	}
 
 	return errList
