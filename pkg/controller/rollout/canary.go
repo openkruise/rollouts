@@ -222,11 +222,13 @@ func (r *rolloutContext) doCanaryFinalising() (bool, error) {
 	if r.newStatus.CanaryStatus == nil {
 		return true, nil
 	}
+	klog.Infof("rollout(%s/%s) in finalizing: remove rollout state in workload", r.rollout.Namespace, r.rollout.Name)
 	// 1. rollout progressing complete, allow workload paused=false in webhook
 	err := r.removeRolloutStateInWorkload()
 	if err != nil {
 		return false, err
 	}
+	klog.Infof("rollout(%s/%s) in finalizing: restore stable service", r.rollout.Namespace, r.rollout.Name)
 	// 2. restore stable service, remove podRevision selector
 	done, err := r.restoreStableService()
 	if err != nil || !done {
@@ -235,24 +237,27 @@ func (r *rolloutContext) doCanaryFinalising() (bool, error) {
 	// 3. upgrade stable deployment, set paused=false
 	// isComplete indicates whether rollout progressing complete, and wait for all pods are ready
 	// else indicates rollout is canceled
+	klog.Infof("rollout(%s/%s) in finalizing: upgrade stable workload", r.rollout.Namespace, r.rollout.Name)
 	done, err = r.batchControl.Promote(-1, r.isComplete)
 	if err != nil || !done {
 		return done, err
 	}
 	// 4. route all traffic to stable service
+	klog.Infof("rollout(%s/%s) in finalizing: restore traffic routing", r.rollout.Namespace, r.rollout.Name)
 	done, err = r.doFinalisingTrafficRouting()
 	if err != nil || !done {
 		return done, err
 	}
 	// 5. delete batchRelease crd
+	klog.Infof("rollout(%s/%s) in finalizing: remove batchRelease crd", r.rollout.Namespace, r.rollout.Name)
 	done, err = r.batchControl.Finalize()
 	if err != nil {
-		klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
+		klog.Errorf("rollout(%s/%s) Finalize batchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return false, err
 	} else if !done {
 		return false, nil
 	}
-	klog.Infof("rollout(%s/%s) batchRelease Finalize success", r.rollout.Namespace, r.rollout.Name)
+	klog.Infof("rollout(%s/%s) do finalize success", r.rollout.Namespace, r.rollout.Name)
 	return true, nil
 }
 

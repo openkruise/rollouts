@@ -106,6 +106,7 @@ spec:
                                   description: Duration the amount of time to wait
                                     before moving to the next step.
                                   format: int32
+                                  minimum: 0
                                   type: integer
                               type: object
                             replicas:
@@ -117,31 +118,47 @@ spec:
                                 5) or a percentage of total pods.'
                               x-kubernetes-int-or-string: true
                             weight:
-                              description: SetWeight sets what percentage of the canary
-                                pods should receive
                               format: int32
+                              maximum: 100
+                              minimum: 1
                               type: integer
                           type: object
                         type: array
                       trafficRoutings:
                         description: TrafficRoutings hosts all the supported service
                           meshes supported to enable more fine-grained traffic routing
-                          todo current only support one
+                          todo current only support one TrafficRouting
                         items:
                           description: TrafficRouting hosts all the different configuration
                             for supported service meshes to enable more fine-grained
                             traffic routing
                           properties:
+                            gateway:
+                              description: Gateway holds Gateway specific configuration
+                                to route traffic Gateway configuration only supports
+                                >= v0.4.0 (v1alpha2).
+                              properties:
+                                httpRouteName:
+                                  description: HTTPRouteName refers to the name of
+                                    an `HTTPRoute` resource in the same namespace
+                                    as the `Rollout`
+                                  type: string
+                              type: object
                             gracePeriodSeconds:
                               description: Optional duration in seconds the traffic
                                 provider(e.g. nginx ingress controller) consumes the
                                 service, ingress configuration changes gracefully.
                               format: int32
+                              minimum: 0
                               type: integer
                             ingress:
                               description: Ingress holds Ingress specific configuration
                                 to route traffic, e.g. Nginx, Alb.
                               properties:
+                                classType:
+                                  description: ClassType refers to the class type
+                                    of an `Ingress`, e.g. Nginx. Default is Nginx
+                                  type: string
                                 name:
                                   description: Name refers to the name of an `Ingress`
                                     resource in the same namespace as the `Rollout`
@@ -154,12 +171,8 @@ spec:
                                 selects pods with stable version and don't select
                                 any pods with canary version.
                               type: string
-                            type:
-                              description: nginx, alb, istio etc.
-                              type: string
                           required:
                           - service
-                          - type
                           type: object
                         type: array
                     type: object
@@ -206,8 +219,7 @@ spec:
                     type: integer
                   currentStepState:
                     type: string
-                  lastReadyTime:
-                    description: The last time this step pods is ready.
+                  lastUpdateTime:
                     format: date-time
                     type: string
                   message:

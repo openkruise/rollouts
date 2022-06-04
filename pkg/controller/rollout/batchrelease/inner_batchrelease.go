@@ -287,7 +287,7 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rol
 	var batches []rolloutv1alpha1.ReleaseBatch
 	for _, step := range rollout.Spec.Strategy.Canary.Steps {
 		if step.Replicas == nil {
-			batches = append(batches, rolloutv1alpha1.ReleaseBatch{CanaryReplicas: intstr.FromString(strconv.Itoa(int(step.Weight)) + "%")})
+			batches = append(batches, rolloutv1alpha1.ReleaseBatch{CanaryReplicas: intstr.FromString(strconv.Itoa(int(*step.Weight)) + "%")})
 		} else {
 			batches = append(batches, rolloutv1alpha1.ReleaseBatch{CanaryReplicas: *step.Replicas})
 		}

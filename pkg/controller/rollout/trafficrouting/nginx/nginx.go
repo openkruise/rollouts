@@ -24,7 +24,6 @@ import (
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
-	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,116 +47,80 @@ type nginxController struct {
 type Config struct {
 	RolloutName   string
 	RolloutNs     string
-	CanaryService *corev1.Service
-	StableService *corev1.Service
+	CanaryService string
+	StableService string
 	TrafficConf   *rolloutv1alpha1.IngressTrafficRouting
 	OwnerRef      metav1.OwnerReference
 }
 
-func NewNginxTrafficRouting(client client.Client, newStatus *rolloutv1alpha1.RolloutStatus, albConf Config) (trafficrouting.Controller, error) {
+func NewNginxTrafficRouting(client client.Client, newStatus *rolloutv1alpha1.RolloutStatus, conf Config) (trafficrouting.Controller, error) {
 	r := &nginxController{
 		Client:    client,
-		conf:      albConf,
+		conf:      conf,
 		newStatus: newStatus,
 	}
 	return r, nil
 }
 
-func (r *nginxController) SetRoutes(desiredWeight int32) error {
-	stableIngress := &netv1.Ingress{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Name}, stableIngress)
-	if err != nil {
-		return err
-	} else if !stableIngress.DeletionTimestamp.IsZero() {
-		klog.Warningf("rollout(%s/%s) stable ingress is deleting", r.conf.RolloutNs, r.conf.RolloutName)
-		return nil
-	}
-	canaryIngress := &netv1.Ingress{}
-	err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.defaultCanaryIngressName()}, canaryIngress)
-	if err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("rollout(%s/%s) get canary ingress failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
-		return err
-	} else if errors.IsNotFound(err) {
-		// create canary ingress
-		canaryIngress = r.buildCanaryIngress(stableIngress, desiredWeight)
-		if err = r.Create(context.TODO(), canaryIngress); err != nil {
-			klog.Errorf("rollout(%s/%s) create canary ingress failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
-			return err
-		}
-		data := util.DumpJSON(canaryIngress)
-		klog.Infof("rollout(%s/%s) create canary ingress(%s) success", r.conf.RolloutNs, r.conf.RolloutName, data)
-		return nil
-	} else if !canaryIngress.DeletionTimestamp.IsZero() {
-		klog.Warningf("rollout(%s/%s) canary ingress is deleting", r.conf.RolloutNs, r.conf.RolloutName)
-		return nil
-	}
-
-	currentWeight := getIngressCanaryWeight(canaryIngress)
-	if desiredWeight == currentWeight {
-		return nil
-	}
-	cloneObj := canaryIngress.DeepCopy()
-	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s/canary-weight":"%s"}}}`, nginxIngressAnnotationDefaultPrefix, fmt.Sprintf("%d", desiredWeight))
-	if err = r.Patch(context.TODO(), cloneObj, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
-		klog.Errorf("rollout(%s/%s) set canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
-		return err
-	}
-	klog.Infof("rollout(%s/%s) set ingress routes(weight:%d) success", r.conf.RolloutNs, r.conf.RolloutName, desiredWeight)
-	return nil
+func (r *nginxController) Initialize(ctx context.Context) error {
+	ingress := &netv1.Ingress{}
+	return r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Name}, ingress)
 }
 
-func (r *nginxController) Verify(desiredWeight int32) (bool, error) {
-	// verify set weight routing
+func (r *nginxController) EnsureRoutes(ctx context.Context, desiredWeight int32) (bool, error) {
 	canaryIngress := &netv1.Ingress{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.defaultCanaryIngressName()}, canaryIngress)
+	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.defaultCanaryIngressName()}, canaryIngress)
 	if err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("rollout(%s/%s) get canary ingress failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
 		return false, err
 	}
-	// when desiredWeight == -1, verify set canary ingress weight=0%
-	if desiredWeight == -1 {
+	// When desiredWeight=0, it means that rollout has been completed and the final traffic switching process is in progress,
+	// and the canary weight should be set to 0 at this time.
+	if desiredWeight == 0 {
 		// canary ingress
 		if errors.IsNotFound(err) || !canaryIngress.DeletionTimestamp.IsZero() {
 			klog.Infof("rollout(%s/%s) verify canary ingress has been deleted", r.conf.RolloutNs, r.conf.RolloutName)
 			return true, nil
 		}
-		// stable ingress
+	} else if errors.IsNotFound(err) {
+		// create canary ingress
 		stableIngress := &netv1.Ingress{}
-		err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Name}, stableIngress)
-		if err != nil && !errors.IsNotFound(err) {
+		err = r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Name}, stableIngress)
+		if err != nil {
 			return false, err
-		}
-		if errors.IsNotFound(err) || !stableIngress.DeletionTimestamp.IsZero() {
-			klog.Infof("rollout(%s/%s) verify stable ingress has been deleted", r.conf.RolloutNs, r.conf.RolloutName)
-			return true, nil
-		}
-
-		cWeight := canaryIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]
-		if cWeight != fmt.Sprintf("%d", 0) {
-			klog.Infof("rollout(%s/%s) verify canary ingress weight(-1) invalid, and reset", r.conf.RolloutNs, r.conf.RolloutName)
+		} else if !stableIngress.DeletionTimestamp.IsZero() {
+			klog.Warningf("rollout(%s/%s) stable ingress is deleting", r.conf.RolloutNs, r.conf.RolloutName)
 			return false, nil
 		}
-		klog.Infof("rollout(%s/%s) verify canary ingress weight(0)", r.conf.RolloutNs, r.conf.RolloutName)
+		canaryIngress = r.buildCanaryIngress(stableIngress, desiredWeight)
+		if err = r.Create(ctx, canaryIngress); err != nil {
+			klog.Errorf("rollout(%s/%s) create canary ingress failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
+			return false, err
+		}
+		data := util.DumpJSON(canaryIngress)
+		klog.Infof("rollout(%s/%s) create canary ingress(%s) success", r.conf.RolloutNs, r.conf.RolloutName, data)
+		return false, nil
+	}
+
+	// check whether canary weight equals desired weight
+	currentWeight := getIngressCanaryWeight(canaryIngress)
+	if desiredWeight == currentWeight {
 		return true, nil
 	}
 
-	// verify set canary ingress desiredWeight
-	if errors.IsNotFound(err) {
-		klog.Infof("rollout(%s/%s) canary ingress not found, and create", r.conf.RolloutNs, r.conf.RolloutName)
-		return false, nil
+	cloneObj := canaryIngress.DeepCopy()
+	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s/canary-weight":"%s"}}}`, nginxIngressAnnotationDefaultPrefix, fmt.Sprintf("%d", desiredWeight))
+	if err = r.Patch(ctx, cloneObj, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+		klog.Errorf("rollout(%s/%s) set canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
+		return false, err
 	}
-	cWeight := canaryIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]
-	if cWeight != fmt.Sprintf("%d", desiredWeight) {
-		klog.Infof("rollout(%s/%s) verify trafficRouting(%d) invalid, and update", r.conf.RolloutNs, r.conf.RolloutName, desiredWeight)
-		return false, nil
-	}
-	klog.Infof("rollout(%s/%s) verify trafficRouting(%d) success", r.conf.RolloutNs, r.conf.RolloutName, desiredWeight)
-	return true, nil
+	klog.Infof("rollout(%s/%s) set ingress routes(weight:%d) success", r.conf.RolloutNs, r.conf.RolloutName, desiredWeight)
+	return false, nil
 }
 
-func (r *nginxController) Finalise() error {
+func (r *nginxController) Finalise(ctx context.Context) error {
 	canaryIngress := &netv1.Ingress{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.defaultCanaryIngressName()}, canaryIngress)
+	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.defaultCanaryIngressName()}, canaryIngress)
 	if err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("rollout(%s/%s) get canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, r.defaultCanaryIngressName(), err.Error())
 		return err
@@ -168,7 +131,7 @@ func (r *nginxController) Finalise() error {
 	}
 
 	// immediate delete canary ingress
-	if err = r.Delete(context.TODO(), canaryIngress); err != nil {
+	if err = r.Delete(ctx, canaryIngress); err != nil {
 		klog.Errorf("rollout(%s/%s) remove canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
 		return err
 	}
@@ -210,9 +173,9 @@ func (r *nginxController) buildCanaryIngress(stableIngress *netv1.Ingress, desir
 
 		// Update all backends pointing to the stableService to point to the canaryService now
 		for ip := 0; ip < len(ingressRule.HTTP.Paths); ip++ {
-			if ingressRule.HTTP.Paths[ip].Backend.Service.Name == r.conf.StableService.Name {
+			if ingressRule.HTTP.Paths[ip].Backend.Service.Name == r.conf.StableService {
 				hasStableServiceBackendRule = true
-				ingressRule.HTTP.Paths[ip].Backend.Service.Name = r.conf.CanaryService.Name
+				ingressRule.HTTP.Paths[ip].Backend.Service.Name = r.conf.CanaryService
 			}
 		}
 
