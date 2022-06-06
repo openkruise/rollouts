@@ -58,7 +58,7 @@ func NewGatewayTrafficRouting(client client.Client, newStatus *rolloutv1alpha1.R
 	return r, nil
 }
 
-func (r *gatewayController) SetRoutes(ctx context.Context, desiredWeight int32) error {
+func (r *gatewayController) SetWeight(ctx context.Context, desiredWeight int32) error {
 	var httpRoute gatewayv1alpha2.HTTPRoute
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.HTTPRouteName}, &httpRoute)
 	if err != nil {
@@ -84,10 +84,10 @@ func (r *gatewayController) SetRoutes(ctx context.Context, desiredWeight int32) 
 	return nil
 }
 
-func (r *gatewayController) Verify(desiredWeight int32) (bool, error) {
+func (r *gatewayController) CheckWeight(ctx context.Context, desiredWeight int32) (bool, error) {
 	// verify set weight routing
 	httpRoute := &gatewayv1alpha2.HTTPRoute{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.HTTPRouteName}, httpRoute)
+	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.HTTPRouteName}, httpRoute)
 	if err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("rollout(%s/%s) get canary HTTPRoute failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
 		return false, err
@@ -123,26 +123,30 @@ func (r *gatewayController) Verify(desiredWeight int32) (bool, error) {
 	return true, nil
 }
 
-func (r *gatewayController) Finalise() error {
-	canaryRoute := &gatewayv1alpha2.HTTPRoute{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.HTTPRouteName}, canaryRoute)
-	if err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("rollout(%s/%s) get canary HTTPRoute(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, r.conf.TrafficConf.HTTPRouteName, err.Error())
+func (r *gatewayController) Finalise(ctx context.Context) error {
+	httpRoute := &gatewayv1alpha2.HTTPRoute{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.HTTPRouteName}, httpRoute)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("rollout(%s/%s) get canary HTTPRoute failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
 		return err
 	}
-
-	// immediate delete canary ingress
-	if err = r.Delete(context.TODO(), canaryRoute); err != nil {
-		klog.Errorf("rollout(%s/%s) remove canary HTTPRoute(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryRoute.Name, err.Error())
+	if r.getHTTPRouteCanaryWeight(*httpRoute) == -1 {
+		return nil
+	}
+	r.buildCanaryHTTPRoute(httpRoute, -1)
+	if err := r.Update(ctx, httpRoute); err != nil {
+		klog.Errorf("rollout(%s/%s) update the canary HTTPRoute failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
 		return err
 	}
-	klog.Infof("rollout(%s/%s) remove canary HTTPRoute(%s) success", r.conf.RolloutNs, r.conf.RolloutName, canaryRoute.Name)
 	return nil
 }
 
-func (r *gatewayController) TrafficRouting() (bool, error) {
+func (r *gatewayController) Validate(ctx context.Context) (bool, error) {
 	canaryRoute := &gatewayv1alpha2.HTTPRoute{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.HTTPRouteName}, canaryRoute)
+	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.HTTPRouteName}, canaryRoute)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return false, fmt.Errorf("Ingress(%s/%s) is Not Found", r.conf.RolloutNs, r.conf.TrafficConf.HTTPRouteName)

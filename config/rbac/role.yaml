@@ -203,26 +203,6 @@ rules:
   - patch
   - update
 - apiGroups:
-  - networking.k8s.io
-  resources:
-  - ingresses
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - networking.k8s.io
-  resources:
-  - ingresses/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
   - gateway.networking.k8s.io
   resources:
   - httproutes
@@ -238,6 +218,26 @@ rules:
   - gateway.networking.k8s.io
   resources:
   - httproutes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses/status
   verbs:
   - get
   - patch

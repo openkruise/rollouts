@@ -125,12 +125,12 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 	steps := len(r.rollout.Spec.Strategy.Canary.Steps)
 	cond := util.GetRolloutCondition(*r.newStatus, rolloutv1alpha1.RolloutConditionProgressing)
 	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and route traffic weight(%d)", canaryStatus.CurrentStepIndex, steps, desiredWeight)
-	verify, err := trController.Verify(desiredWeight)
+	verify, err := trController.CheckWeight(context.Background(), desiredWeight)
 	if err != nil {
 		return false, err
 	} else if !verify {
 		r.recorder.Eventf(r.rollout, corev1.EventTypeNormal, "Progressing", fmt.Sprintf("traffic route weight(%d) done", desiredWeight))
-		return false, trController.SetRoutes(context.Background(), desiredWeight)
+		return false, trController.SetWeight(context.Background(), desiredWeight)
 	}
 	klog.Infof("rollout(%s/%s) do step(%d) trafficRouting(%d) success", r.rollout.Namespace, r.rollout.Name, r.newStatus.CanaryStatus.CurrentStepIndex, desiredWeight)
 	return true, nil
@@ -199,12 +199,12 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 		klog.Errorf("rollout(%s/%s) newTrafficRoutingController failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return false, err
 	}
-	verify, err := trController.Verify(-1)
+	verify, err := trController.CheckWeight(context.Background(), -1)
 	if err != nil {
 		return false, err
 	} else if !verify {
 		r.newStatus.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		err = trController.SetRoutes(context.Background(), 0)
+		err = trController.SetWeight(context.Background(), 0)
 		if err != nil && errors.IsNotFound(err) {
 			klog.Warningf("rollout(%s/%s) VerifyTrafficRouting(-1), and stable ingress not found", r.rollout.Namespace, r.rollout.Name)
 			return false, nil
@@ -220,7 +220,7 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 		}
 	}
 	// DoFinalising, such as delete nginx canary ingress
-	if err = trController.Finalise(); err != nil {
+	if err = trController.Finalise(context.Background()); err != nil {
 		return false, err
 	}
 

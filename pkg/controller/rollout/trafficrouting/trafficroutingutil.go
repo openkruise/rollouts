@@ -20,12 +20,14 @@ import "context"
 
 // Controller common function across all TrafficRouting implementation
 type Controller interface {
-	// SetRoutes set canary desired weight
-	SetRoutes(ctx context.Context, desiredWeight int32) error
-	// Verify check if canary has been set desired weight
-	Verify(desiredWeight int32) (bool, error)
-	// Finalise will do some cleanup work, such as delete canary ingress
-	Finalise() error
-	// TrafficRouting will check the traffic routing resource
-	TrafficRouting() (bool, error)
+	// Validate will validate the traffic routing resource,
+	Validate(ctx context.Context) (bool, error)
+	// SetWeight set canary desired weight.
+	// set the desired weight to -1 means complete the canary rollout.
+	SetWeight(ctx context.Context, desiredWeight int32) error
+	// CheckWeight check if canary has been set desired weight.
+	CheckWeight(ctx context.Context, desiredWeight int32) (bool, error)
+	// Finalise will do some cleanup work after the canary rollout complete, such as delete canary ingress.
+	// Finalise is called with a 3-second delay after completing the canary.
+	Finalise(ctx context.Context) error
 }

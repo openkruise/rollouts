@@ -304,7 +304,7 @@ func (r *RolloutReconciler) verifyTrafficRouting(ns string, tr *rolloutv1alpha1.
 	}
 
 	// check the traffic routing configuration
-	health, err := c.TrafficRouting()
+	health, err := c.Validate(context.Background())
 	if err != nil {
 		return false, "", err
 	}
