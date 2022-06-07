@@ -95,7 +95,7 @@ jobs:
           export KUBECONFIG=/home/runner/.kube/config
           make ginkgo
           set +e
-          ./bin/ginkgo -timeout 60m -v --focus='\[rollouts\] (Rollout)' test/e2e
+          ./bin/ginkgo -timeout 90m -v --focus='\[rollouts\] (Rollout)' test/e2e
           retVal=$?
           # kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
           restartCount=$(kubectl get pod -n kruise-rollout --no-headers | awk '{print $4}')
