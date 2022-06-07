@@ -40,6 +40,7 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 const (
@@ -1610,6 +1611,149 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
 			Expect(service.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(""))
 			cService = &v1.Service{}
+			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
+			// deployment
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeFalse())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+		})
+	})
+
+	KruiseDescribe("Canary rollout with Gateway API", func() {
+		It("V1->V2: Percentage 20%,40%,60%,80%,90%, and replicas=3", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/gateway/rollout-test.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
+				{
+					Weight: 20,
+				},
+				{
+					Weight: 40,
+				},
+				{
+					Weight: 60,
+				},
+				{
+					Weight: 80,
+				},
+				{
+					Weight: 90,
+				},
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			// service
+			service := &v1.Service{}
+			Expect(ReadYamlToObject("./test_data/rollout/service.yaml", service)).ToNot(HaveOccurred())
+			CreateObject(service)
+			// route
+			route := &gatewayv1alpha2.HTTPRoute{}
+			Expect(ReadYamlToObject("./test_data/gateway/httproute-test.yaml", route)).ToNot(HaveOccurred())
+			CreateObject(route)
+			// workload
+			workload := &apps.Deployment{}
+			Expect(ReadYamlToObject("./test_data/rollout/deployment.yaml", workload)).ToNot(HaveOccurred())
+			workload.Spec.Replicas = utilpointer.Int32(3)
+			CreateObject(workload)
+			WaitDeploymentAllPodsReady(workload)
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			By("check rollout status & paused success")
+
+			// v1 -> v2, start rollout action
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDeployment(workload)
+			By("Update deployment env NODE_NAME from(version1) -> to(version2)")
+			time.Sleep(time.Second * 2)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeTrue())
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 1))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 1))
+			routeGet := &gatewayv1alpha2.HTTPRoute{}
+			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, routeGet)).NotTo(HaveOccurred())
+			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal("20"))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(2)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 2))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 2))
+
+			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, routeGet)).NotTo(HaveOccurred())
+			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal("40"))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(3)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 2))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 2))
+			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, routeGet)).NotTo(HaveOccurred())
+			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal("60"))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(4)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 4)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 3))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 3))
+			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, routeGet)).NotTo(HaveOccurred())
+			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal("80"))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(5)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 5)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 3))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 3))
+			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, routeGet)).NotTo(HaveOccurred())
+			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal("90"))
+
+			// resume rollout
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
+			By("rollout completed, and check")
+			// check service & httproute & deployment
+			// httproute
+			Expect(GetObject(routeGet.Name, routeGet)).NotTo(HaveOccurred())
+			// service
+			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
+			Expect(service.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(""))
+			cService := &v1.Service{}
 			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
 			// deployment
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
@@ -3415,4 +3559,14 @@ func mergeMap(dst, patch map[string]string) map[string]string {
 		dst[k1] = v1
 	}
 	return dst
+}
+
+func getHTTPRouteCanaryWeight(route gatewayv1alpha2.HTTPRoute) int32 {
+	for i := range route.Spec.Rules {
+		rules := route.Spec.Rules[i]
+		for j := range rules.BackendRefs {
+			return *rules.BackendRefs[j].Weight
+		}
+	}
+	return -1
 }

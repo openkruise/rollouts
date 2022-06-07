@@ -195,19 +195,8 @@ func progressingStateTransition(status *rolloutv1alpha1.RolloutStatus, condStatu
 }
 
 func (r *RolloutReconciler) doProgressingInitializing(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (bool, string, error) {
-	rolloutCon := &rolloutContext{
-		Client:       r.Client,
-		rollout:      rollout,
-		newStatus:    newStatus,
-		batchControl: batchrelease.NewInnerBatchController(r.Client, rollout),
-		recorder:     r.Recorder,
-	}
-	trController, err := rolloutCon.newTrafficRoutingController(rolloutCon)
-	if err != nil {
-		return false, "", err
-	}
 	// canary release
-	return r.verifyCanaryStrategy(rollout, newStatus, trController)
+	return r.verifyCanaryStrategy(rollout, newStatus)
 }
 
 func (r *RolloutReconciler) doProgressingInRolling(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (*time.Time, error) {
@@ -271,11 +260,22 @@ func (r *RolloutReconciler) doProgressingReset(rollout *rolloutv1alpha1.Rollout,
 	return true, nil
 }
 
-func (r *RolloutReconciler) verifyCanaryStrategy(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus, c trafficrouting.Controller) (bool, string, error) {
+func (r *RolloutReconciler) verifyCanaryStrategy(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (bool, string, error) {
 	canary := rollout.Spec.Strategy.Canary
 	// Traffic routing
-	if canary.TrafficRoutings != nil {
-		if ok, msg, err := r.verifyTrafficRouting(rollout.Namespace, canary.TrafficRoutings[0], c); !ok {
+	if canary.TrafficRoutings != nil && len(canary.TrafficRoutings) > 0 {
+		rolloutCon := &rolloutContext{
+			Client:       r.Client,
+			rollout:      rollout,
+			newStatus:    newStatus,
+			batchControl: batchrelease.NewInnerBatchController(r.Client, rollout),
+			recorder:     r.Recorder,
+		}
+		trController, err := rolloutCon.newTrafficRoutingController(rolloutCon)
+		if err != nil {
+			return false, "", err
+		}
+		if ok, msg, err := r.verifyTrafficRouting(rollout.Namespace, canary.TrafficRoutings[0], trController); !ok {
 			return ok, msg, err
 		}
 	}

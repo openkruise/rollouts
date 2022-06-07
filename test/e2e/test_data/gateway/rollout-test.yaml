@@ -1,33 +1,26 @@
 apiVersion: rollouts.kruise.io/v1alpha1
 kind: Rollout
 metadata:
-  labels:
-    app.oam.dev/app-revision-hash: 36a435e1cd236547
-    app.oam.dev/appRevision: first-vela-app-v2
-    app.oam.dev/cluster: ""
-    app.oam.dev/component: express-server
-    app.oam.dev/name: first-vela-app
-    app.oam.dev/namespace: default
-    app.oam.dev/resourceType: TRAIT
-    app.oam.dev/revision: express-server-v1
-    oam.dev/render-hash: 1190bdab7d9417de
-    trait.oam.dev/resource: rollout
-    trait.oam.dev/type: kruise-rollout
-  name: express-server
-  namespace: default
+  name: rollouts-demo
 spec:
   objectRef:
     workloadRef:
       apiVersion: apps/v1
       kind: Deployment
-      name: express-server
+      name: echoserver
   strategy:
     canary:
       steps:
-      - pause: {}
-        weight: 20
+      - weight: 20
+        pause: {}
+      - weight: 40
+        pause: {duration: 10}
+      - weight: 60
+        pause: {duration: 10}
+      - weight: 80
+        pause: {duration: 10}
+      - weight: 100
       trafficRoutings:
-      - gateway:
-          httpRouteName: express-server
-        gracePeriodSeconds: 5
-        service: express-server
+      - service: echoserver
+        gateway:
+          httpRouteName: echoserver
