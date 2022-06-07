@@ -2090,6 +2090,7 @@ var _ = SIGDescribe("Rollout", func() {
 			By("Update cloneSet env NODE_NAME from(version2) -> to(version1)")
 			ResumeRolloutCanary(rollout.Name)
 			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
 			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
 			UpdateCloneSet(workload)
