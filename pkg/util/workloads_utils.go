@@ -42,6 +42,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/integer"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -323,7 +324,7 @@ func ParseStatefulSetInfo(object *unstructured.Unstructured, namespacedName type
 	return &WorkloadInfo{
 		Metadata:       parseMetadataFrom(object),
 		MaxUnavailable: GetStatefulSetMaxUnavailable(object),
-		Replicas:       pointer.Int32(ParseReplicasFrom(object)),
+		Replicas:       pointer.Int32(ParseReplicas(object)),
 		GVKWithName:    workloadGVKWithName,
 		Selector:       selector,
 		Status:         ParseWorkloadStatus(object),
@@ -376,14 +377,31 @@ func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 	}
 }
 
-// ParseReplicasFrom parses replicas from unstructured workload object
-func ParseReplicasFrom(object *unstructured.Unstructured) int32 {
-	replicas := int32(1)
-	field, found, err := unstructured.NestedInt64(object.Object, "spec", "replicas")
-	if err == nil && found {
-		replicas = int32(field)
+func GetCloneSetExpectedUpdatedReplicas(clone *appsv1alpha1.CloneSet) int32 {
+	if clone.Status.ExpectedUpdatedReplicas > 0 {
+		return clone.Status.ExpectedUpdatedReplicas
 	}
-	return replicas
+	partition, _ := intstr.GetScaledValueFromIntOrPercent(clone.Spec.UpdateStrategy.Partition, int(*clone.Spec.Replicas), true)
+	return integer.Int32Max(*clone.Spec.Replicas-int32(partition), 0)
+}
+
+// ParseReplicas parses replicas from client workload object
+func ParseReplicas(object client.Object) int32 {
+	switch o := object.(type) {
+	case *apps.Deployment:
+		return *o.Spec.Replicas
+	case *appsv1alpha1.CloneSet:
+		return *o.Spec.Replicas
+	case *unstructured.Unstructured:
+		replicas := int32(1)
+		field, found, err := unstructured.NestedInt64(o.Object, "spec", "replicas")
+		if err == nil && found {
+			replicas = int32(field)
+		}
+		return replicas
+	default:
+		panic("unsupported workload type to ParseReplicas function")
+	}
 }
 
 // ParseTemplateFrom parses template from unstructured workload object

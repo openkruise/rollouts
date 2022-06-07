@@ -98,6 +98,16 @@ func (r *ControllerFinder) GetWorkloadForRef(namespace string, ref *rolloutv1alp
 	return nil, nil
 }
 
+func (r *ControllerFinder) GetObjectForRef(namespace string, ref *rolloutv1alpha1.WorkloadRef) (client.Object, error) {
+	workloadGVK := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
+	workloadObj := GetEmptyWorkloadObject(workloadGVK)
+	err := r.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: ref.Name}, workloadObj)
+	if err != nil {
+		return nil, err
+	}
+	return workloadObj, nil
+}
+
 func (r *ControllerFinder) finders() []ControllerFinderFunc {
 	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getDeployment, r.getStatefulSetLikeWorkload}
 }

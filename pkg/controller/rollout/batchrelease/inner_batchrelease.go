@@ -322,6 +322,11 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rol
 			},
 		},
 	}
+	if v, ok := rollout.Annotations[util.RollbackInBatchAnnotation]; ok {
+		br.Annotations = map[string]string{
+			util.RollbackInBatchAnnotation: v,
+		}
+	}
 	return br
 }
 

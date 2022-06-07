@@ -45,6 +45,8 @@ const (
 	KruiseRolloutFinalizer = "rollouts.kruise.io/rollout"
 	// rollout spec hash
 	RolloutHashAnnotation = "rollouts.kruise.io/hash"
+	// RollbackInBatchAnnotation allow use disable quick rollback, and will roll back in batch style.
+	RollbackInBatchAnnotation = "rollouts.kruise.io/rollback-in-batch"
 )
 
 // RolloutState is annotation[rollouts.kruise.io/in-progressing] value
@@ -60,6 +62,17 @@ func GetRolloutState(annotations map[string]string) (*RolloutState, error) {
 	var obj *RolloutState
 	err := json.Unmarshal([]byte(value), &obj)
 	return obj, err
+}
+
+func IsRollbackInBatchPolicy(workloadRef *rolloutv1alpha1.WorkloadRef, annotations map[string]string) bool {
+	//currently, only CloneSet support this policy
+	if workloadRef.Kind == ControllerKruiseKindCS.Kind {
+		value, ok := annotations[RollbackInBatchAnnotation]
+		if ok && value == "true" {
+			return true
+		}
+	}
+	return false
 }
 
 func AddWorkloadWatcher(c controller.Controller, handler handler.EventHandler) error {
@@ -132,6 +145,7 @@ func DiscoverGVK(gvk schema.GroupVersionKind) bool {
 		for _, r := range resourceList.APIResources {
 			if r.Kind == gvk.Kind {
 				return nil
+
 			}
 		}
 		return errors.NewNotFound(schema.GroupResource{Group: gvk.GroupVersion().String(), Resource: gvk.Kind}, "")

@@ -6,7 +6,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
-	github.com/openkruise/kruise-api v1.0.0
+	github.com/openkruise/kruise-api v1.2.0-beta.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.22.6
 	k8s.io/apiextensions-apiserver v0.22.6

@@ -86,7 +86,7 @@ func (c *StatefulSetLikeController) ClaimWorkload() (bool, error) {
 
 	err = util.ClaimWorkload(c.Client, c.planController, set, map[string]interface{}{
 		"rollingUpdate": map[string]interface{}{
-			"partition": pointer.Int32(util.ParseReplicasFrom(set)),
+			"partition": pointer.Int32(util.ParseReplicas(set)),
 		},
 	})
 	if err != nil {
@@ -123,7 +123,7 @@ func (c *StatefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableRepli
 	}
 
 	observedReplicas := canaryReplicasGoal + stableReplicasGoal
-	if observedReplicas != util.ParseReplicasFrom(set) {
+	if observedReplicas != util.ParseReplicas(set) {
 		return false, fmt.Errorf("StatefulSet(%v) scaled, should handle scale event first", c.namespacedName)
 	}
 

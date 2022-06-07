@@ -283,12 +283,25 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *util
 		Status: &util.WorkloadStatus{
 			UpdatedReplicas:      c.clone.Status.UpdatedReplicas,
 			UpdatedReadyReplicas: c.clone.Status.UpdatedReadyReplicas,
+			UpdateRevision:       c.clone.Status.UpdateRevision,
+			StableRevision:       c.clone.Status.CurrentRevision,
 		},
 	}
 
 	// in case of that the updated revision of the workload is promoted
 	if c.clone.Status.UpdatedReplicas == c.clone.Status.Replicas {
 		return IgnoreWorkloadEvent, workloadInfo, nil
+	}
+
+	// updateRevision == CurrentRevision means CloneSet is rolling back or newly-created.
+	if c.clone.Status.UpdateRevision == c.clone.Status.CurrentRevision &&
+		// stableRevision == UpdateRevision means CloneSet is not newly-created.
+		c.releaseStatus.StableRevision == c.clone.Status.UpdateRevision &&
+		c.releaseStatus.StableRevision != c.releaseStatus.UpdateRevision &&
+		// Rollout is on disable quick rollback policy, and will roll back workload in batch
+		util.IsRollbackInBatchPolicy(c.parentController.Spec.TargetRef.WorkloadRef, c.parentController.Annotations) {
+		klog.Warningf("CloneSet(%v) is rolling back in batch", c.targetNamespacedName)
+		return WorkloadRollbackInBatch, workloadInfo, nil
 	}
 
 	// in case of that the workload is scaling

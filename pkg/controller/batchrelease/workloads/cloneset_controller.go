@@ -142,6 +142,7 @@ func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.Cl
 		"spec": map[string]interface{}{
 			"updateStrategy": map[string]interface{}{
 				"partition": partition,
+				"paused":    false,
 			},
 		},
 	}

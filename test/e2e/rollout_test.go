@@ -78,6 +78,7 @@ var _ = SIGDescribe("Rollout", func() {
 	}
 
 	UpdateDeployment := func(object *apps.Deployment) *apps.Deployment {
+		object = object.DeepCopy()
 		var clone *apps.Deployment
 		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			clone = &apps.Deployment{}
@@ -85,7 +86,10 @@ var _ = SIGDescribe("Rollout", func() {
 			if err != nil {
 				return err
 			}
-			clone.Spec = *object.Spec.DeepCopy()
+			clone.Spec.Replicas = utilpointer.Int32(*object.Spec.Replicas)
+			clone.Spec.Template = *object.Spec.Template.DeepCopy()
+			clone.Labels = mergeMap(clone.Labels, object.Labels)
+			clone.Annotations = mergeMap(clone.Annotations, object.Annotations)
 			return k8sClient.Update(context.TODO(), clone)
 		})).NotTo(HaveOccurred())
 
@@ -93,6 +97,7 @@ var _ = SIGDescribe("Rollout", func() {
 	}
 
 	UpdateCloneSet := func(object *appsv1alpha1.CloneSet) *appsv1alpha1.CloneSet {
+		object = object.DeepCopy()
 		var clone *appsv1alpha1.CloneSet
 		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			clone = &appsv1alpha1.CloneSet{}
@@ -100,7 +105,10 @@ var _ = SIGDescribe("Rollout", func() {
 			if err != nil {
 				return err
 			}
-			clone.Spec = *object.Spec.DeepCopy()
+			clone.Spec.Replicas = utilpointer.Int32(*object.Spec.Replicas)
+			clone.Spec.Template = *object.Spec.Template.DeepCopy()
+			clone.Labels = mergeMap(clone.Labels, object.Labels)
+			clone.Annotations = mergeMap(clone.Annotations, object.Annotations)
 			return k8sClient.Update(context.TODO(), clone)
 		})).NotTo(HaveOccurred())
 
@@ -108,6 +116,7 @@ var _ = SIGDescribe("Rollout", func() {
 	}
 
 	UpdateNativeStatefulSet := func(object *apps.StatefulSet) *apps.StatefulSet {
+		object = object.DeepCopy()
 		var clone *apps.StatefulSet
 		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			clone = &apps.StatefulSet{}
@@ -115,7 +124,10 @@ var _ = SIGDescribe("Rollout", func() {
 			if err != nil {
 				return err
 			}
-			clone.Spec = *object.Spec.DeepCopy()
+			clone.Spec.Replicas = utilpointer.Int32(*object.Spec.Replicas)
+			clone.Spec.Template = *object.Spec.Template.DeepCopy()
+			clone.Labels = mergeMap(clone.Labels, object.Labels)
+			clone.Annotations = mergeMap(clone.Annotations, object.Annotations)
 			return k8sClient.Update(context.TODO(), clone)
 		})).NotTo(HaveOccurred())
 
@@ -123,6 +135,7 @@ var _ = SIGDescribe("Rollout", func() {
 	}
 
 	UpdateAdvancedStatefulSet := func(object *appsv1beta1.StatefulSet) *appsv1beta1.StatefulSet {
+		object = object.DeepCopy()
 		var clone *appsv1beta1.StatefulSet
 		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			clone = &appsv1beta1.StatefulSet{}
@@ -130,7 +143,10 @@ var _ = SIGDescribe("Rollout", func() {
 			if err != nil {
 				return err
 			}
-			clone.Spec = *object.Spec.DeepCopy()
+			clone.Spec.Replicas = utilpointer.Int32(*object.Spec.Replicas)
+			clone.Spec.Template = *object.Spec.Template.DeepCopy()
+			clone.Labels = mergeMap(clone.Labels, object.Labels)
+			clone.Annotations = mergeMap(clone.Annotations, object.Annotations)
 			return k8sClient.Update(context.TODO(), clone)
 		})).NotTo(HaveOccurred())
 
@@ -153,18 +169,19 @@ var _ = SIGDescribe("Rollout", func() {
 	}
 
 	ResumeRolloutCanary := func(name string) {
+		var clone *rolloutsv1alpha1.Rollout
 		Eventually(func() bool {
-			clone := &rolloutsv1alpha1.Rollout{}
+			clone = &rolloutsv1alpha1.Rollout{}
 			Expect(GetObject(name, clone)).NotTo(HaveOccurred())
-			if clone.Status.CanaryStatus.CurrentStepState != rolloutsv1alpha1.CanaryStepStatePaused {
-				fmt.Println("resume rollout success, and CurrentStepState", util.DumpJSON(clone.Status))
-				return true
+			if clone.Status.CanaryStatus == nil {
+				return false
 			}
+			return clone.Status.CanaryStatus.CurrentStepState == rolloutsv1alpha1.CanaryStepStatePaused
+		}, 3*time.Minute, time.Second).Should(BeTrue())
 
-			body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, rolloutsv1alpha1.CanaryStepStateReady)
-			Expect(k8sClient.Status().Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))).NotTo(HaveOccurred())
-			return false
-		}, 10*time.Second, time.Second).Should(BeTrue())
+		fmt.Println("resume currentStepState", util.DumpJSON(clone.Status))
+		body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, rolloutsv1alpha1.CanaryStepStateReady)
+		Expect(k8sClient.Status().Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))).NotTo(HaveOccurred())
 	}
 
 	WaitDeploymentAllPodsReady := func(deployment *apps.Deployment) {
@@ -236,7 +253,7 @@ var _ = SIGDescribe("Rollout", func() {
 		}, 20*time.Minute, time.Second).Should(BeTrue())
 	}
 
-	WaitRolloutWorkloadGenration := func(name string, generation int64) {
+	WaitRolloutWorkloadGeneration := func(name string, generation int64) {
 		Eventually(func() bool {
 			clone := &rolloutsv1alpha1.Rollout{}
 			Expect(GetObject(name, clone)).NotTo(HaveOccurred())
@@ -453,7 +470,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage 20%,60% Succeeded", func() {
@@ -616,7 +633,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevision))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 
 			// scale up replicas 5 -> 6
 			workload.Spec.Replicas = utilpointer.Int32(6)
@@ -626,7 +643,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage 20%, and rollback(v1)", func() {
@@ -731,7 +748,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonCanceled))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
 			Expect(string(cond.Status)).Should(Equal("False"))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage 20%,40% and continuous release v3", func() {
@@ -884,7 +901,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevisionV2))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage 20%,40% and scale up replicas from(5) -> to(10)", func() {
@@ -1013,7 +1030,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevision))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage 20%,40%, and scale down replicas from(10) -> to(5)", func() {
@@ -1138,7 +1155,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevision))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage 20%,40%, paused and resume", func() {
@@ -1265,7 +1282,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage 20%,40%, but delete rollout crd", func() {
@@ -1469,7 +1486,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100%, steps changed v1", func() {
@@ -1596,7 +1613,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 	})
 
@@ -1736,7 +1753,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevision))
 
 			// scale up replicas 5 -> 6
@@ -1747,7 +1764,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage, 20%, and rollback(v1)", func() {
@@ -1789,10 +1806,15 @@ var _ = SIGDescribe("Rollout", func() {
 			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
 			workload.Spec.Template.Spec.Containers[0].Image = "echoserver:failed"
 			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
-			UpdateCloneSet(workload)
+			workload = UpdateCloneSet(workload)
 			By("Update cloneSet env NODE_NAME from(version1) -> to(version2)")
+
 			// wait step 1 complete
-			time.Sleep(time.Second * 20)
+			Eventually(func() bool {
+				clone := &appsv1alpha1.CloneSet{}
+				Expect(GetObject(workload.Name, clone)).NotTo(HaveOccurred())
+				return clone.Status.UpdatedReplicas == 1 && !clone.Spec.UpdateStrategy.Paused
+			}, 5*time.Minute, time.Second).Should(BeTrue())
 
 			// check workload status & paused
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
@@ -1995,8 +2017,211 @@ var _ = SIGDescribe("Rollout", func() {
 			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevisionV2))
+		})
+
+		It("V1->V2: disable quickly rollback policy with traffic routing", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.ObjectRef.WorkloadRef = &rolloutsv1alpha1.WorkloadRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "CloneSet",
+				Name:       "echoserver",
+			}
+			rollout.Annotations = map[string]string{
+				util.RollbackInBatchAnnotation: "true",
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			// service
+			service := &v1.Service{}
+			Expect(ReadYamlToObject("./test_data/rollout/service.yaml", service)).ToNot(HaveOccurred())
+			CreateObject(service)
+			// ingress
+			ingress := &netv1.Ingress{}
+			Expect(ReadYamlToObject("./test_data/rollout/nginx_ingress.yaml", ingress)).ToNot(HaveOccurred())
+			CreateObject(ingress)
+			// workload
+			workload := &appsv1alpha1.CloneSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/cloneset.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitCloneSetAllPodsReady(workload)
+
+			By("check rollout status & paused success")
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			stableRevision := rollout.Status.StableRevision
+
+			// v1 -> v2, start rollout action
+			By("Update cloneSet env NODE_NAME from(version1) -> to(version2)")
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateCloneSet(workload)
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 1))
+			Expect(workload.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 1))
+			Expect(workload.Spec.UpdateStrategy.Paused).Should(BeFalse())
+			By("check cloneSet status & paused success")
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
+			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
+			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
+
+			// v1 -> v2 -> v1, continuous release
+			By("Update cloneSet env NODE_NAME from(version2) -> to(version1)")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateCloneSet(workload)
+
+			// make sure cloneSet is rolling back in batch
+			By("Wait step 3 paused")
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			By("Wait step 4 paused")
+			WaitRolloutCanaryStepPaused(rollout.Name, 4)
+
+			By("check rollout canary status success, resume rollout, and wait rollout canary complete")
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
+			WaitCloneSetAllPodsReady(workload)
+			By("rollout completed, and check")
+
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 5))
+			Expect(workload.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 5))
+			Expect(workload.Spec.UpdateStrategy.Partition.IntVal).Should(BeNumerically("==", 0))
+			Expect(workload.Spec.UpdateStrategy.Paused).Should(BeFalse())
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version1"))
+				}
+			}
+			time.Sleep(time.Second * 3)
+
+			// check progressing succeed
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
+		})
+
+		It("V1->V2: disable quickly rollback policy without traffic routing", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.ObjectRef.WorkloadRef = &rolloutsv1alpha1.WorkloadRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "CloneSet",
+				Name:       "echoserver",
+			}
+			rollout.Spec.Strategy.Canary.TrafficRoutings = nil
+			rollout.Annotations = map[string]string{
+				util.RollbackInBatchAnnotation: "true",
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			// workload
+			workload := &appsv1alpha1.CloneSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/cloneset.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitCloneSetAllPodsReady(workload)
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			stableRevision := rollout.Status.StableRevision
+			By("check rollout status & paused success")
+
+			// v1 -> v2, start rollout action
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateCloneSet(workload)
+			By("Update cloneSet env NODE_NAME from(version1) -> to(version2)")
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 1))
+			Expect(workload.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 1))
+			Expect(workload.Spec.UpdateStrategy.Paused).Should(BeFalse())
+			By("check cloneSet status & paused success")
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
+			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
+			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
+
+			// v1 -> v2 -> v1, continuous release
+			By("Update cloneSet env NODE_NAME from(version2) -> to(version1)")
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateCloneSet(workload)
+
+			// make sure CloneSet is rolling back in batch
+			By("Wait step 1 paused")
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			By("Wait step 2 paused")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+			// make sure disable quickly rollback policy
+			By("Wait step 3 paused")
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			By("Wait step 4 paused")
+			WaitRolloutCanaryStepPaused(rollout.Name, 4)
+
+			By("check rollout canary status success, resume rollout, and wait rollout canary complete")
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
+			WaitCloneSetAllPodsReady(workload)
+
+			By("rollout completed, and check")
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 5))
+			Expect(workload.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 5))
+			Expect(workload.Spec.UpdateStrategy.Partition.IntVal).Should(BeNumerically("==", 0))
+			Expect(workload.Spec.UpdateStrategy.Paused).Should(BeFalse())
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version1"))
+				}
+			}
+			time.Sleep(time.Second * 3)
+
+			// check progressing succeed
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage, 20%,40%,60%,80%,100%, no traffic, Succeeded", func() {
@@ -2087,7 +2312,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevision))
 
 			// scale up replicas 5 -> 6
@@ -2098,7 +2323,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 	})
 
@@ -2240,7 +2465,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevision))
 
 			// scale up replicas 5 -> 6
@@ -2251,7 +2476,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage, 20%,40% and continuous release v3", func() {
@@ -2388,7 +2613,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevisionV2))
 		})
 
@@ -2586,7 +2811,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevision))
 
 			// scale up replicas 5 -> 6
@@ -2597,7 +2822,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 	})
 
@@ -2739,7 +2964,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevision))
 
 			// scale up replicas 5 -> 6
@@ -2750,7 +2975,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
 		It("V1->V2: Percentage, 20%,40% and continuous release v3", func() {
@@ -2887,7 +3112,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevisionV2))
 		})
 
@@ -3085,7 +3310,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			Expect(rollout.Status.StableRevision).Should(Equal(canaryRevision))
 
 			// scale up replicas 5 -> 6
@@ -3096,7 +3321,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 	})
 })
@@ -3111,4 +3336,11 @@ func mergeEnvVar(original []v1.EnvVar, add v1.EnvVar) []v1.EnvVar {
 	}
 	newEnvs = append(newEnvs, add)
 	return newEnvs
+}
+
+func mergeMap(dst, patch map[string]string) map[string]string {
+	for k1, v1 := range patch {
+		dst[k1] = v1
+	}
+	return dst
 }

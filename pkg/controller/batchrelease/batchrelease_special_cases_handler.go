@@ -51,6 +51,7 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 	//  (2). Plan is paused during rollout
 	//  (3). Plan is changed during rollout
 	//  (4). Plan status is unexpected/unhealthy
+	//  (5). Plan batchPartition is less than status.currenBatch
 	case isPlanTerminating(r.release, r.releaseStatus):
 		// handle the case that the plan is deleted or is terminating
 		reason = "PlanTerminating"
@@ -74,6 +75,11 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 		reason = "PlanStatusUnhealthy"
 		message = "release plan is unhealthy, then restart"
 		needStopThisRound = true
+
+	case isPlanPartitionModifiedBack(r.releasePlan, r.releaseStatus):
+		reason = "BatchPartitionModifiedBack"
+		message = "release plan batch partition is less than current status, then modified currentBatch back"
+		signalPartitionBack(r.releasePlan, r.releaseStatus)
 
 	/**************************************************************************
 			          SPECIAL CASES ABOUT THE WORKLOAD
@@ -186,6 +192,13 @@ func isPlanUnhealthy(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseSt
 
 func isPlanPaused(event workloads.WorkloadEventType, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
 	return plan.Paused && status.Phase == v1alpha1.RolloutPhaseProgressing && !isWorkloadGone(event, status)
+}
+
+func isPlanPartitionModifiedBack(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
+	if plan.BatchPartition == nil {
+		return false
+	}
+	return *plan.BatchPartition < status.CanaryStatus.CurrentBatch && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
 func isGetWorkloadInfoError(err error) bool {

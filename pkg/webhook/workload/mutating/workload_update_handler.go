@@ -154,7 +154,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstructured.Unstructured) (changed bool, err error) {
 	// indicate whether the workload can enter the rollout process
 	// 1. replicas > 0
-	replicas := util.ParseReplicasFrom(newObj)
+	replicas := util.ParseReplicas(newObj)
 	if replicas == 0 {
 		return false, nil
 	}

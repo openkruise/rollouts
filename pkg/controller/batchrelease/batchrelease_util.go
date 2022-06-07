@@ -77,6 +77,13 @@ func signalRecalculate(release *v1alpha1.BatchRelease, newStatus *v1alpha1.Batch
 	newStatus.ObservedReleasePlanHash = util.HashReleasePlanBatches(&release.Spec.ReleasePlan)
 }
 
+func signalPartitionBack(plan *v1alpha1.ReleasePlan, newStatus *v1alpha1.BatchReleaseStatus) {
+	if plan.BatchPartition != nil {
+		newStatus.CanaryStatus.CurrentBatch = *plan.BatchPartition
+		newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+	}
+}
+
 func resetStatus(status *v1alpha1.BatchReleaseStatus) {
 	status.Phase = v1alpha1.RolloutPhaseInitial
 	status.StableRevision = ""

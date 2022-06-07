@@ -38,6 +38,8 @@ const (
 	WorkloadHasGone WorkloadEventType = "workload-has-gone"
 	// WorkloadUnHealthy means workload is at some unexpected state that our controller cannot handle, we should stop reconcile.
 	WorkloadUnHealthy WorkloadEventType = "workload-is-unhealthy"
+	// WorkloadRollbackInBatch means workload is rollback according to BatchRelease batch plan.
+	WorkloadRollbackInBatch WorkloadEventType = "workload-rollback-in-batch"
 )
 
 type workloadController struct {
