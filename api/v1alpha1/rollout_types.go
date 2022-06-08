@@ -33,6 +33,9 @@ type RolloutSpec struct {
 	ObjectRef ObjectRef `json:"objectRef"`
 	// rollout strategy
 	Strategy RolloutStrategy `json:"strategy"`
+	// RolloutID should be changed before each workload revision publication.
+	// It is to distinguish consecutive multiple workload publications and rollout progress.
+	RolloutID string `json:"rolloutID,omitempty"`
 }
 
 type ObjectRef struct {
@@ -206,6 +209,8 @@ const (
 type CanaryStatus struct {
 	// observedWorkloadGeneration is the most recent generation observed for this Rollout ref workload generation.
 	ObservedWorkloadGeneration int64 `json:"observedWorkloadGeneration,omitempty"`
+	// ObservedRolloutID will record the newest spec.RolloutID if status.canaryRevision equals to workload.updateRevision
+	ObservedRolloutID string `json:"observedRolloutID,omitempty"`
 	// RolloutHash from rollout.spec object
 	RolloutHash string `json:"rolloutHash,omitempty"`
 	// CanaryService holds the name of a service which selects pods with canary version and don't select any pods with stable version.
