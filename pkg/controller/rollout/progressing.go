@@ -130,6 +130,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *rolloutv1alpha1
 				}
 			}
 		}
+
 	// after the normal completion of rollout, enter into the Finalising process
 	case rolloutv1alpha1.ProgressingReasonFinalising:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)

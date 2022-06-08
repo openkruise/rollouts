@@ -80,6 +80,11 @@ spec:
                     - name
                     type: object
                 type: object
+              rolloutID:
+                description: RolloutID should be changed before each workload revision
+                  publication. It is to distinguish consecutive multiple workload
+                  publications and rollout progress.
+                type: string
               strategy:
                 description: rollout strategy
                 properties:
@@ -206,6 +211,10 @@ spec:
                     format: date-time
                     type: string
                   message:
+                    type: string
+                  observedRolloutID:
+                    description: ObservedRolloutID will record the newest spec.RolloutID
+                      if status.canaryRevision equals to workload.updateRevision
                     type: string
                   observedWorkloadGeneration:
                     description: observedWorkloadGeneration is the most recent generation
