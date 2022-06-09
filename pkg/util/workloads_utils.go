@@ -29,6 +29,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/feature"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
@@ -58,6 +59,15 @@ const (
 	// We omit vowels from the set of available characters to reduce the chances
 	// of "bad words" being formed.
 	alphanums = "bcdfghjklmnpqrstvwxz2456789"
+)
+
+var (
+	knownWorkloadGVKs = []*schema.GroupVersionKind{
+		&ControllerKindDep,
+		&ControllerKindSts,
+		&ControllerKruiseKindCS,
+		&ControllerKruiseKindSts,
+	}
 )
 
 type WorkloadStatus struct {
@@ -153,7 +163,7 @@ func EqualIgnoreHash(template1, template2 *v1.PodTemplateSpec) bool {
 }
 
 func HashReleasePlanBatches(releasePlan *v1alpha1.ReleasePlan) string {
-	by, _ := json.Marshal(releasePlan.Batches)
+	by, _ := json.Marshal(releasePlan)
 	md5Hash := sha256.Sum256(by)
 	return hex.EncodeToString(md5Hash[:])
 }
@@ -208,6 +218,10 @@ func PatchSpec(c client.Client, object client.Object, spec map[string]interface{
 }
 
 func GetEmptyWorkloadObject(gvk schema.GroupVersionKind) client.Object {
+	if !IsSupportedWorkload(gvk) {
+		return nil
+	}
+
 	switch gvk.Kind {
 	case ControllerKindDep.Kind:
 		return &apps.Deployment{}
@@ -316,7 +330,7 @@ func GetStatefulSetMaxUnavailable(object *unstructured.Unstructured) *intstr.Int
 
 func ParseStatefulSetInfo(object *unstructured.Unstructured, namespacedName types.NamespacedName) *WorkloadInfo {
 	workloadGVKWithName := fmt.Sprintf("%v(%v)", object.GroupVersionKind().String(), namespacedName)
-	selector, err := ParseSelectorFrom(object)
+	selector, err := parseSelector(object)
 	if err != nil {
 		klog.Errorf("Failed to parse selector for workload(%v)", workloadGVKWithName)
 	}
@@ -428,16 +442,26 @@ func parseMetadataFrom(object *unstructured.Unstructured) *metav1.ObjectMeta {
 	return meta
 }
 
-// ParseSelectorFrom can find labelSelector and parse it as selector for unstructured object
-func ParseSelectorFrom(object *unstructured.Unstructured) (labels.Selector, error) {
-	m, found, err := unstructured.NestedFieldNoCopy(object.Object, "spec", "selector")
-	if err != nil || !found {
-		return nil, err
+// parseSelector can find labelSelector and parse it as labels.Selector for client object
+func parseSelector(object client.Object) (labels.Selector, error) {
+	switch o := object.(type) {
+	case *apps.Deployment:
+		return metav1.LabelSelectorAsSelector(o.Spec.Selector)
+	case *appsv1alpha1.CloneSet:
+		return metav1.LabelSelectorAsSelector(o.Spec.Selector)
+	case *unstructured.Unstructured:
+		m, found, err := unstructured.NestedFieldNoCopy(o.Object, "spec", "selector")
+		if err != nil || !found {
+			return nil, err
+		}
+		byteInfo, _ := json.Marshal(m)
+		labelSelector := &metav1.LabelSelector{}
+		_ = json.Unmarshal(byteInfo, labelSelector)
+		return metav1.LabelSelectorAsSelector(labelSelector)
+	default:
+		panic("unsupported workload type to ParseSelector function")
 	}
-	byteInfo, _ := json.Marshal(m)
-	labelSelector := &metav1.LabelSelector{}
-	_ = json.Unmarshal(byteInfo, labelSelector)
-	return metav1.LabelSelectorAsSelector(labelSelector)
+
 }
 
 func unmarshalIntStr(m interface{}) *intstr.IntOrString {
@@ -460,4 +484,44 @@ func FilterActiveDeployment(ds []*apps.Deployment) []*apps.Deployment {
 func GenRandomStr(length int) string {
 	randStr := rand.String(length)
 	return rand.SafeEncodeString(randStr)
+}
+
+func IsSupportedWorkload(gvk schema.GroupVersionKind) bool {
+	if !feature.NeedFilterWorkloadType() {
+		return true
+	}
+	for _, known := range knownWorkloadGVKs {
+		if gvk.Group == known.Group && gvk.Kind == known.Kind {
+			return true
+		}
+	}
+	return false
+}
+
+func GetOwnerWorkload(r client.Reader, object client.Object) (client.Object, error) {
+	owner := metav1.GetControllerOf(object)
+	if owner == nil {
+		return nil, nil
+	}
+
+	ownerGvk := schema.FromAPIVersionAndKind(owner.APIVersion, owner.Kind)
+	ownerKey := types.NamespacedName{Namespace: object.GetNamespace(), Name: owner.Name}
+	if ownerGvk.Group == ControllerKindRS.Group && ownerGvk.Kind == ControllerKindRS.Kind {
+		replicaset := &apps.ReplicaSet{}
+		err := r.Get(context.TODO(), ownerKey, replicaset)
+		if err != nil {
+			return nil, err
+		}
+		return GetOwnerWorkload(r, replicaset)
+	}
+
+	ownerObj := GetEmptyWorkloadObject(ownerGvk)
+	if ownerObj == nil {
+		return nil, nil
+	}
+	err := r.Get(context.TODO(), ownerKey, ownerObj)
+	if err != nil {
+		return nil, err
+	}
+	return ownerObj, nil
 }

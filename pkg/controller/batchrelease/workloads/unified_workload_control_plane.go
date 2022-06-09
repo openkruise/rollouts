@@ -37,8 +37,8 @@ type UnifiedWorkloadController interface {
 	ClaimWorkload() (bool, error)
 	ReleaseWorkload(cleanup bool) (bool, error)
 	UpgradeBatch(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
-	IsBatchUpgraded(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
 	IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
+	ListOwnedPods() ([]*v1.Pod, error)
 }
 
 // UnifiedWorkloadRolloutControlPlane is responsible for handling rollout StatefulSet type of workloads
@@ -154,13 +154,14 @@ func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 		"stable-goal", stableGoal,
 		"canary-replicas", currentCanaryReplicas)
 
-	upgradeDone, err := c.IsBatchUpgraded(canaryGoal, stableGoal)
-	if err != nil {
+	isUpgradedDone, err := c.UpgradeBatch(canaryGoal, stableGoal)
+	if err != nil || !isUpgradedDone {
+		return false, nil
+	}
+
+	isPatchedDone, err := c.patchPodBatchLabel(workloadInfo, canaryGoal)
+	if err != nil || !isPatchedDone {
 		return false, err
-	} else if !upgradeDone {
-		if succeed, err := c.UpgradeBatch(canaryGoal, stableGoal); err != nil || !succeed {
-			return false, nil
-		}
 	}
 
 	c.recorder.Eventf(c.planController, v1.EventTypeNormal, "SetBatchDone",
@@ -312,4 +313,21 @@ func (c *UnifiedWorkloadRolloutControlPlane) RecordWorkloadRevisionAndReplicas()
 	c.newStatus.StableRevision = workloadInfo.Status.StableRevision
 	c.newStatus.UpdateRevision = workloadInfo.Status.UpdateRevision
 	return nil
+}
+
+func (c *UnifiedWorkloadRolloutControlPlane) patchPodBatchLabel(workloadInfo *util.WorkloadInfo, canaryGoal int32) (bool, error) {
+	rolloutID, exist := c.planController.Labels[util.RolloutIDLabel]
+	if !exist || rolloutID == "" {
+		return true, nil
+	}
+
+	pods, err := c.ListOwnedPods()
+	if err != nil {
+		klog.Errorf("Failed to list pods for %v", workloadInfo.GVKWithName)
+		return false, err
+	}
+
+	batchID := c.planController.Status.CanaryStatus.CurrentBatch + 1
+	updateRevision := c.planController.Status.UpdateRevision
+	return util.PatchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, canaryGoal, client.ObjectKeyFromObject(c.planController))
 }

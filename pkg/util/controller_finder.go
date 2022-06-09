@@ -103,6 +103,7 @@ func (r *ControllerFinder) finders() []ControllerFinderFunc {
 }
 
 var (
+	ControllerKindRS        = apps.SchemeGroupVersion.WithKind("ReplicaSet")
 	ControllerKindDep       = apps.SchemeGroupVersion.WithKind("Deployment")
 	ControllerKindSts       = apps.SchemeGroupVersion.WithKind("StatefulSet")
 	ControllerKruiseKindCS  = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")

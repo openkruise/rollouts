@@ -54,14 +54,22 @@ type podEventHandler struct {
 }
 
 func (p podEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+	pod, ok := evt.Object.(*corev1.Pod)
+	if !ok {
+		return
+	}
+	p.enqueue(pod, q)
 }
 func (p podEventHandler) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
 func (p podEventHandler) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 }
 func (p podEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
-	oldPod := evt.ObjectOld.(*corev1.Pod)
-	newPod := evt.ObjectNew.(*corev1.Pod)
+	oldPod, oldOK := evt.ObjectOld.(*corev1.Pod)
+	newPod, newOK := evt.ObjectNew.(*corev1.Pod)
+	if !oldOK || !newOK {
+		return
+	}
 	if oldPod.ResourceVersion == newPod.ResourceVersion || util.IsPodReady(oldPod) == util.IsPodReady(newPod) {
 		return
 	}
@@ -79,9 +87,9 @@ func (p podEventHandler) enqueue(pod *corev1.Pod, q workqueue.RateLimitingInterf
 		Name: owner.Name, Namespace: pod.Namespace,
 	}
 	workloadGVK := schema.FromAPIVersionAndKind(owner.APIVersion, owner.Kind)
-	workloadObj := util.GetEmptyWorkloadObject(workloadGVK)
-	err := p.Get(context.TODO(), workloadNamespacedName, workloadObj)
-	if err != nil {
+	workloadObj, err := util.GetOwnerWorkload(p.Reader, pod)
+	if err != nil || workloadObj == nil {
+		klog.Errorf("Failed to get owner workload for pod %v, err: %v", client.ObjectKeyFromObject(pod), err)
 		return
 	}
 

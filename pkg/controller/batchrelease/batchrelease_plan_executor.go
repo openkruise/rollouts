@@ -24,6 +24,7 @@ import (
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
+	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -261,6 +262,12 @@ func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error)
 	}
 
 	gvk := schema.FromAPIVersionAndKind(targetRef.APIVersion, targetRef.Kind)
+	if !util.IsSupportedWorkload(gvk) {
+		message := fmt.Sprintf("the workload type '%v' is not supported", gvk)
+		r.recorder.Event(r.release, v1.EventTypeWarning, "UnsupportedWorkload", message)
+		return nil, fmt.Errorf(message)
+	}
+
 	targetKey := types.NamespacedName{
 		Namespace: r.release.Namespace,
 		Name:      targetRef.Name,

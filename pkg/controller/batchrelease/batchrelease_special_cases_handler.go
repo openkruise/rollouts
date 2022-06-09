@@ -57,7 +57,7 @@ func (r *Executor) checkHealthBeforeExecution(controller workloads.WorkloadContr
 		message = "Release plan is deleted or cancelled, then terminate"
 		signalTerminating(r.releaseStatus)
 
-	case isPlanPaused(workloadEvent, r.releasePlan, r.releaseStatus):
+	case isPlanPaused(workloadEvent, r.release, r.releaseStatus):
 		// handle the case that releasePlan.paused = true
 		reason = "PlanPaused"
 		message = "release plan is paused, then stop reconcile"
@@ -184,8 +184,8 @@ func isPlanUnhealthy(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseSt
 	return int(status.CanaryStatus.CurrentBatch) >= len(plan.Batches) && status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
-func isPlanPaused(event workloads.WorkloadEventType, plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
-	return plan.Paused && status.Phase == v1alpha1.RolloutPhaseProgressing && !isWorkloadGone(event, status)
+func isPlanPaused(event workloads.WorkloadEventType, release *v1alpha1.BatchRelease, status *v1alpha1.BatchReleaseStatus) bool {
+	return release.Spec.Paused && status.Phase == v1alpha1.RolloutPhaseProgressing && !isWorkloadGone(event, status)
 }
 
 func isGetWorkloadInfoError(err error) bool {

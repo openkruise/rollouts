@@ -44,6 +44,10 @@ type BatchReleaseSpec struct {
 	TargetRef ObjectRef `json:"targetReference"`
 	// ReleasePlan is the details on how to rollout the resources
 	ReleasePlan ReleasePlan `json:"releasePlan"`
+	// Paused the rollout, the release progress will be paused util paused is false.
+	// default is false
+	// +optional
+	Paused bool `json:"paused,omitempty"`
 }
 
 type DeploymentReleaseStrategyType string

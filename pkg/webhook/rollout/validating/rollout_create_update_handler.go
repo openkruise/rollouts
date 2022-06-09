@@ -23,8 +23,10 @@ import (
 	"reflect"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	addmissionv1 "k8s.io/api/admission/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -145,6 +147,11 @@ func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) fie
 func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *field.Path) field.ErrorList {
 	if objectRef.WorkloadRef == nil {
 		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef is required")}
+	}
+
+	gvk := schema.FromAPIVersionAndKind(objectRef.WorkloadRef.APIVersion, objectRef.WorkloadRef.Kind)
+	if !util.IsSupportedWorkload(gvk) {
+		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef kind is not supported")}
 	}
 	return nil
 }

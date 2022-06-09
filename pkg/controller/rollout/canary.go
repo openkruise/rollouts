@@ -42,27 +42,26 @@ func (r *rolloutContext) runCanary() error {
 	}
 
 	// update canary status
-	canaryStatus.CanaryReplicas = r.workload.CanaryReplicas
-	canaryStatus.CanaryReadyReplicas = r.workload.CanaryReadyReplicas
+	batch, err := r.batchControl.FetchBatchRelease()
+	if err != nil {
+		canaryStatus.CanaryReplicas = r.workload.CanaryReplicas
+		canaryStatus.CanaryReadyReplicas = r.workload.CanaryReadyReplicas
+	} else {
+		canaryStatus.CanaryReplicas = batch.Status.CanaryStatus.UpdatedReplicas
+		canaryStatus.CanaryReadyReplicas = batch.Status.CanaryStatus.UpdatedReadyReplicas
+	}
+
 	switch canaryStatus.CurrentStepState {
 	case rolloutv1alpha1.CanaryStepStateUpgrade:
 		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", r.rollout.Namespace, r.rollout.Name, rolloutv1alpha1.CanaryStepStateUpgrade)
-		// If the last step is 100%, there is no need to execute the canary process at this time
-		if r.rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1].Weight == 100 {
-			klog.Infof("rollout(%s/%s) last step is 100%, there is no need to execute the canary process at this time, and set state=%s",
-				r.rollout.Namespace, r.rollout.Name, canaryStatus.CurrentStepIndex-1, canaryStatus.CurrentStepIndex, rolloutv1alpha1.CanaryStepStateCompleted)
+		done, err := r.doCanaryUpgrade()
+		if err != nil {
+			return err
+		} else if done {
+			canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateTrafficRouting
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-			canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateCompleted
-		} else {
-			done, err := r.doCanaryUpgrade()
-			if err != nil {
-				return err
-			} else if done {
-				canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateTrafficRouting
-				canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-				klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", r.rollout.Namespace, r.rollout.Name,
-					canaryStatus.CurrentStepIndex, rolloutv1alpha1.CanaryStepStateUpgrade, canaryStatus.CurrentStepState)
-			}
+			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", r.rollout.Namespace, r.rollout.Name,
+				canaryStatus.CurrentStepIndex, rolloutv1alpha1.CanaryStepStateUpgrade, canaryStatus.CurrentStepState)
 		}
 
 	case rolloutv1alpha1.CanaryStepStateTrafficRouting:
@@ -268,6 +267,9 @@ func (r *rolloutContext) removeRolloutStateInWorkload() error {
 	workloadGVK := schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		obj := util.GetEmptyWorkloadObject(workloadGVK)
+		if obj == nil {
+			return nil
+		}
 		if err := r.Get(context.TODO(), types.NamespacedName{Name: r.workload.Name, Namespace: r.workload.Namespace}, obj); err != nil {
 			klog.Errorf("getting updated workload(%s.%s) failed: %s", r.workload.Namespace, r.workload.Name, err.Error())
 			return err
