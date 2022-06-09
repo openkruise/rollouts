@@ -42,6 +42,11 @@ func TestBuildCanaryHTTPRoute(t *testing.T) {
 				},
 			},
 		},
+		newStatus: &rolloutv1alpha1.RolloutStatus{
+			CanaryStatus: &rolloutv1alpha1.CanaryStatus{
+				CanaryService: "test-canary",
+			},
+		},
 	}
 	var service = v1alpha2.Kind("Service")
 	var defaultWeight int32 = 1

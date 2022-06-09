@@ -167,14 +167,14 @@ func (r *gatewayController) buildCanaryHTTPRoute(stable *gatewayv1alpha2.HTTPRou
 			if kind != nil && *kind == "Service" && string(rule.BackendRefs[j].Name) == r.conf.StableService.Name {
 				if weight != -1 {
 					canaryBackendRef := rule.BackendRefs[j].DeepCopy()
-					canaryBackendRef.Name = gatewayv1alpha2.ObjectName(r.conf.CanaryService.Name)
+					canaryBackendRef.Name = gatewayv1alpha2.ObjectName(r.newStatus.CanaryStatus.CanaryService)
 					canaryBackendRef.Weight = generateCanaryWeight(weight)
 					canaryBackendRefs = append(canaryBackendRefs, *canaryBackendRef)
 				}
 				stableBackendRef := rule.BackendRefs[j]
 				stableBackendRef.Weight = generateStableWeight(weight)
 				stableBackendRefs = append(stableBackendRefs, stableBackendRef)
-			} else if string(rule.BackendRefs[j].Name) != r.conf.CanaryService.Name {
+			} else if string(rule.BackendRefs[j].Name) != r.newStatus.CanaryStatus.CanaryService {
 				canaryBackendRef := rule.BackendRefs[j]
 				canaryBackendRef.Weight = &weight
 				stableBackendRefs = append(stableBackendRefs, rule.BackendRefs[j])
@@ -191,7 +191,7 @@ func (r *gatewayController) getHTTPRouteCanaryWeight(route gatewayv1alpha2.HTTPR
 		rules := route.Spec.Rules[i]
 		for j := range rules.BackendRefs {
 			kind := rules.BackendRefs[j].Kind
-			if kind != nil && *kind == "Service" && string(rules.BackendRefs[j].Name) == r.conf.CanaryService.Name {
+			if kind != nil && *kind == "Service" && string(rules.BackendRefs[j].Name) == r.newStatus.CanaryStatus.CanaryService {
 				return *rules.BackendRefs[j].Weight
 			}
 		}

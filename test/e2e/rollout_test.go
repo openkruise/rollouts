@@ -1695,8 +1695,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 1))
 			routeGet := &gatewayv1alpha2.HTTPRoute{}
-			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, routeGet)).NotTo(HaveOccurred())
-			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal("20"))
+			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
+			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal(int32(20)))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
@@ -1707,8 +1707,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 2))
 			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 2))
 
-			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, routeGet)).NotTo(HaveOccurred())
-			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal("40"))
+			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
+			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal(int32(40)))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
@@ -1718,8 +1718,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 2))
 			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 2))
-			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, routeGet)).NotTo(HaveOccurred())
-			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal("60"))
+			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
+			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal(int32(60)))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
@@ -1729,8 +1729,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 3))
 			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 3))
-			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, routeGet)).NotTo(HaveOccurred())
-			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal("80"))
+			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
+			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal(int32(80)))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
@@ -1740,8 +1740,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 3))
 			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 3))
-			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, routeGet)).NotTo(HaveOccurred())
-			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal("90"))
+			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
+			Expect(getHTTPRouteCanaryWeight(*routeGet)).Should(Equal(int32(90)))
 
 			// resume rollout
 			ResumeRolloutCanary(rollout.Name)
@@ -3565,7 +3565,10 @@ func getHTTPRouteCanaryWeight(route gatewayv1alpha2.HTTPRoute) int32 {
 	for i := range route.Spec.Rules {
 		rules := route.Spec.Rules[i]
 		for j := range rules.BackendRefs {
-			return *rules.BackendRefs[j].Weight
+			serviceName := rules.BackendRefs[j].Name
+			if strings.HasSuffix(string(serviceName), "-canary") {
+				return *rules.BackendRefs[j].Weight
+			}
 		}
 	}
 	return -1
