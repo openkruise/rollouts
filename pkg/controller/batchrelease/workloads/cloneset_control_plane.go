@@ -170,6 +170,12 @@ func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 		}
 	}
 
+	// patch current batch label to pods
+	patchDone, err := c.patchPodBatchLabel(canaryGoal)
+	if !patchDone || err != nil {
+		return false, err
+	}
+
 	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "SetBatchDone",
 		"Finished submitting all upgrade quests for batch %d", c.releaseStatus.CanaryStatus.CurrentBatch)
 	return true, nil
@@ -329,4 +335,21 @@ func (c *CloneSetRolloutController) recordCloneSetRevisionAndReplicas() {
 	c.releaseStatus.ObservedWorkloadReplicas = *c.clone.Spec.Replicas
 	c.releaseStatus.StableRevision = c.clone.Status.CurrentRevision
 	c.releaseStatus.UpdateRevision = c.clone.Status.UpdateRevision
+}
+
+func (c *CloneSetRolloutController) patchPodBatchLabel(canaryGoal int32) (bool, error) {
+	rolloutID, exist := c.parentController.Labels[util.RolloutIDLabel]
+	if !exist || rolloutID == "" {
+		return true, nil
+	}
+
+	pods, err := util.ListOwnedPods(c.client, c.clone)
+	if err != nil {
+		klog.Errorf("Failed to list pods for CloneSet %v", c.targetNamespacedName)
+		return false, err
+	}
+
+	batchID := c.parentController.Status.CanaryStatus.CurrentBatch + 1
+	updateRevision := c.parentController.Status.UpdateRevision
+	return util.PatchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, canaryGoal, c.releasePlanKey)
 }

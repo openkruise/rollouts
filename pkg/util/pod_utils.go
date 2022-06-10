@@ -1,10 +1,17 @@
 package util
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // IsPodReady returns true if a pod is ready; false otherwise.
@@ -56,4 +63,83 @@ func IsConsistentWithRevision(pod *v1.Pod, revision string) bool {
 		return true
 	}
 	return false
+}
+
+func FilterActivePods(pods []*v1.Pod) []*v1.Pod {
+	var activePods []*v1.Pod
+	for _, pod := range pods {
+		if pod.DeletionTimestamp.IsZero() {
+			activePods = append(activePods, pod)
+		}
+	}
+	return activePods
+}
+
+func IsCompletedPod(pod *v1.Pod) bool {
+	return pod.Status.Phase == v1.PodFailed || pod.Status.Phase == v1.PodSucceeded
+}
+
+func ListOwnedPods(c client.Client, object client.Object) ([]*v1.Pod, error) {
+	selector, err := parseSelector(object)
+	if err != nil {
+		return nil, err
+	}
+
+	podLister := &v1.PodList{}
+	err = c.List(context.TODO(), podLister, &client.ListOptions{LabelSelector: selector}, utilclient.DisableDeepCopy)
+	if err != nil {
+		return nil, err
+	}
+	pods := make([]*v1.Pod, 0, len(podLister.Items))
+	for i := range podLister.Items {
+		pod := &podLister.Items[i]
+		if IsCompletedPod(pod) {
+			continue
+		}
+		owner := metav1.GetControllerOf(pod)
+		if owner == nil || owner.UID != object.GetUID() {
+			continue
+		}
+		pods = append(pods, pod)
+	}
+	return pods, nil
+}
+
+func PatchPodBatchLabel(c client.Client, pods []*v1.Pod, rolloutID string, batchID int32, updateRevision string, canaryGoal int32, logKey types.NamespacedName) (bool, error) {
+	// the number of active pods that has been patched successfully.
+	patchedUpdatedReplicas := int32(0)
+	for _, pod := range pods {
+		podRolloutID := pod.Labels[RolloutIDLabel]
+		if pod.DeletionTimestamp.IsZero() {
+			// we don't patch label for the active old revision pod
+			if !IsConsistentWithRevision(pod, updateRevision) {
+				continue
+			}
+			// if it has been patched, count and ignore
+			if podRolloutID == rolloutID {
+				patchedUpdatedReplicas++
+				continue
+			}
+		}
+
+		// for such terminating pod and others, if it has been patched, just ignore
+		if podRolloutID == rolloutID {
+			continue
+		}
+
+		podClone := pod.DeepCopy()
+		by := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s","%s":"%d"}}}`, RolloutIDLabel, rolloutID, RolloutBatchIDLabel, batchID)
+		err := c.Patch(context.TODO(), podClone, client.RawPatch(types.StrategicMergePatchType, []byte(by)))
+		if err != nil {
+			klog.Errorf("Failed to patch Pod(%v) batchID, err: %v", client.ObjectKeyFromObject(podClone), err)
+			return false, err
+		}
+
+		if pod.DeletionTimestamp.IsZero() && IsConsistentWithRevision(pod, updateRevision) {
+			patchedUpdatedReplicas++
+		}
+	}
+
+	klog.V(3).Infof("Patch %v pods with batchID for batchRelease %v, goal is %d pods", patchedUpdatedReplicas, logKey, canaryGoal)
+	return patchedUpdatedReplicas >= canaryGoal, nil
 }

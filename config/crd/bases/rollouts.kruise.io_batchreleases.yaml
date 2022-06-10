@@ -52,6 +52,10 @@ spec:
             description: BatchReleaseSpec defines how to describe an update between
               different compRevision
             properties:
+              paused:
+                description: Paused the rollout, the release progress will be paused
+                  util paused is false. default is false
+                type: boolean
               releasePlan:
                 description: ReleasePlan is the details on how to rollout the resources
                 properties:
@@ -93,10 +97,6 @@ spec:
                       - canaryReplicas
                       type: object
                     type: array
-                  paused:
-                    description: Paused the rollout, the release progress will be
-                      paused util paused is false. default is false
-                    type: boolean
                 type: object
               targetReference:
                 description: TargetRef contains the GVK and name of the workload that
@@ -211,7 +211,7 @@ spec:
                 type: integer
               observedReleasePlanHash:
                 description: ObservedReleasePlanHash is a hash code of observed itself
-                  releasePlan.Batches.
+                  spec.releasePlan.
                 type: string
               observedWorkloadReplicas:
                 description: ObservedWorkloadReplicas is observed replicas of target

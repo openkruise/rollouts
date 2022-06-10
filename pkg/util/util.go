@@ -18,18 +18,15 @@ package util
 
 import (
 	"encoding/json"
-	"strconv"
 	"time"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -45,6 +42,13 @@ const (
 	KruiseRolloutFinalizer = "rollouts.kruise.io/rollout"
 	// rollout spec hash
 	RolloutHashAnnotation = "rollouts.kruise.io/hash"
+	// RolloutIDLabel is designed to distinguish each workload revision publications.
+	// The value of RolloutIDLabel corresponds Rollout.Spec.RolloutID.
+	RolloutIDLabel = "apps.kruise.io/rollout-id"
+	// RolloutBatchIDLabel is the label key of batch id that will be patched to pods during rollout.
+	// Only when RolloutIDLabel is set, RolloutBatchIDLabel will be patched.
+	// Users can use RolloutIDLabel and RolloutBatchIDLabel to select the pods that are upgraded in some certain batch and release.
+	RolloutBatchIDLabel = "apps.kruise.io/rollout-batch-id"
 )
 
 // RolloutState is annotation[rollouts.kruise.io/in-progressing] value
@@ -95,25 +99,6 @@ func AddWorkloadWatcher(c controller.Controller, handler handler.EventHandler) e
 		return err
 	}
 	return nil
-}
-
-func ReCalculateCanaryStepIndex(rollout *rolloutv1alpha1.Rollout, workloadReplicas, currentReplicas int) int32 {
-	var stepIndex int32
-	for i := range rollout.Spec.Strategy.Canary.Steps {
-		step := rollout.Spec.Strategy.Canary.Steps[i]
-		var desiredReplicas int
-		if step.Replicas != nil {
-			desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(step.Replicas, workloadReplicas, true)
-		} else {
-			replicas := intstr.FromString(strconv.Itoa(int(step.Weight)) + "%")
-			desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(&replicas, workloadReplicas, true)
-		}
-		stepIndex = int32(i + 1)
-		if currentReplicas <= desiredReplicas {
-			break
-		}
-	}
-	return stepIndex
 }
 
 func DiscoverGVK(gvk schema.GroupVersionKind) bool {

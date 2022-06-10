@@ -132,11 +132,11 @@ func (r *innerBatchRelease) Promote(index int32, checkReady bool) (bool, error) 
 			klog.Errorf("error getting updated BatchRelease(%s/%s) from client", batch.Namespace, batch.Name)
 			return err
 		}
-		if !batch.Spec.ReleasePlan.Paused && *batch.Spec.ReleasePlan.BatchPartition == index {
+		if !batch.Spec.Paused && *batch.Spec.ReleasePlan.BatchPartition == index {
 			return nil
 		}
 		batch.Spec.ReleasePlan.BatchPartition = utilpointer.Int32Ptr(index)
-		batch.Spec.ReleasePlan.Paused = false
+		batch.Spec.Paused = false
 		if err := r.Client.Update(context.TODO(), batch); err != nil {
 			return err
 		}
@@ -321,6 +321,10 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rol
 				BatchPartition: utilpointer.Int32Ptr(0),
 			},
 		},
+	}
+
+	if rollout.Spec.RolloutID != "" {
+		br.Labels[util.RolloutIDLabel] = rollout.Spec.RolloutID
 	}
 	return br
 }

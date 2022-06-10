@@ -18,14 +18,12 @@ package workloads
 
 import (
 	"context"
-	"fmt"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -75,6 +73,14 @@ func (c *StatefulSetLikeController) GetWorkloadInfo() (*util.WorkloadInfo, error
 
 	workloadInfo := util.ParseStatefulSetInfo(set, c.namespacedName)
 	workloadInfo.Paused = true
+	if workloadInfo.Status.UpdatedReadyReplicas <= 0 {
+		updatedReadyReplicas, err := c.countUpdatedReadyPods(workloadInfo.Status.UpdateRevision)
+		if err != nil {
+			return nil, err
+		}
+		workloadInfo.Status.UpdatedReadyReplicas = updatedReadyReplicas
+	}
+
 	return workloadInfo, nil
 }
 
@@ -85,6 +91,7 @@ func (c *StatefulSetLikeController) ClaimWorkload() (bool, error) {
 	}
 
 	err = util.ClaimWorkload(c.Client, c.planController, set, map[string]interface{}{
+		"type": apps.RollingUpdateStatefulSetStrategyType,
 		"rollingUpdate": map[string]interface{}{
 			"partition": pointer.Int32(util.ParseReplicasFrom(set)),
 		},
@@ -122,9 +129,9 @@ func (c *StatefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableRepli
 		return false, err
 	}
 
-	observedReplicas := canaryReplicasGoal + stableReplicasGoal
-	if observedReplicas != util.ParseReplicasFrom(set) {
-		return false, fmt.Errorf("StatefulSet(%v) scaled, should handle scale event first", c.namespacedName)
+	// if no needs to patch partition
+	if isStatefulSetUpgradedDone(set, canaryReplicasGoal, stableReplicasGoal) {
+		return true, nil
 	}
 
 	err = util.PatchSpec(c.Client, set, map[string]interface{}{
@@ -140,20 +147,6 @@ func (c *StatefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableRepli
 
 	klog.V(3).Infof("Upgrade StatefulSet(%v) Partition to %v Successfully", c.namespacedName, stableReplicasGoal)
 	return true, nil
-}
-
-func (c *StatefulSetLikeController) IsBatchUpgraded(canaryReplicasGoal, stableReplicasGoal int32) (bool, error) {
-	set, err := c.GetWorkloadObject()
-	if err != nil {
-		return false, err
-	}
-
-	if !util.IsStatefulSetRollingUpdate(set) {
-		return false, fmt.Errorf("StatefulSet(%v) rollingUpdate configuration is nil, should check it manually", c.namespacedName)
-	}
-
-	partition := util.GetStatefulSetPartition(set)
-	return partition <= stableReplicasGoal, nil
 }
 
 func (c *StatefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error) {
@@ -198,7 +191,7 @@ func (c *StatefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableRepli
 	return secondCheckPointReady(), nil
 }
 
-func (c *StatefulSetLikeController) listOwnedPods() ([]*v1.Pod, error) {
+func (c *StatefulSetLikeController) ListOwnedPods() ([]*v1.Pod, error) {
 	if c.pods != nil {
 		return c.pods, nil
 	}
@@ -206,41 +199,32 @@ func (c *StatefulSetLikeController) listOwnedPods() ([]*v1.Pod, error) {
 	if err != nil {
 		return nil, err
 	}
-	selector, err := util.ParseSelectorFrom(set)
-	if err != nil || selector == nil {
-		return nil, err
-	}
-	podLister := &v1.PodList{}
-	err = c.List(context.TODO(), podLister, &client.ListOptions{LabelSelector: selector}, utilclient.DisableDeepCopy)
-	if err != nil {
-		return nil, err
-	}
-	c.pods = make([]*v1.Pod, 0)
-	for i := range podLister.Items {
-		pod := &podLister.Items[i]
-		if !pod.DeletionTimestamp.IsZero() {
-			continue
-		}
-		owner := metav1.GetControllerOf(pod)
-		if owner == nil || owner.UID != set.GetUID() {
-			continue
-		}
-		c.pods = append(c.pods, pod)
-	}
-	return c.pods, nil
+	c.pods, err = util.ListOwnedPods(c.Client, set)
+	return c.pods, err
 }
 
 func (c *StatefulSetLikeController) countUpdatedReadyPods(updateRevision string) (int32, error) {
-	pods, err := c.listOwnedPods()
+	pods, err := c.ListOwnedPods()
 	if err != nil {
 		return 0, err
 	}
+	activePods := util.FilterActivePods(pods)
 	updatedReadyReplicas := int32(0)
-	for _, pod := range pods {
+	for _, pod := range activePods {
 		if util.IsConsistentWithRevision(pod, updateRevision) && util.IsPodReady(pod) {
 			updatedReadyReplicas++
 		}
 	}
 	klog.V(3).Infof("BatchRelease(%v) observed %d updatedReadyReplicas")
 	return updatedReadyReplicas, nil
+}
+
+func isStatefulSetUpgradedDone(set *unstructured.Unstructured, canaryReplicasGoal, stableReplicasGoal int32) bool {
+	partition := util.GetStatefulSetPartition(set)
+	if partition <= stableReplicasGoal {
+		return true
+	}
+	updatedReplicas := util.ParseStatusIntFrom(set, "updatedReplicas")
+	observedGeneration := util.ParseStatusIntFrom(set, "observedGeneration")
+	return set.GetGeneration() == observedGeneration && int(updatedReplicas) >= int(canaryReplicasGoal)
 }

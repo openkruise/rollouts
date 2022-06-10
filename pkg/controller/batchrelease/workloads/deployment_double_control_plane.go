@@ -153,6 +153,12 @@ func (c *DeploymentsRolloutController) UpgradeOneBatch() (bool, error) {
 		}
 	}
 
+	// patch current batch label to pods
+	patchDone, err := c.patchPodBatchLabel(canaryGoal)
+	if !patchDone || err != nil {
+		return false, err
+	}
+
 	c.recorder.Eventf(c.parentController, v1.EventTypeNormal, "Batch Rollout", "Finished submitting all upgrade quests for batch %d", c.releaseStatus.CanaryStatus.CurrentBatch)
 	return true, nil
 }
@@ -363,4 +369,21 @@ func (c *DeploymentsRolloutController) recordDeploymentRevisionAndReplicas() err
 	c.releaseStatus.UpdateRevision = updateRevision
 	c.releaseStatus.ObservedWorkloadReplicas = *c.stable.Spec.Replicas
 	return nil
+}
+
+func (c *DeploymentsRolloutController) patchPodBatchLabel(canaryGoal int32) (bool, error) {
+	rolloutID, exist := c.parentController.Labels[util.RolloutIDLabel]
+	if !exist || rolloutID == "" || c.canary == nil {
+		return true, nil
+	}
+
+	pods, err := util.ListOwnedPods(c.client, c.canary)
+	if err != nil {
+		klog.Errorf("Failed to list pods for Deployment %v", c.stableNamespacedName)
+		return false, err
+	}
+
+	batchID := c.parentController.Status.CanaryStatus.CurrentBatch + 1
+	updateRevision := c.parentController.Status.UpdateRevision
+	return util.PatchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, canaryGoal, c.releaseKey)
 }

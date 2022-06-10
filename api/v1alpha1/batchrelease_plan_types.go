@@ -42,10 +42,6 @@ type ReleasePlan struct {
 	// BatchPartition start from 0.
 	// +optional
 	BatchPartition *int32 `json:"batchPartition,omitempty"`
-	// Paused the rollout, the release progress will be paused util paused is false.
-	// default is false
-	// +optional
-	Paused bool `json:"paused,omitempty"`
 }
 
 // ReleaseBatch is used to describe how each batch release should be
@@ -82,7 +78,7 @@ type BatchReleaseStatus struct {
 	// newest canary Deployment.
 	// +optional
 	CollisionCount *int32 `json:"collisionCount,omitempty"`
-	// ObservedReleasePlanHash is a hash code of observed itself releasePlan.Batches.
+	// ObservedReleasePlanHash is a hash code of observed itself spec.releasePlan.
 	ObservedReleasePlanHash string `json:"observedReleasePlanHash,omitempty"`
 	// Phase is the release plan phase, which indicates the current state of release
 	// plan state machine in BatchRelease controller.
