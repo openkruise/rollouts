@@ -207,9 +207,9 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 
 	for i := range steps {
 		s := &steps[i]
-		if s.Weight <= 0 || s.Weight > 100 {
+		if s.Weight < 0 || s.Weight > 100 {
 			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Weight"),
-				s.Weight, `Weight must be a positive number with "0" < weight <= "100"`)}
+				s.Weight, `Weight must be a positive number with "0" <= weight <= "100"`)}
 		}
 		if s.Replicas != nil {
 			canaryReplicas, err := intstr.GetScaledValueFromIntOrPercent(s.Replicas, 100, true)
