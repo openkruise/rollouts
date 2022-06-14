@@ -144,6 +144,12 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
 	}
+
+	// no need to progress
+	if cloneSet.Status.Replicas == cloneSet.Status.UpdatedReplicas && cloneSet.Status.CurrentRevision == cloneSet.Status.UpdateRevision {
+		return workload, nil
+	}
+
 	// in rollout progressing
 	workload.InRolloutProgressing = true
 	// Is it in rollback phase
@@ -188,6 +194,11 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 	}
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
+		return workload, nil
+	}
+
+	// no need to progress
+	if stable.Status.Replicas == stable.Status.UpdatedReplicas {
 		return workload, nil
 	}
 
@@ -252,6 +263,12 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 	if _, ok := workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
 	}
+
+	// no need to progress
+	if workloadInfo.Status.Replicas == workloadInfo.Status.UpdatedReplicas && workloadInfo.Status.StableRevision == workloadInfo.Status.UpdateRevision {
+		return workload, nil
+	}
+
 	// in rollout progressing
 	workload.InRolloutProgressing = true
 
