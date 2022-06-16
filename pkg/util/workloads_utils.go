@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"hash"
 	"hash/fnv"
+	"strings"
 
 	"github.com/davecgh/go-spew/spew"
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
@@ -59,6 +60,14 @@ const (
 	// We omit vowels from the set of available characters to reduce the chances
 	// of "bad words" being formed.
 	alphanums = "bcdfghjklmnpqrstvwxz2456789"
+)
+
+type WorkloadType string
+
+const (
+	StatefulSetType WorkloadType = "statefulset"
+	DeploymentType  WorkloadType = "deployment"
+	CloneSetType    WorkloadType = "cloneset"
 )
 
 var (
@@ -524,4 +533,8 @@ func GetOwnerWorkload(r client.Reader, object client.Object) (client.Object, err
 		return nil, err
 	}
 	return ownerObj, nil
+}
+
+func IsWorkloadType(object client.Object, t WorkloadType) bool {
+	return WorkloadType(strings.ToLower(object.GetLabels()[WorkloadTypeLabel])) == t
 }

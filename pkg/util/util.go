@@ -22,6 +22,7 @@ import (
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -49,6 +50,7 @@ const (
 	// Only when RolloutIDLabel is set, RolloutBatchIDLabel will be patched.
 	// Users can use RolloutIDLabel and RolloutBatchIDLabel to select the pods that are upgraded in some certain batch and release.
 	RolloutBatchIDLabel = "apps.kruise.io/rollout-batch-id"
+	WorkloadTypeLabel   = "rollouts.kruise.io/workload-type"
 )
 
 // RolloutState is annotation[rollouts.kruise.io/in-progressing] value
@@ -133,6 +135,24 @@ func DiscoverGVK(gvk schema.GroupVersionKind) bool {
 	}
 
 	return true
+}
+
+func GetGVKFrom(workloadRef *rolloutv1alpha1.WorkloadRef) schema.GroupVersionKind {
+	if workloadRef == nil {
+		return schema.GroupVersionKind{}
+	}
+	return schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
+}
+
+func AddWatcherDynamically(c controller.Controller, h handler.EventHandler, gvk schema.GroupVersionKind) (bool, error) {
+	if !DiscoverGVK(gvk) {
+		klog.Errorf("Failed to find GVK(%v) in cluster", gvk.String())
+		return false, nil
+	}
+
+	object := &unstructured.Unstructured{}
+	object.SetGroupVersionKind(gvk)
+	return true, c.Watch(&source.Kind{Type: object}, h)
 }
 
 func DumpJSON(o interface{}) string {
