@@ -237,6 +237,7 @@ var _ = SIGDescribe("Rollout", func() {
 			if clone.Status.CanaryStatus == nil {
 				return false
 			}
+			klog.Infof("current step:%v target step:%v current step state %v", clone.Status.CanaryStatus.CurrentStepIndex, stepIndex, clone.Status.CanaryStatus.CurrentStepState)
 			return clone.Status.CanaryStatus.CurrentStepIndex == stepIndex && clone.Status.CanaryStatus.CurrentStepState == rolloutsv1alpha1.CanaryStepStatePaused
 		}, 20*time.Minute, time.Second).Should(BeTrue())
 	}
