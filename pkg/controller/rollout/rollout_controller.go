@@ -18,6 +18,7 @@ package rollout
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -25,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -34,7 +36,19 @@ import (
 
 var (
 	concurrentReconciles = 3
+	runtimeController    controller.Controller
+	workloadHandler      handler.EventHandler
+	watchedWorkload      sync.Map
 )
+
+func init() {
+	watchedWorkload = sync.Map{}
+	watchedWorkload.LoadOrStore(util.ControllerKindDep.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerKindSts.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerKruiseKindCS.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerKruiseKindSts.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerKruiseOldKindSts.String(), struct{}{})
+}
 
 // RolloutReconciler reconciles a Rollout object
 type RolloutReconciler struct {
@@ -77,6 +91,23 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
+	}
+
+	//  If workload watcher does not exist, then add the watcher dynamically
+	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
+	workloadGVK := util.GetGVKFrom(workloadRef)
+	_, exists := watchedWorkload.Load(workloadGVK.String())
+	if workloadRef != nil && !exists {
+		succeeded, err := util.AddWatcherDynamically(runtimeController, workloadHandler, workloadGVK)
+		if err != nil {
+			return ctrl.Result{}, err
+		} else if succeeded {
+			watchedWorkload.LoadOrStore(workloadGVK.String(), struct{}{})
+			klog.Infof("Rollout controller begin to watch workload type: %s", workloadGVK.String())
+
+			// return, and wait informer cache to be synced
+			return ctrl.Result{}, nil
+		}
 	}
 
 	// handle finalizer
@@ -125,6 +156,10 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
-	workloadHandler := &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}
-	return util.AddWorkloadWatcher(c, workloadHandler)
+	runtimeController = c
+	workloadHandler = &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}
+	if err = util.AddWorkloadWatcher(c, workloadHandler); err != nil {
+		return err
+	}
+	return nil
 }

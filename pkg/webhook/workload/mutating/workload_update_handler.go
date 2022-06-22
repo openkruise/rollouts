@@ -122,12 +122,15 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 		}
 	}
 
-	// other statefulset-like workload, including advanced statefulset
+	// handle other workload types, including native/advanced statefulset
 	{
 		newObj := &unstructured.Unstructured{}
 		newObj.SetGroupVersionKind(schema.GroupVersionKind{Group: req.Kind.Group, Version: req.Kind.Version, Kind: req.Kind.Kind})
 		if err := h.Decoder.Decode(req, newObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
+		}
+		if !util.IsWorkloadType(newObj, util.StatefulSetType) && req.Kind.Kind != util.ControllerKindSts.Kind {
+			return admission.Allowed("")
 		}
 		oldObj := &unstructured.Unstructured{}
 		oldObj.SetGroupVersionKind(schema.GroupVersionKind{Group: req.Kind.Group, Version: req.Kind.Version, Kind: req.Kind.Kind})

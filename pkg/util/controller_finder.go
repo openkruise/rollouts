@@ -103,11 +103,12 @@ func (r *ControllerFinder) finders() []ControllerFinderFunc {
 }
 
 var (
-	ControllerKindRS        = apps.SchemeGroupVersion.WithKind("ReplicaSet")
-	ControllerKindDep       = apps.SchemeGroupVersion.WithKind("Deployment")
-	ControllerKindSts       = apps.SchemeGroupVersion.WithKind("StatefulSet")
-	ControllerKruiseKindCS  = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
-	ControllerKruiseKindSts = appsv1beta1.SchemeGroupVersion.WithKind("StatefulSet")
+	ControllerKindRS           = apps.SchemeGroupVersion.WithKind("ReplicaSet")
+	ControllerKindDep          = apps.SchemeGroupVersion.WithKind("Deployment")
+	ControllerKindSts          = apps.SchemeGroupVersion.WithKind("StatefulSet")
+	ControllerKruiseKindCS     = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	ControllerKruiseKindSts    = appsv1beta1.SchemeGroupVersion.WithKind("StatefulSet")
+	ControllerKruiseOldKindSts = appsv1alpha1.SchemeGroupVersion.WithKind("StatefulSet")
 )
 
 // getKruiseCloneSet returns the kruise cloneSet referenced by the provided controllerRef.
@@ -194,11 +195,6 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 	}
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
-		return workload, nil
-	}
-
-	// no need to progress
-	if stable.Status.Replicas == stable.Status.UpdatedReplicas {
 		return workload, nil
 	}
 

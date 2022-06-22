@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"flag"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
@@ -45,7 +46,19 @@ import (
 
 var (
 	concurrentReconciles = 3
+	workloadHandler      handler.EventHandler
+	runtimeController    controller.Controller
+	watchedWorkload      sync.Map
 )
+
+func init() {
+	watchedWorkload = sync.Map{}
+	watchedWorkload.LoadOrStore(util.ControllerKindDep.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerKindSts.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerKruiseKindCS.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerKruiseKindSts.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerKruiseOldKindSts.String(), struct{}{})
+}
 
 const ReleaseFinalizer = "rollouts.kruise.io/batch-release-finalizer"
 
@@ -101,7 +114,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	workloadHandler := &workloadEventHandler{Reader: mgr.GetCache()}
+	runtimeController = c
+	workloadHandler = &workloadEventHandler{Reader: mgr.GetCache()}
 	return util.AddWorkloadWatcher(c, workloadHandler)
 }
 
@@ -145,6 +159,23 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	klog.Infof("Begin to reconcile BatchRelease(%v/%v), release-phase: %v", release.Namespace, release.Name, release.Status.Phase)
+
+	//  If workload watcher does not exist, then add the watcher dynamically
+	workloadRef := release.Spec.TargetRef.WorkloadRef
+	workloadGVK := util.GetGVKFrom(workloadRef)
+	_, exists := watchedWorkload.Load(workloadGVK.String())
+	if workloadRef != nil && !exists {
+		succeeded, err := util.AddWatcherDynamically(runtimeController, workloadHandler, workloadGVK)
+		if err != nil {
+			return ctrl.Result{}, err
+		} else if succeeded {
+			watchedWorkload.LoadOrStore(workloadGVK.String(), struct{}{})
+			klog.Infof("Rollout controller begin to watch workload type: %s", workloadGVK.String())
+
+			// return, and wait informer cache to be synced
+			return ctrl.Result{}, nil
+		}
+	}
 
 	// finalizer will block the deletion of batchRelease
 	// util all canary resources and settings are cleaned up.
