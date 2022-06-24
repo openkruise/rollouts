@@ -23,7 +23,6 @@ type Controller interface {
 	// Validate will validate the traffic routing resource,
 	Validate(ctx context.Context) (bool, error)
 	// SetWeight set canary desired weight.
-	// set the desired weight to -1 means complete the canary rollout.
 	SetWeight(ctx context.Context, desiredWeight int32) error
 	// CheckWeight check if canary has been set desired weight.
 	CheckWeight(ctx context.Context, desiredWeight int32) (bool, error)

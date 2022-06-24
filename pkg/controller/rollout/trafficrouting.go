@@ -199,7 +199,7 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 		klog.Errorf("rollout(%s/%s) newTrafficRoutingController failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return false, err
 	}
-	verify, err := trController.CheckWeight(context.Background(), -1)
+	verify, err := trController.CheckWeight(context.Background(), 0)
 	if err != nil {
 		return false, err
 	} else if !verify {

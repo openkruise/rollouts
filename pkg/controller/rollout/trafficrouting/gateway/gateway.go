@@ -92,21 +92,12 @@ func (r *gatewayController) CheckWeight(ctx context.Context, desiredWeight int32
 		klog.Errorf("rollout(%s/%s) get canary HTTPRoute failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
 		return false, err
 	}
-	// when desiredWeight == -1, verify set canary HTTPRoute weight=0%
-	if desiredWeight == -1 {
+	if desiredWeight == 0 {
 		// canary HTTPRoute
 		if errors.IsNotFound(err) || !httpRoute.DeletionTimestamp.IsZero() {
 			klog.Infof("rollout(%s/%s) verify canary HTTPRoute has been deleted", r.conf.RolloutNs, r.conf.RolloutName)
 			return true, nil
 		}
-
-		cWeight := r.getHTTPRouteCanaryWeight(*httpRoute)
-		if cWeight != -1 {
-			klog.Infof("rollout(%s/%s) verify canary HTTPRoute weight(-1) invalid, and reset", r.conf.RolloutNs, r.conf.RolloutName)
-			return false, nil
-		}
-		klog.Infof("rollout(%s/%s) verify canary HTTPRoute weight(0)", r.conf.RolloutNs, r.conf.RolloutName)
-		return true, nil
 	}
 
 	// verify set canary ingress desiredWeight
@@ -174,9 +165,8 @@ func (r *gatewayController) buildCanaryHTTPRoute(stable *gatewayv1alpha2.HTTPRou
 				stableBackendRef := rule.BackendRefs[j]
 				stableBackendRef.Weight = generateStableWeight(weight)
 				stableBackendRefs = append(stableBackendRefs, stableBackendRef)
+
 			} else if string(rule.BackendRefs[j].Name) != r.newStatus.CanaryStatus.CanaryService {
-				canaryBackendRef := rule.BackendRefs[j]
-				canaryBackendRef.Weight = &weight
 				stableBackendRefs = append(stableBackendRefs, rule.BackendRefs[j])
 			}
 		}

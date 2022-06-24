@@ -239,8 +239,7 @@ type CanaryStatus struct {
 	CurrentStepIndex int32           `json:"currentStepIndex"`
 	CurrentStepState CanaryStepState `json:"currentStepState"`
 	Message          string          `json:"message,omitempty"`
-	// The last time this step pods is ready.
-	LastUpdateTime *metav1.Time `json:"lastReadyTime,omitempty"`
+	LastUpdateTime   *metav1.Time    `json:"lastUpdateTime,omitempty"`
 }
 
 type CanaryStepState string

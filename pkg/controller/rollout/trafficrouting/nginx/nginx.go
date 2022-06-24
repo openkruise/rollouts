@@ -114,31 +114,13 @@ func (r *nginxController) CheckWeight(ctx context.Context, desiredWeight int32) 
 		klog.Errorf("rollout(%s/%s) get canary ingress failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
 		return false, err
 	}
-	// when desiredWeight == -1, verify set canary ingress weight=0%
-	if desiredWeight == -1 {
+	// when desiredWeight == 0, verify set canary ingress weight=0%
+	if desiredWeight == 0 {
 		// canary ingress
 		if errors.IsNotFound(err) || !canaryIngress.DeletionTimestamp.IsZero() {
 			klog.Infof("rollout(%s/%s) verify canary ingress has been deleted", r.conf.RolloutNs, r.conf.RolloutName)
 			return true, nil
 		}
-		// stable ingress
-		stableIngress := &netv1.Ingress{}
-		err = r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Name}, stableIngress)
-		if err != nil && !errors.IsNotFound(err) {
-			return false, err
-		}
-		if errors.IsNotFound(err) || !stableIngress.DeletionTimestamp.IsZero() {
-			klog.Infof("rollout(%s/%s) verify stable ingress has been deleted", r.conf.RolloutNs, r.conf.RolloutName)
-			return true, nil
-		}
-
-		cWeight := canaryIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]
-		if cWeight != fmt.Sprintf("%d", 0) {
-			klog.Infof("rollout(%s/%s) verify canary ingress weight(-1) invalid, and reset", r.conf.RolloutNs, r.conf.RolloutName)
-			return false, nil
-		}
-		klog.Infof("rollout(%s/%s) verify canary ingress weight(0)", r.conf.RolloutNs, r.conf.RolloutName)
-		return true, nil
 	}
 
 	// verify set canary ingress desiredWeight
