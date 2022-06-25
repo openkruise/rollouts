@@ -278,7 +278,7 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 func (r *ControllerFinder) getLatestCanaryDeployment(stable *apps.Deployment) (*apps.Deployment, error) {
 	canaryList := &apps.DeploymentList{}
 	selector, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{CanaryDeploymentLabel: stable.Name}})
-	err := r.List(context.TODO(), canaryList, &client.ListOptions{LabelSelector: selector}, utilclient.DisableDeepCopy)
+	err := r.List(context.TODO(), canaryList, &client.ListOptions{LabelSelector: selector, Namespace: stable.Namespace}, utilclient.DisableDeepCopy)
 	if err != nil {
 		return nil, err
 	} else if len(canaryList.Items) == 0 {
