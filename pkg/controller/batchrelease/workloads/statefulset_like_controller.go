@@ -215,7 +215,6 @@ func (c *StatefulSetLikeController) countUpdatedReadyPods(updateRevision string)
 			updatedReadyReplicas++
 		}
 	}
-	klog.V(3).Infof("BatchRelease(%v) observed %d updatedReadyReplicas")
 	return updatedReadyReplicas, nil
 }
 

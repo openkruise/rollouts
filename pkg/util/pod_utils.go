@@ -8,7 +8,6 @@ import (
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -86,7 +85,7 @@ func ListOwnedPods(c client.Client, object client.Object) ([]*v1.Pod, error) {
 	}
 
 	podLister := &v1.PodList{}
-	err = c.List(context.TODO(), podLister, &client.ListOptions{LabelSelector: selector}, utilclient.DisableDeepCopy)
+	err = c.List(context.TODO(), podLister, &client.ListOptions{LabelSelector: selector, Namespace: object.GetNamespace()}, utilclient.DisableDeepCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +95,12 @@ func ListOwnedPods(c client.Client, object client.Object) ([]*v1.Pod, error) {
 		if IsCompletedPod(pod) {
 			continue
 		}
-		owner := metav1.GetControllerOf(pod)
-		if owner == nil || owner.UID != object.GetUID() {
+		// we should find their indirect owner-relationship,
+		// such as pod -> replicaset -> deployment
+		owned, err := IsOwnedBy(c, pod, object)
+		if err != nil {
+			return nil, err
+		} else if !owned {
 			continue
 		}
 		pods = append(pods, pod)

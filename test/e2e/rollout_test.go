@@ -65,6 +65,12 @@ var _ = SIGDescribe("Rollout", func() {
 		cloneSet := &appsv1alpha1.CloneSetList{}
 		k8sClient.List(context.TODO(), cloneSet, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(cloneSet))
+		sts := &apps.StatefulSetList{}
+		k8sClient.List(context.TODO(), sts, client.InNamespace(namespace))
+		fmt.Println(util.DumpJSON(sts))
+		asts := &appsv1beta1.StatefulSetList{}
+		k8sClient.List(context.TODO(), asts, client.InNamespace(namespace))
+		fmt.Println(util.DumpJSON(asts))
 	}
 
 	CreateObject := func(object client.Object, options ...client.CreateOption) {

@@ -72,6 +72,7 @@ const (
 
 var (
 	knownWorkloadGVKs = []*schema.GroupVersionKind{
+		&ControllerKindRS,
 		&ControllerKindDep,
 		&ControllerKindSts,
 		&ControllerKruiseKindCS,
@@ -231,10 +232,12 @@ func GetEmptyWorkloadObject(gvk schema.GroupVersionKind) client.Object {
 		return nil
 	}
 
-	switch gvk.Kind {
-	case ControllerKindDep.Kind:
+	switch gvk {
+	case ControllerKindRS:
+		return &apps.ReplicaSet{}
+	case ControllerKindDep:
 		return &apps.Deployment{}
-	case ControllerKruiseKindCS.Kind:
+	case ControllerKruiseKindCS:
 		return &appsv1alpha1.CloneSet{}
 	default:
 		unstructuredObject := &unstructured.Unstructured{}
@@ -507,32 +510,53 @@ func IsSupportedWorkload(gvk schema.GroupVersionKind) bool {
 	return false
 }
 
+// GetOwnerWorkload return the top-level workload that is controlled by rollout,
+// if the object has no owner, just return nil
 func GetOwnerWorkload(r client.Reader, object client.Object) (client.Object, error) {
+	if object == nil {
+		return nil, nil
+	}
 	owner := metav1.GetControllerOf(object)
-	if owner == nil {
+	// We just care about the top-level workload that is referred by rollout
+	if owner == nil || len(object.GetAnnotations()[InRolloutProgressingAnnotation]) > 0 {
 		return nil, nil
 	}
 
 	ownerGvk := schema.FromAPIVersionAndKind(owner.APIVersion, owner.Kind)
 	ownerKey := types.NamespacedName{Namespace: object.GetNamespace(), Name: owner.Name}
-	if ownerGvk.Group == ControllerKindRS.Group && ownerGvk.Kind == ControllerKindRS.Kind {
-		replicaset := &apps.ReplicaSet{}
-		err := r.Get(context.TODO(), ownerKey, replicaset)
-		if err != nil {
-			return nil, err
-		}
-		return GetOwnerWorkload(r, replicaset)
-	}
-
 	ownerObj := GetEmptyWorkloadObject(ownerGvk)
 	if ownerObj == nil {
 		return nil, nil
 	}
 	err := r.Get(context.TODO(), ownerKey, ownerObj)
-	if err != nil {
+	if client.IgnoreNotFound(err) != nil {
 		return nil, err
 	}
-	return ownerObj, nil
+	return GetOwnerWorkload(r, ownerObj)
+}
+
+// IsOwnedBy will return true if the child is owned by parent directly or indirectly.
+func IsOwnedBy(r client.Reader, child, parent client.Object) (bool, error) {
+	if child == nil {
+		return false, nil
+	}
+	owner := metav1.GetControllerOf(child)
+	if owner == nil {
+		return false, nil
+	} else if owner.UID == parent.GetUID() {
+		return true, nil
+	}
+	ownerGvk := schema.FromAPIVersionAndKind(owner.APIVersion, owner.Kind)
+	ownerKey := types.NamespacedName{Namespace: child.GetNamespace(), Name: owner.Name}
+	ownerObj := GetEmptyWorkloadObject(ownerGvk)
+	if ownerObj == nil {
+		return false, nil
+	}
+	err := r.Get(context.TODO(), ownerKey, ownerObj)
+	if client.IgnoreNotFound(err) != nil {
+		return false, err
+	}
+	return IsOwnedBy(r, ownerObj, parent)
 }
 
 func IsWorkloadType(object client.Object, t WorkloadType) bool {
