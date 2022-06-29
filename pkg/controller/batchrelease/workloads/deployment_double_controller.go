@@ -105,20 +105,8 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 			Annotations: map[string]string{},
 		},
 	}
-	for k, v := range stableDeploy.Labels {
-		canaryDeploy.Labels[k] = v
-	}
-	for k, v := range stableDeploy.Annotations {
-		canaryDeploy.Annotations[k] = v
-	}
-	for _, f := range stableDeploy.Finalizers {
-		canaryDeploy.Finalizers = append(canaryDeploy.Finalizers, f)
-	}
-	for _, o := range stableDeploy.OwnerReferences {
-		canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *o.DeepCopy())
-	}
 
-	canaryDeploy.Finalizers = append(canaryDeploy.Finalizers, util.CanaryDeploymentFinalizer)
+	// set its owner to BatchRelease
 	canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *metav1.NewControllerRef(c.parentController, c.parentController.GroupVersionKind()))
 
 	// set extra labels & annotations
