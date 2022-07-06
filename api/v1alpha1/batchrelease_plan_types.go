@@ -42,6 +42,8 @@ type ReleasePlan struct {
 	// BatchPartition start from 0.
 	// +optional
 	BatchPartition *int32 `json:"batchPartition,omitempty"`
+	// RolloutID indicates an id for each rollout progress
+	RolloutID string `json:"rolloutID,omitempty"`
 }
 
 // ReleaseBatch is used to describe how each batch release should be
@@ -50,9 +52,6 @@ type ReleaseBatch struct {
 	// it can be an absolute number (ex: 5) or a percentage of workload replicas.
 	// batches[i].canaryReplicas should less than or equal to batches[j].canaryReplicas if i < j.
 	CanaryReplicas intstr.IntOrString `json:"canaryReplicas"`
-	// The wait time, in seconds, between instances batches, default = 0
-	// +optional
-	PauseSeconds int64 `json:"pauseSeconds,omitempty"`
 }
 
 // BatchReleaseStatus defines the observed state of a release plan
@@ -98,6 +97,8 @@ type BatchReleaseCanaryStatus struct {
 	UpdatedReplicas int32 `json:"updatedReplicas,omitempty"`
 	// UpdatedReadyReplicas is the number upgraded Pods that have a Ready Condition.
 	UpdatedReadyReplicas int32 `json:"updatedReadyReplicas,omitempty"`
+	// the number of pods that no need to rollback in rollback scene.
+	NoNeedRollbackReplicas *int32 `json:"noNeedRollbackReplicas,omitempty"`
 }
 
 type BatchReleaseBatchStateType string
@@ -112,9 +113,22 @@ const (
 )
 
 const (
+	// RolloutPhaseCancelled indicates a rollout is cancelled
+	RolloutPhaseCancelled RolloutPhase = "Cancelled"
+	// RolloutPhaseFinalizing indicates a rollout is finalizing
+	RolloutPhaseFinalizing RolloutPhase = "Finalizing"
+	// RolloutPhaseCompleted indicates a rollout is completed
+	RolloutPhaseCompleted RolloutPhase = "Completed"
+	// RolloutPhasePreparing indicates a rollout is preparing for next progress.
+	RolloutPhasePreparing RolloutPhase = "Preparing"
+)
+
+const (
 	// VerifyingBatchReleaseCondition indicates the controller is verifying whether workload
 	// is ready to do rollout.
 	VerifyingBatchReleaseCondition RolloutConditionType = "Verifying"
+	// PreparingRollbackBatchReleaseCondition indicates the workload in preparing rollback
+	PreparingRollbackBatchReleaseCondition RolloutConditionType = "PreparingRollback"
 	// PreparingBatchReleaseCondition indicates the controller is preparing something before executing
 	// release plan, such as create canary deployment and record stable & canary revisions.
 	PreparingBatchReleaseCondition RolloutConditionType = "Preparing"

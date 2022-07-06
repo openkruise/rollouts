@@ -27,7 +27,7 @@ type BatchRelease interface {
 
 	// 1. Promote release workload in step(index), 1<=index<=len(step)
 	// 2. Promote will resume stable workload if the last batch(index=-1) is finished
-	Promote(index int32, checkReady bool) (bool, error)
+	Promote(index int32, isRollback, checkReady bool) (bool, error)
 
 	// FetchBatchRelease fetch batchRelease
 	FetchBatchRelease() (*rolloutv1alpha1.BatchRelease, error)

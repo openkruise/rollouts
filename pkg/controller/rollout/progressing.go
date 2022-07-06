@@ -28,7 +28,6 @@ import (
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
@@ -73,65 +72,12 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *rolloutv1alpha1
 		}
 
 	case rolloutv1alpha1.ProgressingReasonInRolling:
-		// rollout canceled, indicates rollback(v1 -> v2 -> v1)
-		if workload.IsInRollback {
-			newStatus.CanaryStatus.CanaryRevision = workload.CanaryRevision
-			r.Recorder.Eventf(rollout, corev1.EventTypeNormal, "Progressing", "workload has been rollback, then rollout is canceled")
-			klog.Infof("rollout(%s/%s) workload has been rollback, then rollout canceled", rollout.Namespace, rollout.Name)
-			progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonCancelling, "The workload has been rolled back and the rollout process will be cancelled")
-			// paused rollout progress
-		} else if rollout.Spec.Strategy.Paused {
-			klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
-			progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonPaused, "Rollout has been paused, you can resume it by kube-cli")
-			// In case of continuous publishing(v1 -> v2 -> v3), then restart publishing
-		} else if newStatus.CanaryStatus.CanaryRevision != "" && workload.CanaryRevision != newStatus.CanaryStatus.CanaryRevision {
-			r.Recorder.Eventf(rollout, corev1.EventTypeNormal, "Progressing", "workload continuous publishing canaryRevision, then restart publishing")
-			klog.Infof("rollout(%s/%s) workload continuous publishing canaryRevision from(%s) -> to(%s), then restart publishing",
-				rollout.Namespace, rollout.Name, newStatus.CanaryStatus.CanaryRevision, workload.CanaryRevision)
-			done, err := r.doProgressingReset(rollout, newStatus)
-			if err != nil {
-				klog.Errorf("rollout(%s/%s) doProgressingReset failed: %s", rollout.Namespace, rollout.Name, err.Error())
-				return nil, err
-			} else if done {
-				progressingStateTransition(newStatus, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonInitializing, "Workload is continuous release")
-				klog.Infof("rollout(%s/%s) workload is continuous publishing, reset complete", rollout.Namespace, rollout.Name)
-			} else {
-				// Incomplete, recheck
-				expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
-				recheckTime = &expectedTime
-				klog.Infof("rollout(%s/%s) workload is continuous publishing, reset incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
-			}
-			// rollout canary steps configuration change
-		} else if newStatus.CanaryStatus.RolloutHash != "" && newStatus.CanaryStatus.RolloutHash != rollout.Annotations[util.RolloutHashAnnotation] {
-			batchControl := batchrelease.NewInnerBatchController(r.Client, rollout)
-			newStepIndex, err := r.reCalculateCanaryStepIndex(rollout, batchControl)
-			if err != nil {
-				klog.Errorf("rollout(%s/%s) reCalculate Canary StepIndex failed: %s", rollout.Namespace, rollout.Name, err.Error())
-				return nil, err
-			}
-			// canary step configuration change causes current step index change
-			newStatus.CanaryStatus.CurrentStepIndex = newStepIndex
-			newStatus.CanaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateUpgrade
-			newStatus.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-			newStatus.CanaryStatus.RolloutHash = rollout.Annotations[util.RolloutHashAnnotation]
-			klog.Infof("rollout(%s/%s) canary step configuration change, and stepIndex(%d) state(%s)",
-				rollout.Namespace, rollout.Name, newStatus.CanaryStatus.CurrentStepIndex, newStatus.CanaryStatus.CurrentStepState)
-		} else {
-			klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
-			//check if canary is done
-			if newStatus.CanaryStatus.CurrentStepState == rolloutv1alpha1.CanaryStepStateCompleted {
-				klog.Infof("rollout(%s/%s) progressing rolling done", rollout.Namespace, rollout.Name)
-				progressingStateTransition(newStatus, corev1.ConditionTrue, rolloutv1alpha1.ProgressingReasonFinalising, "Rollout has been completed and some closing work is being done")
-			} else { // rollout is in rolling
-				newStatus.CanaryStatus.PodTemplateHash = workload.PodTemplateHash
-				recheckTime, err = r.doProgressingInRolling(rollout, newStatus)
-				if err != nil {
-					return nil, err
-				}
-			}
+		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
+		recheckTime, err = r.doProgressingInRolling(rollout, workload, newStatus)
+		if err != nil {
+			return nil, err
 		}
 
-	// after the normal completion of rollout, enter into the Finalising process
 	case rolloutv1alpha1.ProgressingReasonFinalising:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		var done bool
@@ -144,7 +90,6 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *rolloutv1alpha1
 		}
 
 	case rolloutv1alpha1.ProgressingReasonPaused:
-		// rollout canceled, indicates rollback(v1 -> v2 -> v1)
 		if workload.IsInRollback {
 			newStatus.CanaryStatus.CanaryRevision = workload.CanaryRevision
 			r.Recorder.Eventf(rollout, corev1.EventTypeNormal, "Progressing", "workload has been rollback, then rollout is canceled")
@@ -197,27 +142,6 @@ func progressingStateTransition(status *rolloutv1alpha1.RolloutStatus, condStatu
 func (r *RolloutReconciler) doProgressingInitializing(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (bool, string, error) {
 	// canary release
 	return r.verifyCanaryStrategy(rollout, newStatus)
-}
-
-func (r *RolloutReconciler) doProgressingInRolling(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (*time.Time, error) {
-	// fetch target workload
-	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
-	if err != nil {
-		klog.Errorf("rollout(%s/%s) GetWorkloadForRef failed: %s", rollout.Namespace, rollout.Name, err.Error())
-		return nil, err
-	} else if workload == nil {
-		expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
-		klog.Warningf("rollout(%s/%s) Fetch workload Not Found, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
-		return &expectedTime, nil
-	}
-
-	rolloutCon := newRolloutContext(r.Client, r.Recorder, rollout, newStatus, workload)
-	err = rolloutCon.reconcile()
-	if err != nil {
-		klog.Errorf("rollout(%s/%s) Progressing failed: %s", rollout.Namespace, rollout.Name, err.Error())
-		return nil, err
-	}
-	return rolloutCon.recheckTime, nil
 }
 
 func (r *RolloutReconciler) doProgressingReset(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (bool, error) {

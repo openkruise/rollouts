@@ -90,7 +90,7 @@ func (c *StatefulSetLikeController) ClaimWorkload() (bool, error) {
 		return false, err
 	}
 
-	err = util.ClaimWorkload(c.Client, c.planController, set, map[string]interface{}{
+	err = claimWorkload(c.Client, c.planController, set, map[string]interface{}{
 		"type": apps.RollingUpdateStatefulSetStrategyType,
 		"rollingUpdate": map[string]interface{}{
 			"partition": pointer.Int32(util.ParseReplicasFrom(set)),
@@ -113,7 +113,7 @@ func (c *StatefulSetLikeController) ReleaseWorkload(cleanup bool) (bool, error) 
 		return false, err
 	}
 
-	err = util.ReleaseWorkload(c.Client, set)
+	err = releaseWorkload(c.Client, set)
 	if err != nil {
 		c.recorder.Eventf(c.planController, v1.EventTypeWarning, "ReleaseFailed", err.Error())
 		return false, err
@@ -130,11 +130,12 @@ func (c *StatefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableRepli
 	}
 
 	// if no needs to patch partition
-	if isStatefulSetUpgradedDone(set, canaryReplicasGoal, stableReplicasGoal) {
+	partition := util.GetStatefulSetPartition(set)
+	if partition <= stableReplicasGoal {
 		return true, nil
 	}
 
-	err = util.PatchSpec(c.Client, set, map[string]interface{}{
+	err = patchSpec(c.Client, set, map[string]interface{}{
 		"updateStrategy": map[string]interface{}{
 			"rollingUpdate": map[string]interface{}{
 				"partition": pointer.Int32(stableReplicasGoal),
@@ -147,6 +148,15 @@ func (c *StatefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableRepli
 
 	klog.V(3).Infof("Upgrade StatefulSet(%v) Partition to %v Successfully", c.namespacedName, stableReplicasGoal)
 	return true, nil
+}
+
+func (c *StatefulSetLikeController) IgnoreNoNeedRollbackReplicas() (bool, error) {
+	set, err := c.GetWorkloadObject()
+	if err != nil {
+		return false, nil
+	}
+
+	return util.IsStatefulSetUnorderedUpdate(set), nil
 }
 
 func (c *StatefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error) {
@@ -216,14 +226,4 @@ func (c *StatefulSetLikeController) countUpdatedReadyPods(updateRevision string)
 		}
 	}
 	return updatedReadyReplicas, nil
-}
-
-func isStatefulSetUpgradedDone(set *unstructured.Unstructured, canaryReplicasGoal, stableReplicasGoal int32) bool {
-	partition := util.GetStatefulSetPartition(set)
-	if partition <= stableReplicasGoal {
-		return true
-	}
-	updatedReplicas := util.ParseStatusIntFrom(set, "updatedReplicas")
-	observedGeneration := util.ParseStatusIntFrom(set, "observedGeneration")
-	return set.GetGeneration() == observedGeneration && int(updatedReplicas) >= int(canaryReplicasGoal)
 }

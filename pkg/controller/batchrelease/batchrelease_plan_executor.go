@@ -37,7 +37,7 @@ import (
 )
 
 const (
-	DefaultDuration = (50 * 1000) * time.Microsecond
+	DefaultDuration = 2 * time.Second
 )
 
 // Executor is the controller that controls the release plan resource
@@ -123,14 +123,18 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 	case v1alpha1.RolloutPhasePreparing:
 		// prepare and initialize something before progressing in this state.
 		var preparedDone bool
-		preparedDone, err = workloadController.PrepareBeforeProgress()
+		var replicasNoNeedToRollback *int32
+		preparedDone, replicasNoNeedToRollback, err = workloadController.PrepareBeforeProgress()
 		switch {
 		case err != nil:
 			setCondition(status, v1alpha1.PreparingBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
 		case preparedDone:
 			status.Phase = v1alpha1.RolloutPhaseProgressing
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
+			status.CanaryStatus.NoNeedRollbackReplicas = replicasNoNeedToRollback
 			setCondition(status, v1alpha1.ProgressingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is progressing")
+		default:
+			result = reconcile.Result{RequeueAfter: DefaultDuration}
 		}
 
 	case v1alpha1.RolloutPhaseProgressing:
@@ -197,6 +201,7 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 	klog.V(3).Infof("BatchRelease(%v) Canary Batch State Machine into '%s' state", r.releaseKey, status.CanaryStatus.CurrentBatchState)
 
 	switch status.CanaryStatus.CurrentBatchState {
+
 	case "", v1alpha1.UpgradingBatchState:
 		// modify workload replicas/partition based on release plan in this state.
 		upgradeDone, upgradeErr := workloadController.UpgradeOneBatch()
@@ -210,7 +215,6 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 		}
 
 	case v1alpha1.VerifyingBatchState:
-		// TODO: metrics analysis
 		// replicas/partition has been modified, should wait pod ready in this state.
 		verified, verifiedErr := workloadController.CheckOneBatchReady()
 		switch {
@@ -228,20 +232,10 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 
 	case v1alpha1.ReadyBatchState:
 		if !IsPartitioned(r.releasePlan, r.releaseStatus) {
-			currentTimestamp := time.Now()
-			currentBatch := r.releasePlan.Batches[r.releaseStatus.CanaryStatus.CurrentBatch]
-			waitDuration := time.Duration(currentBatch.PauseSeconds) * time.Second
-			if waitDuration > 0 && r.releaseStatus.CanaryStatus.BatchReadyTime.Time.Add(waitDuration).After(currentTimestamp) {
-				restDuration := r.releaseStatus.CanaryStatus.BatchReadyTime.Time.Add(waitDuration).Sub(currentTimestamp)
-				result = reconcile.Result{RequeueAfter: restDuration}
-				setCondition(status, "Progressing", v1.ConditionFalse, "Paused", fmt.Sprintf("BatchRelease will resume after %v", restDuration))
-				klog.Infof("BatchRelease (%v) paused and will continue to reconcile after %v", r.releaseKey, restDuration)
-			} else {
-				// expected pods in the batch are upgraded and the state is ready, then try to move to the next batch
-				progressDone = r.moveToNextBatch()
-				result = reconcile.Result{RequeueAfter: DefaultDuration}
-				setCondition(status, v1alpha1.ProgressingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is progressing")
-			}
+			// expected pods in the batch are upgraded and the state is ready, then try to move to the next batch
+			progressDone = r.moveToNextBatch()
+			result = reconcile.Result{RequeueAfter: DefaultDuration}
+			setCondition(status, v1alpha1.ProgressingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is progressing")
 		} else {
 			setCondition(status, "Progressing", v1.ConditionFalse, "Paused", fmt.Sprintf("BatchRelease is partitioned in %v-th batch", status.CanaryStatus.CurrentBatch))
 		}

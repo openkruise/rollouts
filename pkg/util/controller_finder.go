@@ -241,7 +241,7 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 	}
 
 	workloadInfo := ParseStatefulSetInfo(unifiedObject, unifiedObjectKey)
-	if workloadInfo.Metadata.Generation != workloadInfo.Status.ObservedGeneration {
+	if workloadInfo.Generation != workloadInfo.Status.ObservedGeneration {
 		return &Workload{IsStatusConsistent: false}, nil
 	}
 	workload := &Workload{
@@ -250,7 +250,7 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 		CanaryRevision:      workloadInfo.Status.UpdateRevision,
 		CanaryReplicas:      workloadInfo.Status.UpdatedReplicas,
 		CanaryReadyReplicas: workloadInfo.Status.UpdatedReadyReplicas,
-		ObjectMeta:          *workloadInfo.Metadata,
+		ObjectMeta:          workloadInfo.ObjectMeta,
 		Replicas:            *workloadInfo.Replicas,
 		PodTemplateHash:     workloadInfo.Status.UpdateRevision,
 		IsStatusConsistent:  true,
