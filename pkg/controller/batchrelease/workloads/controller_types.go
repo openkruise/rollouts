@@ -38,6 +38,8 @@ const (
 	WorkloadHasGone WorkloadEventType = "workload-has-gone"
 	// WorkloadUnHealthy means workload is at some unexpected state that our controller cannot handle, we should stop reconcile.
 	WorkloadUnHealthy WorkloadEventType = "workload-is-unhealthy"
+	// WorkloadRollbackInBatch means workload is rollback according to BatchRelease batch plan.
+	WorkloadRollbackInBatch WorkloadEventType = "workload-rollback-in-batch"
 )
 
 type workloadController struct {
@@ -60,7 +62,7 @@ type WorkloadController interface {
 	// it returns 'true' if the preparation is succeeded.
 	// it returns 'false' if the preparation should retry.
 	// it returns not-empty error if the preparation has something wrong, and should not retry.
-	PrepareBeforeProgress() (bool, error)
+	PrepareBeforeProgress() (bool, *int32, error)
 
 	// UpgradeOneBatch tries to upgrade old replicas following the release plan.
 	// it will upgrade the old replicas as the release plan allows in the current batch.

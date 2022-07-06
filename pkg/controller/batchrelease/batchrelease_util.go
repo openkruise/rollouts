@@ -44,7 +44,14 @@ func getInitializedStatus(status *v1alpha1.BatchReleaseStatus) *v1alpha1.BatchRe
 	return newStatus
 }
 
+func signalRePrepareRollback(newStatus *v1alpha1.BatchReleaseStatus) {
+	newStatus.Phase = v1alpha1.RolloutPhasePreparing
+	newStatus.CanaryStatus.BatchReadyTime = nil
+	newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+}
+
 func signalReinitializeBatch(status *v1alpha1.BatchReleaseStatus) {
+	status.CanaryStatus.BatchReadyTime = nil
 	status.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
 }
 
@@ -74,6 +81,7 @@ func signalRecalculate(release *v1alpha1.BatchRelease, newStatus *v1alpha1.Batch
 
 	klog.Infof("BatchRelease(%v) canary batch changed from %v to %v when the release plan changed",
 		client.ObjectKeyFromObject(release), newStatus.CanaryStatus.CurrentBatch, currentBatch)
+	newStatus.CanaryStatus.BatchReadyTime = nil
 	newStatus.CanaryStatus.CurrentBatch = currentBatch
 	newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
 	newStatus.ObservedReleasePlanHash = util.HashReleasePlanBatches(&release.Spec.ReleasePlan)

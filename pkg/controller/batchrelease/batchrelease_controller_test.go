@@ -71,15 +71,12 @@ var (
 				Batches: []v1alpha1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
-						PauseSeconds:   100,
 					},
 					{
 						CanaryReplicas: intstr.FromString("50%"),
-						PauseSeconds:   100,
 					},
 					{
 						CanaryReplicas: intstr.FromString("80%"),
-						PauseSeconds:   100,
 					},
 				},
 			},
@@ -153,15 +150,12 @@ var (
 				Batches: []v1alpha1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
-						PauseSeconds:   100,
 					},
 					{
 						CanaryReplicas: intstr.FromString("50%"),
-						PauseSeconds:   100,
 					},
 					{
 						CanaryReplicas: intstr.FromString("80%"),
-						PauseSeconds:   100,
 					},
 				},
 			},
@@ -536,7 +530,6 @@ func TestReconcile_CloneSet(t *testing.T) {
 				Client:   cli,
 				recorder: rec,
 				Scheme:   scheme,
-				executor: NewReleasePlanExecutor(cli, rec),
 			}
 
 			key := client.ObjectKeyFromObject(release)
@@ -815,7 +808,6 @@ func TestReconcile_Deployment(t *testing.T) {
 				Client:   cli,
 				recorder: rec,
 				Scheme:   scheme,
-				executor: NewReleasePlanExecutor(cli, rec),
 			}
 
 			key := client.ObjectKeyFromObject(release)

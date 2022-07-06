@@ -102,6 +102,10 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 				klog.V(3).Infof("Observed updated Spec for BatchRelease: %s/%s", newObject.Namespace, newObject.Name)
 				return true
 			}
+			if len(oldObject.Annotations) != len(newObject.Annotations) || !reflect.DeepEqual(oldObject.Annotations, newObject.Annotations) {
+				klog.V(3).Infof("Observed updated Annotation for BatchRelease: %s/%s", newObject.Namespace, newObject.Name)
+				return true
+			}
 			return false
 		},
 	})

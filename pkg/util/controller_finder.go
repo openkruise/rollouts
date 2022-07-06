@@ -28,7 +28,6 @@ import (
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -228,10 +227,12 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 		return nil, nil
 	}
 
-	unifiedObject := &unstructured.Unstructured{}
-	unifiedObjectKey := types.NamespacedName{Name: ref.Name, Namespace: namespace}
-	unifiedObject.SetGroupVersionKind(schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind))
-	err := r.Get(context.TODO(), unifiedObjectKey, unifiedObject)
+	key := types.NamespacedName{Name: ref.Name, Namespace: namespace}
+	set := GetEmptyWorkloadObject(schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind))
+	if set == nil {
+		return nil, nil
+	}
+	err := r.Get(context.TODO(), key, set)
 	if err != nil {
 		// when error is NotFound, it is ok here.
 		if errors.IsNotFound(err) {
@@ -240,8 +241,8 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 		return nil, err
 	}
 
-	workloadInfo := ParseStatefulSetInfo(unifiedObject, unifiedObjectKey)
-	if workloadInfo.Metadata.Generation != workloadInfo.Status.ObservedGeneration {
+	workloadInfo := ParseStatefulSetInfo(set, key)
+	if workloadInfo.Generation != workloadInfo.Status.ObservedGeneration {
 		return &Workload{IsStatusConsistent: false}, nil
 	}
 	workload := &Workload{
@@ -250,7 +251,7 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 		CanaryRevision:      workloadInfo.Status.UpdateRevision,
 		CanaryReplicas:      workloadInfo.Status.UpdatedReplicas,
 		CanaryReadyReplicas: workloadInfo.Status.UpdatedReadyReplicas,
-		ObjectMeta:          *workloadInfo.Metadata,
+		ObjectMeta:          workloadInfo.ObjectMeta,
 		Replicas:            *workloadInfo.Replicas,
 		PodTemplateHash:     workloadInfo.Status.UpdateRevision,
 		IsStatusConsistent:  true,

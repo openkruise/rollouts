@@ -429,6 +429,7 @@ func TestHandlerCloneSet(t *testing.T) {
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
 				obj.Spec.UpdateStrategy.Paused = true
+				obj.Spec.UpdateStrategy.Partition = &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}
 				return obj
 			},
 			getRollout: func() *appsv1alpha1.Rollout {

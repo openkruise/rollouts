@@ -17,6 +17,7 @@ limitations under the License.
 package workloads
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
@@ -25,9 +26,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -38,6 +39,7 @@ type UnifiedWorkloadController interface {
 	UpgradeBatch(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
 	IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
 	ListOwnedPods() ([]*v1.Pod, error)
+	IsOrderedUpdate() (bool, error)
 }
 
 // UnifiedWorkloadRolloutControlPlane is responsible for handling rollout StatefulSet type of workloads
@@ -80,7 +82,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) VerifyWorkload() (bool, error) {
 	}
 
 	// If the workload status is untrustworthy
-	if workloadInfo.Status.ObservedGeneration != workloadInfo.Metadata.Generation {
+	if workloadInfo.Status.ObservedGeneration != workloadInfo.Generation {
 		message = fmt.Sprintf("%v is still reconciling, wait for it to be done", workloadInfo.GVKWithName)
 		return false, nil
 	}
@@ -101,26 +103,95 @@ func (c *UnifiedWorkloadRolloutControlPlane) VerifyWorkload() (bool, error) {
 	return true, nil
 }
 
+// prepareBeforeRollback makes sure that the updated pods have been patched no-need-update label.
+// return values:
+// - bool: whether all updated pods have been patched no-need-update label;
+// - *int32: how many pods have been patched;
+// - err: whether error occurs.
+func (c *UnifiedWorkloadRolloutControlPlane) prepareBeforeRollback() (bool, *int32, error) {
+	if c.release.Annotations[util.RollbackInBatchAnnotation] == "" {
+		return true, nil, nil
+	}
+
+	noNeedRollbackReplicas := int32(0)
+	rolloutID := c.release.Spec.ReleasePlan.RolloutID
+	if rolloutID == "" {
+		return true, &noNeedRollbackReplicas, nil
+	}
+
+	workloadInfo, err := c.GetWorkloadInfo()
+	if err != nil {
+		return false, &noNeedRollbackReplicas, nil
+	}
+
+	pods, err := c.ListOwnedPods()
+	if err != nil {
+		klog.Errorf("Failed to list pods for %v", workloadInfo.GVKWithName)
+		return false, &noNeedRollbackReplicas, err
+	}
+
+	updateRevision := workloadInfo.Status.UpdateRevision
+	var filterPods []*v1.Pod
+	for i := range pods {
+		if !pods[i].DeletionTimestamp.IsZero() {
+			continue
+		}
+		if !util.IsConsistentWithRevision(pods[i], updateRevision) {
+			continue
+		}
+		if id, ok := pods[i].Labels[util.NoNeedUpdatePodLabel]; ok && id == rolloutID {
+			noNeedRollbackReplicas++
+			continue
+		}
+		filterPods = append(filterPods, pods[i])
+	}
+
+	if len(filterPods) == 0 {
+		return true, &noNeedRollbackReplicas, nil
+	}
+
+	for _, pod := range filterPods {
+		podClone := pod.DeepCopy()
+		body := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s"}}}`, util.NoNeedUpdatePodLabel, rolloutID)
+		err = c.client.Patch(context.TODO(), podClone, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
+		if err != nil {
+			klog.Errorf("Failed to patch rollback labels[%s]=%s to pod %v", util.NoNeedUpdatePodLabel, rolloutID, client.ObjectKeyFromObject(pod))
+			return false, &noNeedRollbackReplicas, err
+		} else {
+			klog.Info("Succeeded to patch rollback labels[%s]=%s to pod %v", util.NoNeedUpdatePodLabel, rolloutID, client.ObjectKeyFromObject(pod))
+		}
+		noNeedRollbackReplicas++
+	}
+	klog.Infof("BatchRelease(%v) find %v replicas no need to rollback", client.ObjectKeyFromObject(c.release), noNeedRollbackReplicas)
+	return false, &noNeedRollbackReplicas, nil
+}
+
 // PrepareBeforeProgress makes sure that the source and target workload is under our control
-func (c *UnifiedWorkloadRolloutControlPlane) PrepareBeforeProgress() (bool, error) {
+func (c *UnifiedWorkloadRolloutControlPlane) PrepareBeforeProgress() (bool, *int32, error) {
+	done, noNeedRollbackReplicas, err := c.prepareBeforeRollback()
+	if err != nil || !done {
+		return false, nil, err
+	}
+
 	// claim the workload is under our control
-	done, err := c.ClaimWorkload()
+	done, err = c.ClaimWorkload()
 	if !done || err != nil {
-		return false, err
+		return false, noNeedRollbackReplicas, err
 	}
 
 	// record revisions and replicas info to BatchRelease.Status
 	err = c.RecordWorkloadRevisionAndReplicas()
 	if err != nil {
-		return false, err
+		return false, noNeedRollbackReplicas, err
 	}
 
 	c.recorder.Event(c.release, v1.EventTypeNormal, "InitializedSuccessfully", "Rollout resource are initialized")
-	return true, nil
+	return true, noNeedRollbackReplicas, nil
 }
 
 // UpgradeOneBatch calculates the number of pods we can upgrade once according to the rollout spec
 // and then set the partition accordingly
+// TODO: support advanced statefulSet reserveOrdinal feature0
 func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 	workloadInfo, err := c.GetWorkloadInfo()
 	if err != nil {
@@ -133,32 +204,53 @@ func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 	}
 
 	// if the workload status is untrustworthy
-	if workloadInfo.Status.ObservedGeneration != workloadInfo.Metadata.Generation {
+	if workloadInfo.Status.ObservedGeneration != workloadInfo.Generation {
 		return false, nil
 	}
 
+	pods, err := c.ListOwnedPods()
+	if err != nil {
+		return false, err
+	}
+
+	var noNeedRollbackReplicas int32
+	if c.newStatus.CanaryStatus.NoNeedUpdateReplicas != nil {
+		rolloutID := c.release.Spec.ReleasePlan.RolloutID
+		noNeedRollbackReplicas = countNoNeedRollbackReplicas(pods, c.newStatus.UpdateRevision, rolloutID)
+		c.newStatus.CanaryStatus.NoNeedUpdateReplicas = pointer.Int32(noNeedRollbackReplicas)
+	}
+	replicas := c.newStatus.ObservedWorkloadReplicas
 	currentBatch := c.newStatus.CanaryStatus.CurrentBatch
-	// the number of canary pods should have in current batch
-	canaryGoal := c.calculateCurrentCanary(c.release.Status.ObservedWorkloadReplicas)
-	// the number of stable pods should have in current batch
-	stableGoal := c.calculateCurrentStable(c.release.Status.ObservedWorkloadReplicas)
-	// the number of canary pods now we have in current state
-	currentCanaryReplicas := workloadInfo.Status.UpdatedReplicas
 
-	// in case of no need to upgrade pods
-	klog.V(3).InfoS("upgraded one batch, status info:",
+	// the number of canary pods should have in current batch in plan
+	plannedBatchCanaryReplicas := c.calculateCurrentCanary(c.newStatus.ObservedWorkloadReplicas)
+	// the number of canary pods that consider rollback context and other real-world situations
+	expectedBatchCanaryReplicas := c.calculateCurrentCanary(replicas - noNeedRollbackReplicas)
+	// the number of canary pods that consider rollback context and other real-world situations
+	expectedBatchStableReplicas := replicas - expectedBatchCanaryReplicas
+
+	// if ordered update, partition is related with pod ordinals
+	// if unordered update, partition just like cloneSet partition
+	orderedUpdate, _ := c.IsOrderedUpdate()
+	if !orderedUpdate {
+		expectedBatchStableReplicas -= noNeedRollbackReplicas
+	}
+
+	klog.V(3).InfoS("upgrade one batch, current info:",
 		"BatchRelease", client.ObjectKeyFromObject(c.release),
-		"current-batch", currentBatch,
-		"canary-goal", canaryGoal,
-		"stable-goal", stableGoal,
-		"canary-replicas", currentCanaryReplicas)
+		"currentBatch", currentBatch,
+		"replicas", replicas,
+		"noNeedRollbackReplicas", noNeedRollbackReplicas,
+		"plannedBatchCanaryReplicas", plannedBatchCanaryReplicas,
+		"expectedBatchCanaryReplicas", expectedBatchCanaryReplicas,
+		"expectedBatchStableReplicas", expectedBatchStableReplicas)
 
-	isUpgradedDone, err := c.UpgradeBatch(canaryGoal, stableGoal)
+	isUpgradedDone, err := c.UpgradeBatch(expectedBatchCanaryReplicas, expectedBatchStableReplicas)
 	if err != nil || !isUpgradedDone {
 		return false, nil
 	}
 
-	isPatchedDone, err := c.patchPodBatchLabel(workloadInfo, canaryGoal)
+	isPatchedDone, err := c.patchPodBatchLabel(pods, plannedBatchCanaryReplicas, expectedBatchStableReplicas)
 	if err != nil || !isPatchedDone {
 		return false, err
 	}
@@ -181,51 +273,47 @@ func (c *UnifiedWorkloadRolloutControlPlane) CheckOneBatchReady() (bool, error) 
 	}
 
 	// if the workload status is untrustworthy
-	if workloadInfo.Status.ObservedGeneration != workloadInfo.Metadata.Generation {
+	if workloadInfo.Status.ObservedGeneration != workloadInfo.Generation {
 		return false, nil
 	}
 
-	// the number of canary pods now we have in current state
-	canaryReplicas := workloadInfo.Status.UpdatedReplicas
-	// the number of stable pods now we have in current state
-	stableReplicas := workloadInfo.Status.Replicas - canaryReplicas
-	// the number of canary pods that have been ready in current state
-	canaryReadyReplicas := workloadInfo.Status.UpdatedReadyReplicas
-	// the number of the real canary pods should have in current batch
-	canaryGoal := c.calculateCurrentCanary(c.release.Status.ObservedWorkloadReplicas)
-	// the number of the real stable pods should have in current batch
-	stableGoal := c.calculateCurrentStable(c.release.Status.ObservedWorkloadReplicas)
-	// the number of max unavailable canary pods allowed by this workload
-	maxUnavailable := 0
-	if workloadInfo.MaxUnavailable != nil {
-		maxUnavailable, _ = intstr.GetValueFromIntOrPercent(workloadInfo.MaxUnavailable, int(c.release.Status.ObservedWorkloadReplicas), true)
+	var noNeedRollbackReplicas int32
+	if c.newStatus.CanaryStatus.NoNeedUpdateReplicas != nil {
+		noNeedRollbackReplicas = *c.newStatus.CanaryStatus.NoNeedUpdateReplicas
 	}
 
-	klog.InfoS("checking the batch releasing progress",
+	replicas := c.newStatus.ObservedWorkloadReplicas
+	currentBatch := c.newStatus.CanaryStatus.CurrentBatch
+
+	// the number of canary pods should have in current batch in plan
+	plannedBatchCanaryReplicas := c.calculateCurrentCanary(c.newStatus.ObservedWorkloadReplicas)
+	// the number of canary pods that consider rollback context and other real-world situations
+	expectedBatchCanaryReplicas := c.calculateCurrentCanary(replicas - noNeedRollbackReplicas)
+	// the number of canary pods that consider rollback context and other real-world situations
+	expectedBatchStableReplicas := replicas - expectedBatchCanaryReplicas
+
+	// if ordered update, partition is related with pod ordinals
+	// if unordered update, partition just like cloneSet partition
+	orderedUpdate, _ := c.IsOrderedUpdate()
+	if !orderedUpdate {
+		expectedBatchStableReplicas -= noNeedRollbackReplicas
+	}
+
+	klog.V(3).InfoS("check one batch, current info:",
 		"BatchRelease", client.ObjectKeyFromObject(c.release),
-		"current-batch", c.release.Status.CanaryStatus.CurrentBatch,
-		"canary-goal", canaryGoal,
-		"stable-goal", stableGoal,
-		"stable-replicas", stableReplicas,
-		"canary-ready-replicas", canaryReadyReplicas,
-		"maxUnavailable", maxUnavailable)
+		"currentBatch", currentBatch,
+		"replicas", replicas,
+		"noNeedRollbackReplicas", noNeedRollbackReplicas,
+		"plannedBatchCanaryReplicas", plannedBatchCanaryReplicas,
+		"expectedBatchCanaryReplicas", expectedBatchCanaryReplicas,
+		"expectedBatchStableReplicas", expectedBatchStableReplicas)
 
-	// maybe, the workload replicas was scaled, we should requeue and handle the workload scaling event
-	if workloadInfo.Status.Replicas != c.release.Status.ObservedWorkloadReplicas {
-		err := fmt.Errorf("%v replicas don't match ObservedWorkloadReplicas, workload status replicas: %v, observed workload replicas: %v",
-			workloadInfo.GVKWithName, workloadInfo.Status.Replicas, c.release.Status.ObservedWorkloadReplicas)
-		klog.ErrorS(err, "the batch is not valid", "current-batch", c.release.Status.CanaryStatus.CurrentBatch)
-		return false, err
-	}
-
-	if ready, err := c.IsBatchReady(canaryGoal, stableGoal); err != nil || !ready {
+	if ready, err := c.IsBatchReady(expectedBatchCanaryReplicas, expectedBatchStableReplicas); err != nil || !ready {
 		klog.InfoS("the batch is not ready yet", "Workload", workloadInfo.GVKWithName,
-			"ReleasePlan", client.ObjectKeyFromObject(c.release), "current-batch", c.release.Status.CanaryStatus.CurrentBatch)
+			"BatchRelease", client.ObjectKeyFromObject(c.release), "current-batch", c.release.Status.CanaryStatus.CurrentBatch)
 		return false, nil
 	}
 
-	klog.Infof("All pods of %v in current batch are ready, BatchRelease(%v), current-batch=%v",
-		workloadInfo.GVKWithName, client.ObjectKeyFromObject(c.release), c.release.Status.CanaryStatus.CurrentBatch)
 	c.recorder.Eventf(c.release, v1.EventTypeNormal, "BatchAvailable", "Batch %d is available", c.release.Status.CanaryStatus.CurrentBatch)
 	return true, nil
 }
@@ -255,9 +343,9 @@ func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventTy
 	}
 
 	// in case that the workload status is untrustworthy
-	if workloadInfo.Status.ObservedGeneration != workloadInfo.Metadata.Generation {
+	if workloadInfo.Status.ObservedGeneration != workloadInfo.Generation {
 		klog.Warningf("%v is still reconciling, waiting for it to complete, generation: %v, observed: %v",
-			workloadInfo.GVKWithName, workloadInfo.Metadata.Generation, workloadInfo.Status.ObservedGeneration)
+			workloadInfo.GVKWithName, workloadInfo.Generation, workloadInfo.Status.ObservedGeneration)
 		return WorkloadStillReconciling, nil, nil
 	}
 
@@ -273,6 +361,16 @@ func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventTy
 		return WorkloadReplicasChanged, workloadInfo, nil
 	}
 
+	// updateRevision == CurrentRevision means CloneSet is rolling back or newly-created.
+	if workloadInfo.Status.UpdateRevision == workloadInfo.Status.StableRevision &&
+		// stableRevision == UpdateRevision means CloneSet is rolling back instead of newly-created.
+		c.newStatus.StableRevision == workloadInfo.Status.UpdateRevision &&
+		// StableRevision != observed UpdateRevision means the rollback event have not been observed.
+		c.newStatus.StableRevision != c.newStatus.UpdateRevision {
+		klog.Warningf("Workload(%v) is rolling back in batches", workloadInfo.GVKWithName)
+		return WorkloadRollbackInBatch, workloadInfo, nil
+	}
+
 	// in case of that the workload was changed
 	if workloadInfo.Status.UpdateRevision != c.release.Status.UpdateRevision {
 		klog.Warningf("%v updateRevision changed during releasing, should try to restart the release plan, "+
@@ -285,7 +383,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventTy
 
 // the canary workload size for the current batch
 func (c *UnifiedWorkloadRolloutControlPlane) calculateCurrentCanary(totalSize int32) int32 {
-	canaryGoal := int32(util.CalculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.release.Status.CanaryStatus.CurrentBatch)))
+	canaryGoal := int32(calculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.release.Status.CanaryStatus.CurrentBatch)))
 	klog.InfoS("Calculated the number of pods in the target workload after current batch", "BatchRelease", client.ObjectKeyFromObject(c.release),
 		"current batch", c.release.Status.CanaryStatus.CurrentBatch, "workload canary goal replicas goal", canaryGoal)
 	return canaryGoal
@@ -311,19 +409,21 @@ func (c *UnifiedWorkloadRolloutControlPlane) RecordWorkloadRevisionAndReplicas()
 	return nil
 }
 
-func (c *UnifiedWorkloadRolloutControlPlane) patchPodBatchLabel(workloadInfo *util.WorkloadInfo, canaryGoal int32) (bool, error) {
-	rolloutID, exist := c.release.Labels[util.RolloutIDLabel]
-	if !exist || rolloutID == "" {
+func (c *UnifiedWorkloadRolloutControlPlane) patchPodBatchLabel(pods []*v1.Pod, plannedBatchCanaryReplicas, expectedBatchStableReplicas int32) (bool, error) {
+	rolloutID := c.release.Spec.ReleasePlan.RolloutID
+	if rolloutID == "" {
 		return true, nil
 	}
 
-	pods, err := c.ListOwnedPods()
-	if err != nil {
-		klog.Errorf("Failed to list pods for %v", workloadInfo.GVKWithName)
-		return false, err
-	}
-
-	batchID := c.release.Status.CanaryStatus.CurrentBatch + 1
 	updateRevision := c.release.Status.UpdateRevision
-	return util.PatchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, canaryGoal, client.ObjectKeyFromObject(c.release))
+	batchID := c.release.Status.CanaryStatus.CurrentBatch + 1
+	if c.newStatus.CanaryStatus.NoNeedUpdateReplicas != nil {
+		orderedUpdate, _ := c.IsOrderedUpdate()
+		if orderedUpdate {
+			pods = filterPodsForOrderedRollback(pods, plannedBatchCanaryReplicas, expectedBatchStableReplicas, c.release.Status.ObservedWorkloadReplicas, rolloutID, updateRevision)
+		} else {
+			pods = filterPodsForUnorderedRollback(pods, plannedBatchCanaryReplicas, expectedBatchStableReplicas, c.release.Status.ObservedWorkloadReplicas, rolloutID, updateRevision)
+		}
+	}
+	return patchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, plannedBatchCanaryReplicas, client.ObjectKeyFromObject(c.release))
 }
