@@ -2185,7 +2185,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
-			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision))
 			stableRevision := rollout.Status.StableRevision
 			By("check rollout status & paused success")
 
@@ -2208,8 +2208,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
-			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
-			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision))
 			canaryRevision := rollout.Status.CanaryStatus.PodTemplateHash
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
@@ -2325,7 +2325,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
-			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision))
 			stableRevision := rollout.Status.StableRevision
 			By("check rollout status & paused success")
 
@@ -2347,8 +2347,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
-			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
-			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision))
 			canaryRevisionV1 := rollout.Status.CanaryStatus.PodTemplateHash
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
@@ -2373,8 +2373,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
 			Expect(rollout.Status.CanaryStatus.CanaryRevision).ShouldNot(Equal(canaryRevisionV1))
-			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
-			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision))
 			canaryRevisionV2 := rollout.Status.CanaryStatus.PodTemplateHash
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			// check stable, canary service & ingress
@@ -2465,7 +2465,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
-			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision))
 			stableRevision := rollout.Status.StableRevision
 			By("check rollout status & paused success")
 
@@ -2487,8 +2487,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
-			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
-			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision))
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.CanaryStatus.CurrentStepState).Should(Equal(rolloutsv1alpha1.CanaryStepStateUpgrade))
 			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
@@ -2578,7 +2578,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
-			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision))
 			stableRevision := rollout.Status.StableRevision
 			By("check rollout status & paused success")
 
@@ -2599,8 +2599,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
-			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
-			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision))
 			canaryRevision := rollout.Status.CanaryStatus.PodTemplateHash
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
@@ -2684,7 +2684,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
-			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision))
 			stableRevision := rollout.Status.StableRevision
 			By("check rollout status & paused success")
 
@@ -2707,8 +2707,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
-			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
-			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision))
 			canaryRevision := rollout.Status.CanaryStatus.PodTemplateHash
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
@@ -2824,7 +2824,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
-			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision))
 			stableRevision := rollout.Status.StableRevision
 			By("check rollout status & paused success")
 
@@ -2846,8 +2846,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
-			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
-			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision))
 			canaryRevisionV1 := rollout.Status.CanaryStatus.PodTemplateHash
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
@@ -2872,8 +2872,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
 			Expect(rollout.Status.CanaryStatus.CanaryRevision).ShouldNot(Equal(canaryRevisionV1))
-			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
-			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision))
 			canaryRevisionV2 := rollout.Status.CanaryStatus.PodTemplateHash
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			// check stable, canary service & ingress
@@ -2964,7 +2964,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
-			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision))
 			stableRevision := rollout.Status.StableRevision
 			By("check rollout status & paused success")
 
@@ -2986,8 +2986,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
-			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
-			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision))
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.CanaryStatus.CurrentStepState).Should(Equal(rolloutsv1alpha1.CanaryStepStateUpgrade))
 			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
@@ -3077,7 +3077,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
-			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			Expect(rollout.Status.StableRevision).Should(Equal(workload.Status.CurrentRevision))
 			stableRevision := rollout.Status.StableRevision
 			By("check rollout status & paused success")
 
@@ -3098,8 +3098,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
 			Expect(rollout.Status.StableRevision).Should(Equal(stableRevision))
-			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
-			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision[strings.LastIndex(workload.Status.UpdateRevision, "-")+1:]))
+			Expect(rollout.Status.CanaryStatus.CanaryRevision).Should(Equal(workload.Status.UpdateRevision))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(workload.Status.UpdateRevision))
 			canaryRevision := rollout.Status.CanaryStatus.PodTemplateHash
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))

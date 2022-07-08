@@ -378,14 +378,6 @@ func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 		}
 
 	case *unstructured.Unstructured:
-		updateRevision := ParseStatusStringFrom(o, "updateRevision")
-		if len(updateRevision) > 0 {
-			updateRevision = updateRevision[len(o.GetName())+1:]
-		}
-		stableRevision := ParseStatusStringFrom(o, "currentRevision")
-		if len(stableRevision) > 0 {
-			stableRevision = stableRevision[len(o.GetName())+1:]
-		}
 		return &WorkloadStatus{
 			ObservedGeneration:   int64(ParseStatusIntFrom(o, "observedGeneration")),
 			Replicas:             int32(ParseStatusIntFrom(o, "replicas")),
@@ -393,8 +385,8 @@ func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 			UpdatedReplicas:      int32(ParseStatusIntFrom(o, "updatedReplicas")),
 			AvailableReplicas:    int32(ParseStatusIntFrom(o, "availableReplicas")),
 			UpdatedReadyReplicas: int32(ParseStatusIntFrom(o, "updatedReadyReplicas")),
-			UpdateRevision:       updateRevision,
-			StableRevision:       stableRevision,
+			UpdateRevision:       ParseStatusStringFrom(o, "updateRevision"),
+			StableRevision:       ParseStatusStringFrom(o, "currentRevision"),
 		}
 
 	default:

@@ -17,7 +17,6 @@ limitations under the License.
 package workloads
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
@@ -254,9 +253,6 @@ func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventTy
 		}
 		return "", nil, err
 	}
-
-	info, _ := json.Marshal(workloadInfo)
-	klog.Infof("WorkloadInfo: %s", string(info))
 
 	// in case that the workload status is untrustworthy
 	if workloadInfo.Status.ObservedGeneration != workloadInfo.Metadata.Generation {
