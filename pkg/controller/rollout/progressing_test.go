@@ -47,13 +47,13 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []rolloutv1alpha1.CanaryStep{
 					{
-						Weight: 20,
+						Weight: utilpointer.Int32(20),
 					},
 					{
-						Weight: 50,
+						Weight: utilpointer.Int32(50),
 					},
 					{
-						Weight: 100,
+						Weight: utilpointer.Int32(100),
 					},
 				}
 				return obj
@@ -86,13 +86,13 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []rolloutv1alpha1.CanaryStep{
 					{
-						Weight: 20,
+						Weight: utilpointer.Int32(20),
 					},
 					{
-						Weight: 40,
+						Weight: utilpointer.Int32(40),
 					},
 					{
-						Weight: 100,
+						Weight: utilpointer.Int32(100),
 					},
 				}
 				return obj
@@ -125,13 +125,13 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []rolloutv1alpha1.CanaryStep{
 					{
-						Weight: 40,
+						Weight: utilpointer.Int32(40),
 					},
 					{
-						Weight: 60,
+						Weight: utilpointer.Int32(60),
 					},
 					{
-						Weight: 100,
+						Weight: utilpointer.Int32(100),
 					},
 				}
 				return obj
@@ -164,13 +164,13 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []rolloutv1alpha1.CanaryStep{
 					{
-						Weight: 10,
+						Weight: utilpointer.Int32(10),
 					},
 					{
-						Weight: 30,
+						Weight: utilpointer.Int32(30),
 					},
 					{
-						Weight: 100,
+						Weight: utilpointer.Int32(100),
 					},
 				}
 				return obj
@@ -203,14 +203,14 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []rolloutv1alpha1.CanaryStep{
 					{
-						Weight: 2,
+						Weight: utilpointer.Int32(2),
 						Replicas: &intstr.IntOrString{
 							Type:   intstr.String,
 							StrVal: "10%",
 						},
 					},
 					{
-						Weight: 3,
+						Weight: utilpointer.Int32(3),
 						Replicas: &intstr.IntOrString{
 							Type:   intstr.String,
 							StrVal: "10%",

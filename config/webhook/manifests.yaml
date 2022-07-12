@@ -14,7 +14,7 @@ webhooks:
       name: webhook-service
       namespace: system
       path: /mutate-apps-kruise-io-v1alpha1-cloneset
-  failurePolicy: Ignore
+  failurePolicy: Fail
   name: mcloneset.kb.io
   rules:
   - apiGroups:
@@ -34,7 +34,7 @@ webhooks:
       name: webhook-service
       namespace: system
       path: /mutate-apps-v1-deployment
-  failurePolicy: Ignore
+  failurePolicy: Fail
   name: mdeployment.kb.io
   rules:
   - apiGroups:
@@ -54,7 +54,7 @@ webhooks:
       name: webhook-service
       namespace: system
       path: /mutate-apps-v1-statefulset
-  failurePolicy: Ignore
+  failurePolicy: Fail
   name: mstatefulset.kb.io
   rules:
   - apiGroups:
@@ -74,7 +74,7 @@ webhooks:
       name: webhook-service
       namespace: system
       path: /mutate-apps-kruise-io-statefulset
-  failurePolicy: Ignore
+  failurePolicy: Fail
   name: madvancedstatefulset.kb.io
   rules:
   - apiGroups:
@@ -96,7 +96,7 @@ webhooks:
       name: webhook-service
       namespace: system
       path: /mutate-unified-workload
-  failurePolicy: Ignore
+  failurePolicy: Fail
   name: munifiedworload.kb.io
   rules:
   - apiGroups:

@@ -40,6 +40,7 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 const (
@@ -242,6 +243,7 @@ var _ = SIGDescribe("Rollout", func() {
 			if clone.Status.CanaryStatus == nil {
 				return false
 			}
+			klog.Infof("current step:%v target step:%v current step state %v", clone.Status.CanaryStatus.CurrentStepIndex, stepIndex, clone.Status.CanaryStatus.CurrentStepState)
 			return clone.Status.CanaryStatus.CurrentStepIndex == stepIndex && clone.Status.CanaryStatus.CurrentStepState == rolloutsv1alpha1.CanaryStepStatePaused
 		}, 20*time.Minute, time.Second).Should(BeTrue())
 	}
@@ -352,19 +354,19 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 20,
+					Weight: utilpointer.Int32(20),
 				},
 				{
-					Weight: 40,
+					Weight: utilpointer.Int32(40),
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 				},
 				{
-					Weight: 80,
+					Weight: utilpointer.Int32(80),
 				},
 				{
-					Weight: 90,
+					Weight: utilpointer.Int32(90),
 				},
 			}
 			CreateObject(rollout)
@@ -496,12 +498,12 @@ var _ = SIGDescribe("Rollout", func() {
 			replicas := intstr.FromInt(2)
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight:   20,
+					Weight:   utilpointer.Int32(20),
 					Replicas: &replicas,
 					Pause:    rolloutsv1alpha1.RolloutPause{},
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 			}
@@ -578,7 +580,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[0].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[0].Weight)))
 
 			// check rollout status
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
@@ -598,7 +600,7 @@ var _ = SIGDescribe("Rollout", func() {
 			// canary ingress
 			cIngress = &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[1].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[1].Weight)))
 			// canary deployment
 			cWorkload, err = GetCanaryDeployment(workload)
 			Expect(err).NotTo(HaveOccurred())
@@ -870,7 +872,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[0].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[0].Weight)))
 			// canary deployment
 			cWorkload, err = GetCanaryDeployment(workload)
 			Expect(err).NotTo(HaveOccurred())
@@ -926,23 +928,23 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 20,
+					Weight: utilpointer.Int32(20),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: 40,
+					Weight: utilpointer.Int32(40),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: 100,
+					Weight: utilpointer.Int32(100),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(0),
 					},
@@ -1057,23 +1059,23 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 20,
+					Weight: utilpointer.Int32(20),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: 40,
+					Weight: utilpointer.Int32(40),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 				{
-					Weight: 100,
+					Weight: utilpointer.Int32(100),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(0),
 					},
@@ -1184,31 +1186,31 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 20,
+					Weight: utilpointer.Int32(20),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: 40,
+					Weight: utilpointer.Int32(40),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: 80,
+					Weight: utilpointer.Int32(80),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: 100,
+					Weight: utilpointer.Int32(100),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(0),
 					},
@@ -1313,19 +1315,19 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 20,
+					Weight: utilpointer.Int32(20),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: 100,
+					Weight: utilpointer.Int32(100),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
@@ -1404,19 +1406,19 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 20,
+					Weight: utilpointer.Int32(20),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: 100,
+					Weight: utilpointer.Int32(100),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
@@ -1548,15 +1550,15 @@ var _ = SIGDescribe("Rollout", func() {
 			// update rollout step configuration
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 10,
+					Weight: utilpointer.Int32(10),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 				{
-					Weight: 30,
+					Weight: utilpointer.Int32(30),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 				{
-					Weight: 100,
+					Weight: utilpointer.Int32(100),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
@@ -1594,7 +1596,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[1].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[1].Weight)))
 			// canary deployment
 			cWorkload, err = GetCanaryDeployment(workload)
 			Expect(err).NotTo(HaveOccurred())
@@ -1638,6 +1640,162 @@ var _ = SIGDescribe("Rollout", func() {
 		})
 	})
 
+	KruiseDescribe("Canary rollout with Gateway API", func() {
+		It("V1->V2: Percentage 20%,40%,60%,80%,90%, and replicas=3", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/gateway/rollout-test.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
+				{
+					Weight: utilpointer.Int32(20),
+				},
+				{
+					Weight: utilpointer.Int32(40),
+				},
+				{
+					Weight: utilpointer.Int32(60),
+				},
+				{
+					Weight: utilpointer.Int32(80),
+				},
+				{
+					Weight: utilpointer.Int32(90),
+				},
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			// service
+			service := &v1.Service{}
+			Expect(ReadYamlToObject("./test_data/rollout/service.yaml", service)).ToNot(HaveOccurred())
+			CreateObject(service)
+			// route
+			route := &gatewayv1alpha2.HTTPRoute{}
+			Expect(ReadYamlToObject("./test_data/gateway/httproute-test.yaml", route)).ToNot(HaveOccurred())
+			CreateObject(route)
+			// workload
+			workload := &apps.Deployment{}
+			Expect(ReadYamlToObject("./test_data/rollout/deployment.yaml", workload)).ToNot(HaveOccurred())
+			workload.Spec.Replicas = utilpointer.Int32(3)
+			CreateObject(workload)
+			WaitDeploymentAllPodsReady(workload)
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			By("check rollout status & paused success")
+
+			// v1 -> v2, start rollout action
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDeployment(workload)
+			By("Update deployment env NODE_NAME from(version1) -> to(version2)")
+			time.Sleep(time.Second * 2)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeTrue())
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 1))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 1))
+			routeGet := &gatewayv1alpha2.HTTPRoute{}
+			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
+			stable, canary := getHTTPRouteWeight(*routeGet)
+			Expect(stable).Should(Equal(int32(80)))
+			Expect(canary).Should(Equal(int32(20)))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(2)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 2))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 2))
+
+			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
+			stable, canary = getHTTPRouteWeight(*routeGet)
+			Expect(stable).Should(Equal(int32(60)))
+			Expect(canary).Should(Equal(int32(40)))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(3)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 2))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 2))
+			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
+			stable, canary = getHTTPRouteWeight(*routeGet)
+			Expect(stable).Should(Equal(int32(40)))
+			Expect(canary).Should(Equal(int32(60)))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(4)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 4)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 3))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 3))
+			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
+			stable, canary = getHTTPRouteWeight(*routeGet)
+			Expect(stable).Should(Equal(int32(20)))
+			Expect(canary).Should(Equal(int32(80)))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(5)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 5)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 3))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 3))
+			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
+			stable, canary = getHTTPRouteWeight(*routeGet)
+			Expect(stable).Should(Equal(int32(10)))
+			Expect(canary).Should(Equal(int32(90)))
+
+			// resume rollout
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
+			By("rollout completed, and check")
+			// check service & httproute & deployment
+			// httproute
+			Expect(GetObject(routeGet.Name, routeGet)).NotTo(HaveOccurred())
+			stable, canary = getHTTPRouteWeight(*routeGet)
+			Expect(stable).Should(Equal(int32(1)))
+			Expect(canary).Should(Equal(int32(-1)))
+			// service
+			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
+			Expect(service.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(""))
+			cService := &v1.Service{}
+			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
+			// deployment
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeFalse())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, rolloutsv1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(rolloutsv1alpha1.ProgressingReasonSucceeded))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			WaitRolloutWorkloadGenration(rollout.Name, workload.Generation)
+		})
+	})
+
 	KruiseDescribe("CloneSet rollout canary nginx", func() {
 		It("V1->V2: Percentage, 20%,60% Succeeded", func() {
 			By("Creating Rollout...")
@@ -1645,11 +1803,11 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 20,
+					Weight: utilpointer.Int32(20),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 			}
@@ -1719,7 +1877,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[0].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[0].Weight)))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
@@ -1730,7 +1888,7 @@ var _ = SIGDescribe("Rollout", func() {
 			// canary ingress
 			cIngress = &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[1].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[1].Weight)))
 			// cloneset
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 3))
@@ -1993,7 +2151,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[0].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[0].Weight)))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
@@ -2147,11 +2305,11 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 20,
+					Weight: utilpointer.Int32(20),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 			}
@@ -2225,7 +2383,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[0].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[0].Weight)))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
@@ -2236,7 +2394,7 @@ var _ = SIGDescribe("Rollout", func() {
 			// canary ingress
 			cIngress = &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[1].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[1].Weight)))
 			// cloneset
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 3))
@@ -2389,7 +2547,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[0].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[0].Weight)))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
@@ -2646,11 +2804,11 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 20,
+					Weight: utilpointer.Int32(20),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 			}
@@ -2724,7 +2882,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[0].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[0].Weight)))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
@@ -2735,7 +2893,7 @@ var _ = SIGDescribe("Rollout", func() {
 			// canary ingress
 			cIngress = &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[1].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[1].Weight)))
 			// cloneset
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 3))
@@ -2888,7 +3046,7 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", rollout.Spec.Strategy.Canary.Steps[0].Weight)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[0].Weight)))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
@@ -3213,23 +3371,23 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
 				{
-					Weight: 20,
+					Weight: utilpointer.Int32(20),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: 40,
+					Weight: utilpointer.Int32(40),
 					Pause:  rolloutsv1alpha1.RolloutPause{},
 				},
 				{
-					Weight: 60,
+					Weight: utilpointer.Int32(60),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: 100,
+					Weight: utilpointer.Int32(100),
 					Pause: rolloutsv1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
@@ -3421,4 +3579,22 @@ func mergeMap(dst, patch map[string]string) map[string]string {
 		dst[k1] = v1
 	}
 	return dst
+}
+
+func getHTTPRouteWeight(route gatewayv1alpha2.HTTPRoute) (int32, int32) {
+	var stable, canary int32
+	for i := range route.Spec.Rules {
+		rules := route.Spec.Rules[i]
+		for j := range rules.BackendRefs {
+			if strings.HasSuffix(string(rules.BackendRefs[j].Name), "-canary") {
+				canary = *rules.BackendRefs[j].Weight
+			} else {
+				stable = *rules.BackendRefs[j].Weight
+			}
+		}
+	}
+	if canary == 0 {
+		canary = -1
+	}
+	return stable, canary
 }

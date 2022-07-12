@@ -24,9 +24,9 @@ import (
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/rollout/batchrelease"
+	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
-	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -211,14 +211,7 @@ func (r *RolloutReconciler) doProgressingInRolling(rollout *rolloutv1alpha1.Roll
 		return &expectedTime, nil
 	}
 
-	rolloutCon := &rolloutContext{
-		Client:       r.Client,
-		rollout:      rollout,
-		newStatus:    newStatus,
-		workload:     workload,
-		batchControl: batchrelease.NewInnerBatchController(r.Client, rollout),
-		recorder:     r.Recorder,
-	}
+	rolloutCon := newRolloutContext(r.Client, r.Recorder, rollout, newStatus, workload)
 	err = rolloutCon.reconcile()
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) Progressing failed: %s", rollout.Namespace, rollout.Name, err.Error())
@@ -228,14 +221,7 @@ func (r *RolloutReconciler) doProgressingInRolling(rollout *rolloutv1alpha1.Roll
 }
 
 func (r *RolloutReconciler) doProgressingReset(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (bool, error) {
-	rolloutCon := &rolloutContext{
-		Client:       r.Client,
-		rollout:      rollout,
-		newStatus:    newStatus,
-		batchControl: batchrelease.NewInnerBatchController(r.Client, rollout),
-		recorder:     r.Recorder,
-	}
-
+	rolloutCon := newRolloutContext(r.Client, r.Recorder, rollout, newStatus, nil)
 	if rolloutCon.rollout.Spec.Strategy.Canary.TrafficRoutings != nil {
 		// 1. remove stable service podRevision selector
 		done, err := rolloutCon.restoreStableService()
@@ -263,8 +249,13 @@ func (r *RolloutReconciler) doProgressingReset(rollout *rolloutv1alpha1.Rollout,
 func (r *RolloutReconciler) verifyCanaryStrategy(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (bool, string, error) {
 	canary := rollout.Spec.Strategy.Canary
 	// Traffic routing
-	if canary.TrafficRoutings != nil {
-		if ok, msg, err := r.verifyTrafficRouting(rollout.Namespace, canary.TrafficRoutings[0]); !ok {
+	if canary.TrafficRoutings != nil && len(canary.TrafficRoutings) > 0 {
+		rolloutCon := newRolloutContext(r.Client, r.Recorder, rollout, newStatus, nil)
+		trController, err := rolloutCon.newTrafficRoutingController(rolloutCon)
+		if err != nil {
+			return false, "", err
+		}
+		if ok, msg, err := r.verifyTrafficRouting(rollout.Namespace, canary.TrafficRoutings[0], trController); !ok {
 			return ok, msg, err
 		}
 	}
@@ -281,7 +272,7 @@ func (r *RolloutReconciler) verifyCanaryStrategy(rollout *rolloutv1alpha1.Rollou
 	return true, "", nil
 }
 
-func (r *RolloutReconciler) verifyTrafficRouting(ns string, tr *rolloutv1alpha1.TrafficRouting) (bool, string, error) {
+func (r *RolloutReconciler) verifyTrafficRouting(ns string, tr *rolloutv1alpha1.TrafficRouting, c trafficrouting.Controller) (bool, string, error) {
 	// check service
 	service := &corev1.Service{}
 	err := r.Get(context.TODO(), types.NamespacedName{Namespace: ns, Name: tr.Service}, service)
@@ -292,18 +283,9 @@ func (r *RolloutReconciler) verifyTrafficRouting(ns string, tr *rolloutv1alpha1.
 		return false, "", err
 	}
 
-	// check ingress
-	var ingressName string
-	switch tr.Type {
-	case "nginx":
-		ingressName = tr.Ingress.Name
-	}
-	ingress := &netv1.Ingress{}
-	err = r.Get(context.TODO(), types.NamespacedName{Namespace: ns, Name: ingressName}, ingress)
+	// check the traffic routing configuration
+	err = c.Initialize(context.TODO())
 	if err != nil {
-		if errors.IsNotFound(err) {
-			return false, fmt.Sprintf("Ingress(%s/%s) is Not Found", ns, ingressName), nil
-		}
 		return false, "", err
 	}
 	return true, "", nil
@@ -330,7 +312,7 @@ func (r *RolloutReconciler) reCalculateCanaryStepIndex(rollout *rolloutv1alpha1.
 		if step.Replicas != nil {
 			desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(step.Replicas, int(workload.Replicas), true)
 		} else {
-			replicas := intstr.FromString(strconv.Itoa(int(step.Weight)) + "%")
+			replicas := intstr.FromString(strconv.Itoa(int(*step.Weight)) + "%")
 			desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(&replicas, int(workload.Replicas), true)
 		}
 		stepIndex = int32(i + 1)

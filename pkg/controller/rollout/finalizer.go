@@ -20,7 +20,6 @@ import (
 	"time"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/rollout/batchrelease"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -29,11 +28,9 @@ import (
 
 func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *rolloutv1alpha1.Rollout) (*time.Time, error) {
 	cond := util.GetRolloutCondition(rollout.Status, rolloutv1alpha1.RolloutConditionTerminating)
-	klog.Infof("reconcile rollout(%s/%s) Terminating action", rollout.Namespace, rollout.Name)
 	if cond.Reason == rolloutv1alpha1.TerminatingReasonCompleted {
 		return nil, nil
 	}
-
 	newStatus := rollout.Status.DeepCopy()
 	done, recheckTime, err := r.doFinalising(rollout, newStatus, false)
 	if err != nil {
@@ -53,22 +50,15 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *rolloutv1alpha1
 }
 
 func (r *RolloutReconciler) doFinalising(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus, isComplete bool) (bool, *time.Time, error) {
+	klog.Infof("reconcile rollout(%s/%s) doFinalising", rollout.Namespace, rollout.Name)
 	// fetch target workload
 	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) GetWorkloadForRef failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return false, nil, err
 	}
-
-	rolloutCon := &rolloutContext{
-		Client:       r.Client,
-		rollout:      rollout,
-		newStatus:    newStatus,
-		batchControl: batchrelease.NewInnerBatchController(r.Client, rollout),
-		workload:     workload,
-		isComplete:   isComplete,
-		recorder:     r.Recorder,
-	}
+	rolloutCon := newRolloutContext(r.Client, r.Recorder, rollout, newStatus, workload)
+	rolloutCon.isComplete = isComplete
 	done, err := rolloutCon.finalising()
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) Progressing failed: %s", rollout.Namespace, rollout.Name, err.Error())

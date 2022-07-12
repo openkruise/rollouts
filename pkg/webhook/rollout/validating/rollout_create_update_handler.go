@@ -165,7 +165,7 @@ func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldP
 		return field.ErrorList{field.Invalid(fldPath, nil, "Canary cannot be empty")}
 	}
 
-	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"))
+	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"), len(canary.TrafficRoutings) > 0)
 	if len(canary.TrafficRoutings) > 1 {
 		errList = append(errList, field.Invalid(fldPath, canary.TrafficRoutings, "Rollout currently only support single TrafficRouting."))
 	}
@@ -185,21 +185,28 @@ func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldP
 		errList = append(errList, field.Invalid(fldPath.Child("Service"), traffic.Service, "TrafficRouting.Service cannot be empty"))
 	}
 
-	switch traffic.Type {
-	case "", "nginx":
-		if traffic.Ingress == nil ||
-			len(traffic.Ingress.Name) == 0 {
+	if traffic.Gateway == nil && traffic.Ingress == nil {
+		errList = append(errList, field.Invalid(fldPath.Child("TrafficRoutings"), traffic.Ingress, "TrafficRoutings must set the gateway or ingress"))
+	}
+
+	if traffic.Ingress != nil {
+		if len(traffic.Ingress.Name) == 0 {
 			errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting.Ingress.Ingress cannot be empty"))
 		}
-	default:
-
-		errList = append(errList, field.Invalid(fldPath.Child("Type"), traffic.Type, "TrafficRouting only support 'nginx' type"))
+		if traffic.Ingress.ClassType != "nginx" {
+			errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting.Ingress.ClassType only support nginx"))
+		}
+	}
+	if traffic.Gateway != nil {
+		if traffic.Gateway.HTTPRouteName == nil || *traffic.Gateway.HTTPRouteName == "" {
+			errList = append(errList, field.Invalid(fldPath.Child("Gateway"), traffic.Gateway, "TrafficRouting.Gateway must set the name of HTTPRoute or HTTPsRoute"))
+		}
 	}
 
 	return errList
 }
 
-func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *field.Path) field.ErrorList {
+func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *field.Path, isTraffic bool) field.ErrorList {
 	stepCount := len(steps)
 	if stepCount == 0 {
 		return field.ErrorList{field.Invalid(fldPath, steps, "The number of Canary.Steps cannot be empty")}
@@ -207,9 +214,10 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 
 	for i := range steps {
 		s := &steps[i]
-		if s.Weight < 0 || s.Weight > 100 {
-			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Weight"),
-				s.Weight, `Weight must be a positive number with "0" <= weight <= "100"`)}
+		if isTraffic && s.Weight == nil {
+			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `weight cannot be empty for traffic routing`)}
+		} else if s.Weight == nil && s.Replicas == nil {
+			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `weight and replicas cannot be empty at the same time`)}
 		}
 		if s.Replicas != nil {
 			canaryReplicas, err := intstr.GetScaledValueFromIntOrPercent(s.Replicas, 100, true)
@@ -223,7 +231,7 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 	for i := 1; i < stepCount; i++ {
 		prev := &steps[i-1]
 		curr := &steps[i]
-		if curr.Weight < prev.Weight {
+		if isTraffic && *curr.Weight < *prev.Weight {
 			return field.ErrorList{field.Invalid(fldPath.Child("Weight"), steps, `Steps.Weight must be a non decreasing sequence`)}
 		}
 
@@ -235,10 +243,10 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 		prevCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(prev.Replicas, 100, true)
 		currCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(curr.Replicas, 100, true)
 		if prev.Replicas == nil {
-			prevCanaryReplicas = int(prev.Weight)
+			prevCanaryReplicas = int(*prev.Weight)
 		}
 		if curr.Replicas == nil {
-			currCanaryReplicas = int(curr.Weight)
+			currCanaryReplicas = int(*curr.Weight)
 		}
 		if currCanaryReplicas < prevCanaryReplicas {
 			return field.ErrorList{field.Invalid(fldPath.Child("CanaryReplicas"), steps, `Steps.CanaryReplicas must be a non decreasing sequence`)}
