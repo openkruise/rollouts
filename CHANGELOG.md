@@ -1,5 +1,11 @@
 # Change Log
 
+## v0.1.1
+> Change log since v0.1.0
+
+### Kruise-Rollout-Controller
+- do not copy labels/annotations/finalizers to canary deployment
+
 ## v0.1.0
 
 ### Kruise-Rollout-Controller
