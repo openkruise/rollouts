@@ -1,0 +1,6 @@
+apiVersion: rollouts.kruise.io/v1alpha1
+kind: RolloutHistory
+metadata:
+  name: rollouthistory-sample
+spec:
+  # TODO(user): Add fields here

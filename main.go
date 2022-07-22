@@ -22,12 +22,6 @@ import (
 
 	kruisev1aplphal1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruisev1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
-	"github.com/openkruise/rollouts/pkg/controller/rollout"
-	"github.com/openkruise/rollouts/pkg/util"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	"github.com/openkruise/rollouts/pkg/webhook"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -36,6 +30,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
+	"github.com/openkruise/rollouts/pkg/controller/rollout"
+	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	"github.com/openkruise/rollouts/pkg/webhook"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -109,6 +111,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&rollouthistory.RolloutHistoryReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("rollouthistory-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RolloutHistory")
+		os.Exit(1)
+	}
 	//+kubebuilder:scaffold:builder
 	setupLog.Info("setup webhook")
 	if err = webhook.SetupWithManager(mgr); err != nil {
