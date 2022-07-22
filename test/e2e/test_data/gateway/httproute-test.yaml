@@ -14,7 +14,7 @@ spec:
     #   kind: Service
     #   name: echoserver-canary
     #   port: 80
-    #   weight: 20
+    #   weight: 40
     matches:
     - path:
         type: PathPrefix
