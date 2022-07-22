@@ -70,11 +70,7 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 		return false, err
 	} else if errors.IsNotFound(err) {
 		klog.Infof("rollout(%s/%s) canary service(%s) Not Found, and create it", r.rollout.Namespace, r.rollout.Name, r.canaryService)
-		if err = r.createCanaryService(stableService); err != nil {
-			return false, err
-		}
-		data := util.DumpJSON(r.canaryService)
-		klog.Infof("create rollout(%s/%s) canary service(%s) success", r.rollout.Namespace, r.rollout.Name, data)
+		return false, r.createCanaryService(stableService)
 	}
 
 	// update service selector
@@ -184,7 +180,7 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 	if len(r.rollout.Spec.Strategy.Canary.TrafficRoutings) == 0 {
 		return true, nil
 	}
-	klog.Infof("rollout(%s/%s) start finalising traffic routing")
+	klog.Infof("rollout(%s/%s) start finalising traffic routing", r.rollout.Namespace, r.rollout.Name)
 	if r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds <= 0 {
 		r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds = defaultGracePeriodSeconds
 	}
@@ -231,7 +227,7 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 
 func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (trafficrouting.Controller, error) {
 	canary := roCtx.rollout.Spec.Strategy.Canary
-	if canary.TrafficRoutings[0].Ingress != nil && canary.TrafficRoutings[0].Ingress.ClassType == "nginx" {
+	if canary.TrafficRoutings[0].Ingress != nil {
 		gvk := schema.GroupVersionKind{Group: rolloutv1alpha1.GroupVersion.Group, Version: rolloutv1alpha1.GroupVersion.Version, Kind: "Rollout"}
 		return nginx.NewNginxTrafficRouting(r.Client, r.newStatus, nginx.Config{
 			RolloutName:   r.rollout.Name,
@@ -285,5 +281,6 @@ func (r *rolloutContext) createCanaryService(stableService *corev1.Service) erro
 		klog.Errorf("create rollout(%s/%s) canary service(%s) failed: %s", r.rollout.Namespace, r.rollout.Name, r.canaryService, err.Error())
 		return err
 	}
+	klog.Infof("create rollout(%s/%s) canary service(%s) success", r.rollout.Namespace, r.rollout.Name, util.DumpJSON(canaryService))
 	return nil
 }
