@@ -2798,7 +2798,7 @@ var _ = SIGDescribe("Rollout", func() {
 	})
 
 	KruiseDescribe("Advanced StatefulSet rollout canary nginx", func() {
-		It("V1->V2: Percentage, 20%,60% Succeeded", func() {
+		It("Advanced StatefulSet V1->V2: Percentage, 20%,60% Succeeded", func() {
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -2895,6 +2895,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Status.CanaryStatus.CanaryService, cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[1].Weight)))
 			// cloneset
+			time.Sleep(time.Second * 10)
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 3))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))

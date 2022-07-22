@@ -89,7 +89,7 @@ func (p podEventHandler) enqueue(pod *corev1.Pod, q workqueue.RateLimitingInterf
 	workloadGVK := schema.FromAPIVersionAndKind(owner.APIVersion, owner.Kind)
 	workloadObj, err := util.GetOwnerWorkload(p.Reader, pod)
 	if err != nil || workloadObj == nil {
-		klog.Errorf("Failed to get owner workload for pod %v, err: %v", client.ObjectKeyFromObject(pod), err)
+		//klog.Errorf("Failed to get owner workload for pod %v, err: %v", client.ObjectKeyFromObject(pod), err)
 		return
 	}
 
