@@ -190,10 +190,10 @@ func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldP
 	}
 
 	if traffic.Ingress != nil {
-		if len(traffic.Ingress.Name) == 0 {
+		if traffic.Ingress.Name == "" {
 			errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting.Ingress.Ingress cannot be empty"))
 		}
-		if traffic.Ingress.ClassType != "nginx" {
+		if traffic.Ingress.ClassType != "" && traffic.Ingress.ClassType != "nginx" {
 			errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting.Ingress.ClassType only support nginx"))
 		}
 	}
