@@ -21,4 +21,13 @@ resources:
   kind: BatchRelease
   path: github.com/openkruise/rollouts/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: kruise.io
+  group: rollouts
+  kind: RolloutHistory
+  path: github.com/openkruise/rollouts/api/v1alpha1
+  version: v1alpha1
 version: "3"
