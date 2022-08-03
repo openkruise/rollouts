@@ -163,7 +163,7 @@ func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.Cl
 
 // the canary workload size for the current batch
 func (c *cloneSetController) calculateCurrentCanary(totalSize int32) int32 {
-	targetSize := int32(util.CalculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
+	targetSize := int32(calculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
 	klog.InfoS("Calculated the number of pods in the target CloneSet after current batch",
 		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
 		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)

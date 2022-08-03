@@ -295,7 +295,7 @@ func (c *deploymentController) listCanaryDeployment(options ...client.ListOption
 
 // the target workload size for the current batch
 func (c *deploymentController) calculateCurrentCanary(totalSize int32) int32 {
-	targetSize := int32(util.CalculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
+	targetSize := int32(calculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
 	klog.InfoS("Calculated the number of pods in the canary Deployment after current batch",
 		"Deployment", c.stableNamespacedName, "BatchRelease", c.releaseKey,
 		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
