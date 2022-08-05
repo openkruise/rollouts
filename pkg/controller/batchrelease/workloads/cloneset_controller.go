@@ -45,7 +45,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 	if controlInfo, ok := clone.Annotations[util.BatchReleaseControlAnnotation]; ok && controlInfo != "" {
 		ref := &metav1.OwnerReference{}
 		err := json.Unmarshal([]byte(controlInfo), ref)
-		if err == nil && ref.UID == c.parentController.UID {
+		if err == nil && ref.UID == c.release.UID {
 			controlled = true
 			klog.V(3).Infof("CloneSet(%v) has been controlled by this BatchRelease(%v), no need to claim again",
 				c.targetNamespacedName, c.releasePlanKey)
@@ -57,7 +57,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 
 	patch := map[string]interface{}{}
 	switch {
-	// if the cloneSet has been claimed by this parentController
+	// if the cloneSet has been claimed by this release
 	case controlled:
 		// make sure paused=false
 		if clone.Spec.UpdateStrategy.Paused {
@@ -80,7 +80,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 			},
 		}
 
-		controlInfo := metav1.NewControllerRef(c.parentController, c.parentController.GetObjectKind().GroupVersionKind())
+		controlInfo := metav1.NewControllerRef(c.release, c.release.GetObjectKind().GroupVersionKind())
 		controlByte, _ := json.Marshal(controlInfo)
 		patch["metadata"] = map[string]interface{}{
 			"annotations": map[string]string{
@@ -93,7 +93,7 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 		cloneObj := clone.DeepCopy()
 		patchByte, _ := json.Marshal(patch)
 		if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
-			c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ClaimCloneSetFailed", err.Error())
+			c.recorder.Eventf(c.release, v1.EventTypeWarning, "ClaimCloneSetFailed", err.Error())
 			return false, err
 		}
 	}
@@ -115,7 +115,7 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 		if err := json.Unmarshal([]byte(refByte), ref); err != nil {
 			found = false
 			klog.Errorf("failed to decode controller annotations of BatchRelease")
-		} else if ref.UID != c.parentController.UID {
+		} else if ref.UID != c.release.UID {
 			found = false
 		}
 	}
@@ -128,7 +128,7 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 	cloneObj := clone.DeepCopy()
 	patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation))
 	if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
-		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "ReleaseCloneSetFailed", err.Error())
+		c.recorder.Eventf(c.release, v1.EventTypeWarning, "ReleaseCloneSetFailed", err.Error())
 		return false, err
 	}
 
@@ -149,24 +149,24 @@ func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.Cl
 	cloneObj := clone.DeepCopy()
 	patchByte, _ := json.Marshal(patch)
 	if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
-		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "PatchPartitionFailed",
+		c.recorder.Eventf(c.release, v1.EventTypeWarning, "PatchPartitionFailed",
 			"Failed to update the CloneSet(%v) to the correct target partition %d, error: %v",
 			c.targetNamespacedName, partition, err)
 		return err
 	}
 
 	klog.InfoS("Submitted modified partition quest for CloneSet", "CloneSet", c.targetNamespacedName,
-		"target partition size", partition, "batch", c.releaseStatus.CanaryStatus.CurrentBatch)
+		"target partition size", partition, "batch", c.newStatus.CanaryStatus.CurrentBatch)
 
 	return nil
 }
 
 // the canary workload size for the current batch
 func (c *cloneSetController) calculateCurrentCanary(totalSize int32) int32 {
-	targetSize := int32(util.CalculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
+	targetSize := int32(util.CalculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.newStatus.CanaryStatus.CurrentBatch)))
 	klog.InfoS("Calculated the number of pods in the target CloneSet after current batch",
 		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
-		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
+		"current batch", c.newStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
 	return targetSize
 }
 
@@ -175,7 +175,7 @@ func (c *cloneSetController) calculateCurrentStable(totalSize int32) int32 {
 	sourceSize := totalSize - c.calculateCurrentCanary(totalSize)
 	klog.InfoS("Calculated the number of pods in the source CloneSet after current batch",
 		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
-		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
+		"current batch", c.newStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
 	return sourceSize
 }
 
