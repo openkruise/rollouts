@@ -175,11 +175,10 @@ func TestCloneSetController(t *testing.T) {
 			rec := record.NewFakeRecorder(100)
 			c := cloneSetController{
 				workloadController: workloadController{
-					client:           cli,
-					recorder:         rec,
-					parentController: releaseClone,
-					releasePlan:      &releaseClone.Spec.ReleasePlan,
-					releaseStatus:    &releaseClone.Status,
+					client:    cli,
+					recorder:  rec,
+					release:   releaseClone,
+					newStatus: &releaseClone.Status,
 				},
 				targetNamespacedName: client.ObjectKeyFromObject(stableClone),
 			}

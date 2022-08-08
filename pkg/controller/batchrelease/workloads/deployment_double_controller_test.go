@@ -157,11 +157,10 @@ func TestDeploymentController(t *testing.T) {
 			rec := record.NewFakeRecorder(100)
 			c := deploymentController{
 				workloadController: workloadController{
-					client:           cli,
-					recorder:         rec,
-					parentController: releaseDeploy,
-					releasePlan:      &releaseDeploy.Spec.ReleasePlan,
-					releaseStatus:    &releaseDeploy.Status,
+					client:    cli,
+					recorder:  rec,
+					release:   releaseDeploy,
+					newStatus: &releaseDeploy.Status,
 				},
 				stableNamespacedName: client.ObjectKeyFromObject(stableDeploy),
 				canaryNamespacedName: client.ObjectKeyFromObject(stableDeploy),
