@@ -184,12 +184,9 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return reconcile.Result{}, err
 	}
 
-	// set the release info for executor before executing.
-	r.executor.SetReleaseInfo(release)
-
 	// executor start to execute the batch release plan.
 	startTimestamp := time.Now()
-	result, currentStatus, err := r.executor.Do()
+	result, currentStatus, err := r.executor.Do(release)
 	if err != nil {
 		return reconcile.Result{}, err
 	}

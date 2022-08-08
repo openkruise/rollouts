@@ -36,10 +36,12 @@ func HasTerminatingCondition(status v1alpha1.BatchReleaseStatus) bool {
 	return false
 }
 
-func initializeStatusIfNeeds(status *v1alpha1.BatchReleaseStatus) {
+func getInitializedStatus(status *v1alpha1.BatchReleaseStatus) *v1alpha1.BatchReleaseStatus {
+	newStatus := status.DeepCopy()
 	if len(status.Phase) == 0 {
-		resetStatus(status)
+		resetStatus(newStatus)
 	}
+	return newStatus
 }
 
 func signalReinitializeBatch(status *v1alpha1.BatchReleaseStatus) {
@@ -120,10 +122,10 @@ func setCondition(status *v1alpha1.BatchReleaseStatus, condType v1alpha1.Rollout
 	}
 }
 
-func IsPartitioned(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
-	return plan.BatchPartition != nil && *plan.BatchPartition <= status.CanaryStatus.CurrentBatch
+func IsPartitioned(release *v1alpha1.BatchRelease) bool {
+	return release.Spec.ReleasePlan.BatchPartition != nil && *release.Spec.ReleasePlan.BatchPartition <= release.Status.CanaryStatus.CurrentBatch
 }
 
-func IsAllBatchReady(plan *v1alpha1.ReleasePlan, status *v1alpha1.BatchReleaseStatus) bool {
-	return len(plan.Batches)-1 == int(status.CanaryStatus.CurrentBatch) && status.CanaryStatus.CurrentBatchState == v1alpha1.ReadyBatchState
+func IsAllBatchReady(release *v1alpha1.BatchRelease) bool {
+	return len(release.Spec.ReleasePlan.Batches)-1 == int(release.Status.CanaryStatus.CurrentBatch) && release.Status.CanaryStatus.CurrentBatchState == v1alpha1.ReadyBatchState
 }

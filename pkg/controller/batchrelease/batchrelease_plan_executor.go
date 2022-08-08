@@ -44,65 +44,45 @@ const (
 type Executor struct {
 	client   client.Client
 	recorder record.EventRecorder
-
-	release       *v1alpha1.BatchRelease
-	releasePlan   *v1alpha1.ReleasePlan
-	releaseStatus *v1alpha1.BatchReleaseStatus
-	releaseKey    types.NamespacedName
-	workloadKey   types.NamespacedName
 }
 
 // NewReleasePlanExecutor creates a RolloutPlanController
-func NewReleasePlanExecutor(client client.Client, recorder record.EventRecorder) *Executor {
+func NewReleasePlanExecutor(cli client.Client, recorder record.EventRecorder) *Executor {
 	return &Executor{
-		client:   client,
+		client:   cli,
 		recorder: recorder,
 	}
 }
 
-func (r *Executor) SetReleaseInfo(release *v1alpha1.BatchRelease) {
-	r.release = release
-	r.releaseStatus = release.Status.DeepCopy()
-	r.releasePlan = release.Spec.ReleasePlan.DeepCopy()
-	initializeStatusIfNeeds(r.releaseStatus)
-	r.releaseKey = client.ObjectKeyFromObject(release)
-	if release.Spec.TargetRef.WorkloadRef != nil {
-		r.workloadKey = types.NamespacedName{
-			Namespace: release.Namespace,
-			Name:      release.Spec.TargetRef.WorkloadRef.Name,
-		}
-	}
-}
-
 // Do execute the release plan
-func (r *Executor) Do() (reconcile.Result, *v1alpha1.BatchReleaseStatus, error) {
+func (r *Executor) Do(release *v1alpha1.BatchRelease) (reconcile.Result, *v1alpha1.BatchReleaseStatus, error) {
 	klog.InfoS("Starting one round of reconciling release plan",
-		"BatchRelease", client.ObjectKeyFromObject(r.release),
-		"phase", r.releaseStatus.Phase,
-		"current-batch", r.releaseStatus.CanaryStatus.CurrentBatch,
-		"current-batch-state", r.releaseStatus.CanaryStatus.CurrentBatchState)
+		"BatchRelease", client.ObjectKeyFromObject(release),
+		"phase", release.Status.Phase,
+		"current-batch", release.Status.CanaryStatus.CurrentBatch,
+		"current-batch-state", release.Status.CanaryStatus.CurrentBatchState)
 
-	workloadController, err := r.GetWorkloadController()
+	newStatus := getInitializedStatus(&release.Status)
+	workloadController, err := r.getWorkloadController(release, newStatus)
 	if err != nil || workloadController == nil {
-		return reconcile.Result{}, r.releaseStatus, nil
+		return reconcile.Result{}, nil, nil
 	}
 
-	shouldStopThisRound, result, err := r.checkHealthBeforeExecution(workloadController)
-	if shouldStopThisRound || err != nil {
-		return result, r.releaseStatus, err
+	stop, result, err := r.syncStatusBeforeExecuting(release, newStatus, workloadController)
+	if stop || err != nil {
+		return result, newStatus, err
 	}
 
-	return r.executeBatchReleasePlan(workloadController)
+	return r.executeBatchReleasePlan(release, newStatus, workloadController)
 }
 
-func (r *Executor) executeBatchReleasePlan(workloadController workloads.WorkloadController) (reconcile.Result, *v1alpha1.BatchReleaseStatus, error) {
+func (r *Executor) executeBatchReleasePlan(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadController workloads.WorkloadController) (reconcile.Result, *v1alpha1.BatchReleaseStatus, error) {
 	var err error
-	status := r.releaseStatus
 	result := reconcile.Result{}
 
-	klog.V(3).Infof("BatchRelease(%v) State Machine into '%s' state", r.releaseKey, status.Phase)
+	klog.V(3).Infof("BatchRelease(%v) State Machine into '%s' state", klog.KObj(release), newStatus.Phase)
 
-	switch status.Phase {
+	switch newStatus.Phase {
 	case v1alpha1.RolloutPhaseInitial:
 		// if this batchRelease was created but workload doest not exist,
 		// should keep this phase and do nothing util workload is created.
@@ -113,11 +93,11 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		verifiedDone, err = workloadController.VerifyWorkload()
 		switch {
 		case err != nil:
-			setCondition(status, v1alpha1.VerifyingBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
+			setCondition(newStatus, v1alpha1.VerifyingBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
 		case verifiedDone:
-			status.Phase = v1alpha1.RolloutPhasePreparing
+			newStatus.Phase = v1alpha1.RolloutPhasePreparing
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
-			setCondition(status, v1alpha1.PreparingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is preparing for progress")
+			setCondition(newStatus, v1alpha1.PreparingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is preparing for progress")
 		}
 
 	case v1alpha1.RolloutPhasePreparing:
@@ -126,21 +106,21 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		preparedDone, err = workloadController.PrepareBeforeProgress()
 		switch {
 		case err != nil:
-			setCondition(status, v1alpha1.PreparingBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
+			setCondition(newStatus, v1alpha1.PreparingBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
 		case preparedDone:
-			status.Phase = v1alpha1.RolloutPhaseProgressing
+			newStatus.Phase = v1alpha1.RolloutPhaseProgressing
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
-			setCondition(status, v1alpha1.ProgressingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is progressing")
+			setCondition(newStatus, v1alpha1.ProgressingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is progressing")
 		}
 
 	case v1alpha1.RolloutPhaseProgressing:
 		// progress the release plan in this state.
 		var progressDone bool
-		progressDone, result, err = r.progressBatches(workloadController)
+		progressDone, result, err = r.progressBatches(release, newStatus, workloadController)
 		switch {
 		case progressDone:
-			status.Phase = v1alpha1.RolloutPhaseFinalizing
-			setCondition(status, v1alpha1.FinalizingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is finalizing")
+			newStatus.Phase = v1alpha1.RolloutPhaseFinalizing
+			setCondition(newStatus, v1alpha1.FinalizingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is finalizing")
 		}
 
 	case v1alpha1.RolloutPhaseFinalizing:
@@ -151,14 +131,14 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		finalizedDone, err = workloadController.FinalizeProgress(false)
 		switch {
 		case err != nil:
-			setCondition(status, v1alpha1.CompletedBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
+			setCondition(newStatus, v1alpha1.CompletedBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
 		case finalizedDone:
-			if IsAllBatchReady(r.releasePlan, r.releaseStatus) {
-				status.Phase = v1alpha1.RolloutPhaseCompleted
-				setCondition(status, v1alpha1.CompletedBatchReleaseCondition, v1.ConditionTrue, v1alpha1.SucceededBatchReleaseConditionReason, "BatchRelease is completed")
+			if IsAllBatchReady(release) {
+				newStatus.Phase = v1alpha1.RolloutPhaseCompleted
+				setCondition(newStatus, v1alpha1.CompletedBatchReleaseCondition, v1.ConditionTrue, v1alpha1.SucceededBatchReleaseConditionReason, "BatchRelease is completed")
 			} else {
-				status.Phase = v1alpha1.RolloutPhaseCancelled
-				setCondition(status, v1alpha1.CancelledBatchReleaseCondition, v1.ConditionTrue, v1alpha1.SucceededBatchReleaseConditionReason, "BatchRelease is cancelled")
+				newStatus.Phase = v1alpha1.RolloutPhaseCancelled
+				setCondition(newStatus, v1alpha1.CancelledBatchReleaseCondition, v1.ConditionTrue, v1alpha1.SucceededBatchReleaseConditionReason, "BatchRelease is cancelled")
 			}
 		default:
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
@@ -169,9 +149,9 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		finalizedDone, err = workloadController.FinalizeProgress(true)
 		switch {
 		case err != nil:
-			setCondition(status, v1alpha1.CompletedBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
+			setCondition(newStatus, v1alpha1.CompletedBatchReleaseCondition, v1.ConditionFalse, v1alpha1.FailedBatchReleaseConditionReason, err.Error())
 		case finalizedDone:
-			setCondition(status, v1alpha1.TerminatedBatchReleaseCondition, v1.ConditionTrue, v1alpha1.SucceededBatchReleaseConditionReason, "BatchRelease is terminated")
+			setCondition(newStatus, v1alpha1.TerminatedBatchReleaseCondition, v1.ConditionTrue, v1alpha1.SucceededBatchReleaseConditionReason, "BatchRelease is terminated")
 		default:
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
 		}
@@ -180,33 +160,32 @@ func (r *Executor) executeBatchReleasePlan(workloadController workloads.Workload
 		// this state indicates that the plan is executed/cancelled successfully, should do nothing in these states.
 
 	default:
-		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", r.releaseKey, "Unknown")
-		panic(fmt.Sprintf("illegal release status %+v", status))
+		klog.V(3).Infof("BatchRelease(%v) State Machine into %s state", klog.KObj(release), "Unknown")
+		panic(fmt.Sprintf("illegal release status %+v", newStatus))
 	}
 
-	return result, status, err
+	return result, newStatus, err
 }
 
 // reconcile logic when we are in the middle of release, we have to go through finalizing state before succeed or fail
-func (r *Executor) progressBatches(workloadController workloads.WorkloadController) (bool, reconcile.Result, error) {
+func (r *Executor) progressBatches(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadController workloads.WorkloadController) (bool, reconcile.Result, error) {
 	var err error
 	progressDone := false
-	status := r.releaseStatus
 	result := reconcile.Result{}
 
-	klog.V(3).Infof("BatchRelease(%v) Canary Batch State Machine into '%s' state", r.releaseKey, status.CanaryStatus.CurrentBatchState)
+	klog.V(3).Infof("BatchRelease(%v) Canary Batch State Machine into '%s' state", klog.KObj(release), newStatus.CanaryStatus.CurrentBatchState)
 
-	switch status.CanaryStatus.CurrentBatchState {
+	switch newStatus.CanaryStatus.CurrentBatchState {
 	case "", v1alpha1.UpgradingBatchState:
 		// modify workload replicas/partition based on release plan in this state.
 		upgradeDone, upgradeErr := workloadController.UpgradeOneBatch()
 		switch {
 		case upgradeErr != nil:
 			err = upgradeErr
-			setCondition(status, "Progressing", v1.ConditionFalse, "UpgradeBatchFailed", err.Error())
+			setCondition(newStatus, "Progressing", v1.ConditionFalse, "UpgradeBatchFailed", err.Error())
 		case upgradeDone:
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
-			status.CanaryStatus.CurrentBatchState = v1alpha1.VerifyingBatchState
+			newStatus.CanaryStatus.CurrentBatchState = v1alpha1.VerifyingBatchState
 		}
 
 	case v1alpha1.VerifyingBatchState:
@@ -216,47 +195,47 @@ func (r *Executor) progressBatches(workloadController workloads.WorkloadControll
 		switch {
 		case verifiedErr != nil:
 			err = verifiedErr
-			setCondition(status, "Progressing", v1.ConditionFalse, "VerifyBatchFailed", err.Error())
+			setCondition(newStatus, "Progressing", v1.ConditionFalse, "VerifyBatchFailed", err.Error())
 		case verified:
 			now := metav1.Now()
-			status.CanaryStatus.BatchReadyTime = &now
+			newStatus.CanaryStatus.BatchReadyTime = &now
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
-			status.CanaryStatus.CurrentBatchState = v1alpha1.ReadyBatchState
+			newStatus.CanaryStatus.CurrentBatchState = v1alpha1.ReadyBatchState
 		default:
-			status.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+			newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
 		}
 
 	case v1alpha1.ReadyBatchState:
-		if !IsPartitioned(r.releasePlan, r.releaseStatus) {
+		if !IsPartitioned(release) {
 			currentTimestamp := time.Now()
-			currentBatch := r.releasePlan.Batches[r.releaseStatus.CanaryStatus.CurrentBatch]
+			currentBatch := release.Spec.ReleasePlan.Batches[release.Status.CanaryStatus.CurrentBatch]
 			waitDuration := time.Duration(currentBatch.PauseSeconds) * time.Second
-			if waitDuration > 0 && r.releaseStatus.CanaryStatus.BatchReadyTime.Time.Add(waitDuration).After(currentTimestamp) {
-				restDuration := r.releaseStatus.CanaryStatus.BatchReadyTime.Time.Add(waitDuration).Sub(currentTimestamp)
+			if waitDuration > 0 && release.Status.CanaryStatus.BatchReadyTime.Time.Add(waitDuration).After(currentTimestamp) {
+				restDuration := release.Status.CanaryStatus.BatchReadyTime.Time.Add(waitDuration).Sub(currentTimestamp)
 				result = reconcile.Result{RequeueAfter: restDuration}
-				setCondition(status, "Progressing", v1.ConditionFalse, "Paused", fmt.Sprintf("BatchRelease will resume after %v", restDuration))
-				klog.Infof("BatchRelease (%v) paused and will continue to reconcile after %v", r.releaseKey, restDuration)
+				setCondition(newStatus, "Progressing", v1.ConditionFalse, "Paused", fmt.Sprintf("BatchRelease will resume after %v", restDuration))
+				klog.Infof("BatchRelease (%v) paused and will continue to reconcile after %v", klog.KObj(release), restDuration)
 			} else {
 				// expected pods in the batch are upgraded and the state is ready, then try to move to the next batch
-				progressDone = r.moveToNextBatch()
+				progressDone = r.moveToNextBatch(release, newStatus)
 				result = reconcile.Result{RequeueAfter: DefaultDuration}
-				setCondition(status, v1alpha1.ProgressingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is progressing")
+				setCondition(newStatus, v1alpha1.ProgressingBatchReleaseCondition, v1.ConditionTrue, "", "BatchRelease is progressing")
 			}
 		} else {
-			setCondition(status, "Progressing", v1.ConditionFalse, "Paused", fmt.Sprintf("BatchRelease is partitioned in %v-th batch", status.CanaryStatus.CurrentBatch))
+			setCondition(newStatus, "Progressing", v1.ConditionFalse, "Paused", fmt.Sprintf("BatchRelease is partitioned in %v-th batch", newStatus.CanaryStatus.CurrentBatch))
 		}
 
 	default:
 		klog.V(3).Infof("ReleasePlan(%v) Batch State Machine into %s state", "Unknown")
-		panic(fmt.Sprintf("illegal status %+v", r.releaseStatus))
+		panic(fmt.Sprintf("illegal status %+v", newStatus))
 	}
 
 	return progressDone, result, err
 }
 
 // GetWorkloadController pick the right workload controller to work on the workload
-func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error) {
-	targetRef := r.release.Spec.TargetRef.WorkloadRef
+func (r *Executor) getWorkloadController(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) (workloads.WorkloadController, error) {
+	targetRef := release.Spec.TargetRef.WorkloadRef
 	if targetRef == nil {
 		return nil, nil
 	}
@@ -264,12 +243,12 @@ func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error)
 	gvk := schema.FromAPIVersionAndKind(targetRef.APIVersion, targetRef.Kind)
 	if !util.IsSupportedWorkload(gvk) {
 		message := fmt.Sprintf("the workload type '%v' is not supported", gvk)
-		r.recorder.Event(r.release, v1.EventTypeWarning, "UnsupportedWorkload", message)
+		r.recorder.Event(release, v1.EventTypeWarning, "UnsupportedWorkload", message)
 		return nil, fmt.Errorf(message)
 	}
 
 	targetKey := types.NamespacedName{
-		Namespace: r.release.Namespace,
+		Namespace: release.Namespace,
 		Name:      targetRef.Name,
 	}
 
@@ -277,31 +256,31 @@ func (r *Executor) GetWorkloadController() (workloads.WorkloadController, error)
 	case appsv1alpha1.GroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
 			klog.InfoS("using cloneset batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return workloads.NewCloneSetRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
+			return workloads.NewCloneSetRolloutController(r.client, r.recorder, release, newStatus, targetKey), nil
 		}
 
 	case apps.SchemeGroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
 			klog.InfoS("using deployment batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return workloads.NewDeploymentRolloutController(r.client, r.recorder, r.release, r.releasePlan, r.releaseStatus, targetKey), nil
+			return workloads.NewDeploymentRolloutController(r.client, r.recorder, release, newStatus, targetKey), nil
 		}
 	}
 
 	klog.InfoS("using statefulset-like batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-	return workloads.NewUnifiedWorkloadRolloutControlPlane(workloads.NewStatefulSetLikeController, r.client, r.recorder, r.release, r.releaseStatus, targetKey, gvk), nil
+	return workloads.NewUnifiedWorkloadRolloutControlPlane(workloads.NewStatefulSetLikeController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 }
 
-func (r *Executor) moveToNextBatch() bool {
-	currentBatch := int(r.releaseStatus.CanaryStatus.CurrentBatch)
-	if currentBatch >= len(r.releasePlan.Batches)-1 {
-		klog.V(3).Infof("BatchRelease(%v) finished all batch, release current batch: %v", r.releaseKey, r.releaseStatus.CanaryStatus.CurrentBatch)
+func (r *Executor) moveToNextBatch(release *v1alpha1.BatchRelease, status *v1alpha1.BatchReleaseStatus) bool {
+	currentBatch := int(status.CanaryStatus.CurrentBatch)
+	if currentBatch >= len(release.Spec.ReleasePlan.Batches)-1 {
+		klog.V(3).Infof("BatchRelease(%v) finished all batch, release current batch: %v", klog.KObj(release), status.CanaryStatus.CurrentBatch)
 		return true
 	} else {
-		if r.releasePlan.BatchPartition == nil || *r.releasePlan.BatchPartition > r.releaseStatus.CanaryStatus.CurrentBatch {
-			r.releaseStatus.CanaryStatus.CurrentBatch++
+		if release.Spec.ReleasePlan.BatchPartition == nil || *release.Spec.ReleasePlan.BatchPartition > status.CanaryStatus.CurrentBatch {
+			status.CanaryStatus.CurrentBatch++
 		}
-		r.releaseStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
-		klog.V(3).Infof("BatchRelease(%v) finished one batch, release current batch: %v", r.releaseKey, r.releaseStatus.CanaryStatus.CurrentBatch)
+		status.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+		klog.V(3).Infof("BatchRelease(%v) finished one batch, release current batch: %v", klog.KObj(release), status.CanaryStatus.CurrentBatch)
 		return false
 	}
 }

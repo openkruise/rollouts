@@ -50,7 +50,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 	if controlInfo, ok := stableDeploy.Annotations[util.BatchReleaseControlAnnotation]; ok && controlInfo != "" {
 		ref := &metav1.OwnerReference{}
 		err := json.Unmarshal([]byte(controlInfo), ref)
-		if err == nil && ref.UID == c.parentController.UID {
+		if err == nil && ref.UID == c.release.UID {
 			klog.V(3).Infof("Deployment(%v) has been controlled by this BatchRelease(%v), no need to claim again",
 				c.stableNamespacedName, c.releaseKey)
 			controlled = true
@@ -62,7 +62,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 
 	// patch control info to stable deployments if it needs
 	if !controlled {
-		controlInfo, _ := json.Marshal(metav1.NewControllerRef(c.parentController, c.parentController.GetObjectKind().GroupVersionKind()))
+		controlInfo, _ := json.Marshal(metav1.NewControllerRef(c.release, c.release.GetObjectKind().GroupVersionKind()))
 		patchedInfo := map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"annotations": map[string]string{
@@ -121,11 +121,11 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	}
 
 	canaryDeploy.Finalizers = append(canaryDeploy.Finalizers, util.CanaryDeploymentFinalizer)
-	canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *metav1.NewControllerRef(c.parentController, c.parentController.GroupVersionKind()))
+	canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *metav1.NewControllerRef(c.release, c.release.GroupVersionKind()))
 
 	// set extra labels & annotations
 	canaryDeploy.Labels[util.CanaryDeploymentLabel] = c.stableNamespacedName.Name
-	owner := metav1.NewControllerRef(c.parentController, c.parentController.GroupVersionKind())
+	owner := metav1.NewControllerRef(c.release, c.release.GroupVersionKind())
 	if owner != nil {
 		ownerInfo, _ := json.Marshal(owner)
 		canaryDeploy.Annotations[util.BatchReleaseControlAnnotation] = string(ownerInfo)
@@ -212,13 +212,13 @@ func (c *deploymentController) patchDeploymentReplicas(deploy *apps.Deployment, 
 	cloneObj := deploy.DeepCopy()
 	patchByte, _ := json.Marshal(patch)
 	if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
-		c.recorder.Eventf(c.parentController, v1.EventTypeWarning, "PatchPartitionFailed",
+		c.recorder.Eventf(c.release, v1.EventTypeWarning, "PatchPartitionFailed",
 			"Failed to update the canary Deployment to the correct canary replicas %d, error: %v", replicas, err)
 		return err
 	}
 
 	klog.InfoS("Submitted modified partition quest for canary Deployment", "Deployment",
-		client.ObjectKeyFromObject(deploy), "target canary replicas size", replicas, "batch", c.releaseStatus.CanaryStatus.CurrentBatch)
+		client.ObjectKeyFromObject(deploy), "target canary replicas size", replicas, "batch", c.newStatus.CanaryStatus.CurrentBatch)
 	return nil
 }
 
@@ -284,7 +284,7 @@ func (c *deploymentController) listCanaryDeployment(options ...client.ListOption
 	for i := range dList.Items {
 		d := &dList.Items[i]
 		o := metav1.GetControllerOf(d)
-		if o == nil || o.UID != c.parentController.UID {
+		if o == nil || o.UID != c.release.UID {
 			continue
 		}
 		ds = append(ds, d)
@@ -295,10 +295,10 @@ func (c *deploymentController) listCanaryDeployment(options ...client.ListOption
 
 // the target workload size for the current batch
 func (c *deploymentController) calculateCurrentCanary(totalSize int32) int32 {
-	targetSize := int32(util.CalculateNewBatchTarget(c.releasePlan, int(totalSize), int(c.releaseStatus.CanaryStatus.CurrentBatch)))
+	targetSize := int32(util.CalculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.newStatus.CanaryStatus.CurrentBatch)))
 	klog.InfoS("Calculated the number of pods in the canary Deployment after current batch",
 		"Deployment", c.stableNamespacedName, "BatchRelease", c.releaseKey,
-		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
+		"current batch", c.newStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
 	return targetSize
 }
 
@@ -307,6 +307,6 @@ func (c *deploymentController) calculateCurrentStable(totalSize int32) int32 {
 	sourceSize := totalSize - c.calculateCurrentCanary(totalSize)
 	klog.InfoS("Calculated the number of pods in the stable Deployment after current batch",
 		"Deployment", c.stableNamespacedName, "BatchRelease", c.releaseKey,
-		"current batch", c.releaseStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
+		"current batch", c.newStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
 	return sourceSize
 }

@@ -43,10 +43,10 @@ type UnifiedWorkloadController interface {
 // UnifiedWorkloadRolloutControlPlane is responsible for handling rollout StatefulSet type of workloads
 type UnifiedWorkloadRolloutControlPlane struct {
 	UnifiedWorkloadController
-	client         client.Client
-	recorder       record.EventRecorder
-	planController *v1alpha1.BatchRelease
-	newStatus      *v1alpha1.BatchReleaseStatus
+	client    client.Client
+	recorder  record.EventRecorder
+	release   *v1alpha1.BatchRelease
+	newStatus *v1alpha1.BatchReleaseStatus
 }
 
 type NewUnifiedControllerFunc = func(c client.Client, r record.EventRecorder, p *v1alpha1.BatchRelease, n types.NamespacedName, gvk schema.GroupVersionKind) UnifiedWorkloadController
@@ -56,7 +56,7 @@ func NewUnifiedWorkloadRolloutControlPlane(f NewUnifiedControllerFunc, c client.
 	return &UnifiedWorkloadRolloutControlPlane{
 		client:                    c,
 		recorder:                  r,
-		planController:            p,
+		release:                   p,
 		newStatus:                 newStatus,
 		UnifiedWorkloadController: f(c, r, p, n, gvk),
 	}
@@ -68,7 +68,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) VerifyWorkload() (bool, error) {
 	var message string
 	defer func() {
 		if err != nil {
-			c.recorder.Event(c.planController, v1.EventTypeWarning, "VerifyFailed", err.Error())
+			c.recorder.Event(c.release, v1.EventTypeWarning, "VerifyFailed", err.Error())
 		} else if message != "" {
 			klog.Warningf(message)
 		}
@@ -97,7 +97,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) VerifyWorkload() (bool, error) {
 		return false, nil
 	}
 
-	c.recorder.Event(c.planController, v1.EventTypeNormal, "VerifiedSuccessfully", "ReleasePlan and the workload resource are verified")
+	c.recorder.Event(c.release, v1.EventTypeNormal, "VerifiedSuccessfully", "ReleasePlan and the workload resource are verified")
 	return true, nil
 }
 
@@ -115,7 +115,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) PrepareBeforeProgress() (bool, erro
 		return false, err
 	}
 
-	c.recorder.Event(c.planController, v1.EventTypeNormal, "InitializedSuccessfully", "Rollout resource are initialized")
+	c.recorder.Event(c.release, v1.EventTypeNormal, "InitializedSuccessfully", "Rollout resource are initialized")
 	return true, nil
 }
 
@@ -127,8 +127,8 @@ func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 		return false, err
 	}
 
-	if c.planController.Status.ObservedWorkloadReplicas == 0 {
-		klog.Infof("BatchRelease(%v) observed workload replicas is 0, no need to upgrade", client.ObjectKeyFromObject(c.planController))
+	if c.release.Status.ObservedWorkloadReplicas == 0 {
+		klog.Infof("BatchRelease(%v) observed workload replicas is 0, no need to upgrade", client.ObjectKeyFromObject(c.release))
 		return true, nil
 	}
 
@@ -139,15 +139,15 @@ func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 
 	currentBatch := c.newStatus.CanaryStatus.CurrentBatch
 	// the number of canary pods should have in current batch
-	canaryGoal := c.calculateCurrentCanary(c.planController.Status.ObservedWorkloadReplicas)
+	canaryGoal := c.calculateCurrentCanary(c.release.Status.ObservedWorkloadReplicas)
 	// the number of stable pods should have in current batch
-	stableGoal := c.calculateCurrentStable(c.planController.Status.ObservedWorkloadReplicas)
+	stableGoal := c.calculateCurrentStable(c.release.Status.ObservedWorkloadReplicas)
 	// the number of canary pods now we have in current state
 	currentCanaryReplicas := workloadInfo.Status.UpdatedReplicas
 
 	// in case of no need to upgrade pods
 	klog.V(3).InfoS("upgraded one batch, status info:",
-		"BatchRelease", client.ObjectKeyFromObject(c.planController),
+		"BatchRelease", client.ObjectKeyFromObject(c.release),
 		"current-batch", currentBatch,
 		"canary-goal", canaryGoal,
 		"stable-goal", stableGoal,
@@ -163,8 +163,8 @@ func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 		return false, err
 	}
 
-	c.recorder.Eventf(c.planController, v1.EventTypeNormal, "SetBatchDone",
-		"Finished submitting all upgrade quests for batch %d", c.planController.Status.CanaryStatus.CurrentBatch)
+	c.recorder.Eventf(c.release, v1.EventTypeNormal, "SetBatchDone",
+		"Finished submitting all upgrade quests for batch %d", c.release.Status.CanaryStatus.CurrentBatch)
 	return true, nil
 }
 
@@ -175,8 +175,8 @@ func (c *UnifiedWorkloadRolloutControlPlane) CheckOneBatchReady() (bool, error) 
 		return false, err
 	}
 
-	if c.planController.Status.ObservedWorkloadReplicas == 0 {
-		klog.Infof("BatchRelease(%v) observed workload replicas is 0, no need to check", client.ObjectKeyFromObject(c.planController))
+	if c.release.Status.ObservedWorkloadReplicas == 0 {
+		klog.Infof("BatchRelease(%v) observed workload replicas is 0, no need to check", client.ObjectKeyFromObject(c.release))
 		return true, nil
 	}
 
@@ -192,18 +192,18 @@ func (c *UnifiedWorkloadRolloutControlPlane) CheckOneBatchReady() (bool, error) 
 	// the number of canary pods that have been ready in current state
 	canaryReadyReplicas := workloadInfo.Status.UpdatedReadyReplicas
 	// the number of the real canary pods should have in current batch
-	canaryGoal := c.calculateCurrentCanary(c.planController.Status.ObservedWorkloadReplicas)
+	canaryGoal := c.calculateCurrentCanary(c.release.Status.ObservedWorkloadReplicas)
 	// the number of the real stable pods should have in current batch
-	stableGoal := c.calculateCurrentStable(c.planController.Status.ObservedWorkloadReplicas)
+	stableGoal := c.calculateCurrentStable(c.release.Status.ObservedWorkloadReplicas)
 	// the number of max unavailable canary pods allowed by this workload
 	maxUnavailable := 0
 	if workloadInfo.MaxUnavailable != nil {
-		maxUnavailable, _ = intstr.GetValueFromIntOrPercent(workloadInfo.MaxUnavailable, int(c.planController.Status.ObservedWorkloadReplicas), true)
+		maxUnavailable, _ = intstr.GetValueFromIntOrPercent(workloadInfo.MaxUnavailable, int(c.release.Status.ObservedWorkloadReplicas), true)
 	}
 
 	klog.InfoS("checking the batch releasing progress",
-		"BatchRelease", client.ObjectKeyFromObject(c.planController),
-		"current-batch", c.planController.Status.CanaryStatus.CurrentBatch,
+		"BatchRelease", client.ObjectKeyFromObject(c.release),
+		"current-batch", c.release.Status.CanaryStatus.CurrentBatch,
 		"canary-goal", canaryGoal,
 		"stable-goal", stableGoal,
 		"stable-replicas", stableReplicas,
@@ -211,22 +211,22 @@ func (c *UnifiedWorkloadRolloutControlPlane) CheckOneBatchReady() (bool, error) 
 		"maxUnavailable", maxUnavailable)
 
 	// maybe, the workload replicas was scaled, we should requeue and handle the workload scaling event
-	if workloadInfo.Status.Replicas != c.planController.Status.ObservedWorkloadReplicas {
+	if workloadInfo.Status.Replicas != c.release.Status.ObservedWorkloadReplicas {
 		err := fmt.Errorf("%v replicas don't match ObservedWorkloadReplicas, workload status replicas: %v, observed workload replicas: %v",
-			workloadInfo.GVKWithName, workloadInfo.Status.Replicas, c.planController.Status.ObservedWorkloadReplicas)
-		klog.ErrorS(err, "the batch is not valid", "current-batch", c.planController.Status.CanaryStatus.CurrentBatch)
+			workloadInfo.GVKWithName, workloadInfo.Status.Replicas, c.release.Status.ObservedWorkloadReplicas)
+		klog.ErrorS(err, "the batch is not valid", "current-batch", c.release.Status.CanaryStatus.CurrentBatch)
 		return false, err
 	}
 
 	if ready, err := c.IsBatchReady(canaryGoal, stableGoal); err != nil || !ready {
 		klog.InfoS("the batch is not ready yet", "Workload", workloadInfo.GVKWithName,
-			"ReleasePlan", client.ObjectKeyFromObject(c.planController), "current-batch", c.planController.Status.CanaryStatus.CurrentBatch)
+			"ReleasePlan", client.ObjectKeyFromObject(c.release), "current-batch", c.release.Status.CanaryStatus.CurrentBatch)
 		return false, nil
 	}
 
 	klog.Infof("All pods of %v in current batch are ready, BatchRelease(%v), current-batch=%v",
-		workloadInfo.GVKWithName, client.ObjectKeyFromObject(c.planController), c.planController.Status.CanaryStatus.CurrentBatch)
-	c.recorder.Eventf(c.planController, v1.EventTypeNormal, "BatchAvailable", "Batch %d is available", c.planController.Status.CanaryStatus.CurrentBatch)
+		workloadInfo.GVKWithName, client.ObjectKeyFromObject(c.release), c.release.Status.CanaryStatus.CurrentBatch)
+	c.recorder.Eventf(c.release, v1.EventTypeNormal, "BatchAvailable", "Batch %d is available", c.release.Status.CanaryStatus.CurrentBatch)
 	return true, nil
 }
 
@@ -235,14 +235,14 @@ func (c *UnifiedWorkloadRolloutControlPlane) FinalizeProgress(cleanup bool) (boo
 	if _, err := c.ReleaseWorkload(cleanup); err != nil {
 		return false, err
 	}
-	c.recorder.Eventf(c.planController, v1.EventTypeNormal, "FinalizedSuccessfully", "Rollout resource are finalized: cleanup=%v", cleanup)
+	c.recorder.Eventf(c.release, v1.EventTypeNormal, "FinalizedSuccessfully", "Rollout resource are finalized: cleanup=%v", cleanup)
 	return true, nil
 }
 
 // SyncWorkloadInfo return change type if workload was changed during release
 func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventType, *util.WorkloadInfo, error) {
 	// ignore the sync if the release plan is deleted
-	if c.planController.DeletionTimestamp != nil {
+	if c.release.DeletionTimestamp != nil {
 		return IgnoreWorkloadEvent, nil, nil
 	}
 
@@ -267,16 +267,16 @@ func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventTy
 	}
 
 	// in case of that the workload is scaling
-	if *workloadInfo.Replicas != c.planController.Status.ObservedWorkloadReplicas {
+	if *workloadInfo.Replicas != c.release.Status.ObservedWorkloadReplicas {
 		klog.Warningf("%v replicas changed during releasing, should pause and wait for it to complete, "+
-			"replicas from: %v -> %v", workloadInfo.GVKWithName, c.planController.Status.ObservedWorkloadReplicas, *workloadInfo.Replicas)
+			"replicas from: %v -> %v", workloadInfo.GVKWithName, c.release.Status.ObservedWorkloadReplicas, *workloadInfo.Replicas)
 		return WorkloadReplicasChanged, workloadInfo, nil
 	}
 
 	// in case of that the workload was changed
-	if workloadInfo.Status.UpdateRevision != c.planController.Status.UpdateRevision {
+	if workloadInfo.Status.UpdateRevision != c.release.Status.UpdateRevision {
 		klog.Warningf("%v updateRevision changed during releasing, should try to restart the release plan, "+
-			"updateRevision from: %v -> %v", workloadInfo.GVKWithName, c.planController.Status.UpdateRevision, workloadInfo.Status.UpdateRevision)
+			"updateRevision from: %v -> %v", workloadInfo.GVKWithName, c.release.Status.UpdateRevision, workloadInfo.Status.UpdateRevision)
 		return WorkloadPodTemplateChanged, workloadInfo, nil
 	}
 
@@ -285,17 +285,17 @@ func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventTy
 
 // the canary workload size for the current batch
 func (c *UnifiedWorkloadRolloutControlPlane) calculateCurrentCanary(totalSize int32) int32 {
-	canaryGoal := int32(util.CalculateNewBatchTarget(&c.planController.Spec.ReleasePlan, int(totalSize), int(c.planController.Status.CanaryStatus.CurrentBatch)))
-	klog.InfoS("Calculated the number of pods in the target workload after current batch", "BatchRelease", client.ObjectKeyFromObject(c.planController),
-		"current batch", c.planController.Status.CanaryStatus.CurrentBatch, "workload canary goal replicas goal", canaryGoal)
+	canaryGoal := int32(util.CalculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.release.Status.CanaryStatus.CurrentBatch)))
+	klog.InfoS("Calculated the number of pods in the target workload after current batch", "BatchRelease", client.ObjectKeyFromObject(c.release),
+		"current batch", c.release.Status.CanaryStatus.CurrentBatch, "workload canary goal replicas goal", canaryGoal)
 	return canaryGoal
 }
 
 // the source workload size for the current batch
 func (c *UnifiedWorkloadRolloutControlPlane) calculateCurrentStable(totalSize int32) int32 {
 	stableGoal := totalSize - c.calculateCurrentCanary(totalSize)
-	klog.InfoS("Calculated the number of pods in the target workload after current batch", "BatchRelease", client.ObjectKeyFromObject(c.planController),
-		"current batch", c.planController.Status.CanaryStatus.CurrentBatch, "workload stable  goal replicas goal", stableGoal)
+	klog.InfoS("Calculated the number of pods in the target workload after current batch", "BatchRelease", client.ObjectKeyFromObject(c.release),
+		"current batch", c.release.Status.CanaryStatus.CurrentBatch, "workload stable  goal replicas goal", stableGoal)
 	return stableGoal
 }
 
@@ -312,7 +312,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) RecordWorkloadRevisionAndReplicas()
 }
 
 func (c *UnifiedWorkloadRolloutControlPlane) patchPodBatchLabel(workloadInfo *util.WorkloadInfo, canaryGoal int32) (bool, error) {
-	rolloutID, exist := c.planController.Labels[util.RolloutIDLabel]
+	rolloutID, exist := c.release.Labels[util.RolloutIDLabel]
 	if !exist || rolloutID == "" {
 		return true, nil
 	}
@@ -323,7 +323,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) patchPodBatchLabel(workloadInfo *ut
 		return false, err
 	}
 
-	batchID := c.planController.Status.CanaryStatus.CurrentBatch + 1
-	updateRevision := c.planController.Status.UpdateRevision
-	return util.PatchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, canaryGoal, client.ObjectKeyFromObject(c.planController))
+	batchID := c.release.Status.CanaryStatus.CurrentBatch + 1
+	updateRevision := c.release.Status.UpdateRevision
+	return util.PatchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, canaryGoal, client.ObjectKeyFromObject(c.release))
 }
