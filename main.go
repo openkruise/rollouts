@@ -70,14 +70,17 @@ func main() {
 	flag.Parse()
 	ctrl.SetLogger(klogr.New())
 
+	cfg := ctrl.GetConfigOrDie()
+	cfg.UserAgent = "kruise-rollout"
+
 	setupLog.Info("new clientset registry")
-	err := utilclient.NewRegistry(ctrl.GetConfigOrDie())
+	err := utilclient.NewRegistry(cfg)
 	if err != nil {
 		setupLog.Error(err, "unable to init clientset and informer")
 		os.Exit(1)
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     metricsAddr,
 		Port:                   9443,
