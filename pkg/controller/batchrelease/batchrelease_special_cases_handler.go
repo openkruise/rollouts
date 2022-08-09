@@ -191,11 +191,11 @@ func isGetWorkloadInfoError(err error) bool {
 }
 
 func isWorkloadLocated(err error, release *v1alpha1.BatchRelease) bool {
-	return err == nil && release.Status.Phase == v1alpha1.RolloutPhaseInitial
+	return err == nil && (release.Status.Phase == v1alpha1.RolloutPhaseInitial || release.Status.Phase == "")
 }
 
 func isWorkloadGone(event workloads.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
-	return event == workloads.WorkloadHasGone && release.Status.Phase != v1alpha1.RolloutPhaseInitial
+	return event == workloads.WorkloadHasGone && release.Status.Phase != v1alpha1.RolloutPhaseInitial && release.Status.Phase != ""
 }
 
 func isWorkloadScaling(event workloads.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
