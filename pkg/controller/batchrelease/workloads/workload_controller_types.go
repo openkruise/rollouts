@@ -51,11 +51,10 @@ type WorkloadInfo struct {
 }
 
 type workloadController struct {
-	client           client.Client
-	recorder         record.EventRecorder
-	releasePlan      *v1alpha1.ReleasePlan
-	releaseStatus    *v1alpha1.BatchReleaseStatus
-	parentController *v1alpha1.BatchRelease
+	client    client.Client
+	recorder  record.EventRecorder
+	newStatus *v1alpha1.BatchReleaseStatus
+	release   *v1alpha1.BatchRelease
 }
 
 // WorkloadController is the interface that all type of cloneSet controller implements
