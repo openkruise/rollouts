@@ -88,15 +88,13 @@ spec:
                             should less than or equal to batches[j].canaryReplicas
                             if i < j.'
                           x-kubernetes-int-or-string: true
-                        pauseSeconds:
-                          description: The wait time, in seconds, between instances
-                            batches, default = 0
-                          format: int64
-                          type: integer
                       required:
                       - canaryReplicas
                       type: object
                     type: array
+                  rolloutID:
+                    description: RolloutID indicates an id for each rollout progress
+                    type: string
                 type: object
               targetReference:
                 description: TargetRef contains the GVK and name of the workload that
@@ -146,6 +144,11 @@ spec:
                   currentBatch:
                     description: The current batch the rollout is working on/blocked,
                       it starts from 0
+                    format: int32
+                    type: integer
+                  noNeedUpdateReplicas:
+                    description: the number of pods that no need to rollback in rollback
+                      scene.
                     format: int32
                     type: integer
                   updatedReadyReplicas:

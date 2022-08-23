@@ -17,7 +17,10 @@ limitations under the License.
 package util
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"time"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
@@ -35,24 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const (
-	// InRolloutProgressingAnnotation marks workload as entering the rollout progressing process
-	//and does not allow paused=false during this process
-	InRolloutProgressingAnnotation = "rollouts.kruise.io/in-progressing"
-	// finalizer
-	KruiseRolloutFinalizer = "rollouts.kruise.io/rollout"
-	// rollout spec hash
-	RolloutHashAnnotation = "rollouts.kruise.io/hash"
-	// RolloutIDLabel is designed to distinguish each workload revision publications.
-	// The value of RolloutIDLabel corresponds Rollout.Spec.RolloutID.
-	RolloutIDLabel = "apps.kruise.io/rollout-id"
-	// RolloutBatchIDLabel is the label key of batch id that will be patched to pods during rollout.
-	// Only when RolloutIDLabel is set, RolloutBatchIDLabel will be patched.
-	// Users can use RolloutIDLabel and RolloutBatchIDLabel to select the pods that are upgraded in some certain batch and release.
-	RolloutBatchIDLabel = "apps.kruise.io/rollout-batch-id"
-	WorkloadTypeLabel   = "rollouts.kruise.io/workload-type"
-)
-
 // RolloutState is annotation[rollouts.kruise.io/in-progressing] value
 type RolloutState struct {
 	RolloutName string `json:"rolloutName"`
@@ -68,37 +53,48 @@ func GetRolloutState(annotations map[string]string) (*RolloutState, error) {
 	return obj, err
 }
 
-func AddWorkloadWatcher(c controller.Controller, handler handler.EventHandler) error {
-	if DiscoverGVK(ControllerKruiseKindCS) {
-		// Watch changes to CloneSet
-		err := c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, handler)
-		if err != nil {
-			return err
+func IsRollbackInBatchPolicy(rollout *rolloutv1alpha1.Rollout, labels map[string]string) bool {
+	// currently, only support the case of no traffic routing
+	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
+		return false
+	}
+	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
+	//currently, only CloneSet, StatefulSet support this policy
+	if workloadRef.Kind == ControllerKindSts.Kind ||
+		workloadRef.Kind == ControllerKruiseKindCS.Kind ||
+		strings.EqualFold(labels[WorkloadTypeLabel], ControllerKindSts.Kind) {
+		value, ok := rollout.Annotations[RollbackInBatchAnnotation]
+		if ok && value == "true" {
+			return true
 		}
 	}
+	return false
+}
 
+func AddWorkloadWatcher(c controller.Controller, handler handler.EventHandler) error {
 	// Watch changes to Deployment
 	err := c.Watch(&source.Kind{Type: &apps.Deployment{}}, handler)
 	if err != nil {
 		return err
 	}
-
-	// Watch changes to Advanced StatefulSet, use unstructured informer
-	if DiscoverGVK(ControllerKruiseKindSts) {
-		objectType := &unstructured.Unstructured{}
-		objectType.SetGroupVersionKind(kruiseappsv1beta1.SchemeGroupVersion.WithKind("StatefulSet"))
-		err = c.Watch(&source.Kind{Type: objectType}, handler)
+	// Watch changes to Native StatefulSet, use unstructured informer
+	err = c.Watch(&source.Kind{Type: &apps.StatefulSet{}}, handler)
+	if err != nil {
+		return err
+	}
+	// Watch changes to CloneSet if it has the CRD
+	if DiscoverGVK(ControllerKruiseKindCS) {
+		err := c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, handler)
 		if err != nil {
 			return err
 		}
 	}
-
-	// Watch changes to Native StatefulSet, use unstructured informer
-	objectType := &unstructured.Unstructured{}
-	objectType.SetGroupVersionKind(apps.SchemeGroupVersion.WithKind("StatefulSet"))
-	err = c.Watch(&source.Kind{Type: objectType}, handler)
-	if err != nil {
-		return err
+	// Watch changes to Advanced StatefulSet if it has the CRD
+	if DiscoverGVK(ControllerKruiseKindSts) {
+		err := c.Watch(&source.Kind{Type: &kruiseappsv1beta1.StatefulSet{}}, handler)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -153,6 +149,12 @@ func AddWatcherDynamically(c controller.Controller, h handler.EventHandler, gvk 
 	object := &unstructured.Unstructured{}
 	object.SetGroupVersionKind(gvk)
 	return true, c.Watch(&source.Kind{Type: object}, h)
+}
+
+func HashReleasePlanBatches(releasePlan *rolloutv1alpha1.ReleasePlan) string {
+	by, _ := json.Marshal(releasePlan)
+	md5Hash := sha256.Sum256(by)
+	return hex.EncodeToString(md5Hash[:])
 }
 
 func DumpJSON(o interface{}) string {

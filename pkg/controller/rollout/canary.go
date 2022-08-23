@@ -22,6 +22,7 @@ import (
 	"time"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/controller/rollout/batchrelease"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -161,10 +162,10 @@ func (r *rolloutContext) doCanaryUpgrade() (bool, error) {
 	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and upgrade workload new versions", canaryStatus.CurrentStepIndex, steps)
 	r.newStatus.Message = cond.Message
 	// promote workload next batch release
-	if *batch.Spec.ReleasePlan.BatchPartition+1 < canaryStatus.CurrentStepIndex {
+	if !batchrelease.IsPromoted(r.rollout, batch, r.workload.IsInRollback) {
 		r.recorder.Eventf(r.rollout, corev1.EventTypeNormal, "Progressing", fmt.Sprintf("start upgrade step(%d) canary pods with new versions", canaryStatus.CurrentStepIndex))
 		klog.Infof("rollout(%s/%s) will promote batch from(%d) -> to(%d)", r.rollout.Namespace, r.rollout.Name, *batch.Spec.ReleasePlan.BatchPartition+1, canaryStatus.CurrentStepIndex)
-		return r.batchControl.Promote(canaryStatus.CurrentStepIndex, false)
+		return r.batchControl.Promote(canaryStatus.CurrentStepIndex, r.workload.IsInRollback, false)
 	}
 
 	// check whether batchRelease is ready
@@ -238,7 +239,7 @@ func (r *rolloutContext) doCanaryFinalising() (bool, error) {
 	// isComplete indicates whether rollout progressing complete, and wait for all pods are ready
 	// else indicates rollout is canceled
 	klog.Infof("rollout(%s/%s) in finalizing: upgrade stable workload", r.rollout.Namespace, r.rollout.Name)
-	done, err = r.batchControl.Promote(-1, r.isComplete)
+	done, err = r.batchControl.Promote(-1, false, r.isComplete)
 	if err != nil || !done {
 		return done, err
 	}

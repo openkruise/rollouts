@@ -110,15 +110,15 @@ func (c *DeploymentsRolloutController) VerifyWorkload() (bool, error) {
 }
 
 // PrepareBeforeProgress makes sure that the Deployment is under our control
-func (c *DeploymentsRolloutController) PrepareBeforeProgress() (bool, error) {
+func (c *DeploymentsRolloutController) PrepareBeforeProgress() (bool, *int32, error) {
 	// the workload is verified, and we should record revision and replicas info before progressing
 	if err := c.recordDeploymentRevisionAndReplicas(); err != nil {
 		klog.Errorf("Failed to record deployment(%v) revision and replicas info, error: %v", c.stableNamespacedName, err)
-		return false, err
+		return false, nil, err
 	}
 
 	c.recorder.Event(c.release, v1.EventTypeNormal, "Initialized", "Rollout resource are initialized")
-	return true, nil
+	return true, nil, nil
 }
 
 // UpgradeOneBatch calculates the number of pods we can upgrade once
@@ -371,8 +371,8 @@ func (c *DeploymentsRolloutController) recordDeploymentRevisionAndReplicas() err
 }
 
 func (c *DeploymentsRolloutController) patchPodBatchLabel(canaryGoal int32) (bool, error) {
-	rolloutID, exist := c.release.Labels[util.RolloutIDLabel]
-	if !exist || rolloutID == "" || c.canary == nil {
+	rolloutID := c.release.Spec.ReleasePlan.RolloutID
+	if rolloutID == "" || c.canary == nil {
 		return true, nil
 	}
 
@@ -384,5 +384,5 @@ func (c *DeploymentsRolloutController) patchPodBatchLabel(canaryGoal int32) (boo
 
 	batchID := c.release.Status.CanaryStatus.CurrentBatch + 1
 	updateRevision := c.release.Status.UpdateRevision
-	return util.PatchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, canaryGoal, c.releaseKey)
+	return patchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, canaryGoal, c.releaseKey)
 }

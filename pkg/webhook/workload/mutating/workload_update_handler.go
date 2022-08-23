@@ -29,6 +29,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
@@ -157,15 +158,15 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstructured.Unstructured) (changed bool, err error) {
 	// indicate whether the workload can enter the rollout process
 	// 1. replicas > 0
-	replicas := util.ParseReplicasFrom(newObj)
+	replicas := util.GetReplicas(newObj)
 	if replicas == 0 {
 		return false, nil
 	}
-	oldTemplate := util.ParseTemplateFrom(oldObj)
+	oldTemplate := util.GetTemplate(oldObj)
 	if oldTemplate == nil {
 		return false, nil
 	}
-	newTemplate := util.ParseTemplateFrom(newObj)
+	newTemplate := util.GetTemplate(newObj)
 	if newTemplate == nil {
 		return false, nil
 	}
@@ -277,6 +278,7 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 	changed = true
 	// need set workload paused = true
 	newObj.Spec.UpdateStrategy.Paused = true
+	newObj.Spec.UpdateStrategy.Partition = &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
 	if newObj.Annotations == nil {

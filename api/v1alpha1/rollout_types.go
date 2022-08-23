@@ -104,8 +104,6 @@ type CanaryStep struct {
 	// SetWeight sets what percentage of the canary pods should receive
 
 	// +optional
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=100
 	Weight *int32 `json:"weight,omitempty"`
 	// Replicas is the number of expected canary pods in this batch
 	// it can be an absolute number (ex: 5) or a percentage of total pods.
@@ -120,7 +118,6 @@ type CanaryStep struct {
 type RolloutPause struct {
 	// Duration the amount of time to wait before moving to the next step.
 	// +optional
-	// +kubebuilder:validation:Minimum=0
 	Duration *int32 `json:"duration,omitempty"`
 }
 
@@ -129,7 +126,6 @@ type TrafficRouting struct {
 	// Service holds the name of a service which selects pods with stable version and don't select any pods with canary version.
 	Service string `json:"service"`
 	// Optional duration in seconds the traffic provider(e.g. nginx ingress controller) consumes the service, ingress configuration changes gracefully.
-	// +kubebuilder:validation:Minimum=0
 	GracePeriodSeconds int32 `json:"gracePeriodSeconds,omitempty"`
 	// Ingress holds Ingress specific configuration to route traffic, e.g. Nginx, Alb.
 	Ingress *IngressTrafficRouting `json:"ingress,omitempty"`
@@ -271,18 +267,10 @@ const (
 	RolloutPhaseInitial RolloutPhase = "Initial"
 	// RolloutPhaseHealthy indicates a rollout is healthy
 	RolloutPhaseHealthy RolloutPhase = "Healthy"
-	// RolloutPhasePreparing indicates a rollout is preparing for next progress.
-	RolloutPhasePreparing RolloutPhase = "Preparing"
 	// RolloutPhaseProgressing indicates a rollout is not yet healthy but still making progress towards a healthy state
 	RolloutPhaseProgressing RolloutPhase = "Progressing"
-	// RolloutPhaseFinalizing indicates a rollout is finalizing
-	RolloutPhaseFinalizing RolloutPhase = "Finalizing"
 	// RolloutPhaseTerminating indicates a rollout is terminated
 	RolloutPhaseTerminating RolloutPhase = "Terminating"
-	// RolloutPhaseCompleted indicates a rollout is completed
-	RolloutPhaseCompleted RolloutPhase = "Completed"
-	// RolloutPhaseCancelled indicates a rollout is cancelled
-	RolloutPhaseCancelled RolloutPhase = "Cancelled"
 )
 
 // +genclient

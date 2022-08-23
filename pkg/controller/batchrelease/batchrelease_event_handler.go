@@ -22,6 +22,7 @@ import (
 	"reflect"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
@@ -122,13 +123,17 @@ func (w workloadEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimi
 
 func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	var gvk schema.GroupVersionKind
-	switch evt.ObjectNew.(type) {
-	case *appsv1.Deployment:
-		gvk = util.ControllerKindDep
+	switch obj := evt.ObjectNew.(type) {
 	case *kruiseappsv1alpha1.CloneSet:
 		gvk = util.ControllerKruiseKindCS
+	case *appsv1.Deployment:
+		gvk = util.ControllerKindDep
+	case *appsv1.StatefulSet:
+		gvk = util.ControllerKindSts
+	case *kruiseappsv1beta1.StatefulSet:
+		gvk = util.ControllerKruiseKindSts
 	case *unstructured.Unstructured:
-		gvk = evt.ObjectNew.(*unstructured.Unstructured).GroupVersionKind()
+		gvk = obj.GroupVersionKind()
 	default:
 		return
 	}
@@ -168,13 +173,17 @@ func (w workloadEventHandler) Generic(evt event.GenericEvent, q workqueue.RateLi
 
 func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface, obj client.Object, action EventAction) {
 	var gvk schema.GroupVersionKind
-	switch obj.(type) {
+	switch o := obj.(type) {
 	case *kruiseappsv1alpha1.CloneSet:
 		gvk = util.ControllerKruiseKindCS
 	case *appsv1.Deployment:
 		gvk = util.ControllerKindDep
+	case *appsv1.StatefulSet:
+		gvk = util.ControllerKindSts
+	case *kruiseappsv1beta1.StatefulSet:
+		gvk = util.ControllerKruiseKindSts
 	case *unstructured.Unstructured:
-		gvk = obj.(*unstructured.Unstructured).GroupVersionKind()
+		gvk = o.GroupVersionKind()
 	default:
 		return
 	}

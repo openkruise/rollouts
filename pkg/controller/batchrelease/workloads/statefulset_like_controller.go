@@ -24,7 +24,6 @@ import (
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -39,7 +38,7 @@ type StatefulSetLikeController struct {
 	recorder       record.EventRecorder
 	planController *appsv1alpha1.BatchRelease
 	namespacedName types.NamespacedName
-	workloadObj    *unstructured.Unstructured
+	workloadObj    client.Object
 	gvk            schema.GroupVersionKind
 	pods           []*v1.Pod
 }
@@ -54,13 +53,16 @@ func NewStatefulSetLikeController(c client.Client, r record.EventRecorder, p *ap
 	}
 }
 
-func (c *StatefulSetLikeController) GetWorkloadObject() (*unstructured.Unstructured, error) {
+func (c *StatefulSetLikeController) GetWorkloadObject() (client.Object, error) {
 	if c.workloadObj == nil {
-		c.workloadObj = &unstructured.Unstructured{}
-		c.workloadObj.SetGroupVersionKind(c.gvk)
-		if err := c.Get(context.TODO(), c.namespacedName, c.workloadObj); err != nil {
+		workloadObj := util.GetEmptyWorkloadObject(c.gvk)
+		if workloadObj == nil {
+			return nil, errors.NewNotFound(schema.GroupResource{Group: c.gvk.Group, Resource: c.gvk.Kind}, c.namespacedName.Name)
+		}
+		if err := c.Get(context.TODO(), c.namespacedName, workloadObj); err != nil {
 			return nil, err
 		}
+		c.workloadObj = workloadObj
 	}
 	return c.workloadObj, nil
 }
@@ -90,10 +92,10 @@ func (c *StatefulSetLikeController) ClaimWorkload() (bool, error) {
 		return false, err
 	}
 
-	err = util.ClaimWorkload(c.Client, c.planController, set, map[string]interface{}{
+	err = claimWorkload(c.Client, c.planController, set, map[string]interface{}{
 		"type": apps.RollingUpdateStatefulSetStrategyType,
 		"rollingUpdate": map[string]interface{}{
-			"partition": pointer.Int32(util.ParseReplicasFrom(set)),
+			"partition": pointer.Int32(util.GetReplicas(set)),
 		},
 	})
 	if err != nil {
@@ -113,7 +115,7 @@ func (c *StatefulSetLikeController) ReleaseWorkload(cleanup bool) (bool, error) 
 		return false, err
 	}
 
-	err = util.ReleaseWorkload(c.Client, set)
+	err = releaseWorkload(c.Client, set)
 	if err != nil {
 		c.recorder.Eventf(c.planController, v1.EventTypeWarning, "ReleaseFailed", err.Error())
 		return false, err
@@ -130,11 +132,12 @@ func (c *StatefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableRepli
 	}
 
 	// if no needs to patch partition
-	if isStatefulSetUpgradedDone(set, canaryReplicasGoal, stableReplicasGoal) {
+	partition := util.GetStatefulSetPartition(set)
+	if partition <= stableReplicasGoal {
 		return true, nil
 	}
 
-	err = util.PatchSpec(c.Client, set, map[string]interface{}{
+	err = patchSpec(c.Client, set, map[string]interface{}{
 		"updateStrategy": map[string]interface{}{
 			"rollingUpdate": map[string]interface{}{
 				"partition": pointer.Int32(stableReplicasGoal),
@@ -147,6 +150,15 @@ func (c *StatefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableRepli
 
 	klog.V(3).Infof("Upgrade StatefulSet(%v) Partition to %v Successfully", c.namespacedName, stableReplicasGoal)
 	return true, nil
+}
+
+func (c *StatefulSetLikeController) IsOrderedUpdate() (bool, error) {
+	set, err := c.GetWorkloadObject()
+	if err != nil {
+		return false, err
+	}
+
+	return !util.IsStatefulSetUnorderedUpdate(set), nil
 }
 
 func (c *StatefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error) {
@@ -216,14 +228,4 @@ func (c *StatefulSetLikeController) countUpdatedReadyPods(updateRevision string)
 		}
 	}
 	return updatedReadyReplicas, nil
-}
-
-func isStatefulSetUpgradedDone(set *unstructured.Unstructured, canaryReplicasGoal, stableReplicasGoal int32) bool {
-	partition := util.GetStatefulSetPartition(set)
-	if partition <= stableReplicasGoal {
-		return true
-	}
-	updatedReplicas := util.ParseStatusIntFrom(set, "updatedReplicas")
-	observedGeneration := util.ParseStatusIntFrom(set, "observedGeneration")
-	return set.GetGeneration() == observedGeneration && int(updatedReplicas) >= int(canaryReplicasGoal)
 }

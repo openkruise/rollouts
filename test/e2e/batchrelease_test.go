@@ -246,7 +246,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 					Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 					return clone.Status.UpdatedReplicas
 				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
-				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
 			By("Checking BatchRelease status...")
@@ -292,7 +291,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 					Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 					return clone.Status.UpdatedReplicas
 				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
-				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
 			By("Checking BatchRelease status...")
@@ -351,7 +349,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 					Expect(GetObject(cloneset.Namespace, cloneset.Name, clone)).NotTo(HaveOccurred())
 					return clone.Status.UpdatedReplicas
 				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
-				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
 			By("V1->V2: Checking BatchRelease status...")
@@ -667,7 +664,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 					Expect(clone).ShouldNot(BeNil())
 					return clone.Status.Replicas
 				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
-				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
 			By("Checking BatchRelease status...")
@@ -716,7 +712,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 					Expect(clone).ShouldNot(BeNil())
 					return clone.Status.UpdatedReplicas
 				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
-				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
 			By("Checking BatchRelease status...")
@@ -778,7 +773,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 					Expect(clone).ShouldNot(BeNil())
 					return clone.Status.UpdatedReplicas
 				}, 5*time.Minute, time.Second).Should(Equal(int32(expectedUpdatedReplicas)))
-				time.Sleep(time.Duration(batch.PauseSeconds) * time.Second)
 			}
 
 			By("V1->V2: Checking BatchRelease status...")
@@ -1206,7 +1200,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 			By("Creating BatchRelease...")
 			release := &rolloutsv1alpha1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_100.yaml", release)).ToNot(HaveOccurred())
-			release.Spec.ReleasePlan.Batches[1].PauseSeconds = 10000
 			CreateObject(release)
 
 			By("Creating workload and waiting for all pods ready...")
@@ -1247,7 +1240,6 @@ var _ = SIGDescribe("BatchRelease", func() {
 			fetchedRelease.Spec.ReleasePlan.Batches = []rolloutsv1alpha1.ReleaseBatch{
 				{
 					CanaryReplicas: intstr.FromInt(4),
-					PauseSeconds:   10,
 				},
 				{
 					CanaryReplicas: intstr.FromString("100%"),

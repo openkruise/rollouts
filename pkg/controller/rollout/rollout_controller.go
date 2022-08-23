@@ -95,6 +95,8 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
+	klog.Infof("Begin to reconcile Rollout %v", klog.KObj(rollout))
+
 	//  If workload watcher does not exist, then add the watcher dynamically
 	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
 	workloadGVK := util.GetGVKFrom(workloadRef)

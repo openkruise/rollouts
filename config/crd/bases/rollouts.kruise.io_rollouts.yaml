@@ -106,7 +106,6 @@ spec:
                                   description: Duration the amount of time to wait
                                     before moving to the next step.
                                   format: int32
-                                  minimum: 0
                                   type: integer
                               type: object
                             replicas:
@@ -119,8 +118,6 @@ spec:
                               x-kubernetes-int-or-string: true
                             weight:
                               format: int32
-                              maximum: 100
-                              minimum: 1
                               type: integer
                           type: object
                         type: array
@@ -149,7 +146,6 @@ spec:
                                 provider(e.g. nginx ingress controller) consumes the
                                 service, ingress configuration changes gracefully.
                               format: int32
-                              minimum: 0
                               type: integer
                             ingress:
                               description: Ingress holds Ingress specific configuration

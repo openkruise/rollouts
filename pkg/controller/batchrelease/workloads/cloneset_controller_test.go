@@ -66,15 +66,12 @@ var (
 				Batches: []v1alpha1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
-						PauseSeconds:   100,
 					},
 					{
 						CanaryReplicas: intstr.FromString("50%"),
-						PauseSeconds:   100,
 					},
 					{
 						CanaryReplicas: intstr.FromString("80%"),
-						PauseSeconds:   100,
 					},
 				},
 			},
@@ -226,14 +223,5 @@ func TestParseIntegerAsPercentage(t *testing.T) {
 			Expect(stableReplicas).Should(BeNumerically("<=", allReplicas))
 			Expect(math.Abs(float64((allReplicas - canaryReplicas) - stableReplicas))).Should(BeNumerically("<", float64(allReplicas)*0.01))
 		}
-	}
-}
-
-func containers(version string) []corev1.Container {
-	return []corev1.Container{
-		{
-			Name:  "busybox",
-			Image: fmt.Sprintf("busybox:%v", version),
-		},
 	}
 }

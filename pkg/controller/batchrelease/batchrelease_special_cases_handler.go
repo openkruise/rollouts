@@ -111,8 +111,8 @@ func (r *Executor) syncStatusBeforeExecuting(release *v1alpha1.BatchRelease, new
 		// the workload scaling event, otherwise this event may be lost.
 		newStatus.ObservedWorkloadReplicas = *workloadInfo.Replicas
 
-	case isWorkloadChanged(workloadEvent, release):
-		// handle the case of continuous release v1 -> v2 -> v3
+	case isWorkloadRevisionChanged(workloadEvent, release):
+		// handle the case of continuous release
 		reason = "TargetRevisionChanged"
 		message = "workload revision was changed, then abort"
 		signalFinalize(newStatus)
@@ -128,6 +128,19 @@ func (r *Executor) syncStatusBeforeExecuting(release *v1alpha1.BatchRelease, new
 		reason = "WorkloadNotStable"
 		message = "workload status is not stable, then wait"
 		needStopThisRound = true
+
+	case isWorkloadRollbackInBatch(workloadEvent, release):
+		// handle the case of rollback in batches
+		if isRollbackInBatchSatisfied(workloadInfo, release) {
+			reason = "RollbackInBatch"
+			message = "workload is rollback in batch"
+			signalRePrepareRollback(newStatus)
+			newStatus.UpdateRevision = workloadInfo.Status.UpdateRevision
+		} else {
+			reason = "Rollback"
+			message = "workload is preparing rollback, wait condition to be satisfied"
+			needStopThisRound = true
+		}
 	}
 
 	// log the special event info
@@ -202,8 +215,13 @@ func isWorkloadScaling(event workloads.WorkloadEventType, release *v1alpha1.Batc
 	return event == workloads.WorkloadReplicasChanged && release.Status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
-func isWorkloadChanged(event workloads.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
+func isWorkloadRevisionChanged(event workloads.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
 	return event == workloads.WorkloadPodTemplateChanged && release.Status.Phase == v1alpha1.RolloutPhaseProgressing
+}
+
+func isWorkloadRollbackInBatch(event workloads.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
+	return (event == workloads.WorkloadRollbackInBatch || release.Annotations[util.RollbackInBatchAnnotation] != "") &&
+		release.Status.CanaryStatus.NoNeedUpdateReplicas == nil && release.Status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
 func isWorkloadUnhealthy(event workloads.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
@@ -212,4 +230,11 @@ func isWorkloadUnhealthy(event workloads.WorkloadEventType, release *v1alpha1.Ba
 
 func isWorkloadUnstable(event workloads.WorkloadEventType, _ *v1alpha1.BatchRelease) bool {
 	return event == workloads.WorkloadStillReconciling
+}
+
+func isRollbackInBatchSatisfied(workloadInfo *util.WorkloadInfo, release *v1alpha1.BatchRelease) bool {
+	if workloadInfo.Status == nil {
+		return false
+	}
+	return workloadInfo.Status.StableRevision == workloadInfo.Status.UpdateRevision && release.Annotations[util.RollbackInBatchAnnotation] != ""
 }

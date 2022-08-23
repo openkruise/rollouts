@@ -118,7 +118,7 @@ func (r *innerBatchRelease) FetchBatchRelease() (*rolloutv1alpha1.BatchRelease, 
 	return batch, nil
 }
 
-func (r *innerBatchRelease) Promote(index int32, checkReady bool) (bool, error) {
+func (r *innerBatchRelease) Promote(index int32, isRollback, checkReady bool) (bool, error) {
 	// Promote will resume stable workload if the last batch(index=-1) is finished
 	if index == -1 {
 		return r.resumeStableWorkload(checkReady)
@@ -132,11 +132,23 @@ func (r *innerBatchRelease) Promote(index int32, checkReady bool) (bool, error) 
 			klog.Errorf("error getting updated BatchRelease(%s/%s) from client", batch.Namespace, batch.Name)
 			return err
 		}
-		if !batch.Spec.Paused && *batch.Spec.ReleasePlan.BatchPartition == index {
+		if IsPromoted(r.rollout, batch, isRollback) {
 			return nil
 		}
-		batch.Spec.ReleasePlan.BatchPartition = utilpointer.Int32Ptr(index)
+		if isRollback && len(r.rollout.Spec.Strategy.Canary.TrafficRoutings) == 0 {
+			if batch.Annotations == nil {
+				batch.Annotations = map[string]string{}
+			}
+			// only rollback case should update this rollout id for BatchRelease.
+			batch.Spec.ReleasePlan.RolloutID = r.rollout.Spec.RolloutID
+			batch.Annotations[util.RollbackInBatchAnnotation] = r.rollout.Annotations[util.RollbackInBatchAnnotation]
+		}
+
 		batch.Spec.Paused = false
+		if batch.Labels == nil {
+			batch.Labels = map[string]string{}
+		}
+		batch.Spec.ReleasePlan.BatchPartition = utilpointer.Int32Ptr(index)
 		if err := r.Client.Update(context.TODO(), batch); err != nil {
 			return err
 		}
@@ -318,13 +330,10 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rol
 			},
 			ReleasePlan: rolloutv1alpha1.ReleasePlan{
 				Batches:        batches,
+				RolloutID:      rollout.Spec.RolloutID,
 				BatchPartition: utilpointer.Int32Ptr(0),
 			},
 		},
-	}
-
-	if rollout.Spec.RolloutID != "" {
-		br.Labels[util.RolloutIDLabel] = rollout.Spec.RolloutID
 	}
 	return br
 }
@@ -332,4 +341,23 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rol
 // {workload.name}-batch
 func rolloutBatchName(rollout *rolloutv1alpha1.Rollout) string {
 	return rollout.Name
+}
+
+// IsPromoted return true if the current batch has been promoted:
+// - 1. BatchRelease BatchPartition == Rollout currentStepIndex-1;
+// - 2. Rollback annotation has been patched to BatchRelease when rolling back.
+func IsPromoted(rollout *rolloutv1alpha1.Rollout, batch *rolloutv1alpha1.BatchRelease, isRollback bool) bool {
+	currentBatch := int32(0)
+	if rollout.Status.CanaryStatus != nil {
+		currentBatch = rollout.Status.CanaryStatus.CurrentStepIndex - 1
+	}
+
+	if batch.Spec.ReleasePlan.BatchPartition == nil || *batch.Spec.ReleasePlan.BatchPartition != currentBatch {
+		return false
+	}
+
+	if isRollback && batch.Annotations[util.RollbackInBatchAnnotation] != rollout.Annotations[util.RollbackInBatchAnnotation] {
+		return false
+	}
+	return true
 }
