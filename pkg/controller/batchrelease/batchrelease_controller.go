@@ -52,6 +52,8 @@ var (
 )
 
 func init() {
+	flag.IntVar(&concurrentReconciles, "batchrelease-workers", 3, "Max concurrent workers for batchRelease controller.")
+
 	watchedWorkload = sync.Map{}
 	watchedWorkload.LoadOrStore(util.ControllerKindDep.String(), struct{}{})
 	watchedWorkload.LoadOrStore(util.ControllerKindSts.String(), struct{}{})
@@ -61,10 +63,6 @@ func init() {
 }
 
 const ReleaseFinalizer = "rollouts.kruise.io/batch-release-finalizer"
-
-func init() {
-	flag.IntVar(&concurrentReconciles, "batchrelease-workers", concurrentReconciles, "Max concurrent workers for BatchRelease controller.")
-}
 
 // Add creates a new Rollout Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.

@@ -18,6 +18,7 @@ package rollout
 
 import (
 	"context"
+	"flag"
 	"sync"
 	"time"
 
@@ -42,6 +43,8 @@ var (
 )
 
 func init() {
+	flag.IntVar(&concurrentReconciles, "rollout-workers", 3, "Max concurrent workers for rollout controller.")
+
 	watchedWorkload = sync.Map{}
 	watchedWorkload.LoadOrStore(util.ControllerKindDep.String(), struct{}{})
 	watchedWorkload.LoadOrStore(util.ControllerKindSts.String(), struct{}{})
