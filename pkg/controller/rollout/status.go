@@ -49,14 +49,23 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 		rollout.Status = newStatus
 	}()
 
-	// delete rollout CRD
 	if !rollout.DeletionTimestamp.IsZero() && newStatus.Phase != rolloutv1alpha1.RolloutPhaseTerminating {
+		// delete rollout
 		newStatus.Phase = rolloutv1alpha1.RolloutPhaseTerminating
 		cond := util.NewRolloutCondition(rolloutv1alpha1.RolloutConditionTerminating, corev1.ConditionFalse, rolloutv1alpha1.TerminatingReasonInTerminating, "Rollout is in terminating")
 		util.SetRolloutCondition(&newStatus, *cond)
+	} else if rollout.Spec.Strategy.Disabled && newStatus.Phase != rolloutv1alpha1.RolloutPhaseDisabled {
+		// disable rollout
+		newStatus.Phase = rolloutv1alpha1.RolloutPhaseDisabled
+		cond := util.NewRolloutCondition(rolloutv1alpha1.RolloutConditionDisabled, corev1.ConditionFalse, rolloutv1alpha1.DisabledReasonDisabling, "Rollout is in disabling")
+		util.SetRolloutCondition(&newStatus, *cond)
+	} else if !rollout.Spec.Strategy.Disabled && newStatus.Phase == rolloutv1alpha1.RolloutPhaseDisabled {
+		// recover rollout
+		newStatus.Phase = rolloutv1alpha1.RolloutPhaseInitial
 	} else if newStatus.Phase == "" {
 		newStatus.Phase = rolloutv1alpha1.RolloutPhaseInitial
 	}
+
 	// get ref workload
 	workload, err := r.Finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
 	if err != nil {

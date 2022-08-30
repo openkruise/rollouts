@@ -172,6 +172,10 @@ spec:
                           type: object
                         type: array
                     type: object
+                  disabled:
+                    description: Disabled means the rollout will be not work, just
+                      like it was deleted. Default value is false
+                    type: boolean
                   paused:
                     description: Paused indicates that the Rollout is paused. Default
                       value is false

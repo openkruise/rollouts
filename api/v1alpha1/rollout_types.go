@@ -72,6 +72,9 @@ type WorkloadRef struct {
 
 // RolloutStrategy defines strategy to apply during next rollout
 type RolloutStrategy struct {
+	// Disabled means the rollout will be not work, just like it was deleted.
+	// Default value is false
+	Disabled bool `json:"disabled,omitempty"`
 	// Paused indicates that the Rollout is paused.
 	// Default value is false
 	Paused bool `json:"paused,omitempty"`
@@ -212,6 +215,12 @@ const (
 	ProgressingReasonCanceled     = "Canceled"
 	ProgressingReasonPaused       = "Paused"
 
+	// Disabled condition
+	RolloutConditionDisabled RolloutConditionType = "Disabled"
+	// Disabled Reason
+	DisabledReasonDisabling = "InDisabling"
+	DisabledReasonCompleted = "Completed"
+
 	// Terminating condition
 	RolloutConditionTerminating RolloutConditionType = "Terminating"
 	// Terminating Reason
@@ -271,6 +280,8 @@ const (
 	RolloutPhaseProgressing RolloutPhase = "Progressing"
 	// RolloutPhaseTerminating indicates a rollout is terminated
 	RolloutPhaseTerminating RolloutPhase = "Terminating"
+	// RolloutPhaseDisabled indicates a rollout is disabled
+	RolloutPhaseDisabled RolloutPhase = "Disabled"
 )
 
 // +genclient

@@ -75,7 +75,6 @@ func (p podEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingI
 		return
 	}
 
-	klog.Infof("Pod %v ready condition changed, then enqueue", client.ObjectKeyFromObject(newPod))
 	p.enqueue(newPod, q)
 }
 

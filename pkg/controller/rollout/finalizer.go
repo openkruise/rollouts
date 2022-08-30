@@ -49,6 +49,29 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *rolloutv1alpha1
 	return recheckTime, nil
 }
 
+func (r *RolloutReconciler) reconcileRolloutDisabled(rollout *rolloutv1alpha1.Rollout) (*time.Time, error) {
+	cond := util.GetRolloutCondition(rollout.Status, rolloutv1alpha1.RolloutConditionDisabled)
+	if cond.Reason == rolloutv1alpha1.DisabledReasonCompleted {
+		return nil, nil
+	}
+	newStatus := rollout.Status.DeepCopy()
+	done, recheckTime, err := r.doFinalising(rollout, newStatus, false)
+	if err != nil {
+		return nil, err
+	} else if done {
+		klog.Infof("rollout(%s/%s) is disabled, and state from(%s) -> to(%s)", rollout.Namespace, rollout.Name, cond.Reason, rolloutv1alpha1.DisabledReasonCompleted)
+		cond.Reason = rolloutv1alpha1.DisabledReasonCompleted
+		cond.Status = corev1.ConditionTrue
+		util.SetRolloutCondition(newStatus, *cond)
+	}
+	err = r.updateRolloutStatusInternal(rollout, *newStatus)
+	if err != nil {
+		klog.Errorf("update rollout(%s/%s) status failed: %s", rollout.Namespace, rollout.Name, err.Error())
+		return nil, err
+	}
+	return recheckTime, nil
+}
+
 func (r *RolloutReconciler) doFinalising(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus, isComplete bool) (bool, *time.Time, error) {
 	klog.Infof("reconcile rollout(%s/%s) doFinalising", rollout.Namespace, rollout.Name)
 	// fetch target workload

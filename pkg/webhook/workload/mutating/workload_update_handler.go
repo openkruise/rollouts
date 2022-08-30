@@ -176,7 +176,7 @@ func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstruct
 		return
 	}
 	// 3. have matched rollout crd
-	rollout, err := h.fetchMatchedRollout(newObj)
+	rollout, err := h.fetchMatchedActiveRollout(newObj)
 	if err != nil {
 		return
 	} else if rollout == nil {
@@ -236,7 +236,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (cha
 		return
 	}
 	// 5. have matched rollout crd
-	rollout, err := h.fetchMatchedRollout(newObj)
+	rollout, err := h.fetchMatchedActiveRollout(newObj)
 	if err != nil {
 		return
 	} else if rollout == nil {
@@ -267,7 +267,7 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 		return
 	}
 	// 3. have matched rollout crd
-	rollout, err := h.fetchMatchedRollout(newObj)
+	rollout, err := h.fetchMatchedActiveRollout(newObj)
 	if err != nil {
 		return
 	} else if rollout == nil {
@@ -288,7 +288,7 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 	return
 }
 
-func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.Rollout, error) {
+func (h *WorkloadHandler) fetchMatchedActiveRollout(obj client.Object) (*appsv1alpha1.Rollout, error) {
 	oGv := obj.GetObjectKind().GroupVersionKind()
 	rolloutList := &appsv1alpha1.RolloutList{}
 	if err := h.Client.List(context.TODO(), rolloutList, utilclient.DisableDeepCopy,
@@ -298,7 +298,7 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.
 	}
 	for i := range rolloutList.Items {
 		rollout := &rolloutList.Items[i]
-		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.ObjectRef.WorkloadRef == nil {
+		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.Strategy.Disabled || rollout.Spec.ObjectRef.WorkloadRef == nil {
 			continue
 		}
 		ref := rollout.Spec.ObjectRef.WorkloadRef

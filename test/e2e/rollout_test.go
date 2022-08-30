@@ -3668,6 +3668,80 @@ var _ = SIGDescribe("Rollout", func() {
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "4", 1)
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "5", 1)
 		})
+
+		It("disable rollout, then recover it", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.ObjectRef.WorkloadRef = &rolloutsv1alpha1.WorkloadRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "CloneSet",
+				Name:       "echoserver",
+			}
+			rollout.Spec.Strategy.Canary.TrafficRoutings = nil
+			rollout.Annotations = map[string]string{
+				util.RollbackInBatchAnnotation: "true",
+			}
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
+				{
+					Weight: utilpointer.Int32(20),
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(10),
+					},
+				},
+				{
+					Weight: utilpointer.Int32(50),
+				},
+				{
+					Weight: utilpointer.Int32(100),
+				},
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			workload := &appsv1alpha1.CloneSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/cloneset.yaml", workload)).ToNot(HaveOccurred())
+			workload.Spec.Template.Spec.Containers[0].ImagePullPolicy = "IfNotPresent"
+			CreateObject(workload)
+			WaitCloneSetAllPodsReady(workload)
+
+			By("Update cloneSet env NODE_NAME from(version1) -> to(version2)")
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateCloneSet(workload)
+
+			By("Disable rollout....")
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+			rollout.Spec.Strategy.Disabled = true
+			UpdateRollout(rollout)
+
+			By("Check rollout/workload status after disable")
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseDisabled)
+			WaitCloneSetAllPodsReady(workload)
+
+			By("Update cloneSet env NODE_NAME from(version2) -> to(version3)")
+			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version3"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateCloneSet(workload)
+			WaitCloneSetAllPodsReady(workload)
+
+			By("Recover rollout and check...")
+			rollout.Spec.Strategy.Disabled = false
+			UpdateRollout(rollout)
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
+
+			By("Update cloneSet env NODE_NAME from(version3) -> to(version4)")
+			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version4"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateCloneSet(workload)
+			time.Sleep(10 * time.Second)
+
+			By("Wait 2-th step paused and resume, then check...")
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
+			WaitCloneSetAllPodsReady(workload)
+		})
 	})
 })
 

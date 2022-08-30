@@ -136,6 +136,8 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		recheckTime, err = r.reconcileRolloutProgressing(rollout)
 	case rolloutv1alpha1.RolloutPhaseTerminating:
 		recheckTime, err = r.reconcileRolloutTerminating(rollout)
+	case rolloutv1alpha1.RolloutPhaseDisabled:
+		recheckTime, err = r.reconcileRolloutDisabled(rollout)
 	}
 	if err != nil {
 		return ctrl.Result{}, err

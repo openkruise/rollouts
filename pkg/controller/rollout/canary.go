@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 )
@@ -196,21 +197,27 @@ func (r *rolloutContext) doCanaryPaused() (bool, error) {
 	currentStep := r.rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	steps := len(r.rollout.Spec.Strategy.Canary.Steps)
 	cond := util.GetRolloutCondition(*r.newStatus, rolloutv1alpha1.RolloutConditionProgressing)
+
 	// need manual confirmation
-	if currentStep.Pause.Duration == nil {
+	if currentStep.Pause.Duration == nil && !isRolloutReallyCompleted(currentStep, r.workload.Replicas) {
 		klog.Infof("rollout(%s/%s) don't set pause duration, and need manual confirmation", r.rollout.Namespace, r.rollout.Name)
 		cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and you need manually confirm to enter the next step", canaryStatus.CurrentStepIndex, steps)
 		r.newStatus.Message = cond.Message
 		return false, nil
 	}
-	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and wait duration(%d seconds) to enter the next step", canaryStatus.CurrentStepIndex, steps, *currentStep.Pause.Duration)
+
+	// check duration
+	var duration time.Duration
+	if currentStep.Pause.Duration != nil {
+		duration = time.Second * time.Duration(*currentStep.Pause.Duration)
+	}
+	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and wait duration(%v) to enter the next step", canaryStatus.CurrentStepIndex, steps, duration)
 	r.newStatus.Message = cond.Message
 	// wait duration time, then go to next step
-	duration := time.Second * time.Duration(*currentStep.Pause.Duration)
 	expectedTime := canaryStatus.LastUpdateTime.Add(duration)
 	if expectedTime.Before(time.Now()) {
-		klog.Infof("rollout(%s/%s) canary step(%d) paused duration(%d seconds), and go to the next step",
-			r.rollout.Namespace, r.rollout.Name, canaryStatus.CurrentStepIndex, *currentStep.Pause.Duration)
+		klog.Infof("rollout(%s/%s) canary step(%d) paused duration(%v), and go to the next step",
+			r.rollout.Namespace, r.rollout.Name, canaryStatus.CurrentStepIndex, duration)
 		return true, nil
 	}
 	r.recheckTime = &expectedTime
@@ -291,4 +298,16 @@ func (r *rolloutContext) removeRolloutStateInWorkload() error {
 	}
 	klog.Infof("remove rollout(%s/%s) workload(%s) annotation[%s] success", r.rollout.Namespace, r.rollout.Name, r.workload.Name, util.InRolloutProgressingAnnotation)
 	return nil
+}
+
+func isRolloutReallyCompleted(step rolloutv1alpha1.CanaryStep, replicas int32) bool {
+	var currentReplicas int
+	if step.Replicas != nil {
+		currentReplicas, _ = intstr.GetScaledValueFromIntOrPercent(step.Replicas, int(replicas), true)
+	} else if step.Weight != nil {
+		weight := intstr.FromString(fmt.Sprintf("%d%%", *step.Weight))
+		currentReplicas, _ = intstr.GetScaledValueFromIntOrPercent(&weight, int(replicas), true)
+	}
+
+	return int32(currentReplicas) >= replicas && (step.Weight == nil || *step.Weight == 100)
 }
