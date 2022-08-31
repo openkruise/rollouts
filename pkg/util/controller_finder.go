@@ -54,6 +54,8 @@ type Workload struct {
 	// Revision hash key
 	RevisionLabelKey string
 
+	// Is it in stable and no need to publish
+	IsInStable bool
 	// Is it in rollback phase
 	IsInRollback bool
 	// indicate whether the workload can enter the rollout process
@@ -140,13 +142,15 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 		PodTemplateHash:     cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
 		IsStatusConsistent:  true,
 	}
-	// not in rollout progressing
-	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
-		return workload, nil
-	}
 
 	// no need to progress
 	if cloneSet.Status.Replicas == cloneSet.Status.UpdatedReplicas && cloneSet.Status.CurrentRevision == cloneSet.Status.UpdateRevision {
+		workload.IsInStable = true
+		return workload, nil
+	}
+
+	// not in rollout progressing
+	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
 	}
 
@@ -192,6 +196,12 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 		CanaryRevision:     ComputeHash(&stable.Spec.Template, nil),
 		RevisionLabelKey:   apps.DefaultDeploymentUniqueLabelKey,
 	}
+
+	// deployment is stable
+	if stable.Status.Replicas == stable.Status.UpdatedReplicas {
+		workload.IsInStable = true
+	}
+
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
@@ -256,13 +266,15 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 		PodTemplateHash:     workloadInfo.Status.UpdateRevision,
 		IsStatusConsistent:  true,
 	}
-	// not in rollout progressing
-	if _, ok := workload.Annotations[InRolloutProgressingAnnotation]; !ok {
-		return workload, nil
-	}
 
 	// no need to progress
 	if workloadInfo.Status.Replicas == workloadInfo.Status.UpdatedReplicas && workloadInfo.Status.StableRevision == workloadInfo.Status.UpdateRevision {
+		workload.IsInStable = true
+		return workload, nil
+	}
+
+	// not in rollout progressing
+	if _, ok := workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
 	}
 
