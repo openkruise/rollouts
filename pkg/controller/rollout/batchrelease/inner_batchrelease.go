@@ -49,12 +49,14 @@ type innerBatchRelease struct {
 	rollout *rolloutv1alpha1.Rollout
 
 	batchName string
+	rolloutID string
 }
 
-func NewInnerBatchController(c client.Client, rollout *rolloutv1alpha1.Rollout) BatchRelease {
+func NewInnerBatchController(c client.Client, rollout *rolloutv1alpha1.Rollout, rolloutID string) BatchRelease {
 	r := &innerBatchRelease{
 		Client:    c,
 		rollout:   rollout,
+		rolloutID: rolloutID,
 		batchName: rolloutBatchName(rollout),
 	}
 
@@ -67,7 +69,7 @@ func (r *innerBatchRelease) Verify(index int32) (bool, error) {
 	err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: r.batchName}, batch)
 	if errors.IsNotFound(err) {
 		// create new BatchRelease Crd
-		br := createBatchRelease(r.rollout, r.batchName)
+		br := createBatchRelease(r.rollout, r.batchName, r.rolloutID)
 		if err = r.Create(context.TODO(), br); err != nil && !errors.IsAlreadyExists(err) {
 			klog.Errorf("rollout(%s/%s) create BatchRelease failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 			return false, err
@@ -81,7 +83,7 @@ func (r *innerBatchRelease) Verify(index int32) (bool, error) {
 	}
 
 	// check whether batchRelease configuration is the latest
-	newBr := createBatchRelease(r.rollout, r.batchName)
+	newBr := createBatchRelease(r.rollout, r.batchName, r.rolloutID)
 	if reflect.DeepEqual(batch.Spec.ReleasePlan.Batches, newBr.Spec.ReleasePlan.Batches) {
 		klog.Infof("rollout(%s/%s) batchRelease(generation:%d) configuration is the latest", r.rollout.Namespace, r.rollout.Name, batch.Generation)
 		return true, nil
@@ -140,7 +142,7 @@ func (r *innerBatchRelease) Promote(index int32, isRollback, checkReady bool) (b
 				batch.Annotations = map[string]string{}
 			}
 			// only rollback case should update this rollout id for BatchRelease.
-			batch.Spec.ReleasePlan.RolloutID = r.rollout.Spec.RolloutID
+			batch.Spec.ReleasePlan.RolloutID = r.rolloutID
 			batch.Annotations[util.RollbackInBatchAnnotation] = r.rollout.Annotations[util.RollbackInBatchAnnotation]
 		}
 
@@ -295,7 +297,7 @@ func (r *innerBatchRelease) Finalize() (bool, error) {
 	return false, nil
 }
 
-func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rolloutv1alpha1.BatchRelease {
+func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName, rolloutID string) *rolloutv1alpha1.BatchRelease {
 	var batches []rolloutv1alpha1.ReleaseBatch
 	for _, step := range rollout.Spec.Strategy.Canary.Steps {
 		if step.Replicas == nil {
@@ -330,7 +332,7 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName string) *rol
 			},
 			ReleasePlan: rolloutv1alpha1.ReleasePlan{
 				Batches:        batches,
-				RolloutID:      rollout.Spec.RolloutID,
+				RolloutID:      rolloutID,
 				BatchPartition: utilpointer.Int32Ptr(0),
 			},
 		},

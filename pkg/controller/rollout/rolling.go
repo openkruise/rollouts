@@ -33,7 +33,7 @@ func (r *RolloutReconciler) doProgressingInRolling(rollout *rolloutv1alpha1.Roll
 
 	// 5. In case of rollout plan changed, recalculate and publishing
 	case isRolloutPlanChanged(rollout):
-		return r.handleRolloutPlanChanged(rollout, newStatus)
+		return r.handleRolloutPlanChanged(rollout, workload, newStatus)
 	}
 
 	return r.handleNormalRolling(rollout, workload, newStatus)
@@ -86,8 +86,8 @@ func (r *RolloutReconciler) handleRollbackInBatches(rollout *rolloutv1alpha1.Rol
 	return nil, nil
 }
 
-func (r *RolloutReconciler) handleRolloutPlanChanged(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (*time.Time, error) {
-	batchControl := batchrelease.NewInnerBatchController(r.Client, rollout)
+func (r *RolloutReconciler) handleRolloutPlanChanged(rollout *rolloutv1alpha1.Rollout, workload *util.Workload, newStatus *rolloutv1alpha1.RolloutStatus) (*time.Time, error) {
+	batchControl := batchrelease.NewInnerBatchController(r.Client, rollout, getRolloutID(workload, rollout))
 	newStepIndex, err := r.reCalculateCanaryStepIndex(rollout, batchControl)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) reCalculate Canary StepIndex failed: %s", rollout.Namespace, rollout.Name, err.Error())
