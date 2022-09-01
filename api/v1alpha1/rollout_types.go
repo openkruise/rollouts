@@ -31,6 +31,10 @@ type RolloutSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	// ObjectRef indicates workload
 	ObjectRef ObjectRef `json:"objectRef"`
+	// TimeSlices define some time slices within which the CanaryStrategy is allowed to run in every day
+	// if not define, TimeSlices is all day
+	// +optional
+	TimeSlices []TimeSlice `json:"timeSlices,omitempty"`
 	// rollout strategy
 	Strategy RolloutStrategy `json:"strategy"`
 	// RolloutID should be changed before each workload revision publication.
@@ -79,6 +83,14 @@ type RolloutStrategy struct {
 	Canary *CanaryStrategy `json:"canary,omitempty"`
 	// +optional
 	// BlueGreen *BlueGreenStrategy `json:"blueGreen,omitempty"`
+}
+
+//TimeSlice define the start time  and end time
+type TimeSlice struct {
+	//StartTime is this TimeSlice start time
+	StartTime string `json:"startTime,omitempty"`
+	//EndTime is this TimeSlice end time
+	EndTime string `json:"endTime,omitempty"`
 }
 
 type RolloutStrategyType string

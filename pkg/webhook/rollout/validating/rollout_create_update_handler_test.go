@@ -35,6 +35,20 @@ var (
 					Name:       "deployment-demo",
 				},
 			},
+			TimeSlices: []appsv1alpha1.TimeSlice{
+				{
+					StartTime: "00:00:00",
+					EndTime:   "2:00:00",
+				},
+				{
+					StartTime: "10:00:00",
+					EndTime:   "12:00:00",
+				},
+				{
+					StartTime: "16:00:00",
+					EndTime:   "20:00:00",
+				},
+			},
 			Strategy: appsv1alpha1.RolloutStrategy{
 				Canary: &appsv1alpha1.CanaryStrategy{
 					Steps: []appsv1alpha1.CanaryStep{
@@ -95,6 +109,15 @@ func TestRolloutValidateCreate(t *testing.T) {
 				return []client.Object{rollout.DeepCopy()}
 			},
 		},
+		{
+			Name:    "Normal case : time slices is nil",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Spec.TimeSlices = nil
+				return []client.Object{object}
+			},
+		},
 		/***********************************************************
 			The following cases may lead to controller panic
 		 **********************************************************/
@@ -119,6 +142,44 @@ func TestRolloutValidateCreate(t *testing.T) {
 		/****************************************************************
 			The following cases may lead to that controller cannot work
 		 ***************************************************************/
+		{
+			Name:    "TimeSlices time is empty",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Spec.TimeSlices[0].StartTime = ""
+				object.Spec.TimeSlices[0].EndTime = ""
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "TimeSlices time is incomplete",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Spec.TimeSlices[0].StartTime = "00:00"
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "TimeSlices start time more than end time",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Spec.TimeSlices[0].StartTime = "02:00:00"
+				object.Spec.TimeSlices[0].EndTime = "00:00:00"
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "TimeSlices time out of range",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Spec.TimeSlices[0].EndTime = "26:00:00"
+				return []client.Object{object}
+			},
+		},
 		{
 			Name:    "Service name is empty",
 			Succeed: false,

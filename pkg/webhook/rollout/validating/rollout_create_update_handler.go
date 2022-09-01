@@ -140,6 +140,7 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1alph
 
 func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
 	errList := validateRolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
+	errList = append(errList, validateRolloutSpecTimeSlices(rollout.Spec.TimeSlices, fldPath.Child("TimeSlices"))...)
 	errList = append(errList, validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
 	return errList
 }
@@ -154,6 +155,28 @@ func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *fi
 		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef kind is not supported")}
 	}
 	return nil
+}
+func validateRolloutSpecTimeSlices(timeSlices []appsv1alpha1.TimeSlice, fldPath *field.Path) field.ErrorList {
+	if len(timeSlices) == 0 {
+		return field.ErrorList{}
+	}
+	errList := field.ErrorList{}
+	for i, t := range timeSlices {
+		//Parse time, TimeDuration need >= 0 && <= 86400
+		start, err := util.ValidateTime("", t.StartTime)
+		if err != nil {
+			return append(errList, field.Invalid(fldPath.Index(i).Child("StartTime"), t.StartTime, err.Error()))
+		}
+		end, err := util.ValidateTime("", t.EndTime)
+		if err != nil {
+			return append(errList, field.Invalid(fldPath.Index(i).Child("EndTime"), t.EndTime, err.Error()))
+		}
+		//startTime need less than endTime
+		if start.After(end) {
+			return append(errList, field.Invalid(fldPath.Index(i).Child("timeRange"), t, "startTime need less then endTime"))
+		}
+	}
+	return errList
 }
 
 func validateRolloutSpecStrategy(strategy *appsv1alpha1.RolloutStrategy, fldPath *field.Path) field.ErrorList {

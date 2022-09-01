@@ -138,9 +138,21 @@ func (r *rolloutContext) doCanaryUpgrade() (bool, error) {
 		return false, nil
 	}*/
 
-	// verify whether batchRelease configuration is the latest
+	//verify the step run time (now) whether in time slices
 	steps := len(r.rollout.Spec.Strategy.Canary.Steps)
 	canaryStatus := r.newStatus.CanaryStatus
+	cond := util.GetRolloutCondition(*r.newStatus, rolloutv1alpha1.RolloutConditionProgressing)
+	expectedTime, ok := r.isAllowRun(time.Now())
+	if !ok {
+		cond.Message = fmt.Sprintf("Rollout (%d/%d) will be start at time %s, because now is not in time slices",
+			canaryStatus.CurrentStepIndex, steps,
+			expectedTime.Format("2006-01-02 15:04:05"))
+		r.newStatus.Message = cond.Message
+		r.recheckTime = &expectedTime
+		return ok, nil
+	}
+
+	// verify whether batchRelease configuration is the latest
 	isLatest, err := r.batchControl.Verify(canaryStatus.CurrentStepIndex)
 	if err != nil {
 		return false, err
@@ -158,7 +170,6 @@ func (r *rolloutContext) doCanaryUpgrade() (bool, error) {
 		return false, nil
 	}
 	batchData := util.DumpJSON(batch.Status)
-	cond := util.GetRolloutCondition(*r.newStatus, rolloutv1alpha1.RolloutConditionProgressing)
 	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and upgrade workload new versions", canaryStatus.CurrentStepIndex, steps)
 	r.newStatus.Message = cond.Message
 	// promote workload next batch release

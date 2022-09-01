@@ -95,3 +95,8 @@ func (r *rolloutContext) podRevisionLabelKey() string {
 	}
 	return r.workload.RevisionLabelKey
 }
+
+//isAllowRun return next allow run time
+func (r *rolloutContext) isAllowRun(expectedTime time.Time) (time.Time, bool) {
+	return util.TimeInSlice(expectedTime, r.rollout.Spec.TimeSlices)
+}
