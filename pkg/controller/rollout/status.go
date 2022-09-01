@@ -83,7 +83,7 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 	// which version of deployment is targeted, ObservedWorkloadGeneration that is to compare with the workload generation
 	if newStatus.CanaryStatus != nil && newStatus.CanaryStatus.CanaryRevision != "" &&
 		newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision {
-		newStatus.CanaryStatus.ObservedRolloutID = rollout.Spec.RolloutID
+		newStatus.CanaryStatus.ObservedRolloutID = getRolloutID(workload, rollout)
 		newStatus.CanaryStatus.ObservedWorkloadGeneration = workload.Generation
 	}
 
