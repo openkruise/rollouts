@@ -35,18 +35,20 @@ var (
 					Name:       "deployment-demo",
 				},
 			},
-			TimeSlices: []appsv1alpha1.TimeSlice{
-				{
-					StartTime: "00:00:00",
-					EndTime:   "2:00:00",
-				},
-				{
-					StartTime: "10:00:00",
-					EndTime:   "12:00:00",
-				},
-				{
-					StartTime: "16:00:00",
-					EndTime:   "20:00:00",
+			AllowRunTime: appsv1alpha1.AllowRunTime{
+				TimeSlices: []appsv1alpha1.TimeSlice{
+					{
+						StartTime: "00:00:00",
+						EndTime:   "2:00:00",
+					},
+					{
+						StartTime: "10:00:00",
+						EndTime:   "12:00:00",
+					},
+					{
+						StartTime: "16:00:00",
+						EndTime:   "20:00:00",
+					},
 				},
 			},
 			Strategy: appsv1alpha1.RolloutStrategy{
@@ -114,7 +116,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: true,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.TimeSlices = nil
+				object.Spec.AllowRunTime.TimeSlices = nil
 				return []client.Object{object}
 			},
 		},
@@ -147,8 +149,8 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.TimeSlices[0].StartTime = ""
-				object.Spec.TimeSlices[0].EndTime = ""
+				object.Spec.AllowRunTime.TimeSlices[0].StartTime = ""
+				object.Spec.AllowRunTime.TimeSlices[0].EndTime = ""
 				return []client.Object{object}
 			},
 		},
@@ -157,7 +159,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.TimeSlices[0].StartTime = "00:00"
+				object.Spec.AllowRunTime.TimeSlices[0].StartTime = "00:00"
 				return []client.Object{object}
 			},
 		},
@@ -166,8 +168,8 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.TimeSlices[0].StartTime = "02:00:00"
-				object.Spec.TimeSlices[0].EndTime = "00:00:00"
+				object.Spec.AllowRunTime.TimeSlices[0].StartTime = "02:00:00"
+				object.Spec.AllowRunTime.TimeSlices[0].EndTime = "00:00:00"
 				return []client.Object{object}
 			},
 		},
@@ -176,7 +178,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.TimeSlices[0].EndTime = "26:00:00"
+				object.Spec.AllowRunTime.TimeSlices[0].EndTime = "26:00:00"
 				return []client.Object{object}
 			},
 		},

@@ -56,6 +56,40 @@ spec:
           spec:
             description: RolloutSpec defines the desired state of Rollout
             properties:
+              allowRunTime:
+                description: AllowRunTime define allow run time for the rollout
+                properties:
+                  timeSlices:
+                    description: TimeSlices define some time slices within which the
+                      CanaryStrategy is allowed to run in every day if not define,
+                      TimeSlices is all day
+                    items:
+                      description: TimeSlice define the start time  and end time
+                      properties:
+                        endTime:
+                          description: EndTime is this TimeSlice end time
+                          type: string
+                        startTime:
+                          description: StartTime is this TimeSlice start time
+                          type: string
+                      type: object
+                    type: array
+                  timeZone:
+                    description: TimeZone allowed user set the time zone
+                    properties:
+                      name:
+                        description: Name of the time zone
+                        type: string
+                      offset:
+                        description: Offset
+                        maximum: 43200
+                        minimum: -43200
+                        type: integer
+                    required:
+                    - name
+                    - offset
+                    type: object
+                type: object
               objectRef:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file

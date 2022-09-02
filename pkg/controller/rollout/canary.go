@@ -149,7 +149,7 @@ func (r *rolloutContext) doCanaryUpgrade() (bool, error) {
 			expectedTime.Format("2006-01-02 15:04:05"))
 		r.newStatus.Message = cond.Message
 		r.recheckTime = &expectedTime
-		return ok, nil
+		return false, nil
 	}
 
 	// verify whether batchRelease configuration is the latest

@@ -98,5 +98,5 @@ func (r *rolloutContext) podRevisionLabelKey() string {
 
 //isAllowRun return next allow run time
 func (r *rolloutContext) isAllowRun(expectedTime time.Time) (time.Time, bool) {
-	return util.TimeInSlice(expectedTime, r.rollout.Spec.TimeSlices)
+	return util.TimeInSlice(expectedTime, &r.rollout.Spec.AllowRunTime)
 }

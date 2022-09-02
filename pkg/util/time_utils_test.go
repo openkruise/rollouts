@@ -12,21 +12,23 @@ import (
 	"time"
 )
 
-var timeSlices = []rolloutv1alpha1.TimeSlice{
-	{
-		StartTime: "00:00:00",
-		EndTime:   "2:00:00",
-	},
-	{
-		StartTime: "10:00:00",
-		EndTime:   "12:00:00",
-	},
-	{
-		StartTime: "16:00:00",
-		EndTime:   "20:00:00",
+var allowTime = &rolloutv1alpha1.AllowRunTime{
+	TimeZone: nil,
+	TimeSlices: []rolloutv1alpha1.TimeSlice{
+		{
+			StartTime: "00:00:00",
+			EndTime:   "2:00:00",
+		},
+		{
+			StartTime: "10:00:00",
+			EndTime:   "12:00:00",
+		},
+		{
+			StartTime: "16:00:00",
+			EndTime:   "20:00:00",
+		},
 	},
 }
-var layout = "2006-01-02 15:04:05"
 
 func TestTimeInSlice(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -58,9 +60,9 @@ func TestTimeInSlice(t *testing.T) {
 
 	for _, s := range test {
 		t.Run(s.Name, func(t *testing.T) {
-			testTime, _ := time.ParseInLocation(layout, s.TestTime, time.Local)
-			expectedTime, _ := time.ParseInLocation(layout, s.ExpectedTime, time.Local)
-			resTime, res := TimeInSlice(testTime, timeSlices)
+			testTime, _ := time.ParseInLocation(DateTimeLayout, s.TestTime, time.Local)
+			expectedTime, _ := time.ParseInLocation(DateTimeLayout, s.ExpectedTime, time.Local)
+			resTime, res := TimeInSlice(testTime, allowTime)
 			Expect(expectedTime.Unix()).Should(Equal(resTime.Unix()))
 			Expect(s.ExpectedRes).Should(Equal(res))
 		})
@@ -70,44 +72,44 @@ func TestTimeInSlice(t *testing.T) {
 func TestValidateTime(t *testing.T) {
 	RegisterFailHandler(Fail)
 	test := []struct {
-		Name   string
-		Date   string
-		Time   string
+		name   string
+		date   string
+		time   string
 		expect string
 	}{
 		{
-			Name:   "right: date not empty",
-			Date:   "2022-08-08",
-			Time:   "00:00:00",
+			name:   "right: date not empty",
+			date:   "2022-08-08",
+			time:   "00:00:00",
 			expect: "2022-08-08 00:00:00",
 		},
 		{
-			Name:   "right: date is empty",
-			Date:   "",
-			Time:   "01:00:00",
-			expect: "2022-08-21 01:00:00",
+			name:   "right: date is empty",
+			date:   "",
+			time:   "01:00:00",
+			expect: "2006-01-02 01:00:00",
 		},
 		{
-			Name: "wrong: time more then 24h",
-			Date: "",
-			Time: "25:00:00",
+			name: "wrong: time more then 24h",
+			date: "",
+			time: "25:00:00",
 		},
 		{
-			Name: "wrong: time less then 0h",
-			Date: "",
-			Time: "-01:00:00",
+			name: "wrong: time less then 0h",
+			date: "",
+			time: "-01:00:00",
 		},
 		{
-			Name: "wrong: time is incomplete",
-			Date: "",
-			Time: "21:00",
+			name: "wrong: time is incomplete",
+			date: "",
+			time: "21:00",
 		},
 	}
 	for _, s := range test {
-		t.Run(s.Name, func(t *testing.T) {
-			resTime, err := ValidateTime(s.Date, s.Time)
+		t.Run(s.name, func(t *testing.T) {
+			resTime, err := ValidateTime(s.date, s.time, nil)
 			if s.expect != "" {
-				expectedTime, _ := time.ParseInLocation(layout, s.expect, time.Local)
+				expectedTime, _ := time.ParseInLocation(DateTimeLayout, s.expect, time.Local)
 				Expect(expectedTime.Unix()).Should(Equal(resTime.Unix()))
 			} else {
 				Expect(len(err.Error()) != 0).Should(BeTrue())

@@ -140,7 +140,7 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1alph
 
 func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
 	errList := validateRolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
-	errList = append(errList, validateRolloutSpecTimeSlices(rollout.Spec.TimeSlices, fldPath.Child("TimeSlices"))...)
+	errList = append(errList, validateRolloutSpecAllowRunTime(&rollout.Spec.AllowRunTime, fldPath.Child("AllowRunTime"))...)
 	errList = append(errList, validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
 	return errList
 }
@@ -156,6 +156,14 @@ func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *fi
 	}
 	return nil
 }
+
+func validateRolloutSpecAllowRunTime(allowRunTime *appsv1alpha1.AllowRunTime, fldPath *field.Path) field.ErrorList {
+	if allowRunTime != nil {
+		return validateRolloutSpecTimeSlices(allowRunTime.TimeSlices, fldPath.Child("TimeSlices"))
+	}
+	return nil
+}
+
 func validateRolloutSpecTimeSlices(timeSlices []appsv1alpha1.TimeSlice, fldPath *field.Path) field.ErrorList {
 	if len(timeSlices) == 0 {
 		return field.ErrorList{}
@@ -163,11 +171,11 @@ func validateRolloutSpecTimeSlices(timeSlices []appsv1alpha1.TimeSlice, fldPath 
 	errList := field.ErrorList{}
 	for i, t := range timeSlices {
 		//Parse time, TimeDuration need >= 0 && <= 86400
-		start, err := util.ValidateTime("", t.StartTime)
+		start, err := util.ValidateTime("", t.StartTime, nil)
 		if err != nil {
 			return append(errList, field.Invalid(fldPath.Index(i).Child("StartTime"), t.StartTime, err.Error()))
 		}
-		end, err := util.ValidateTime("", t.EndTime)
+		end, err := util.ValidateTime("", t.EndTime, nil)
 		if err != nil {
 			return append(errList, field.Invalid(fldPath.Index(i).Child("EndTime"), t.EndTime, err.Error()))
 		}

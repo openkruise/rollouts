@@ -11,22 +11,38 @@ import (
 	"time"
 )
 
+const (
+	DateTimeLayout = "2006-01-02 15:04:05"
+	DateLayout     = "2006-01-02"
+)
+
 //ValidateTime used to validate _time whether right
-func ValidateTime(date, _time string) (time.Time, error) {
-	layout := "2006-01-02 15:04:05"
-	if date == "" {
-		date = "2022-08-21"
+func ValidateTime(date, _time string, zone *time.Location) (time.Time, error) {
+	if zone == nil {
+		zone = time.Local
 	}
-	return time.ParseInLocation(layout, fmt.Sprintf("%s %s", date, _time), time.Local)
+	if date == "" {
+		date = DateLayout
+	}
+	return time.ParseInLocation(DateTimeLayout, fmt.Sprintf("%s %s", date, _time), zone)
+}
+
+func TimeZone(zone *rolloutv1alpha1.TimeZone) *time.Location {
+	if zone != nil {
+		return time.FixedZone(zone.Name, zone.Offset)
+	}
+	return time.Local
 }
 
 //TimeInSlice used to validate the expectedTime whether in the timeSlices.
-//it returns expectedTime and 'false' if the timeSlices is wrong,so you have to make sure the Time Slice is correct.
+//it returns expectedTime and 'false' if the timeSlices is wrong,so you have to make sure the time Slice is correct.
 //it returns expectedTime and 'true'  if the expectedTime is in this timeSlices.
 //it returns adjacent time  and 'false'  if the expectedTime is not in this timeSlices.
-func TimeInSlice(expectedTime time.Time, timeSlices []rolloutv1alpha1.TimeSlice) (time.Time, bool) {
-	date := expectedTime.Format("2006-01-02")
-	if len(timeSlices) == 0 {
+func TimeInSlice(expectedTime time.Time, allowRunTime *rolloutv1alpha1.AllowRunTime) (time.Time, bool) {
+	if allowRunTime == nil {
+		return expectedTime, true
+	}
+	if len(allowRunTime.TimeSlices) == 0 {
 		return expectedTime, true
 	}
 	var (
@@ -35,13 +51,17 @@ func TimeInSlice(expectedTime time.Time, timeSlices []rolloutv1alpha1.TimeSlice)
 		end    time.Time
 		minSub = time.Hour * 48
 	)
-	for i, timeSlice := range timeSlices {
-		start, err = ValidateTime(date, timeSlice.StartTime)
+
+	date := expectedTime.Format(DateLayout)
+	timeZone := TimeZone(allowRunTime.TimeZone)
+
+	for i, timeSlice := range allowRunTime.TimeSlices {
+		start, err = ValidateTime(date, timeSlice.StartTime, timeZone)
 		if err != nil {
 			klog.V(5).Infof("timeSlices[%d] StartTime is err %s", i, err.Error())
 			return expectedTime, false
 		}
-		end, err = ValidateTime(date, timeSlice.EndTime)
+		end, err = ValidateTime(date, timeSlice.EndTime, timeZone)
 		if err != nil {
 			klog.V(5).Infof("timeSlices[%d] EndTime is err %s", i, err.Error())
 			return expectedTime, false
