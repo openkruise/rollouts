@@ -6,9 +6,10 @@ package util
 
 import (
 	"fmt"
+	"time"
+
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"k8s.io/klog/v2"
-	"time"
 )
 
 const (

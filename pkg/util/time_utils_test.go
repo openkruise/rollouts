@@ -5,11 +5,12 @@ Copyright 2022 The KubePort Authors.
 package util
 
 import (
+	"testing"
+	"time"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"testing"
-	"time"
 )
 
 var allowTime = &rolloutv1alpha1.AllowRunTime{
@@ -67,6 +68,37 @@ func TestTimeInSlice(t *testing.T) {
 			Expect(s.ExpectedRes).Should(Equal(res))
 		})
 	}
+}
+
+func TestTimeZone(t *testing.T) {
+	RegisterFailHandler(Fail)
+	test := []struct {
+		name   string
+		data   *rolloutv1alpha1.TimeZone
+		expect *time.Location
+	}{
+		{
+			name:   "local",
+			data:   nil,
+			expect: time.Local,
+		},
+		{
+			name: "UTC",
+			data: &rolloutv1alpha1.TimeZone{
+				Name:   "UTC",
+				Offset: 28800,
+			},
+			expect: time.FixedZone("UTC", 28800),
+		},
+	}
+	for _, s := range test {
+		t.Run(s.name, func(t *testing.T) {
+			zone := TimeZone(s.data)
+			now := time.Now()
+			Expect(now.In(zone).Unix()).Should(Equal(now.In(s.expect).Unix()))
+		})
+	}
+
 }
 
 func TestValidateTime(t *testing.T) {
