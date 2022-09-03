@@ -83,7 +83,7 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 	// which version of deployment is targeted, ObservedWorkloadGeneration that is to compare with the workload generation
 	if newStatus.CanaryStatus != nil && newStatus.CanaryStatus.CanaryRevision != "" &&
 		newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision {
-		newStatus.CanaryStatus.ObservedRolloutID = rollout.Spec.RolloutID
+		newStatus.CanaryStatus.ObservedRolloutID = getRolloutID(workload, rollout)
 		newStatus.CanaryStatus.ObservedWorkloadGeneration = workload.Generation
 	}
 
@@ -93,12 +93,37 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 		newStatus.Phase = rolloutv1alpha1.RolloutPhaseHealthy
 		newStatus.Message = "rollout is healthy"
 	case rolloutv1alpha1.RolloutPhaseHealthy:
-		// from healthy to progressing
 		if workload.InRolloutProgressing {
+			// from healthy to progressing
 			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, rolloutv1alpha1.RolloutPhaseHealthy, rolloutv1alpha1.RolloutPhaseProgressing)
 			newStatus.Phase = rolloutv1alpha1.RolloutPhaseProgressing
 			cond := util.NewRolloutCondition(rolloutv1alpha1.RolloutConditionProgressing, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonInitializing, "Rollout is in Progressing")
 			util.SetRolloutCondition(&newStatus, *cond)
+		} else if workload.IsInStable && newStatus.CanaryStatus == nil {
+			// The following logic is to make PaaS be able to judge whether the rollout is ready
+			// at the first deployment of the Rollout/Workload. For example: generally, a PaaS
+			// platform can use the following code to judge whether the rollout progression is completed:
+			// ```
+			//   if getRolloutID(workload, rollout) == rollout.Status.CanaryStatus.ObservedRolloutID &&
+			//	   rollout.Status.CanaryStatus.CurrentStepState == "Completed" {
+			//	   // do something after rollout
+			//   }
+			//```
+			// But at the first deployment of Rollout/Workload, CanaryStatus isn't set due to no rollout progression,
+			// and PaaS platform cannot judge whether the deployment is completed base on the code above. So we have
+			// to update the status just like the rollout was completed.
+
+			newStatus.CanaryStatus = &rolloutv1alpha1.CanaryStatus{
+				CanaryReplicas:             workload.CanaryReplicas,
+				CanaryReadyReplicas:        workload.CanaryReadyReplicas,
+				ObservedRolloutID:          getRolloutID(workload, rollout),
+				ObservedWorkloadGeneration: workload.Generation,
+				PodTemplateHash:            workload.PodTemplateHash,
+				CanaryRevision:             workload.CanaryRevision,
+				CurrentStepIndex:           int32(len(rollout.Spec.Strategy.Canary.Steps)),
+				CurrentStepState:           rolloutv1alpha1.CanaryStepStateCompleted,
+			}
+			newStatus.Message = "workload deployment is completed"
 		}
 	case rolloutv1alpha1.RolloutPhaseProgressing:
 		cond := util.GetRolloutCondition(newStatus, rolloutv1alpha1.RolloutConditionProgressing)

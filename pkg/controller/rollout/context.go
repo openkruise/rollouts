@@ -55,7 +55,7 @@ func newRolloutContext(client client.Client, recorder record.EventRecorder, roll
 		Client:       client,
 		rollout:      rollout,
 		newStatus:    newStatus,
-		batchControl: batchrelease.NewInnerBatchController(client, rollout),
+		batchControl: batchrelease.NewInnerBatchController(client, rollout, getRolloutID(workload, rollout)),
 		workload:     workload,
 		recorder:     recorder,
 	}
@@ -94,6 +94,19 @@ func (r *rolloutContext) podRevisionLabelKey() string {
 		return ""
 	}
 	return r.workload.RevisionLabelKey
+}
+
+func getRolloutID(workload *util.Workload, rollout *rolloutv1alpha1.Rollout) string {
+	if workload != nil {
+		firstChoice := workload.Labels[util.RolloutIDLabel]
+		if firstChoice != "" {
+			return firstChoice
+		}
+	}
+	if rollout != nil {
+		return rollout.Spec.RolloutID
+	}
+	return ""
 }
 
 //isAllowRun return next allow run time

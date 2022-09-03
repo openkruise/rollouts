@@ -3413,7 +3413,6 @@ var _ = SIGDescribe("Rollout", func() {
 				Name:       "echoserver",
 			}
 			rollout.Spec.Strategy.Canary.TrafficRoutings = nil
-			rollout.Spec.RolloutID = "1"
 			CreateObject(rollout)
 
 			By("Creating workload and waiting for all pods ready...")
@@ -3432,6 +3431,7 @@ var _ = SIGDescribe("Rollout", func() {
 			// workload
 			workload := &appsv1beta1.StatefulSet{}
 			Expect(ReadYamlToObject("./test_data/rollout/advanced_statefulset.yaml", workload)).ToNot(HaveOccurred())
+			workload.Labels[util.RolloutIDLabel] = "1"
 			CreateObject(workload)
 			WaitAdvancedStatefulSetPodsReady(workload)
 
@@ -3499,7 +3499,6 @@ var _ = SIGDescribe("Rollout", func() {
 					},
 				},
 			}
-			rollout.Spec.RolloutID = "1"
 			CreateObject(rollout)
 			By("Creating workload and waiting for all pods ready...")
 			// service
@@ -3513,6 +3512,7 @@ var _ = SIGDescribe("Rollout", func() {
 			// workload
 			workload := &appsv1alpha1.CloneSet{}
 			Expect(ReadYamlToObject("./test_data/rollout/cloneset.yaml", workload)).ToNot(HaveOccurred())
+			workload.Labels[util.RolloutIDLabel] = "1"
 			CreateObject(workload)
 			WaitCloneSetAllPodsReady(workload)
 
@@ -3595,12 +3595,12 @@ var _ = SIGDescribe("Rollout", func() {
 					},
 				},
 			}
-			rollout.Spec.RolloutID = "1"
 			CreateObject(rollout)
 
 			By("Creating workload and waiting for all pods ready...")
 			workload := &appsv1alpha1.CloneSet{}
 			Expect(ReadYamlToObject("./test_data/rollout/cloneset.yaml", workload)).ToNot(HaveOccurred())
+			workload.Labels[util.RolloutIDLabel] = "1"
 			CreateObject(workload)
 			WaitCloneSetAllPodsReady(workload)
 
@@ -3626,15 +3626,10 @@ var _ = SIGDescribe("Rollout", func() {
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "2", 1)
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "3", 1)
 
-			By("Update rollout id '1' -> to '2'")
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			rollout.Spec.RolloutID = "2"
-			UpdateRollout(rollout)
-			time.Sleep(10 * time.Second)
-
 			By("Update cloneSet env NODE_NAME from(version2) -> to(version1)")
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
+			workload.Labels[util.RolloutIDLabel] = "2"
 			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
 			UpdateCloneSet(workload)
 			time.Sleep(10 * time.Second)
