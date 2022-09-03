@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	DateTimeLayout = "2006-01-02 15:04:05"
-	DateLayout     = "2006-01-02"
+	DateTimeZoneLayout = "2006-01-02 15:04:05 MST"
+	DateTimeLayout     = "2006-01-02 15:04:05"
+	DateLayout         = "2006-01-02"
 )
 
 //ValidateTime used to validate _time whether right
