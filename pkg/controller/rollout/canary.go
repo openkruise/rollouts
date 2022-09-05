@@ -144,10 +144,7 @@ func (r *rolloutContext) doCanaryUpgrade() (bool, error) {
 	cond := util.GetRolloutCondition(*r.newStatus, rolloutv1alpha1.RolloutConditionProgressing)
 	expectedTime, ok := r.isAllowRun(time.Now())
 	if !ok {
-		localTime := expectedTime
-		if &r.rollout.Spec != nil && &r.rollout.Spec.AllowRunTime != nil {
-			localTime.In(util.TimeZone(r.rollout.Spec.AllowRunTime.TimeZone))
-		}
+		localTime := expectedTime.In(util.TimeZone(r.rollout.Spec.AllowRunTime.TimeZone))
 		msg := fmt.Sprintf("Rollout (%d/%d) will be start at time %s(%s), because now is not in time slices",
 			canaryStatus.CurrentStepIndex, steps,
 			expectedTime.Format(util.DateTimeLayout),
