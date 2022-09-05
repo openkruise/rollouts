@@ -108,3 +108,7 @@ func getRolloutID(workload *util.Workload, rollout *rolloutv1alpha1.Rollout) str
 	}
 	return ""
 }
+
+func (r *rolloutContext) isAllowRun(expectedTime time.Time) (time.Time, bool) {
+	return util.TimeInSlice(expectedTime, &r.rollout.Spec.AllowRunTime)
+}
