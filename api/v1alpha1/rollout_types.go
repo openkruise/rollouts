@@ -31,6 +31,9 @@ type RolloutSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	// ObjectRef indicates workload
 	ObjectRef ObjectRef `json:"objectRef"`
+	//AllowRunTime define allow run time for the rollout
+	//+optional
+	AllowRunTime AllowRunTime `json:"allowRunTime,omitempty"`
 	// rollout strategy
 	Strategy RolloutStrategy `json:"strategy"`
 	// RolloutID should be changed before each workload revision publication.
@@ -69,6 +72,33 @@ type WorkloadRef struct {
 	TargetRevisionName string `json:"targetRevisionName"`
 	SourceRevisionName string `json:"sourceRevisionName"`
 }*/
+
+type AllowRunTime struct {
+	// TimeZone allowed user set the time zone
+	// +optional
+	TimeZone *TimeZone `json:"timeZone,omitempty"`
+	// TimeSlices define some time slices within which the CanaryStrategy is allowed to run in every day
+	// if not define, TimeSlices is all day
+	// +optional
+	TimeSlices []TimeSlice `json:"timeSlices,omitempty"`
+}
+
+type TimeZone struct {
+	//Name of the time zone
+	Name string `json:"name"`
+	//Offset
+	// +kubebuilder:validation:Minimum=-43200
+	// +kubebuilder:validation:Maximum=43200
+	Offset int `json:"offset"`
+}
+
+//TimeSlice define the start time  and end time
+type TimeSlice struct {
+	//StartTime is this TimeSlice start time
+	StartTime string `json:"startTime"`
+	//EndTime is this TimeSlice end time
+	EndTime string `json:"endTime"`
+}
 
 // RolloutStrategy defines strategy to apply during next rollout
 type RolloutStrategy struct {
