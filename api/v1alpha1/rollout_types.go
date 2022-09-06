@@ -96,6 +96,13 @@ type CanaryStrategy struct {
 	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
 	// todo current only support one TrafficRouting
 	TrafficRoutings []*TrafficRouting `json:"trafficRoutings,omitempty"`
+	// ToleratedFailedReplicas allow users ignore some pods that are not available due to some reasons,
+	// such as insufficient resources. For example, there are 10 pods were updated, and the
+	// ToleratedFailedReplicas=2, as long as 8 or more pods are available, we think that the
+	// rollout progression can be continued.
+	// If ToleratedFailedReplicas is not set (be nil), we will reuse `MaxUnavailable` field in workload
+	// to tolerate failed replicas by default.
+	ToleratedFailedReplicas *intstr.IntOrString `json:"toleratedFailedReplicas,omitempty"`
 	// MetricsAnalysis *MetricsAnalysisBackground `json:"metricsAnalysis,omitempty"`
 }
 

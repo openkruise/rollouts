@@ -95,6 +95,19 @@ spec:
                   rolloutID:
                     description: RolloutID indicates an id for each rollout progress
                     type: string
+                  toleratedFailedReplicas:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: ToleratedFailedReplicas allow users ignore some pods
+                      that are not available due to some reasons, such as insufficient
+                      resources. For example, there are 10 pods were updated, and
+                      the ToleratedFailedReplicas=2, as long as 8 or more pods are
+                      available, we think that the rollout progression can be continued.
+                      If ToleratedFailedReplicas is not set (be nil), we will reuse
+                      `MaxUnavailable` field in workload to tolerate failed replicas
+                      by default.
+                    x-kubernetes-int-or-string: true
                 type: object
               targetReference:
                 description: TargetRef contains the GVK and name of the workload that

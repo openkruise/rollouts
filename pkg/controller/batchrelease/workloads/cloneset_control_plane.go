@@ -287,8 +287,12 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 	realNeedUpgradeCanaryReplicas := CalculateRealCanaryReplicasGoal(expectedBatchStableReplicas, replicas, &c.release.Spec.ReleasePlan.Batches[currentBatch].CanaryReplicas)
 
 	var maxUnavailableReplicas int
-	if c.clone.Spec.UpdateStrategy.MaxUnavailable != nil {
-		maxUnavailableReplicas, _ = intstr.GetValueFromIntOrPercent(c.clone.Spec.UpdateStrategy.MaxUnavailable, int(realNeedUpgradeCanaryReplicas), true)
+	if c.release.Spec.ReleasePlan.ToleratedFailedReplicas != nil {
+		maxUnavailableReplicas, _ = intstr.GetValueFromIntOrPercent(
+			c.release.Spec.ReleasePlan.ToleratedFailedReplicas, int(realNeedUpgradeCanaryReplicas), true)
+	} else if c.clone.Spec.UpdateStrategy.MaxUnavailable != nil {
+		maxUnavailableReplicas, _ = intstr.GetValueFromIntOrPercent(
+			c.clone.Spec.UpdateStrategy.MaxUnavailable, int(realNeedUpgradeCanaryReplicas), true)
 	}
 
 	klog.V(3).InfoS("check one batch, current info:",

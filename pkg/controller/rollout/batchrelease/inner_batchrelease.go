@@ -84,7 +84,7 @@ func (r *innerBatchRelease) Verify(index int32) (bool, error) {
 
 	// check whether batchRelease configuration is the latest
 	newBr := createBatchRelease(r.rollout, r.batchName, r.rolloutID)
-	if reflect.DeepEqual(batch.Spec.ReleasePlan.Batches, newBr.Spec.ReleasePlan.Batches) {
+	if isSyncedContext(newBr, batch) {
 		klog.Infof("rollout(%s/%s) batchRelease(generation:%d) configuration is the latest", r.rollout.Namespace, r.rollout.Name, batch.Generation)
 		return true, nil
 	}
@@ -97,6 +97,7 @@ func (r *innerBatchRelease) Verify(index int32) (bool, error) {
 		}
 		batch.Spec.ReleasePlan.Batches = newBr.Spec.ReleasePlan.Batches
 		batch.Spec.ReleasePlan.BatchPartition = utilpointer.Int32Ptr(index)
+		batch.Spec.ReleasePlan.ToleratedFailedReplicas = r.rollout.Spec.Strategy.Canary.ToleratedFailedReplicas
 		if err = r.Client.Update(context.TODO(), batch); err != nil {
 			return err
 		}
@@ -331,9 +332,10 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName, rolloutID s
 				},
 			},
 			ReleasePlan: rolloutv1alpha1.ReleasePlan{
-				Batches:        batches,
-				RolloutID:      rolloutID,
-				BatchPartition: utilpointer.Int32Ptr(0),
+				Batches:                 batches,
+				RolloutID:               rolloutID,
+				BatchPartition:          utilpointer.Int32Ptr(0),
+				ToleratedFailedReplicas: rollout.Spec.Strategy.Canary.ToleratedFailedReplicas,
 			},
 		},
 	}
@@ -359,6 +361,16 @@ func IsPromoted(rollout *rolloutv1alpha1.Rollout, batch *rolloutv1alpha1.BatchRe
 	}
 
 	if isRollback && batch.Annotations[util.RollbackInBatchAnnotation] != rollout.Annotations[util.RollbackInBatchAnnotation] {
+		return false
+	}
+	return true
+}
+
+func isSyncedContext(new, old *rolloutv1alpha1.BatchRelease) bool {
+	if !reflect.DeepEqual(new.Spec.ReleasePlan.ToleratedFailedReplicas, old.Spec.ReleasePlan.ToleratedFailedReplicas) {
+		return false
+	}
+	if !reflect.DeepEqual(new.Spec.ReleasePlan.Batches, old.Spec.ReleasePlan.Batches) {
 		return false
 	}
 	return true

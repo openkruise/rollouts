@@ -190,7 +190,10 @@ func (c *StatefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableRepli
 	}
 
 	maxUnavailable := 0
-	if workloadInfo.MaxUnavailable != nil {
+	if c.planController.Spec.ReleasePlan.ToleratedFailedReplicas != nil {
+		maxUnavailable, _ = intstr.GetScaledValueFromIntOrPercent(
+			c.planController.Spec.ReleasePlan.ToleratedFailedReplicas, int(canaryReplicasGoal), true)
+	} else if workloadInfo.MaxUnavailable != nil {
 		maxUnavailable, _ = intstr.GetScaledValueFromIntOrPercent(workloadInfo.MaxUnavailable, int(canaryReplicasGoal), true)
 	}
 
