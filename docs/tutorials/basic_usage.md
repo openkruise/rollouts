@@ -31,7 +31,7 @@ spec:
       containers:
       - name: echoserver
          # mac m1 should choics image can support arm64,such as image e2eteam/echoserver:2.2-linux-arm64
-        image: cilium/echoserver:1.10.2 
+        image: cilium/echoserver:1.10.2
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
@@ -107,9 +107,7 @@ spec:
       trafficRoutings:
         # echoserver service name
       - service: echoserver
-        # nginx ingress
-        type: nginx
-        # echoserver ingress name
+        # echoserver ingress name, current only nginx ingress
         ingress:
           name: echoserver
 ```
