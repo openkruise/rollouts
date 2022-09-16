@@ -217,6 +217,13 @@ const (
 	// Terminating Reason
 	TerminatingReasonInTerminating = "InTerminating"
 	TerminatingReasonCompleted     = "Completed"
+
+	// RolloutConditionAbnormallyProgressing means the rollout want to progress, but abnormally.
+	RolloutConditionAbnormallyProgressing RolloutConditionType = "AbnormallyProgressing"
+	// AbnormallyProgressingReasonInvalidRolloutIDChange is the case that rollout id is changed, but workload revision not.
+	AbnormallyProgressingReasonInvalidRolloutIDChange = "InvalidRolloutIDChange"
+	// AbnormallyProgressingReasonFirstDeploy is the case that Rollout or workload is deployed at first, rollout will not progress.
+	AbnormallyProgressingReasonFirstDeploy = "FirstDeploy"
 )
 
 // CanaryStatus status fields that only pertain to the canary rollout

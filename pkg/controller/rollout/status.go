@@ -26,6 +26,7 @@ import (
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/util/retry"
@@ -77,15 +78,27 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 		done = false
 		return
 	}
-	newStatus.StableRevision = workload.StableRevision
 	// update workload generation to canaryStatus.ObservedWorkloadGeneration
 	// rollout is a target ref bypass, so there needs to be a field to identify the rollout execution process or results,
 	// which version of deployment is targeted, ObservedWorkloadGeneration that is to compare with the workload generation
-	if newStatus.CanaryStatus != nil && newStatus.CanaryStatus.CanaryRevision != "" &&
-		newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision {
-		newStatus.CanaryStatus.ObservedRolloutID = getRolloutID(workload, rollout)
-		newStatus.CanaryStatus.ObservedWorkloadGeneration = workload.Generation
+	if newStatus.CanaryStatus != nil && newStatus.CanaryStatus.CanaryRevision != "" {
+		if newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision {
+			currentRolloutID := getRolloutID(workload, rollout)
+			if newStatus.CanaryStatus.ObservedRolloutID != "" &&
+				newStatus.CanaryStatus.ObservedRolloutID != currentRolloutID &&
+				newStatus.StableRevision == workload.StableRevision { // except rollout case
+				abnormallyProgressingConditionTransition(&newStatus, rolloutv1alpha1.AbnormallyProgressingReasonInvalidRolloutIDChange)
+			}
+			newStatus.CanaryStatus.ObservedRolloutID = currentRolloutID
+			newStatus.CanaryStatus.ObservedWorkloadGeneration = workload.Generation
+		} else if newStatus.CanaryStatus.CanaryRevision != workload.CanaryRevision || // try to publish a new revision
+			newStatus.CanaryStatus.CanaryRevision != workload.StableRevision { // try to rollback
+			// if a new release is published or try to roll back, remove the condition
+			util.RemoveRolloutCondition(&newStatus, rolloutv1alpha1.RolloutConditionAbnormallyProgressing)
+		}
 	}
+
+	newStatus.StableRevision = workload.StableRevision
 
 	switch newStatus.Phase {
 	case rolloutv1alpha1.RolloutPhaseInitial:
@@ -112,7 +125,6 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 			// But at the first deployment of Rollout/Workload, CanaryStatus isn't set due to no rollout progression,
 			// and PaaS platform cannot judge whether the deployment is completed base on the code above. So we have
 			// to update the status just like the rollout was completed.
-
 			newStatus.CanaryStatus = &rolloutv1alpha1.CanaryStatus{
 				CanaryReplicas:             workload.CanaryReplicas,
 				CanaryReadyReplicas:        workload.CanaryReadyReplicas,
@@ -124,6 +136,7 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 				CurrentStepState:           rolloutv1alpha1.CanaryStepStateCompleted,
 			}
 			newStatus.Message = "workload deployment is completed"
+			abnormallyProgressingConditionTransition(&newStatus, rolloutv1alpha1.AbnormallyProgressingReasonFirstDeploy)
 		}
 	case rolloutv1alpha1.RolloutPhaseProgressing:
 		cond := util.GetRolloutCondition(newStatus, rolloutv1alpha1.RolloutConditionProgressing)
@@ -165,6 +178,7 @@ func resetStatus(status *rolloutv1alpha1.RolloutStatus) {
 	//util.RemoveRolloutCondition(status, rolloutv1alpha1.RolloutConditionProgressing)
 	status.Phase = rolloutv1alpha1.RolloutPhaseInitial
 	status.Message = "workload not found"
+	util.RemoveRolloutCondition(status, rolloutv1alpha1.RolloutConditionAbnormallyProgressing)
 }
 
 func (r *RolloutReconciler) calculateRolloutHash(rollout *rolloutv1alpha1.Rollout) error {
@@ -195,4 +209,20 @@ func (r *RolloutReconciler) calculateRolloutHash(rollout *rolloutv1alpha1.Rollou
 // hash hashes `data` with sha256 and returns the hex string
 func hash(data string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(data)))
+}
+
+func abnormallyProgressingConditionTransition(newStatus *rolloutv1alpha1.RolloutStatus, reason string) {
+	var message string
+	var status corev1.ConditionStatus = "False"
+	switch reason {
+	case rolloutv1alpha1.AbnormallyProgressingReasonInvalidRolloutIDChange:
+		status = corev1.ConditionStatus(v1.ConditionTrue)
+		message = "rollout id changed, but workload revision not"
+	case rolloutv1alpha1.AbnormallyProgressingReasonFirstDeploy:
+		status = corev1.ConditionStatus(v1.ConditionTrue)
+		message = "it is the first deployment of rollout or workload"
+	}
+
+	newCond := util.NewRolloutCondition(rolloutv1alpha1.RolloutConditionAbnormallyProgressing, status, reason, message)
+	_ = util.SetRolloutCondition(newStatus, *newCond)
 }
