@@ -22,8 +22,12 @@ import (
 	"time"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads/cloneset"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads/deployment/canary_strategy"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads/statefulset"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -63,7 +67,7 @@ func (r *Executor) Do(release *v1alpha1.BatchRelease) (reconcile.Result, *v1alph
 		"current-batch-state", release.Status.CanaryStatus.CurrentBatchState)
 
 	newStatus := getInitializedStatus(&release.Status)
-	workloadController, err := r.getWorkloadController(release, newStatus)
+	workloadController, err := r.getReleaseController(release, newStatus)
 	if err != nil || workloadController == nil {
 		return reconcile.Result{}, nil, nil
 	}
@@ -76,7 +80,7 @@ func (r *Executor) Do(release *v1alpha1.BatchRelease) (reconcile.Result, *v1alph
 	return r.executeBatchReleasePlan(release, newStatus, workloadController)
 }
 
-func (r *Executor) executeBatchReleasePlan(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadController workloads.WorkloadController) (reconcile.Result, *v1alpha1.BatchReleaseStatus, error) {
+func (r *Executor) executeBatchReleasePlan(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadController workloads.ReleaseController) (reconcile.Result, *v1alpha1.BatchReleaseStatus, error) {
 	var err error
 	result := reconcile.Result{}
 
@@ -172,7 +176,7 @@ func (r *Executor) executeBatchReleasePlan(release *v1alpha1.BatchRelease, newSt
 }
 
 // reconcile logic when we are in the middle of release, we have to go through finalizing state before succeed or fail
-func (r *Executor) progressBatches(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadController workloads.WorkloadController) (bool, reconcile.Result, error) {
+func (r *Executor) progressBatches(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadController workloads.ReleaseController) (bool, reconcile.Result, error) {
 	var err error
 	progressDone := false
 	result := reconcile.Result{}
@@ -227,7 +231,7 @@ func (r *Executor) progressBatches(release *v1alpha1.BatchRelease, newStatus *v1
 }
 
 // GetWorkloadController pick the right workload controller to work on the workload
-func (r *Executor) getWorkloadController(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) (workloads.WorkloadController, error) {
+func (r *Executor) getReleaseController(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) (workloads.ReleaseController, error) {
 	targetRef := release.Spec.TargetRef.WorkloadRef
 	if targetRef == nil {
 		return nil, nil
@@ -249,18 +253,27 @@ func (r *Executor) getWorkloadController(release *v1alpha1.BatchRelease, newStat
 	case appsv1alpha1.GroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
 			klog.InfoS("using cloneset batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return workloads.NewCloneSetRolloutController(r.client, r.recorder, release, newStatus, targetKey), nil
+			return cloneset.NewCloneSetReleaseController(r.client, r.recorder, release, newStatus, targetKey), nil
+		}
+		if targetRef.Kind == reflect.TypeOf(appsv1beta1.StatefulSet{}).Name() {
+			klog.InfoS("using statefulset-like batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+			return statefulset.NewStatefulSetReleaseController(r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
 
 	case apps.SchemeGroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
 			klog.InfoS("using deployment batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return workloads.NewDeploymentRolloutController(r.client, r.recorder, release, newStatus, targetKey), nil
+			return canary_strategy.NewDeploymentReleaseController(r.client, r.recorder, release, newStatus, targetKey), nil
+		}
+		if targetRef.Kind == reflect.TypeOf(apps.StatefulSet{}).Name() {
+			klog.InfoS("using statefulset-like batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+			return statefulset.NewStatefulSetReleaseController(r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
 	}
 
+	// try to use statefulset-like rollout controller by default
 	klog.InfoS("using statefulset-like batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-	return workloads.NewUnifiedWorkloadRolloutControlPlane(workloads.NewStatefulSetLikeController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+	return statefulset.NewStatefulSetReleaseController(r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 }
 
 func (r *Executor) moveToNextBatch(release *v1alpha1.BatchRelease, status *v1alpha1.BatchReleaseStatus) bool {

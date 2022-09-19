@@ -14,12 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package workloads
+package canary_strategy
 
 import (
 	"context"
 	"fmt"
-	"math"
 	"reflect"
 	"testing"
 
@@ -27,11 +26,11 @@ import (
 	. "github.com/onsi/gomega"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	apimachineryruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -43,8 +42,8 @@ import (
 )
 
 var (
-	scheme       *runtime.Scheme
-	releaseClone = &v1alpha1.BatchRelease{
+	scheme        *runtime.Scheme
+	releaseDeploy = &v1alpha1.BatchRelease{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: v1alpha1.GroupVersion.String(),
 			Kind:       "BatchRelease",
@@ -57,8 +56,8 @@ var (
 		Spec: v1alpha1.BatchReleaseSpec{
 			TargetRef: v1alpha1.ObjectRef{
 				WorkloadRef: &v1alpha1.WorkloadRef{
-					APIVersion: "apps.kruise.io/v1alpha1",
-					Kind:       "CloneSet",
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
 					Name:       "sample",
 				},
 			},
@@ -78,29 +77,29 @@ var (
 		},
 	}
 
-	stableClone = &kruiseappsv1alpha1.CloneSet{
+	stableDeploy = &apps.Deployment{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: kruiseappsv1alpha1.SchemeGroupVersion.String(),
-			Kind:       "CloneSet",
+			APIVersion: apps.SchemeGroupVersion.String(),
+			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "sample",
 			Namespace:  "application",
 			UID:        types.UID("87076677"),
-			Generation: 1,
+			Generation: 2,
 			Labels: map[string]string{
-				"app": "busybox",
-			},
-			Annotations: map[string]string{
-				"something": "whatever",
+				"app":                                "busybox",
+				apps.DefaultDeploymentUniqueLabelKey: "update-pod-hash",
 			},
 		},
-		Spec: kruiseappsv1alpha1.CloneSetSpec{
+		Spec: apps.DeploymentSpec{
 			Replicas: pointer.Int32Ptr(100),
-			UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
-				Partition:      &intstr.IntOrString{Type: intstr.Int, IntVal: int32(1)},
-				MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: int32(2)},
-				MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: int32(2)},
+			Strategy: apps.DeploymentStrategy{
+				Type: apps.RollingUpdateDeploymentStrategyType,
+				RollingUpdate: &apps.RollingUpdateDeployment{
+					MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: int32(1)},
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: int32(2)},
+				},
 			},
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
@@ -113,12 +112,11 @@ var (
 				},
 			},
 		},
-		Status: kruiseappsv1alpha1.CloneSetStatus{
-			Replicas:             100,
-			ReadyReplicas:        100,
-			UpdatedReplicas:      0,
-			UpdatedReadyReplicas: 0,
-			ObservedGeneration:   1,
+		Status: apps.DeploymentStatus{
+			Replicas:          100,
+			ReadyReplicas:     100,
+			UpdatedReplicas:   0,
+			AvailableReplicas: 100,
 		},
 	}
 )
@@ -128,15 +126,9 @@ func init() {
 	apimachineryruntime.Must(apps.AddToScheme(scheme))
 	apimachineryruntime.Must(v1alpha1.AddToScheme(scheme))
 	apimachineryruntime.Must(kruiseappsv1alpha1.AddToScheme(scheme))
-
-	canaryTemplate := stableClone.Spec.Template.DeepCopy()
-	stableTemplate := canaryTemplate.DeepCopy()
-	stableTemplate.Spec.Containers = containers("v1")
-	stableClone.Status.CurrentRevision = util.ComputeHash(stableTemplate, nil)
-	stableClone.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 }
 
-func TestCloneSetController(t *testing.T) {
+func TestDeploymentController(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	cases := []struct {
@@ -168,33 +160,38 @@ func TestCloneSetController(t *testing.T) {
 
 	for _, cs := range cases {
 		t.Run(cs.Name, func(t *testing.T) {
-			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(releaseClone.DeepCopy(), stableClone.DeepCopy()).Build()
+			release := releaseDeploy.DeepCopy()
+			deploy := stableDeploy.DeepCopy()
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release, deploy).Build()
 			rec := record.NewFakeRecorder(100)
-			c := cloneSetController{
-				workloadController: workloadController{
-					client:    cli,
-					recorder:  rec,
-					release:   releaseClone,
-					newStatus: &releaseClone.Status,
-				},
-				targetNamespacedName: client.ObjectKeyFromObject(stableClone),
+			c := newDeploymentController(cli, rec, release, client.ObjectKeyFromObject(deploy))
+			oldObject := &apps.Deployment{}
+			Expect(cli.Get(context.TODO(), c.deployKey, oldObject)).NotTo(HaveOccurred())
+			canary, err := c.claimDeployment(oldObject.DeepCopy(), nil)
+			Expect(canary).ShouldNot(BeNil())
+			Expect(err).NotTo(HaveOccurred())
+
+			// The following logic should have been done in controller-runtime
+			{
+				dList := &apps.DeploymentList{}
+				Expect(cli.List(context.TODO(), dList)).NotTo(HaveOccurred())
+				for i := range dList.Items {
+					d := &dList.Items[i]
+					d.SetGroupVersionKind(schema.GroupVersionKind{
+						Group: "apps", Version: "v1", Kind: "Deployment",
+					})
+					Expect(cli.Update(context.TODO(), d)).NotTo(HaveOccurred())
+				}
 			}
-			oldObject := &kruiseappsv1alpha1.CloneSet{}
-			Expect(cli.Get(context.TODO(), c.targetNamespacedName, oldObject)).NotTo(HaveOccurred())
-			succeed, err := c.claimCloneSet(oldObject.DeepCopy())
-			Expect(succeed).Should(BeTrue())
+
+			newObject := &apps.Deployment{}
+			Expect(cli.Get(context.TODO(), c.deployKey, newObject)).NotTo(HaveOccurred())
+			_, err = c.releaseDeployment(newObject.DeepCopy(), cs.Cleanup)
 			Expect(err).NotTo(HaveOccurred())
 
-			newObject := &kruiseappsv1alpha1.CloneSet{}
-			Expect(cli.Get(context.TODO(), c.targetNamespacedName, newObject)).NotTo(HaveOccurred())
-			succeed, err = c.releaseCloneSet(newObject.DeepCopy(), cs.Cleanup)
-			Expect(succeed).Should(BeTrue())
-			Expect(err).NotTo(HaveOccurred())
-
-			newObject = &kruiseappsv1alpha1.CloneSet{}
-			Expect(cli.Get(context.TODO(), c.targetNamespacedName, newObject)).NotTo(HaveOccurred())
-			newObject.Spec.UpdateStrategy.Paused = oldObject.Spec.UpdateStrategy.Paused
-			newObject.Spec.UpdateStrategy.Partition = oldObject.Spec.UpdateStrategy.Partition
+			newObject = &apps.Deployment{}
+			Expect(cli.Get(context.TODO(), c.deployKey, newObject)).NotTo(HaveOccurred())
+			newObject.Spec.Paused = oldObject.Spec.Paused
 			Expect(reflect.DeepEqual(oldObject.Spec, newObject.Spec)).Should(BeTrue())
 			Expect(reflect.DeepEqual(oldObject.Labels, newObject.Labels)).Should(BeTrue())
 			Expect(reflect.DeepEqual(oldObject.Finalizers, newObject.Finalizers)).Should(BeTrue())
@@ -203,25 +200,11 @@ func TestCloneSetController(t *testing.T) {
 	}
 }
 
-func TestParseIntegerAsPercentage(t *testing.T) {
-	RegisterFailHandler(Fail)
-
-	supposeUpper := 10000
-	for allReplicas := 1; allReplicas <= supposeUpper; allReplicas++ {
-		for percent := 0; percent <= 100; percent++ {
-			canaryPercent := intstr.FromString(fmt.Sprintf("%v%%", percent))
-			canaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&canaryPercent, allReplicas, true)
-			partition := ParseIntegerAsPercentageIfPossible(int32(allReplicas-canaryReplicas), int32(allReplicas), &canaryPercent)
-			stableReplicas, _ := intstr.GetScaledValueFromIntOrPercent(&partition, allReplicas, true)
-			if percent == 0 {
-				Expect(stableReplicas).Should(BeNumerically("==", allReplicas))
-			} else if percent == 100 {
-				Expect(stableReplicas).Should(BeNumerically("==", 0))
-			} else if percent > 0 {
-				Expect(allReplicas - stableReplicas).To(BeNumerically(">", 0))
-			}
-			Expect(stableReplicas).Should(BeNumerically("<=", allReplicas))
-			Expect(math.Abs(float64((allReplicas - canaryReplicas) - stableReplicas))).Should(BeNumerically("<", float64(allReplicas)*0.01))
-		}
+func containers(version string) []corev1.Container {
+	return []corev1.Container{
+		{
+			Name:  "busybox",
+			Image: fmt.Sprintf("busybox:%v", version),
+		},
 	}
 }

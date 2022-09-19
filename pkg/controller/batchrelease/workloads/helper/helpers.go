@@ -1,4 +1,4 @@
-package workloads
+package helper
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func filterPodsForUnorderedRollback(pods []*corev1.Pod, plannedBatchCanaryReplicas, expectedBatchStableReplicas, replicas int32, rolloutID, updateRevision string) []*corev1.Pod {
+func FilterPodsForUnorderedRollback(pods []*corev1.Pod, plannedBatchCanaryReplicas, expectedBatchStableReplicas, replicas int32, rolloutID, updateRevision string) []*corev1.Pod {
 	var noNeedRollbackReplicas int32
 	var realNeedRollbackReplicas int32
 	var expectedRollbackReplicas int32 // total need rollback
@@ -62,7 +62,7 @@ func filterPodsForUnorderedRollback(pods []*corev1.Pod, plannedBatchCanaryReplic
 }
 
 // TODO: support advanced statefulSet reserveOrdinal feature
-func filterPodsForOrderedRollback(pods []*corev1.Pod, plannedBatchCanaryReplicas, expectedBatchStableReplicas, replicas int32, rolloutID, updateRevision string) []*corev1.Pod {
+func FilterPodsForOrderedRollback(pods []*corev1.Pod, plannedBatchCanaryReplicas, expectedBatchStableReplicas, replicas int32, rolloutID, updateRevision string) []*corev1.Pod {
 	var terminatingPods []*corev1.Pod
 	var needRollbackPods []*corev1.Pod
 	var noNeedRollbackPods []*corev1.Pod
@@ -96,7 +96,7 @@ func filterPodsForOrderedRollback(pods []*corev1.Pod, plannedBatchCanaryReplicas
 	return append(append(needRollbackPods, noNeedRollbackPods[:lastIndex]...), terminatingPods...)
 }
 
-func countNoNeedRollbackReplicas(pods []*corev1.Pod, updateRevision, rolloutID string) int32 {
+func CountNoNeedRollbackReplicas(pods []*corev1.Pod, updateRevision, rolloutID string) int32 {
 	noNeedRollbackReplicas := int32(0)
 	for _, pod := range pods {
 		if !pod.DeletionTimestamp.IsZero() {
@@ -113,8 +113,8 @@ func countNoNeedRollbackReplicas(pods []*corev1.Pod, updateRevision, rolloutID s
 	return noNeedRollbackReplicas
 }
 
-// patchPodBatchLabel will patch rollout-id && batch-id to pods
-func patchPodBatchLabel(c client.Client, pods []*corev1.Pod, rolloutID string, batchID int32, updateRevision string, replicas int32, logKey types.NamespacedName) (bool, error) {
+// PatchPodBatchLabel will patch rollout-id && batch-id to pods
+func PatchPodBatchLabel(c client.Client, pods []*corev1.Pod, rolloutID string, batchID int32, updateRevision string, replicas int32, logKey klog.ObjectRef) (bool, error) {
 	// the number of active pods that has been patched successfully.
 	patchedUpdatedReplicas := int32(0)
 	for _, pod := range pods {
@@ -165,7 +165,7 @@ func patchPodBatchLabel(c client.Client, pods []*corev1.Pod, rolloutID string, b
 	return patchedUpdatedReplicas >= replicas, nil
 }
 
-func releaseWorkload(c client.Client, object client.Object) error {
+func ReleaseWorkload(c client.Client, object client.Object) error {
 	_, found := object.GetAnnotations()[util.BatchReleaseControlAnnotation]
 	if !found {
 		klog.V(3).Infof("Workload(%v) is already released", client.ObjectKeyFromObject(object))
@@ -177,7 +177,7 @@ func releaseWorkload(c client.Client, object client.Object) error {
 	return c.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte))
 }
 
-func claimWorkload(c client.Client, planController *v1alpha1.BatchRelease, object client.Object, patchUpdateStrategy map[string]interface{}) error {
+func ClaimWorkload(c client.Client, planController *v1alpha1.BatchRelease, object client.Object, patchUpdateStrategy map[string]interface{}) error {
 	if controlInfo, ok := object.GetAnnotations()[util.BatchReleaseControlAnnotation]; ok && controlInfo != "" {
 		ref := &metav1.OwnerReference{}
 		err := json.Unmarshal([]byte(controlInfo), ref)
@@ -208,7 +208,7 @@ func claimWorkload(c client.Client, planController *v1alpha1.BatchRelease, objec
 	return c.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte))
 }
 
-func patchSpec(c client.Client, object client.Object, spec map[string]interface{}) error {
+func PatchSpec(c client.Client, object client.Object, spec map[string]interface{}) error {
 	patchByte, err := json.Marshal(map[string]interface{}{"spec": spec})
 	if err != nil {
 		return err
@@ -217,7 +217,7 @@ func patchSpec(c client.Client, object client.Object, spec map[string]interface{
 	return c.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, patchByte))
 }
 
-func calculateNewBatchTarget(rolloutSpec *v1alpha1.ReleasePlan, workloadReplicas, currentBatch int) int {
+func CalculateNewBatchTarget(rolloutSpec *v1alpha1.ReleasePlan, workloadReplicas, currentBatch int) int {
 	batchSize, _ := intstr.GetValueFromIntOrPercent(&rolloutSpec.Batches[currentBatch].CanaryReplicas, workloadReplicas, true)
 	if batchSize > workloadReplicas {
 		klog.Warningf("releasePlan has wrong batch replicas, batches[%d].replicas %v is more than workload.replicas %v", currentBatch, batchSize, workloadReplicas)

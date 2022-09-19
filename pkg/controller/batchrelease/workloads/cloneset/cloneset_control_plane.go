@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package workloads
+package cloneset
 
 import (
 	"context"
@@ -22,6 +22,8 @@ import (
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads/helper"
 	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -34,29 +36,21 @@ import (
 )
 
 // CloneSetRolloutController is responsible for handling rollout CloneSet type of workloads
-type CloneSetRolloutController struct {
-	cloneSetController
-	clone *kruiseappsv1alpha1.CloneSet
+type realReleaseController struct {
+	*cloneSetController
+	newStatus *v1alpha1.BatchReleaseStatus
 }
 
-// NewCloneSetRolloutController creates a new CloneSet rollout controller
-func NewCloneSetRolloutController(cli client.Client, recorder record.EventRecorder, release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, targetNamespacedName types.NamespacedName) *CloneSetRolloutController {
-	return &CloneSetRolloutController{
-		cloneSetController: cloneSetController{
-			workloadController: workloadController{
-				client:    cli,
-				recorder:  recorder,
-				release:   release,
-				newStatus: newStatus,
-			},
-			releasePlanKey:       client.ObjectKeyFromObject(release),
-			targetNamespacedName: targetNamespacedName,
-		},
+// NewCloneSetReleaseController creates a new CloneSet rollout controller
+func NewCloneSetReleaseController(cli client.Client, recorder record.EventRecorder, release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, key types.NamespacedName) *realReleaseController {
+	return &realReleaseController{
+		newStatus:          newStatus,
+		cloneSetController: newCloneSetController(cli, recorder, release, key),
 	}
 }
 
 // VerifyWorkload verifies that the workload is ready to execute release plan
-func (c *CloneSetRolloutController) VerifyWorkload() (bool, error) {
+func (c *realReleaseController) VerifyWorkload() (bool, error) {
 	var err error
 	var message string
 	defer func() {
@@ -74,19 +68,19 @@ func (c *CloneSetRolloutController) VerifyWorkload() (bool, error) {
 
 	// if the workload status is untrustworthy
 	if c.clone.Status.ObservedGeneration != c.clone.Generation {
-		message = fmt.Sprintf("CloneSet(%v) is still reconciling, wait for it to be done", c.targetNamespacedName)
+		message = fmt.Sprintf("CloneSet(%v) is still reconciling, wait for it to be done", c.cloneKey)
 		return false, nil
 	}
 
 	// if the cloneSet has been promoted, no need to go on
 	if c.clone.Status.UpdatedReplicas == *c.clone.Spec.Replicas {
-		message = fmt.Sprintf("CloneSet(%v) update revision has been promoted, no need to reconcile", c.targetNamespacedName)
+		message = fmt.Sprintf("CloneSet(%v) update revision has been promoted, no need to reconcile", c.cloneKey)
 		return false, nil
 	}
 
 	// if the cloneSet is not paused and is not under our control
 	if !(c.clone.Spec.UpdateStrategy.Paused || c.clone.Spec.UpdateStrategy.Partition.IntVal > *c.clone.Spec.Replicas || c.clone.Spec.UpdateStrategy.Partition.StrVal == "100%") {
-		message = fmt.Sprintf("CloneSet(%v) should be paused before execute the release plan", c.targetNamespacedName)
+		message = fmt.Sprintf("CloneSet(%v) should be paused before execute the release plan", c.cloneKey)
 		return false, nil
 	}
 
@@ -99,7 +93,7 @@ func (c *CloneSetRolloutController) VerifyWorkload() (bool, error) {
 // - bool: whether all updated pods have been patched no-need-update label;
 // - *int32: how many pods have been patched;
 // - err: whether error occurs.
-func (c *CloneSetRolloutController) prepareBeforeRollback() (bool, *int32, error) {
+func (c *realReleaseController) prepareBeforeRollback() (bool, *int32, error) {
 	if c.release.Annotations[util.RollbackInBatchAnnotation] != "true" {
 		return true, nil, nil
 	}
@@ -110,9 +104,9 @@ func (c *CloneSetRolloutController) prepareBeforeRollback() (bool, *int32, error
 		return true, &noNeedRollbackReplicas, nil
 	}
 
-	pods, err := util.ListOwnedPods(c.client, c.clone)
+	pods, err := util.ListOwnedPods(c.Client, c.clone)
 	if err != nil {
-		klog.Errorf("Failed to list pods for CloneSet %v", c.targetNamespacedName)
+		klog.Errorf("Failed to list pods for CloneSet %v", c.cloneKey)
 		return false, nil, err
 	}
 
@@ -139,7 +133,7 @@ func (c *CloneSetRolloutController) prepareBeforeRollback() (bool, *int32, error
 	for _, pod := range filterPods {
 		podClone := pod.DeepCopy()
 		body := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s"}}}`, util.NoNeedUpdatePodLabel, rolloutID)
-		err = c.client.Patch(context.TODO(), podClone, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
+		err = c.Patch(context.TODO(), podClone, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
 		if err != nil {
 			klog.Errorf("Failed to patch rollback labels[%s]=%s to pod %v", util.NoNeedUpdatePodLabel, rolloutID, client.ObjectKeyFromObject(pod))
 			return false, &noNeedRollbackReplicas, err
@@ -148,12 +142,12 @@ func (c *CloneSetRolloutController) prepareBeforeRollback() (bool, *int32, error
 		}
 		noNeedRollbackReplicas++
 	}
-	klog.Infof("BatchRelease(%v) find %v replicas no need to rollback", c.releasePlanKey, noNeedRollbackReplicas)
+	klog.Infof("BatchRelease(%v) find %v replicas no need to rollback", klog.KObj(c.release), noNeedRollbackReplicas)
 	return false, &noNeedRollbackReplicas, nil
 }
 
 // PrepareBeforeProgress makes sure that the source and target CloneSet is under our control
-func (c *CloneSetRolloutController) PrepareBeforeProgress() (bool, *int32, error) {
+func (c *realReleaseController) PrepareBeforeProgress() (bool, *int32, error) {
 	if err := c.fetchCloneSet(); err != nil {
 		return false, nil, err
 	}
@@ -177,13 +171,13 @@ func (c *CloneSetRolloutController) PrepareBeforeProgress() (bool, *int32, error
 
 // UpgradeOneBatch calculates the number of pods we can upgrade once according to the rollout spec
 // and then set the partition accordingly
-func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
+func (c *realReleaseController) UpgradeOneBatch() (bool, error) {
 	if err := c.fetchCloneSet(); err != nil {
 		return false, err
 	}
 
 	if c.newStatus.ObservedWorkloadReplicas == 0 {
-		klog.Infof("BatchRelease(%v) observed workload replicas is 0, no need to upgrade", c.releasePlanKey)
+		klog.Infof("BatchRelease(%v) observed workload replicas is 0, no need to upgrade", klog.KObj(c.release))
 		return true, nil
 	}
 
@@ -192,15 +186,15 @@ func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 		return false, nil
 	}
 
-	pods, err := util.ListOwnedPods(c.client, c.clone)
+	pods, err := util.ListOwnedPods(c.Client, c.clone)
 	if err != nil {
-		klog.Errorf("Failed to list pods for CloneSet %v", c.targetNamespacedName)
+		klog.Errorf("Failed to list pods for CloneSet %v", c.cloneKey)
 		return false, err
 	}
 
 	var noNeedRollbackReplicas int32
 	if c.newStatus.CanaryStatus.NoNeedUpdateReplicas != nil {
-		noNeedRollbackReplicas = countNoNeedRollbackReplicas(pods, c.newStatus.UpdateRevision, c.release.Spec.ReleasePlan.RolloutID)
+		noNeedRollbackReplicas = helper.CountNoNeedRollbackReplicas(pods, c.newStatus.UpdateRevision, c.release.Spec.ReleasePlan.RolloutID)
 		c.newStatus.CanaryStatus.NoNeedUpdateReplicas = pointer.Int32(noNeedRollbackReplicas)
 	}
 
@@ -227,7 +221,7 @@ func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 	}
 
 	klog.V(3).InfoS("upgraded one batch, current info:",
-		"BatchRelease", c.releasePlanKey,
+		"BatchRelease", klog.KObj(c.release),
 		"currentBatch", currentBatch,
 		"replicas", replicas,
 		"updatedReplicas", updatedReplicas,
@@ -254,7 +248,7 @@ func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 }
 
 // CheckOneBatchReady checks to see if the pods are all available according to the rollout plan
-func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
+func (c *realReleaseController) CheckOneBatchReady() (bool, error) {
 	if err := c.fetchCloneSet(); err != nil {
 		return false, err
 	}
@@ -292,7 +286,7 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 	}
 
 	klog.V(3).InfoS("check one batch, current info:",
-		"BatchRelease", c.releasePlanKey,
+		"BatchRelease", klog.KObj(c.release),
 		"currentBatch", currentBatch,
 		"replicas", replicas,
 		"updatedReplicas", updatedReplicas,
@@ -307,7 +301,7 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 		(realNeedUpgradeCanaryReplicas == 0 || updatedReadyReplicas >= 1) // 3.make sure that at least one upgrade pod is available
 
 	if !currentBatchIsReady {
-		klog.InfoS("the batch is not ready yet", "BatchRelease", c.releasePlanKey, "current-batch", c.newStatus.CanaryStatus.CurrentBatch)
+		klog.InfoS("the batch is not ready yet", "BatchRelease", klog.KObj(c.release), "current-batch", c.newStatus.CanaryStatus.CurrentBatch)
 		return false, nil
 	}
 
@@ -316,7 +310,7 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 }
 
 // FinalizeProgress makes sure the CloneSet is all upgraded
-func (c *CloneSetRolloutController) FinalizeProgress(cleanup bool) (bool, error) {
+func (c *realReleaseController) FinalizeProgress(cleanup bool) (bool, error) {
 	if err := c.fetchCloneSet(); client.IgnoreNotFound(err) != nil {
 		return false, err
 	}
@@ -330,15 +324,15 @@ func (c *CloneSetRolloutController) FinalizeProgress(cleanup bool) (bool, error)
 }
 
 // SyncWorkloadInfo return change type if workload was changed during release
-func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *util.WorkloadInfo, error) {
+func (c *realReleaseController) SyncWorkloadInfo() (workloads.WorkloadEventType, *util.WorkloadInfo, error) {
 	// ignore the sync if the release plan is deleted
 	if c.release.DeletionTimestamp != nil {
-		return IgnoreWorkloadEvent, nil, nil
+		return workloads.IgnoreWorkloadEvent, nil, nil
 	}
 
 	if err := c.fetchCloneSet(); err != nil {
 		if apierrors.IsNotFound(err) {
-			return WorkloadHasGone, nil, err
+			return workloads.WorkloadHasGone, nil, err
 		}
 		return "", nil, err
 	}
@@ -346,8 +340,8 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *util
 	// in case that the cloneSet status is untrustworthy
 	if c.clone.Status.ObservedGeneration != c.clone.Generation {
 		klog.Warningf("CloneSet(%v) is still reconciling, waiting for it to complete, generation: %v, observed: %v",
-			c.targetNamespacedName, c.clone.Generation, c.clone.Status.ObservedGeneration)
-		return WorkloadStillReconciling, nil, nil
+			c.cloneKey, c.clone.Generation, c.clone.Status.ObservedGeneration)
+		return workloads.WorkloadStillReconciling, nil, nil
 	}
 
 	workloadInfo := &util.WorkloadInfo{
@@ -361,15 +355,15 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *util
 
 	// in case of that the updated revision of the workload is promoted
 	if c.clone.Status.UpdatedReplicas == c.clone.Status.Replicas {
-		return IgnoreWorkloadEvent, workloadInfo, nil
+		return workloads.IgnoreWorkloadEvent, workloadInfo, nil
 	}
 
 	// in case of that the workload is scaling
 	if *c.clone.Spec.Replicas != c.newStatus.ObservedWorkloadReplicas && c.newStatus.ObservedWorkloadReplicas != -1 {
 		workloadInfo.Replicas = c.clone.Spec.Replicas
 		klog.Warningf("CloneSet(%v) replicas changed during releasing, should pause and wait for it to complete, "+
-			"replicas from: %v -> %v", c.targetNamespacedName, c.newStatus.ObservedWorkloadReplicas, *c.clone.Spec.Replicas)
-		return WorkloadReplicasChanged, workloadInfo, nil
+			"replicas from: %v -> %v", c.cloneKey, c.newStatus.ObservedWorkloadReplicas, *c.clone.Spec.Replicas)
+		return workloads.WorkloadReplicasChanged, workloadInfo, nil
 	}
 
 	// updateRevision == CurrentRevision means CloneSet is rolling back or newly-created.
@@ -378,27 +372,27 @@ func (c *CloneSetRolloutController) SyncWorkloadInfo() (WorkloadEventType, *util
 		c.newStatus.StableRevision == c.clone.Status.UpdateRevision &&
 		// StableRevision != observed UpdateRevision means the rollback event have not been observed.
 		c.newStatus.StableRevision != c.newStatus.UpdateRevision {
-		klog.Warningf("CloneSet(%v) is rolling back in batches", c.targetNamespacedName)
-		return WorkloadRollbackInBatch, workloadInfo, nil
+		klog.Warningf("CloneSet(%v) is rolling back in batches", c.cloneKey)
+		return workloads.WorkloadRollbackInBatch, workloadInfo, nil
 	}
 
 	// in case of that the workload was changed
 	if c.clone.Status.UpdateRevision != c.newStatus.UpdateRevision {
 		klog.Warningf("CloneSet(%v) updateRevision changed during releasing, should try to restart the release plan, "+
-			"updateRevision from: %v -> %v", c.targetNamespacedName, c.newStatus.UpdateRevision, c.clone.Status.UpdateRevision)
-		return WorkloadPodTemplateChanged, workloadInfo, nil
+			"updateRevision from: %v -> %v", c.cloneKey, c.newStatus.UpdateRevision, c.clone.Status.UpdateRevision)
+		return workloads.WorkloadPodTemplateChanged, workloadInfo, nil
 	}
 
-	return IgnoreWorkloadEvent, workloadInfo, nil
+	return workloads.IgnoreWorkloadEvent, workloadInfo, nil
 }
 
 /* ----------------------------------
 The functions below are helper functions
 ------------------------------------- */
 // fetchCloneSet fetch cloneSet to c.clone
-func (c *CloneSetRolloutController) fetchCloneSet() error {
+func (c *realReleaseController) fetchCloneSet() error {
 	clone := &kruiseappsv1alpha1.CloneSet{}
-	if err := c.client.Get(context.TODO(), c.targetNamespacedName, clone); err != nil {
+	if err := c.Get(context.TODO(), c.cloneKey, clone); err != nil {
 		if !apierrors.IsNotFound(err) {
 			c.recorder.Event(c.release, v1.EventTypeWarning, "GetCloneSetFailed", err.Error())
 		}
@@ -408,13 +402,13 @@ func (c *CloneSetRolloutController) fetchCloneSet() error {
 	return nil
 }
 
-func (c *CloneSetRolloutController) recordCloneSetRevisionAndReplicas() {
+func (c *realReleaseController) recordCloneSetRevisionAndReplicas() {
 	c.newStatus.ObservedWorkloadReplicas = *c.clone.Spec.Replicas
 	c.newStatus.StableRevision = c.clone.Status.CurrentRevision
 	c.newStatus.UpdateRevision = c.clone.Status.UpdateRevision
 }
 
-func (c *CloneSetRolloutController) patchPodBatchLabel(pods []*v1.Pod, plannedBatchCanaryReplicas, expectedBatchStableReplicas int32) (bool, error) {
+func (c *realReleaseController) patchPodBatchLabel(pods []*v1.Pod, plannedBatchCanaryReplicas, expectedBatchStableReplicas int32) (bool, error) {
 	rolloutID := c.release.Spec.ReleasePlan.RolloutID
 	if rolloutID == "" {
 		return true, nil
@@ -423,7 +417,7 @@ func (c *CloneSetRolloutController) patchPodBatchLabel(pods []*v1.Pod, plannedBa
 	updateRevision := c.release.Status.UpdateRevision
 	batchID := c.release.Status.CanaryStatus.CurrentBatch + 1
 	if c.newStatus.CanaryStatus.NoNeedUpdateReplicas != nil {
-		pods = filterPodsForUnorderedRollback(pods, plannedBatchCanaryReplicas, expectedBatchStableReplicas, c.release.Status.ObservedWorkloadReplicas, rolloutID, updateRevision)
+		pods = helper.FilterPodsForUnorderedRollback(pods, plannedBatchCanaryReplicas, expectedBatchStableReplicas, c.release.Status.ObservedWorkloadReplicas, rolloutID, updateRevision)
 	}
-	return patchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, plannedBatchCanaryReplicas, c.releasePlanKey)
+	return helper.PatchPodBatchLabel(c.Client, pods, rolloutID, batchID, updateRevision, plannedBatchCanaryReplicas, klog.KObj(c.release))
 }

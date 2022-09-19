@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package workloads
+package canary_strategy
 
 import (
 	"context"
@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"sort"
 
+	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads/helper"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
@@ -29,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,10 +40,22 @@ import (
 
 // deploymentController is the place to hold fields needed for handle Deployment type of workloads
 type deploymentController struct {
-	workloadController
-	releaseKey           types.NamespacedName
-	stableNamespacedName types.NamespacedName
-	canaryNamespacedName types.NamespacedName
+	client.Client
+	recorder record.EventRecorder
+
+	release   *appsv1alpha1.BatchRelease
+	stable    *apps.Deployment
+	canary    *apps.Deployment
+	deployKey types.NamespacedName
+}
+
+func newDeploymentController(c client.Client, r record.EventRecorder, br *appsv1alpha1.BatchRelease, key types.NamespacedName) *deploymentController {
+	return &deploymentController{
+		Client:    c,
+		recorder:  r,
+		release:   br,
+		deployKey: key,
+	}
 }
 
 // add the parent controller to the owner of the deployment, unpause it and initialize the size
@@ -52,11 +67,11 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		err := json.Unmarshal([]byte(controlInfo), ref)
 		if err == nil && ref.UID == c.release.UID {
 			klog.V(3).Infof("Deployment(%v) has been controlled by this BatchRelease(%v), no need to claim again",
-				c.stableNamespacedName, c.releaseKey)
+				c.deployKey, klog.KObj(c.release))
 			controlled = true
 		} else {
 			klog.Errorf("Failed to parse controller info from Deployment(%v) annotation, error: %v, controller info: %+v",
-				c.stableNamespacedName, err, *ref)
+				c.deployKey, err, *ref)
 		}
 	}
 
@@ -72,7 +87,7 @@ func (c *deploymentController) claimDeployment(stableDeploy, canaryDeploy *apps.
 		}
 		cloneObj := stableDeploy.DeepCopy()
 		patchedBody, _ := json.Marshal(patchedInfo)
-		if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.StrategicMergePatchType, patchedBody)); err != nil {
+		if err := c.Patch(context.TODO(), cloneObj, client.RawPatch(types.StrategicMergePatchType, patchedBody)); err != nil {
 			klog.Errorf("Failed to patch controller info annotations to stable deployment(%v), error: %v", client.ObjectKeyFromObject(stableDeploy), err)
 			return canaryDeploy, err
 		}
@@ -101,8 +116,8 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	suffix := util.GenRandomStr(3)
 	canaryDeploy := &apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("%v-%v", c.canaryNamespacedName.Name, suffix),
-			Namespace:   c.stableNamespacedName.Namespace,
+			Name:        fmt.Sprintf("%v-%v", c.deployKey.Name, suffix),
+			Namespace:   c.deployKey.Namespace,
 			Labels:      map[string]string{},
 			Annotations: map[string]string{},
 		},
@@ -124,7 +139,7 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 	canaryDeploy.OwnerReferences = append(canaryDeploy.OwnerReferences, *metav1.NewControllerRef(c.release, c.release.GroupVersionKind()))
 
 	// set extra labels & annotations
-	canaryDeploy.Labels[util.CanaryDeploymentLabel] = c.stableNamespacedName.Name
+	canaryDeploy.Labels[util.CanaryDeploymentLabel] = c.deployKey.Name
 	owner := metav1.NewControllerRef(c.release, c.release.GroupVersionKind())
 	if owner != nil {
 		ownerInfo, _ := json.Marshal(owner)
@@ -138,7 +153,7 @@ func (c *deploymentController) createCanaryDeployment(stableDeploy *apps.Deploym
 
 	// create canary Deployment
 	canaryKey := client.ObjectKeyFromObject(canaryDeploy)
-	err := c.client.Create(context.TODO(), canaryDeploy)
+	err := c.Create(context.TODO(), canaryDeploy)
 	if err != nil {
 		klog.Errorf("Failed to create canary Deployment(%v), error: %v", canaryKey, err)
 		return nil, err
@@ -157,16 +172,16 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 		var patchByte []byte
 		cloneObj := stableDeploy.DeepCopy()
 		patchByte = []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%v":null}}}`, util.BatchReleaseControlAnnotation))
-		patchErr = c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.StrategicMergePatchType, patchByte))
+		patchErr = c.Patch(context.TODO(), cloneObj, client.RawPatch(types.StrategicMergePatchType, patchByte))
 		if patchErr != nil {
-			klog.Errorf("Error occurred when patching Deployment(%v), error: %v", c.stableNamespacedName, patchErr)
+			klog.Errorf("Error occurred when patching Deployment(%v), error: %v", c.deployKey, patchErr)
 			return false, patchErr
 		}
 	}
 
 	// clean up canary deployment if it needs
 	if cleanup {
-		ds, err := c.listCanaryDeployment(client.InNamespace(c.stableNamespacedName.Namespace))
+		ds, err := c.listCanaryDeployment(client.InNamespace(c.deployKey.Namespace))
 		if err != nil {
 			return false, err
 		}
@@ -180,7 +195,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 		for _, d := range ds {
 			// clean up finalizers first
 			if controllerutil.ContainsFinalizer(d, util.CanaryDeploymentFinalizer) {
-				updateErr := util.UpdateFinalizer(c.client, d, util.RemoveFinalizerOpType, util.CanaryDeploymentFinalizer)
+				updateErr := util.UpdateFinalizer(c.Client, d, util.RemoveFinalizerOpType, util.CanaryDeploymentFinalizer)
 				if updateErr != nil && !errors.IsNotFound(updateErr) {
 					klog.Error("Error occurred when updating Deployment(%v), error: %v", client.ObjectKeyFromObject(d), updateErr)
 					return false, updateErr
@@ -189,7 +204,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 			}
 
 			// delete the deployment
-			deleteErr = c.client.Delete(context.TODO(), d)
+			deleteErr = c.Delete(context.TODO(), d)
 			if deleteErr != nil && !errors.IsNotFound(deleteErr) {
 				klog.Errorf("Error occurred when deleting Deployment(%v), error: %v", client.ObjectKeyFromObject(d), deleteErr)
 				return false, deleteErr
@@ -197,7 +212,7 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 		}
 	}
 
-	klog.V(3).Infof("Release Deployment(%v) Successfully", c.stableNamespacedName)
+	klog.V(3).Infof("Release Deployment(%v) Successfully", c.deployKey)
 	return true, nil
 }
 
@@ -211,14 +226,14 @@ func (c *deploymentController) patchDeploymentReplicas(deploy *apps.Deployment, 
 
 	cloneObj := deploy.DeepCopy()
 	patchByte, _ := json.Marshal(patch)
-	if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
+	if err := c.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.release, v1.EventTypeWarning, "PatchPartitionFailed",
 			"Failed to update the canary Deployment to the correct canary replicas %d, error: %v", replicas, err)
 		return err
 	}
 
 	klog.InfoS("Submitted modified partition quest for canary Deployment", "Deployment",
-		client.ObjectKeyFromObject(deploy), "target canary replicas size", replicas, "batch", c.newStatus.CanaryStatus.CurrentBatch)
+		client.ObjectKeyFromObject(deploy), "target canary replicas size", replicas, "batch", c.release.Status.CanaryStatus.CurrentBatch)
 	return nil
 }
 
@@ -254,7 +269,7 @@ func (c *deploymentController) listReplicaSetsFor(deploy *apps.Deployment) ([]*a
 	}
 
 	rsList := &apps.ReplicaSetList{}
-	err = c.client.List(context.TODO(), rsList, utilclient.DisableDeepCopy,
+	err = c.List(context.TODO(), rsList, utilclient.DisableDeepCopy,
 		&client.ListOptions{Namespace: deploy.Namespace, LabelSelector: deploySelector})
 	if err != nil {
 		return nil, err
@@ -276,7 +291,7 @@ func (c *deploymentController) listReplicaSetsFor(deploy *apps.Deployment) ([]*a
 
 func (c *deploymentController) listCanaryDeployment(options ...client.ListOption) ([]*apps.Deployment, error) {
 	dList := &apps.DeploymentList{}
-	if err := c.client.List(context.TODO(), dList, options...); err != nil {
+	if err := c.List(context.TODO(), dList, options...); err != nil {
 		return nil, err
 	}
 
@@ -295,10 +310,10 @@ func (c *deploymentController) listCanaryDeployment(options ...client.ListOption
 
 // the target workload size for the current batch
 func (c *deploymentController) calculateCurrentCanary(totalSize int32) int32 {
-	targetSize := int32(calculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.newStatus.CanaryStatus.CurrentBatch)))
+	targetSize := int32(helper.CalculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.release.Status.CanaryStatus.CurrentBatch)))
 	klog.InfoS("Calculated the number of pods in the canary Deployment after current batch",
-		"Deployment", c.stableNamespacedName, "BatchRelease", c.releaseKey,
-		"current batch", c.newStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
+		"Deployment", c.deployKey, "BatchRelease", klog.KObj(c.release),
+		"current batch", c.release.Status.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
 	return targetSize
 }
 
@@ -306,7 +321,7 @@ func (c *deploymentController) calculateCurrentCanary(totalSize int32) int32 {
 func (c *deploymentController) calculateCurrentStable(totalSize int32) int32 {
 	sourceSize := totalSize - c.calculateCurrentCanary(totalSize)
 	klog.InfoS("Calculated the number of pods in the stable Deployment after current batch",
-		"Deployment", c.stableNamespacedName, "BatchRelease", c.releaseKey,
-		"current batch", c.newStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
+		"Deployment", c.deployKey, "BatchRelease", klog.KObj(c.release),
+		"current batch", c.release.Status.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
 	return sourceSize
 }

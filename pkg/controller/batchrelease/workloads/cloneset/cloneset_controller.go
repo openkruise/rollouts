@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package workloads
+package cloneset
 
 import (
 	"context"
@@ -22,20 +22,35 @@ import (
 	"fmt"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads/helper"
 	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // cloneSetController is the place to hold fields needed for handle CloneSet type of workloads
 type cloneSetController struct {
-	workloadController
-	releasePlanKey       types.NamespacedName
-	targetNamespacedName types.NamespacedName
+	client.Client
+	recorder record.EventRecorder
+
+	release  *appsv1alpha1.BatchRelease
+	clone    *kruiseappsv1alpha1.CloneSet
+	cloneKey types.NamespacedName
+}
+
+func newCloneSetController(c client.Client, r record.EventRecorder, br *appsv1alpha1.BatchRelease, key types.NamespacedName) *cloneSetController {
+	return &cloneSetController{
+		Client:   c,
+		recorder: r,
+		release:  br,
+		cloneKey: key,
+	}
 }
 
 // add the parent controller to the owner of the deployment, unpause it and initialize the size
@@ -48,10 +63,10 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 		if err == nil && ref.UID == c.release.UID {
 			controlled = true
 			klog.V(3).Infof("CloneSet(%v) has been controlled by this BatchRelease(%v), no need to claim again",
-				c.targetNamespacedName, c.releasePlanKey)
+				c.cloneKey, klog.KObj(c.release))
 		} else {
 			klog.Errorf("Failed to parse controller info from CloneSet(%v) annotation, error: %v, controller info: %+v",
-				c.targetNamespacedName, err, *ref)
+				c.cloneKey, err, *ref)
 		}
 	}
 
@@ -92,13 +107,13 @@ func (c *cloneSetController) claimCloneSet(clone *kruiseappsv1alpha1.CloneSet) (
 	if len(patch) > 0 {
 		cloneObj := clone.DeepCopy()
 		patchByte, _ := json.Marshal(patch)
-		if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
+		if err := c.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 			c.recorder.Eventf(c.release, v1.EventTypeWarning, "ClaimCloneSetFailed", err.Error())
 			return false, err
 		}
 	}
 
-	klog.V(3).Infof("Claim CloneSet(%v) Successfully", c.targetNamespacedName)
+	klog.V(3).Infof("Claim CloneSet(%v) Successfully", c.cloneKey)
 	return true, nil
 }
 
@@ -121,18 +136,18 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 	}
 
 	if !found {
-		klog.V(3).Infof("the CloneSet(%v) is already released", c.targetNamespacedName)
+		klog.V(3).Infof("the CloneSet(%v) is already released", c.cloneKey)
 		return true, nil
 	}
 
 	cloneObj := clone.DeepCopy()
 	patchByte := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation))
-	if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
+	if err := c.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.release, v1.EventTypeWarning, "ReleaseCloneSetFailed", err.Error())
 		return false, err
 	}
 
-	klog.V(3).Infof("Release CloneSet(%v) Successfully", c.targetNamespacedName)
+	klog.V(3).Infof("Release CloneSet(%v) Successfully", c.cloneKey)
 	return true, nil
 }
 
@@ -148,34 +163,32 @@ func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.Cl
 
 	cloneObj := clone.DeepCopy()
 	patchByte, _ := json.Marshal(patch)
-	if err := c.client.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
+	if err := c.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, patchByte)); err != nil {
 		c.recorder.Eventf(c.release, v1.EventTypeWarning, "PatchPartitionFailed",
 			"Failed to update the CloneSet(%v) to the correct target partition %d, error: %v",
-			c.targetNamespacedName, partition, err)
+			c.cloneKey, partition, err)
 		return err
 	}
 
-	klog.InfoS("Submitted modified partition quest for CloneSet", "CloneSet", c.targetNamespacedName,
-		"target partition size", partition, "batch", c.newStatus.CanaryStatus.CurrentBatch)
+	klog.InfoS("Submitted modified partition quest for CloneSet", "CloneSet", c.cloneKey,
+		"target partition size", partition, "batch", c.release.Status.CanaryStatus.CurrentBatch)
 
 	return nil
 }
 
 // the canary workload size for the current batch
 func (c *cloneSetController) calculateCurrentCanary(totalSize int32) int32 {
-	targetSize := int32(calculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.newStatus.CanaryStatus.CurrentBatch)))
-	klog.InfoS("Calculated the number of pods in the target CloneSet after current batch",
-		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
-		"current batch", c.newStatus.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
+	targetSize := int32(helper.CalculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.release.Status.CanaryStatus.CurrentBatch)))
+	klog.InfoS("Calculated the number of pods in the target CloneSet after current batch", "CloneSet", c.cloneKey,
+		"BatchRelease", klog.KObj(c.release), "current batch", c.release.Status.CanaryStatus.CurrentBatch, "workload updateRevision size", targetSize)
 	return targetSize
 }
 
 // the source workload size for the current batch
 func (c *cloneSetController) calculateCurrentStable(totalSize int32) int32 {
 	sourceSize := totalSize - c.calculateCurrentCanary(totalSize)
-	klog.InfoS("Calculated the number of pods in the source CloneSet after current batch",
-		"CloneSet", c.targetNamespacedName, "BatchRelease", c.releasePlanKey,
-		"current batch", c.newStatus.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
+	klog.InfoS("Calculated the number of pods in the source CloneSet after current batch", "CloneSet", c.cloneKey,
+		"BatchRelease", klog.KObj(c.release), "current batch", c.release.Status.CanaryStatus.CurrentBatch, "workload stableRevision size", sourceSize)
 	return sourceSize
 }
 

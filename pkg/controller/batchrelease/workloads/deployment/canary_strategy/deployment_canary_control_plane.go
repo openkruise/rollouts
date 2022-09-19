@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package workloads
+package canary_strategy
 
 import (
 	"context"
@@ -22,6 +22,8 @@ import (
 	"sort"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads/helper"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
@@ -36,32 +38,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// DeploymentsRolloutController is responsible for handling Deployment type of workloads
-type DeploymentsRolloutController struct {
-	deploymentController
-	stable *apps.Deployment
-	canary *apps.Deployment
+// realReleaseController is responsible for handling Deployment type of workloads
+type realReleaseController struct {
+	*deploymentController
+	newStatus *v1alpha1.BatchReleaseStatus
 }
 
-// NewDeploymentRolloutController creates a new Deployment rollout controller
-func NewDeploymentRolloutController(cli client.Client, recorder record.EventRecorder, release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, stableNamespacedName types.NamespacedName) *DeploymentsRolloutController {
-	return &DeploymentsRolloutController{
-		deploymentController: deploymentController{
-			workloadController: workloadController{
-				client:    cli,
-				recorder:  recorder,
-				release:   release,
-				newStatus: newStatus,
-			},
-			stableNamespacedName: stableNamespacedName,
-			canaryNamespacedName: stableNamespacedName,
-			releaseKey:           client.ObjectKeyFromObject(release),
-		},
+// NewDeploymentReleaseController creates a new Deployment rollout controller
+func NewDeploymentReleaseController(cli client.Client, rec record.EventRecorder, release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, key types.NamespacedName) *realReleaseController {
+	return &realReleaseController{
+		newStatus:            newStatus,
+		deploymentController: newDeploymentController(cli, rec, release, key),
 	}
 }
 
 // VerifyWorkload verifies that the workload is ready to execute release plan
-func (c *DeploymentsRolloutController) VerifyWorkload() (bool, error) {
+func (c *realReleaseController) VerifyWorkload() (bool, error) {
 	var err error
 	var message string
 	defer func() {
@@ -82,19 +74,19 @@ func (c *DeploymentsRolloutController) VerifyWorkload() (bool, error) {
 
 	// if the workload status is untrustworthy, return and retry
 	if c.stable.Status.ObservedGeneration != c.stable.Generation {
-		message = fmt.Sprintf("deployment(%v) is still reconciling, wait for it to be done", c.stableNamespacedName)
+		message = fmt.Sprintf("deployment(%v) is still reconciling, wait for it to be done", c.deployKey)
 		return false, nil
 	}
 
 	// if the workload has been promoted, return and not retry
 	if c.stable.Status.UpdatedReplicas == *c.stable.Spec.Replicas {
-		message = fmt.Sprintf("deployment(%v) update revision has been promoted, no need to rollout", c.stableNamespacedName)
+		message = fmt.Sprintf("deployment(%v) update revision has been promoted, no need to rollout", c.deployKey)
 		return false, nil
 	}
 
 	// if the workload is not paused, no need to progress it
 	if !c.stable.Spec.Paused {
-		message = fmt.Sprintf("deployment(%v) should be paused before execute the release plan", c.stableNamespacedName)
+		message = fmt.Sprintf("deployment(%v) should be paused before execute the release plan", c.deployKey)
 		return false, nil
 	}
 
@@ -110,10 +102,10 @@ func (c *DeploymentsRolloutController) VerifyWorkload() (bool, error) {
 }
 
 // PrepareBeforeProgress makes sure that the Deployment is under our control
-func (c *DeploymentsRolloutController) PrepareBeforeProgress() (bool, *int32, error) {
+func (c *realReleaseController) PrepareBeforeProgress() (bool, *int32, error) {
 	// the workload is verified, and we should record revision and replicas info before progressing
 	if err := c.recordDeploymentRevisionAndReplicas(); err != nil {
-		klog.Errorf("Failed to record deployment(%v) revision and replicas info, error: %v", c.stableNamespacedName, err)
+		klog.Errorf("Failed to record deployment(%v) revision and replicas info, error: %v", c.deployKey, err)
 		return false, nil, err
 	}
 
@@ -123,7 +115,7 @@ func (c *DeploymentsRolloutController) PrepareBeforeProgress() (bool, *int32, er
 
 // UpgradeOneBatch calculates the number of pods we can upgrade once
 // according to the release plan and then set the canary deployment replicas
-func (c *DeploymentsRolloutController) UpgradeOneBatch() (bool, error) {
+func (c *realReleaseController) UpgradeOneBatch() (bool, error) {
 	if err := c.fetchStableDeployment(); err != nil {
 		return false, err
 	}
@@ -139,7 +131,7 @@ func (c *DeploymentsRolloutController) UpgradeOneBatch() (bool, error) {
 
 	klog.V(3).InfoS("upgraded one batch, but no need to update replicas of canary Deployment",
 		"Deployment", client.ObjectKeyFromObject(c.canary),
-		"BatchRelease", c.releaseKey,
+		"BatchRelease", klog.KObj(c.release),
 		"current-batch", c.newStatus.CanaryStatus.CurrentBatch,
 		"canary-goal", canaryGoal,
 		"current-canary-replicas", currentCanaryReplicas,
@@ -163,7 +155,7 @@ func (c *DeploymentsRolloutController) UpgradeOneBatch() (bool, error) {
 }
 
 // CheckOneBatchReady checks to see if the pods are all available according to the rollout plan
-func (c *DeploymentsRolloutController) CheckOneBatchReady() (bool, error) {
+func (c *realReleaseController) CheckOneBatchReady() (bool, error) {
 	if err := c.fetchStableDeployment(); err != nil {
 		return false, err
 	}
@@ -190,7 +182,7 @@ func (c *DeploymentsRolloutController) CheckOneBatchReady() (bool, error) {
 	}
 
 	klog.InfoS("checking the batch releasing progress",
-		"BatchRelease", c.releaseKey,
+		"BatchRelease", klog.KObj(c.release),
 		"current-batch", c.newStatus.CanaryStatus.CurrentBatch,
 		"canary-goal", canaryGoal,
 		"canary-available-pod-count", availableCanaryPodCount,
@@ -208,7 +200,7 @@ func (c *DeploymentsRolloutController) CheckOneBatchReady() (bool, error) {
 
 	// make sure there is at least one pod is available
 	if currentBatchIsNotReadyYet() {
-		klog.Infof("BatchRelease(%v) batch is not ready yet, current batch=%v", c.releaseKey, c.newStatus.CanaryStatus.CurrentBatch)
+		klog.Infof("BatchRelease(%v) batch is not ready yet, current batch=%v", klog.KObj(c.release), c.newStatus.CanaryStatus.CurrentBatch)
 		return false, nil
 	}
 
@@ -217,7 +209,7 @@ func (c *DeploymentsRolloutController) CheckOneBatchReady() (bool, error) {
 }
 
 // FinalizeProgress makes sure restore deployments and clean up some canary settings
-func (c *DeploymentsRolloutController) FinalizeProgress(cleanup bool) (bool, error) {
+func (c *realReleaseController) FinalizeProgress(cleanup bool) (bool, error) {
 	if err := c.fetchStableDeployment(); client.IgnoreNotFound(err) != nil {
 		return false, err
 	}
@@ -225,7 +217,7 @@ func (c *DeploymentsRolloutController) FinalizeProgress(cleanup bool) (bool, err
 	// make the deployment ride out of our control, and clean up canary resources
 	succeed, err := c.releaseDeployment(c.stable, cleanup)
 	if !succeed || err != nil {
-		klog.Errorf("Failed to finalize deployment(%v), error: %v", c.stableNamespacedName, err)
+		klog.Errorf("Failed to finalize deployment(%v), error: %v", c.deployKey, err)
 		return false, err
 	}
 
@@ -235,17 +227,17 @@ func (c *DeploymentsRolloutController) FinalizeProgress(cleanup bool) (bool, err
 
 // SyncWorkloadInfo return workloadInfo if workload info is changed during rollout
 // TODO: abstract a WorkloadEventTypeJudge interface for these following `if` clauses
-func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadEventType, *util.WorkloadInfo, error) {
+func (c *realReleaseController) SyncWorkloadInfo() (workloads.WorkloadEventType, *util.WorkloadInfo, error) {
 	// ignore the sync if the release plan is deleted
 	if c.release.DeletionTimestamp != nil {
-		return IgnoreWorkloadEvent, nil, nil
+		return workloads.IgnoreWorkloadEvent, nil, nil
 	}
 
 	var err error
 	err = c.fetchStableDeployment()
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return WorkloadHasGone, nil, err
+			return workloads.WorkloadHasGone, nil, err
 		}
 		return "", nil, err
 	}
@@ -265,51 +257,51 @@ func (c *DeploymentsRolloutController) SyncWorkloadInfo() (WorkloadEventType, *u
 
 	// in case of that the canary deployment is being deleted but still have the finalizer, it is out of our expectation
 	if c.canary != nil && c.canary.DeletionTimestamp != nil && controllerutil.ContainsFinalizer(c.canary, util.CanaryDeploymentFinalizer) {
-		return WorkloadUnHealthy, workloadInfo, nil
+		return workloads.WorkloadUnHealthy, workloadInfo, nil
 	}
 
 	// in case of that the workload status is trustworthy
 	if c.stable.Status.ObservedGeneration != c.stable.Generation {
 		klog.Warningf("Deployment(%v) is still reconciling, waiting for it to complete, generation: %v, observed: %v",
-			c.stableNamespacedName, c.stable.Generation, c.stable.Status.ObservedGeneration)
-		return WorkloadStillReconciling, workloadInfo, nil
+			c.deployKey, c.stable.Generation, c.stable.Status.ObservedGeneration)
+		return workloads.WorkloadStillReconciling, workloadInfo, nil
 	}
 
 	// in case of that the workload has been promoted
 	if !c.stable.Spec.Paused && c.stable.Status.UpdatedReplicas == c.stable.Status.Replicas {
-		return IgnoreWorkloadEvent, workloadInfo, nil
+		return workloads.IgnoreWorkloadEvent, workloadInfo, nil
 	}
 
 	// in case of that the workload is scaling up/down
 	if *c.stable.Spec.Replicas != c.newStatus.ObservedWorkloadReplicas && c.newStatus.ObservedWorkloadReplicas != -1 {
 		workloadInfo.Replicas = c.stable.Spec.Replicas
 		klog.Warningf("Deployment(%v) replicas changed during releasing, should pause and wait for it to complete, replicas from: %v -> %v",
-			c.stableNamespacedName, c.newStatus.ObservedWorkloadReplicas, *c.stable.Spec.Replicas)
-		return WorkloadReplicasChanged, workloadInfo, nil
+			c.deployKey, c.newStatus.ObservedWorkloadReplicas, *c.stable.Spec.Replicas)
+		return workloads.WorkloadReplicasChanged, workloadInfo, nil
 	}
 
 	// in case of that the workload revision was changed
 	if hashRevision := util.ComputeHash(&c.stable.Spec.Template, nil); hashRevision != c.newStatus.UpdateRevision {
 		workloadInfo.Status.UpdateRevision = hashRevision
-		klog.Warningf("Deployment(%v) updateRevision changed during releasing", c.stableNamespacedName)
-		return WorkloadPodTemplateChanged, workloadInfo, nil
+		klog.Warningf("Deployment(%v) updateRevision changed during releasing", c.deployKey)
+		return workloads.WorkloadPodTemplateChanged, workloadInfo, nil
 	}
 
-	return IgnoreWorkloadEvent, workloadInfo, nil
+	return workloads.IgnoreWorkloadEvent, workloadInfo, nil
 }
 
 /* ----------------------------------
 The functions below are helper functions
 ------------------------------------- */
 // fetchStableDeployment fetch stable deployment to c.stable
-func (c *DeploymentsRolloutController) fetchStableDeployment() error {
+func (c *realReleaseController) fetchStableDeployment() error {
 	if c.stable != nil {
 		return nil
 	}
 
 	stable := &apps.Deployment{}
-	if err := c.client.Get(context.TODO(), c.stableNamespacedName, stable); err != nil {
-		klog.Errorf("BatchRelease(%v) get stable deployment error: %v", c.releaseKey, err)
+	if err := c.Get(context.TODO(), c.deployKey, stable); err != nil {
+		klog.Errorf("BatchRelease(%v) get stable deployment error: %v", klog.KObj(c.release), err)
 		return err
 	}
 	c.stable = stable
@@ -317,11 +309,11 @@ func (c *DeploymentsRolloutController) fetchStableDeployment() error {
 }
 
 // fetchCanaryDeployment fetch canary deployment to c.canary
-func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
+func (c *realReleaseController) fetchCanaryDeployment() error {
 	var err error
 	defer func() {
 		if err != nil {
-			klog.Errorf("BatchRelease(%v) get canary deployment error: %v", c.releaseKey, err)
+			klog.Errorf("BatchRelease(%v) get canary deployment error: %v", klog.KObj(c.release), err)
 		}
 	}()
 
@@ -344,7 +336,7 @@ func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
 		err = apierrors.NewNotFound(schema.GroupResource{
 			Group:    apps.SchemeGroupVersion.Group,
 			Resource: c.stable.Kind,
-		}, fmt.Sprintf("%v-canary", c.canaryNamespacedName.Name))
+		}, fmt.Sprintf("%v-canary", c.deployKey.Name))
 		return err
 	}
 
@@ -353,7 +345,7 @@ func (c *DeploymentsRolloutController) fetchCanaryDeployment() error {
 }
 
 // recordDeploymentRevisionAndReplicas records stableRevision, canaryRevision, workloadReplicas to BatchRelease.Status
-func (c *DeploymentsRolloutController) recordDeploymentRevisionAndReplicas() error {
+func (c *realReleaseController) recordDeploymentRevisionAndReplicas() error {
 	err := c.fetchStableDeployment()
 	if err != nil {
 		return err
@@ -370,19 +362,19 @@ func (c *DeploymentsRolloutController) recordDeploymentRevisionAndReplicas() err
 	return nil
 }
 
-func (c *DeploymentsRolloutController) patchPodBatchLabel(canaryGoal int32) (bool, error) {
+func (c *realReleaseController) patchPodBatchLabel(canaryGoal int32) (bool, error) {
 	rolloutID := c.release.Spec.ReleasePlan.RolloutID
 	if rolloutID == "" || c.canary == nil {
 		return true, nil
 	}
 
-	pods, err := util.ListOwnedPods(c.client, c.canary)
+	pods, err := util.ListOwnedPods(c.Client, c.canary)
 	if err != nil {
-		klog.Errorf("Failed to list pods for Deployment %v", c.stableNamespacedName)
+		klog.Errorf("Failed to list pods for Deployment %v", c.deployKey)
 		return false, err
 	}
 
 	batchID := c.release.Status.CanaryStatus.CurrentBatch + 1
 	updateRevision := c.release.Status.UpdateRevision
-	return patchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, canaryGoal, c.releaseKey)
+	return helper.PatchPodBatchLabel(c.Client, pods, rolloutID, batchID, updateRevision, canaryGoal, klog.KObj(c.release))
 }

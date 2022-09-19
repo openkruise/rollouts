@@ -14,13 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package workloads
+package statefulset
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads/helper"
 	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,40 +34,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type UnifiedWorkloadController interface {
-	GetWorkloadInfo() (*util.WorkloadInfo, error)
-	ClaimWorkload() (bool, error)
-	ReleaseWorkload(cleanup bool) (bool, error)
-	UpgradeBatch(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
-	IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
-	ListOwnedPods() ([]*v1.Pod, error)
-	IsOrderedUpdate() (bool, error)
-}
-
-// UnifiedWorkloadRolloutControlPlane is responsible for handling rollout StatefulSet type of workloads
-type UnifiedWorkloadRolloutControlPlane struct {
-	UnifiedWorkloadController
-	client    client.Client
-	recorder  record.EventRecorder
-	release   *v1alpha1.BatchRelease
+// realReleaseController is responsible for handling rollout StatefulSet type of workloads
+type realReleaseController struct {
+	*statefulSetLikeController
 	newStatus *v1alpha1.BatchReleaseStatus
 }
 
-type NewUnifiedControllerFunc = func(c client.Client, r record.EventRecorder, p *v1alpha1.BatchRelease, n types.NamespacedName, gvk schema.GroupVersionKind) UnifiedWorkloadController
-
-// NewUnifiedWorkloadRolloutControlPlane creates a new workload rollout controller
-func NewUnifiedWorkloadRolloutControlPlane(f NewUnifiedControllerFunc, c client.Client, r record.EventRecorder, p *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, n types.NamespacedName, gvk schema.GroupVersionKind) *UnifiedWorkloadRolloutControlPlane {
-	return &UnifiedWorkloadRolloutControlPlane{
-		client:                    c,
-		recorder:                  r,
-		release:                   p,
+// NewStatefulSetReleaseController realReleaseController creates a new workload rollout controller
+func NewStatefulSetReleaseController(c client.Client, r record.EventRecorder, p *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, n types.NamespacedName, gvk schema.GroupVersionKind) *realReleaseController {
+	return &realReleaseController{
 		newStatus:                 newStatus,
-		UnifiedWorkloadController: f(c, r, p, n, gvk),
+		statefulSetLikeController: newStatefulSetLikeController(c, r, p, n, gvk),
 	}
 }
 
 // VerifyWorkload verifies that the workload is ready to execute release plan
-func (c *UnifiedWorkloadRolloutControlPlane) VerifyWorkload() (bool, error) {
+func (c *realReleaseController) VerifyWorkload() (bool, error) {
 	var err error
 	var message string
 	defer func() {
@@ -108,7 +92,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) VerifyWorkload() (bool, error) {
 // - bool: whether all updated pods have been patched no-need-update label;
 // - *int32: how many pods have been patched;
 // - err: whether error occurs.
-func (c *UnifiedWorkloadRolloutControlPlane) prepareBeforeRollback() (bool, *int32, error) {
+func (c *realReleaseController) prepareBeforeRollback() (bool, *int32, error) {
 	if c.release.Annotations[util.RollbackInBatchAnnotation] == "" {
 		return true, nil, nil
 	}
@@ -153,7 +137,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) prepareBeforeRollback() (bool, *int
 	for _, pod := range filterPods {
 		podClone := pod.DeepCopy()
 		body := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s"}}}`, util.NoNeedUpdatePodLabel, rolloutID)
-		err = c.client.Patch(context.TODO(), podClone, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
+		err = c.Patch(context.TODO(), podClone, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
 		if err != nil {
 			klog.Errorf("Failed to patch rollback labels[%s]=%s to pod %v", util.NoNeedUpdatePodLabel, rolloutID, client.ObjectKeyFromObject(pod))
 			return false, &noNeedRollbackReplicas, err
@@ -167,7 +151,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) prepareBeforeRollback() (bool, *int
 }
 
 // PrepareBeforeProgress makes sure that the source and target workload is under our control
-func (c *UnifiedWorkloadRolloutControlPlane) PrepareBeforeProgress() (bool, *int32, error) {
+func (c *realReleaseController) PrepareBeforeProgress() (bool, *int32, error) {
 	done, noNeedRollbackReplicas, err := c.prepareBeforeRollback()
 	if err != nil || !done {
 		return false, nil, err
@@ -192,7 +176,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) PrepareBeforeProgress() (bool, *int
 // UpgradeOneBatch calculates the number of pods we can upgrade once according to the rollout spec
 // and then set the partition accordingly
 // TODO: support advanced statefulSet reserveOrdinal feature0
-func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
+func (c *realReleaseController) UpgradeOneBatch() (bool, error) {
 	workloadInfo, err := c.GetWorkloadInfo()
 	if err != nil {
 		return false, err
@@ -216,7 +200,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 	var noNeedRollbackReplicas int32
 	if c.newStatus.CanaryStatus.NoNeedUpdateReplicas != nil {
 		rolloutID := c.release.Spec.ReleasePlan.RolloutID
-		noNeedRollbackReplicas = countNoNeedRollbackReplicas(pods, c.newStatus.UpdateRevision, rolloutID)
+		noNeedRollbackReplicas = helper.CountNoNeedRollbackReplicas(pods, c.newStatus.UpdateRevision, rolloutID)
 		c.newStatus.CanaryStatus.NoNeedUpdateReplicas = pointer.Int32(noNeedRollbackReplicas)
 	}
 	replicas := c.newStatus.ObservedWorkloadReplicas
@@ -261,7 +245,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) UpgradeOneBatch() (bool, error) {
 }
 
 // CheckOneBatchReady checks to see if the pods are all available according to the rollout plan
-func (c *UnifiedWorkloadRolloutControlPlane) CheckOneBatchReady() (bool, error) {
+func (c *realReleaseController) CheckOneBatchReady() (bool, error) {
 	workloadInfo, err := c.GetWorkloadInfo()
 	if err != nil {
 		return false, err
@@ -319,7 +303,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) CheckOneBatchReady() (bool, error) 
 }
 
 // FinalizeProgress makes sure the workload is all upgraded
-func (c *UnifiedWorkloadRolloutControlPlane) FinalizeProgress(cleanup bool) (bool, error) {
+func (c *realReleaseController) FinalizeProgress(cleanup bool) (bool, error) {
 	if _, err := c.ReleaseWorkload(cleanup); err != nil {
 		return false, err
 	}
@@ -328,16 +312,16 @@ func (c *UnifiedWorkloadRolloutControlPlane) FinalizeProgress(cleanup bool) (boo
 }
 
 // SyncWorkloadInfo return change type if workload was changed during release
-func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventType, *util.WorkloadInfo, error) {
+func (c *realReleaseController) SyncWorkloadInfo() (workloads.WorkloadEventType, *util.WorkloadInfo, error) {
 	// ignore the sync if the release plan is deleted
 	if c.release.DeletionTimestamp != nil {
-		return IgnoreWorkloadEvent, nil, nil
+		return workloads.IgnoreWorkloadEvent, nil, nil
 	}
 
 	workloadInfo, err := c.GetWorkloadInfo()
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return WorkloadHasGone, nil, err
+			return workloads.WorkloadHasGone, nil, err
 		}
 		return "", nil, err
 	}
@@ -346,19 +330,19 @@ func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventTy
 	if workloadInfo.Status.ObservedGeneration != workloadInfo.Generation {
 		klog.Warningf("%v is still reconciling, waiting for it to complete, generation: %v, observed: %v",
 			workloadInfo.GVKWithName, workloadInfo.Generation, workloadInfo.Status.ObservedGeneration)
-		return WorkloadStillReconciling, nil, nil
+		return workloads.WorkloadStillReconciling, nil, nil
 	}
 
 	// in case of that the updated revision of the workload is promoted
 	if workloadInfo.Status.UpdatedReplicas == workloadInfo.Status.Replicas {
-		return IgnoreWorkloadEvent, workloadInfo, nil
+		return workloads.IgnoreWorkloadEvent, workloadInfo, nil
 	}
 
 	// in case of that the workload is scaling
 	if *workloadInfo.Replicas != c.release.Status.ObservedWorkloadReplicas {
 		klog.Warningf("%v replicas changed during releasing, should pause and wait for it to complete, "+
 			"replicas from: %v -> %v", workloadInfo.GVKWithName, c.release.Status.ObservedWorkloadReplicas, *workloadInfo.Replicas)
-		return WorkloadReplicasChanged, workloadInfo, nil
+		return workloads.WorkloadReplicasChanged, workloadInfo, nil
 	}
 
 	// updateRevision == CurrentRevision means CloneSet is rolling back or newly-created.
@@ -368,36 +352,36 @@ func (c *UnifiedWorkloadRolloutControlPlane) SyncWorkloadInfo() (WorkloadEventTy
 		// StableRevision != observed UpdateRevision means the rollback event have not been observed.
 		c.newStatus.StableRevision != c.newStatus.UpdateRevision {
 		klog.Warningf("Workload(%v) is rolling back in batches", workloadInfo.GVKWithName)
-		return WorkloadRollbackInBatch, workloadInfo, nil
+		return workloads.WorkloadRollbackInBatch, workloadInfo, nil
 	}
 
 	// in case of that the workload was changed
 	if workloadInfo.Status.UpdateRevision != c.release.Status.UpdateRevision {
 		klog.Warningf("%v updateRevision changed during releasing, should try to restart the release plan, "+
 			"updateRevision from: %v -> %v", workloadInfo.GVKWithName, c.release.Status.UpdateRevision, workloadInfo.Status.UpdateRevision)
-		return WorkloadPodTemplateChanged, workloadInfo, nil
+		return workloads.WorkloadPodTemplateChanged, workloadInfo, nil
 	}
 
-	return IgnoreWorkloadEvent, workloadInfo, nil
+	return workloads.IgnoreWorkloadEvent, workloadInfo, nil
 }
 
 // the canary workload size for the current batch
-func (c *UnifiedWorkloadRolloutControlPlane) calculateCurrentCanary(totalSize int32) int32 {
-	canaryGoal := int32(calculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.release.Status.CanaryStatus.CurrentBatch)))
+func (c *realReleaseController) calculateCurrentCanary(totalSize int32) int32 {
+	canaryGoal := int32(helper.CalculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(totalSize), int(c.release.Status.CanaryStatus.CurrentBatch)))
 	klog.InfoS("Calculated the number of pods in the target workload after current batch", "BatchRelease", client.ObjectKeyFromObject(c.release),
 		"current batch", c.release.Status.CanaryStatus.CurrentBatch, "workload canary goal replicas goal", canaryGoal)
 	return canaryGoal
 }
 
 // the source workload size for the current batch
-func (c *UnifiedWorkloadRolloutControlPlane) calculateCurrentStable(totalSize int32) int32 {
+func (c *realReleaseController) calculateCurrentStable(totalSize int32) int32 {
 	stableGoal := totalSize - c.calculateCurrentCanary(totalSize)
 	klog.InfoS("Calculated the number of pods in the target workload after current batch", "BatchRelease", client.ObjectKeyFromObject(c.release),
 		"current batch", c.release.Status.CanaryStatus.CurrentBatch, "workload stable  goal replicas goal", stableGoal)
 	return stableGoal
 }
 
-func (c *UnifiedWorkloadRolloutControlPlane) RecordWorkloadRevisionAndReplicas() error {
+func (c *realReleaseController) RecordWorkloadRevisionAndReplicas() error {
 	workloadInfo, err := c.GetWorkloadInfo()
 	if err != nil {
 		return err
@@ -409,7 +393,7 @@ func (c *UnifiedWorkloadRolloutControlPlane) RecordWorkloadRevisionAndReplicas()
 	return nil
 }
 
-func (c *UnifiedWorkloadRolloutControlPlane) patchPodBatchLabel(pods []*v1.Pod, plannedBatchCanaryReplicas, expectedBatchStableReplicas int32) (bool, error) {
+func (c *realReleaseController) patchPodBatchLabel(pods []*v1.Pod, plannedBatchCanaryReplicas, expectedBatchStableReplicas int32) (bool, error) {
 	rolloutID := c.release.Spec.ReleasePlan.RolloutID
 	if rolloutID == "" {
 		return true, nil
@@ -420,10 +404,10 @@ func (c *UnifiedWorkloadRolloutControlPlane) patchPodBatchLabel(pods []*v1.Pod, 
 	if c.newStatus.CanaryStatus.NoNeedUpdateReplicas != nil {
 		orderedUpdate, _ := c.IsOrderedUpdate()
 		if orderedUpdate {
-			pods = filterPodsForOrderedRollback(pods, plannedBatchCanaryReplicas, expectedBatchStableReplicas, c.release.Status.ObservedWorkloadReplicas, rolloutID, updateRevision)
+			pods = helper.FilterPodsForOrderedRollback(pods, plannedBatchCanaryReplicas, expectedBatchStableReplicas, c.release.Status.ObservedWorkloadReplicas, rolloutID, updateRevision)
 		} else {
-			pods = filterPodsForUnorderedRollback(pods, plannedBatchCanaryReplicas, expectedBatchStableReplicas, c.release.Status.ObservedWorkloadReplicas, rolloutID, updateRevision)
+			pods = helper.FilterPodsForOrderedRollback(pods, plannedBatchCanaryReplicas, expectedBatchStableReplicas, c.release.Status.ObservedWorkloadReplicas, rolloutID, updateRevision)
 		}
 	}
-	return patchPodBatchLabel(c.client, pods, rolloutID, batchID, updateRevision, plannedBatchCanaryReplicas, client.ObjectKeyFromObject(c.release))
+	return helper.PatchPodBatchLabel(c.Client, pods, rolloutID, batchID, updateRevision, plannedBatchCanaryReplicas, klog.KObj(c.release))
 }

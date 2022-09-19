@@ -1,4 +1,4 @@
-package workloads
+package helper
 
 import (
 	"fmt"
@@ -143,7 +143,7 @@ func TestFilterPodsForUnorderedRollback(t *testing.T) {
 				rand.Shuffle(len(pods), func(i, j int) {
 					pods[i], pods[j] = pods[j], pods[i]
 				})
-				filteredPods := filterPodsForUnorderedRollback(pods, cs.PlannedBatchCanaryReplicas, cs.ExpectedBatchStableReplicas, cs.Replicas, "0x1", "version-1")
+				filteredPods := FilterPodsForUnorderedRollback(pods, cs.PlannedBatchCanaryReplicas, cs.ExpectedBatchStableReplicas, cs.Replicas, "0x1", "version-1")
 				var podName []string
 				for i := range filteredPods {
 					podName = append(podName, filteredPods[i].Name)
@@ -232,7 +232,7 @@ func TestFilterPodsForOrderedRollback(t *testing.T) {
 				rand.Shuffle(len(pods), func(i, j int) {
 					pods[i], pods[j] = pods[j], pods[i]
 				})
-				filteredPods := filterPodsForOrderedRollback(pods, cs.PlannedBatchCanaryReplicas, cs.ExpectedBatchStableReplicas, cs.Replicas, "0x1", "version-1")
+				filteredPods := FilterPodsForOrderedRollback(pods, cs.PlannedBatchCanaryReplicas, cs.ExpectedBatchStableReplicas, cs.Replicas, "0x1", "version-1")
 				var podName []string
 				for i := range filteredPods {
 					podName = append(podName, filteredPods[i].Name)
@@ -279,13 +279,4 @@ func generatePodsWith(labels map[string]string, replicas int, beginOrder int) []
 		}
 	}
 	return pods
-}
-
-func containers(version string) []corev1.Container {
-	return []corev1.Container{
-		{
-			Name:  "busybox",
-			Image: fmt.Sprintf("busybox:%v", version),
-		},
-	}
 }

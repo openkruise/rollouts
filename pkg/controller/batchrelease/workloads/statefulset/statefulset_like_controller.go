@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package workloads
+package statefulset
 
 import (
 	"context"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/workloads/helper"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -33,33 +34,33 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type StatefulSetLikeController struct {
+type statefulSetLikeController struct {
 	client.Client
-	recorder       record.EventRecorder
-	planController *appsv1alpha1.BatchRelease
-	namespacedName types.NamespacedName
-	workloadObj    client.Object
-	gvk            schema.GroupVersionKind
-	pods           []*v1.Pod
+	recorder    record.EventRecorder
+	pods        []*v1.Pod
+	release     *appsv1alpha1.BatchRelease
+	workloadObj client.Object
+	workloadGvk schema.GroupVersionKind
+	workloadKey types.NamespacedName
 }
 
-func NewStatefulSetLikeController(c client.Client, r record.EventRecorder, p *appsv1alpha1.BatchRelease, n types.NamespacedName, gvk schema.GroupVersionKind) UnifiedWorkloadController {
-	return &StatefulSetLikeController{
-		Client:         c,
-		recorder:       r,
-		planController: p,
-		namespacedName: n,
-		gvk:            gvk,
+func newStatefulSetLikeController(c client.Client, r record.EventRecorder, br *appsv1alpha1.BatchRelease, key types.NamespacedName, gvk schema.GroupVersionKind) *statefulSetLikeController {
+	return &statefulSetLikeController{
+		Client:      c,
+		recorder:    r,
+		release:     br,
+		workloadKey: key,
+		workloadGvk: gvk,
 	}
 }
 
-func (c *StatefulSetLikeController) GetWorkloadObject() (client.Object, error) {
+func (c *statefulSetLikeController) GetWorkloadObject() (client.Object, error) {
 	if c.workloadObj == nil {
-		workloadObj := util.GetEmptyWorkloadObject(c.gvk)
+		workloadObj := util.GetEmptyWorkloadObject(c.workloadGvk)
 		if workloadObj == nil {
-			return nil, errors.NewNotFound(schema.GroupResource{Group: c.gvk.Group, Resource: c.gvk.Kind}, c.namespacedName.Name)
+			return nil, errors.NewNotFound(schema.GroupResource{Group: c.workloadGvk.Group, Resource: c.workloadGvk.Kind}, c.workloadKey.Name)
 		}
-		if err := c.Get(context.TODO(), c.namespacedName, workloadObj); err != nil {
+		if err := c.Get(context.TODO(), c.workloadKey, workloadObj); err != nil {
 			return nil, err
 		}
 		c.workloadObj = workloadObj
@@ -67,13 +68,13 @@ func (c *StatefulSetLikeController) GetWorkloadObject() (client.Object, error) {
 	return c.workloadObj, nil
 }
 
-func (c *StatefulSetLikeController) GetWorkloadInfo() (*util.WorkloadInfo, error) {
+func (c *statefulSetLikeController) GetWorkloadInfo() (*util.WorkloadInfo, error) {
 	set, err := c.GetWorkloadObject()
 	if err != nil {
 		return nil, err
 	}
 
-	workloadInfo := util.ParseStatefulSetInfo(set, c.namespacedName)
+	workloadInfo := util.ParseStatefulSetInfo(set, c.workloadKey)
 	workloadInfo.Paused = true
 	if workloadInfo.Status.UpdatedReadyReplicas <= 0 {
 		updatedReadyReplicas, err := c.countUpdatedReadyPods(workloadInfo.Status.UpdateRevision)
@@ -86,13 +87,13 @@ func (c *StatefulSetLikeController) GetWorkloadInfo() (*util.WorkloadInfo, error
 	return workloadInfo, nil
 }
 
-func (c *StatefulSetLikeController) ClaimWorkload() (bool, error) {
+func (c *statefulSetLikeController) ClaimWorkload() (bool, error) {
 	set, err := c.GetWorkloadObject()
 	if err != nil {
 		return false, err
 	}
 
-	err = claimWorkload(c.Client, c.planController, set, map[string]interface{}{
+	err = helper.ClaimWorkload(c.Client, c.release, set, map[string]interface{}{
 		"type": apps.RollingUpdateStatefulSetStrategyType,
 		"rollingUpdate": map[string]interface{}{
 			"partition": pointer.Int32(util.GetReplicas(set)),
@@ -102,11 +103,11 @@ func (c *StatefulSetLikeController) ClaimWorkload() (bool, error) {
 		return false, err
 	}
 
-	klog.V(3).Infof("Claim StatefulSet(%v) Successfully", c.namespacedName)
+	klog.V(3).Infof("Claim StatefulSet(%v) Successfully", c.workloadKey)
 	return true, nil
 }
 
-func (c *StatefulSetLikeController) ReleaseWorkload(cleanup bool) (bool, error) {
+func (c *statefulSetLikeController) ReleaseWorkload(cleanup bool) (bool, error) {
 	set, err := c.GetWorkloadObject()
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -115,17 +116,17 @@ func (c *StatefulSetLikeController) ReleaseWorkload(cleanup bool) (bool, error) 
 		return false, err
 	}
 
-	err = releaseWorkload(c.Client, set)
+	err = helper.ReleaseWorkload(c.Client, set)
 	if err != nil {
-		c.recorder.Eventf(c.planController, v1.EventTypeWarning, "ReleaseFailed", err.Error())
+		c.recorder.Eventf(c.release, v1.EventTypeWarning, "ReleaseFailed", err.Error())
 		return false, err
 	}
 
-	klog.V(3).Infof("Release StatefulSet(%v) Successfully", c.namespacedName)
+	klog.V(3).Infof("Release StatefulSet(%v) Successfully", c.workloadKey)
 	return true, nil
 }
 
-func (c *StatefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableReplicasGoal int32) (bool, error) {
+func (c *statefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableReplicasGoal int32) (bool, error) {
 	set, err := c.GetWorkloadObject()
 	if err != nil {
 		return false, err
@@ -137,7 +138,7 @@ func (c *StatefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableRepli
 		return true, nil
 	}
 
-	err = patchSpec(c.Client, set, map[string]interface{}{
+	err = helper.PatchSpec(c.Client, set, map[string]interface{}{
 		"updateStrategy": map[string]interface{}{
 			"rollingUpdate": map[string]interface{}{
 				"partition": pointer.Int32(stableReplicasGoal),
@@ -148,11 +149,11 @@ func (c *StatefulSetLikeController) UpgradeBatch(canaryReplicasGoal, stableRepli
 		return false, err
 	}
 
-	klog.V(3).Infof("Upgrade StatefulSet(%v) Partition to %v Successfully", c.namespacedName, stableReplicasGoal)
+	klog.V(3).Infof("Upgrade StatefulSet(%v) Partition to %v Successfully", c.workloadKey, stableReplicasGoal)
 	return true, nil
 }
 
-func (c *StatefulSetLikeController) IsOrderedUpdate() (bool, error) {
+func (c *statefulSetLikeController) IsOrderedUpdate() (bool, error) {
 	set, err := c.GetWorkloadObject()
 	if err != nil {
 		return false, err
@@ -161,7 +162,7 @@ func (c *StatefulSetLikeController) IsOrderedUpdate() (bool, error) {
 	return !util.IsStatefulSetUnorderedUpdate(set), nil
 }
 
-func (c *StatefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error) {
+func (c *statefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error) {
 	workloadInfo, err := c.GetWorkloadInfo()
 	if err != nil {
 		return false, err
@@ -203,7 +204,7 @@ func (c *StatefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableRepli
 	return secondCheckPointReady(), nil
 }
 
-func (c *StatefulSetLikeController) ListOwnedPods() ([]*v1.Pod, error) {
+func (c *statefulSetLikeController) ListOwnedPods() ([]*v1.Pod, error) {
 	if c.pods != nil {
 		return c.pods, nil
 	}
@@ -215,7 +216,7 @@ func (c *StatefulSetLikeController) ListOwnedPods() ([]*v1.Pod, error) {
 	return c.pods, err
 }
 
-func (c *StatefulSetLikeController) countUpdatedReadyPods(updateRevision string) (int32, error) {
+func (c *statefulSetLikeController) countUpdatedReadyPods(updateRevision string) (int32, error) {
 	pods, err := c.ListOwnedPods()
 	if err != nil {
 		return 0, err

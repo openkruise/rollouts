@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-func (r *Executor) syncStatusBeforeExecuting(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, controller workloads.WorkloadController) (bool, reconcile.Result, error) {
+func (r *Executor) syncStatusBeforeExecuting(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, controller workloads.ReleaseController) (bool, reconcile.Result, error) {
 	var err error
 	var reason string
 	var message string
