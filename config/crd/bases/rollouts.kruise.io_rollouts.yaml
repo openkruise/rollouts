@@ -108,6 +108,51 @@ spec:
                         items:
                           description: CanaryStep defines a step of a canary workload.
                           properties:
+                            matches:
+                              description: Matches define conditions used for matching
+                                the incoming HTTP requests to canary service. Each
+                                match is independent, i.e. this rule will be matched
+                                if **any** one of the matches is satisfied.
+                              items:
+                                properties:
+                                  headers:
+                                    description: Headers specifies HTTP request header
+                                      matchers. Multiple match values are ANDed together,
+                                      meaning, a request must match all the specified
+                                      headers to select the route.
+                                    items:
+                                      description: HeaderMatch describes how to select
+                                        a route by matching request headers.
+                                      properties:
+                                        name:
+                                          description: Name is the name of the HTTP
+                                            Header to be matched. Name matching MUST
+                                            be case insensitive.
+                                          type: string
+                                        type:
+                                          default: Exact
+                                          description: Type specifies how to match
+                                            against the value of the header.
+                                          enum:
+                                          - Exact
+                                          - RegularExpression
+                                          type: string
+                                        value:
+                                          description: Value is the value of HTTP
+                                            Header to be matched.
+                                          maxLength: 4096
+                                          minLength: 1
+                                          type: string
+                                      required:
+                                      - name
+                                      - value
+                                      type: object
+                                    maxItems: 16
+                                    type: array
+                                required:
+                                - headers
+                                type: object
+                              type: array
                             pause:
                               description: Pause defines a pause stage for a rollout,
                                 manual or auto

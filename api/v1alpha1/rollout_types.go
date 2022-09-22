@@ -116,8 +116,43 @@ type CanaryStep struct {
 	// Pause defines a pause stage for a rollout, manual or auto
 	// +optional
 	Pause RolloutPause `json:"pause,omitempty"`
-	// MetricsAnalysis *RolloutAnalysis `json:"metricsAnalysis,omitempty"`
+	// Matches define conditions used for matching the incoming HTTP requests to canary service.
+	// Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
+	Matches []RouteMatch `json:"matches,omitempty"`
 }
+
+type RouteMatch struct {
+	// Headers specifies HTTP request header matchers. Multiple match values are
+	// ANDed together, meaning, a request must match all the specified headers
+	// to select the route.
+	// +kubebuilder:validation:MaxItems=16
+	Headers []HeaderMatch `json:"headers"`
+}
+
+// HeaderMatch describes how to select a route by matching request
+// headers.
+type HeaderMatch struct {
+	// Type specifies how to match against the value of the header.
+	// +optional
+	// +kubebuilder:default=Exact
+	Type *HeaderMatchType `json:"type,omitempty"`
+	// Name is the name of the HTTP Header to be matched. Name matching MUST be
+	// case insensitive.
+	Name string `json:"name"`
+	// Value is the value of HTTP Header to be matched.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=4096
+	Value string `json:"value"`
+}
+
+// +kubebuilder:validation:Enum=Exact;RegularExpression
+type HeaderMatchType string
+
+// HeaderMatchType constants.
+const (
+	HeaderMatchExact             HeaderMatchType = "Exact"
+	HeaderMatchRegularExpression HeaderMatchType = "RegularExpression"
+)
 
 // RolloutPause defines a pause stage for a rollout
 type RolloutPause struct {
