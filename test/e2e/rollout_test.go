@@ -3663,6 +3663,93 @@ var _ = SIGDescribe("Rollout", func() {
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "4", 1)
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "5", 1)
 		})
+
+		It("check canary status message", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.ObjectRef.WorkloadRef = &rolloutsv1alpha1.WorkloadRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "CloneSet",
+				Name:       "echoserver",
+			}
+			rollout.Annotations = map[string]string{
+				util.RollbackInBatchAnnotation: "true",
+			}
+			rollout.Spec.Strategy.Canary.TrafficRoutings = nil
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
+				{
+					Weight: utilpointer.Int32(20),
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(10),
+					},
+				},
+				{
+					Weight: utilpointer.Int32(50),
+					Pause:  rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: utilpointer.Int32(100),
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(10),
+					},
+				},
+			}
+			CreateObject(rollout)
+			By("Creating workload and waiting for all pods ready...")
+			workload := &appsv1alpha1.CloneSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/cloneset.yaml", workload)).ToNot(HaveOccurred())
+			workload.Labels[util.RolloutIDLabel] = "1"
+			CreateObject(workload)
+			WaitCloneSetAllPodsReady(workload)
+
+			By("check after first deployment")
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			record := rolloutsv1alpha1.DecodeCanaryMessage(rollout.Status.CanaryStatus.Message)
+			Expect(record.RevisionChanged).Should(BeFalse())
+			Expect(record.RolloutID).Should(Equal("1"))
+
+			By("only update rollout-id from 1-> 2")
+			workload.Labels[util.RolloutIDLabel] = "2"
+			UpdateCloneSet(workload)
+			time.Sleep(5 * time.Second)
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			record = rolloutsv1alpha1.DecodeCanaryMessage(rollout.Status.CanaryStatus.Message)
+			Expect(record.RevisionChanged).Should(BeFalse())
+			Expect(record.RolloutID).Should(Equal("2"))
+
+			By("update revision and check")
+			GetObject(workload.Name, workload)
+			By(fmt.Sprintf("%v", workload.Spec.Template.Spec.Containers[0].Env))
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateCloneSet(workload)
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			record = rolloutsv1alpha1.DecodeCanaryMessage(rollout.Status.CanaryStatus.Message)
+			Expect(record.RevisionChanged).Should(BeTrue())
+			Expect(record.RolloutID).Should(Equal("2"))
+
+			By("Update rollout-id from 2 to 3, but revision is not changed")
+			workload.Labels[util.RolloutIDLabel] = "3"
+			UpdateCloneSet(workload)
+			time.Sleep(5 * time.Second)
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			record = rolloutsv1alpha1.DecodeCanaryMessage(rollout.Status.CanaryStatus.Message)
+			Expect(record.RevisionChanged).Should(BeFalse())
+			Expect(record.RolloutID).Should(Equal("3"))
+
+			By("rollback revision, update rollout id 3 to 4")
+			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			workload.Labels[util.RolloutIDLabel] = "4"
+			UpdateCloneSet(workload)
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			record = rolloutsv1alpha1.DecodeCanaryMessage(rollout.Status.CanaryStatus.Message)
+			Expect(record.RevisionChanged).Should(BeTrue())
+			Expect(record.RolloutID).Should(Equal("4"))
+		})
 	})
 })
 

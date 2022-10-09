@@ -77,15 +77,29 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 		done = false
 		return
 	}
-	newStatus.StableRevision = workload.StableRevision
+
+	currentRolloutID := getRolloutID(workload, rollout)
+	// update CanaryStatus for newStatus if we need
 	// update workload generation to canaryStatus.ObservedWorkloadGeneration
 	// rollout is a target ref bypass, so there needs to be a field to identify the rollout execution process or results,
 	// which version of deployment is targeted, ObservedWorkloadGeneration that is to compare with the workload generation
-	if newStatus.CanaryStatus != nil && newStatus.CanaryStatus.CanaryRevision != "" &&
-		newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision {
-		newStatus.CanaryStatus.ObservedRolloutID = getRolloutID(workload, rollout)
-		newStatus.CanaryStatus.ObservedWorkloadGeneration = workload.Generation
+	if newStatus.CanaryStatus != nil && newStatus.CanaryStatus.CanaryRevision != "" {
+		// update canaryStatus message if we need
+		if isMeaninglessChangesOfRolloutID(&newStatus, workload, currentRolloutID) {
+			newStatus.CanaryStatus.Message = rolloutv1alpha1.EncodeCanaryMessage(false, currentRolloutID)
+		}
+		// update observed rollout-id and workload generation if we need
+		if isCanaryRevisionNotChanged(&newStatus, workload) {
+			newStatus.CanaryStatus.ObservedRolloutID = currentRolloutID
+			newStatus.CanaryStatus.ObservedWorkloadGeneration = workload.Generation
+		} else {
+			// revision changed, update the canary message
+			newStatus.CanaryStatus.Message = rolloutv1alpha1.EncodeCanaryMessage(true, currentRolloutID)
+			klog.Infof("checkpoint: update message meaningful %s", newStatus.CanaryStatus.Message)
+		}
 	}
+	// fresh and update stable revision
+	newStatus.StableRevision = workload.StableRevision
 
 	switch newStatus.Phase {
 	case rolloutv1alpha1.RolloutPhaseInitial:
@@ -112,16 +126,16 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 			// But at the first deployment of Rollout/Workload, CanaryStatus isn't set due to no rollout progression,
 			// and PaaS platform cannot judge whether the deployment is completed base on the code above. So we have
 			// to update the status just like the rollout was completed.
-
 			newStatus.CanaryStatus = &rolloutv1alpha1.CanaryStatus{
 				CanaryReplicas:             workload.CanaryReplicas,
 				CanaryReadyReplicas:        workload.CanaryReadyReplicas,
-				ObservedRolloutID:          getRolloutID(workload, rollout),
+				ObservedRolloutID:          currentRolloutID,
 				ObservedWorkloadGeneration: workload.Generation,
 				PodTemplateHash:            workload.PodTemplateHash,
 				CanaryRevision:             workload.CanaryRevision,
 				CurrentStepIndex:           int32(len(rollout.Spec.Strategy.Canary.Steps)),
 				CurrentStepState:           rolloutv1alpha1.CanaryStepStateCompleted,
+				Message:                    rolloutv1alpha1.EncodeCanaryMessage(false, currentRolloutID),
 			}
 			newStatus.Message = "workload deployment is completed"
 		}
@@ -195,4 +209,27 @@ func (r *RolloutReconciler) calculateRolloutHash(rollout *rolloutv1alpha1.Rollou
 // hash hashes `data` with sha256 and returns the hex string
 func hash(data string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(data)))
+}
+
+// isMeaninglessChangesOfRolloutID return true if rollout-id changed, but rollout is not triggered
+func isMeaninglessChangesOfRolloutID(newStatus *rolloutv1alpha1.RolloutStatus, workload *util.Workload, newRolloutID string) bool {
+	if newRolloutID == "" {
+		return false
+	}
+	// just return false if no changes of rollout-id
+	if newRolloutID == newStatus.CanaryStatus.ObservedRolloutID {
+		return false
+	}
+
+	record := rolloutv1alpha1.DecodeCanaryMessage(newStatus.CanaryStatus.Message)
+	if record.RolloutID == newRolloutID {
+		return false
+	}
+	// rollout-id changed but revision changes has been observed by Rollout
+	return isCanaryRevisionNotChanged(newStatus, workload) && newStatus.StableRevision == workload.StableRevision
+}
+
+// observedCanaryRevision return true if newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision
+func isCanaryRevisionNotChanged(newStatus *rolloutv1alpha1.RolloutStatus, workload *util.Workload) bool {
+	return newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision
 }

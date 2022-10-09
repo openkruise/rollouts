@@ -57,7 +57,6 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *rolloutv1alpha1
 	case rolloutv1alpha1.ProgressingReasonInitializing:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		// new canaryStatus
-		newStatus.CanaryStatus = &rolloutv1alpha1.CanaryStatus{}
 		done, _, err := r.doProgressingInitializing(rollout, newStatus)
 		if err != nil {
 			klog.Errorf("rollout(%s/%s) doProgressingInitializing error(%s)", rollout.Namespace, rollout.Name, err.Error())
@@ -141,6 +140,7 @@ func progressingStateTransition(status *rolloutv1alpha1.RolloutStatus, condStatu
 
 func (r *RolloutReconciler) doProgressingInitializing(rollout *rolloutv1alpha1.Rollout, newStatus *rolloutv1alpha1.RolloutStatus) (bool, string, error) {
 	// canary release
+	resetCanaryStatus(newStatus)
 	return r.verifyCanaryStrategy(rollout, newStatus)
 }
 
@@ -245,4 +245,11 @@ func (r *RolloutReconciler) reCalculateCanaryStepIndex(rollout *rolloutv1alpha1.
 		}
 	}
 	return stepIndex, nil
+}
+
+func resetCanaryStatus(newStatus *rolloutv1alpha1.RolloutStatus) {
+	// Message cannot be cleaned up here
+	canaryStatus := &rolloutv1alpha1.CanaryStatus{}
+	canaryStatus.Message = newStatus.CanaryStatus.Message
+	newStatus.CanaryStatus = canaryStatus
 }
