@@ -24,7 +24,7 @@ import (
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting/gateway"
-	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting/nginx"
+	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting/ingress"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -40,9 +40,10 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 	if len(r.rollout.Spec.Strategy.Canary.TrafficRoutings) == 0 {
 		return true, nil
 	}
-
-	if r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds <= 0 {
-		r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds = defaultGracePeriodSeconds
+	// current only support one trafficRouting
+	trafficRouting := r.rollout.Spec.Strategy.Canary.TrafficRoutings[0]
+	if trafficRouting.GracePeriodSeconds <= 0 {
+		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
 	}
 	canaryStatus := r.newStatus.CanaryStatus
 	if r.newStatus.StableRevision == "" || canaryStatus.PodTemplateHash == "" {
@@ -102,7 +103,7 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 	}
 
 	// After restore stable service configuration, give the ingress provider 3 seconds to take effect
-	if verifyTime := canaryStatus.LastUpdateTime.Add(time.Second * time.Duration(r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds)); verifyTime.After(time.Now()) {
+	if verifyTime := canaryStatus.LastUpdateTime.Add(time.Second * time.Duration(trafficRouting.GracePeriodSeconds)); verifyTime.After(time.Now()) {
 		klog.Infof("update rollout(%s/%s) stable service(%s) done, and wait 3 seconds", r.rollout.Namespace, r.rollout.Name, r.stableService)
 		return false, nil
 	}
@@ -113,31 +114,30 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 		klog.Errorf("rollout(%s/%s) newTrafficRoutingController failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return false, err
 	}
-	var desiredWeight int32
-	if len(r.rollout.Spec.Strategy.Canary.Steps) > 0 {
-		desiredWeight = *r.rollout.Spec.Strategy.Canary.Steps[r.newStatus.CanaryStatus.CurrentStepIndex-1].Weight
-	}
-	steps := len(r.rollout.Spec.Strategy.Canary.Steps)
+	currentStep := r.rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
+	totalStep := len(r.rollout.Spec.Strategy.Canary.Steps)
 	cond := util.GetRolloutCondition(*r.newStatus, rolloutv1alpha1.RolloutConditionProgressing)
-	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and route traffic weight(%d)", canaryStatus.CurrentStepIndex, steps, desiredWeight)
-	verify, err := trController.EnsureRoutes(context.TODO(), desiredWeight)
+	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and route traffic (%d)", canaryStatus.CurrentStepIndex, totalStep, currentStep.Weight)
+	verify, err := trController.EnsureRoutes(context.TODO(), currentStep.Weight, currentStep.Matches)
 	if err != nil {
 		return false, err
 	} else if !verify {
-		klog.Infof("rollout(%s/%s) is doing step(%d) trafficRouting(%d)", r.rollout.Namespace, r.rollout.Name, r.newStatus.CanaryStatus.CurrentStepIndex, desiredWeight)
+		klog.Infof("rollout(%s/%s) is doing step(%d) trafficRouting(%s)", r.rollout.Namespace, r.rollout.Name, canaryStatus.CurrentStepIndex, util.DumpJSON(currentStep))
 		return false, nil
 	}
-	klog.Infof("rollout(%s/%s) do step(%d) trafficRouting(%d) success", r.rollout.Namespace, r.rollout.Name, r.newStatus.CanaryStatus.CurrentStepIndex, desiredWeight)
+	klog.Infof("rollout(%s/%s) do step(%d) trafficRouting(%s) success", r.rollout.Namespace, r.rollout.Name, canaryStatus.CurrentStepIndex, util.DumpJSON(currentStep))
 	return true, nil
 }
 
+// restore stable service configuration, remove selector pod-template-hash
 func (r *rolloutContext) restoreStableService() (bool, error) {
 	if len(r.rollout.Spec.Strategy.Canary.TrafficRoutings) == 0 {
 		return true, nil
 	}
-
-	if r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds <= 0 {
-		r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds = defaultGracePeriodSeconds
+	// current only support one trafficRouting
+	trafficRouting := r.rollout.Spec.Strategy.Canary.TrafficRoutings[0]
+	if trafficRouting.GracePeriodSeconds <= 0 {
+		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
 	}
 	//fetch stable service
 	stableService := &corev1.Service{}
@@ -167,7 +167,7 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 	}
 	// After restore stable service configuration, give the ingress provider 3 seconds to take effect
 	if r.newStatus.CanaryStatus.LastUpdateTime != nil {
-		if verifyTime := r.newStatus.CanaryStatus.LastUpdateTime.Add(time.Second * time.Duration(r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds)); verifyTime.After(time.Now()) {
+		if verifyTime := r.newStatus.CanaryStatus.LastUpdateTime.Add(time.Second * time.Duration(trafficRouting.GracePeriodSeconds)); verifyTime.After(time.Now()) {
 			klog.Infof("restore rollout(%s/%s) stable service(%s) done, and wait a moment", r.rollout.Namespace, r.rollout.Name, r.stableService)
 			return false, nil
 		}
@@ -176,13 +176,17 @@ func (r *rolloutContext) restoreStableService() (bool, error) {
 	return true, nil
 }
 
+// 1. restore ingress or gateway configuration
+// 2. remove canary service
 func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 	if len(r.rollout.Spec.Strategy.Canary.TrafficRoutings) == 0 {
 		return true, nil
 	}
+	// current only support one trafficRouting
+	trafficRouting := r.rollout.Spec.Strategy.Canary.TrafficRoutings[0]
 	klog.Infof("rollout(%s/%s) start finalising traffic routing", r.rollout.Namespace, r.rollout.Name)
-	if r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds <= 0 {
-		r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds = defaultGracePeriodSeconds
+	if trafficRouting.GracePeriodSeconds <= 0 {
+		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
 	}
 	if r.newStatus.CanaryStatus == nil {
 		r.newStatus.CanaryStatus = &rolloutv1alpha1.CanaryStatus{}
@@ -193,17 +197,12 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 		klog.Errorf("rollout(%s/%s) newTrafficRoutingController failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
 		return false, err
 	}
-	verify, err := trController.EnsureRoutes(context.TODO(), 0)
+	verify, err := trController.Finalise(context.TODO())
 	if err != nil {
 		return false, err
 	} else if !verify {
 		klog.Infof("rollout(%s/%s) do finalising: ensure canary routes(weight:0)", r.rollout.Namespace, r.rollout.Name)
 		return false, nil
-	}
-
-	// DoFinalising, such as delete nginx canary ingress
-	if err = trController.Finalise(context.TODO()); err != nil {
-		return false, err
 	}
 
 	// 2. remove canary service
@@ -226,20 +225,20 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 }
 
 func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (trafficrouting.Controller, error) {
-	canary := roCtx.rollout.Spec.Strategy.Canary
-	if canary.TrafficRoutings[0].Ingress != nil {
+	trafficRouting := roCtx.rollout.Spec.Strategy.Canary.TrafficRoutings[0]
+	if trafficRouting.Ingress != nil {
 		gvk := schema.GroupVersionKind{Group: rolloutv1alpha1.GroupVersion.Group, Version: rolloutv1alpha1.GroupVersion.Version, Kind: "Rollout"}
-		return nginx.NewNginxTrafficRouting(r.Client, r.newStatus, nginx.Config{
+		return ingress.NewIngressTrafficRouting(r.Client, ingress.Config{
 			RolloutName:   r.rollout.Name,
 			RolloutNs:     r.rollout.Namespace,
 			CanaryService: r.canaryService,
 			StableService: r.stableService,
-			TrafficConf:   r.rollout.Spec.Strategy.Canary.TrafficRoutings[0].Ingress,
+			TrafficConf:   trafficRouting.Ingress,
 			OwnerRef:      *metav1.NewControllerRef(r.rollout, gvk),
 		})
 	}
-	if canary.TrafficRoutings[0].Gateway != nil {
-		return gateway.NewGatewayTrafficRouting(r.Client, r.newStatus, gateway.Config{
+	if trafficRouting.Gateway != nil {
+		return gateway.NewGatewayTrafficRouting(r.Client, gateway.Config{
 			RolloutName:   r.rollout.Name,
 			RolloutNs:     r.rollout.Namespace,
 			CanaryService: r.canaryService,

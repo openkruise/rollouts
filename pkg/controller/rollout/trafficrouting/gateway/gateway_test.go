@@ -20,6 +20,8 @@ import (
 	"reflect"
 	"testing"
 
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
 	utilpointer "k8s.io/utils/pointer"
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
@@ -32,6 +34,13 @@ var (
 		Spec: gatewayv1alpha2.HTTPRouteSpec{
 			Rules: []gatewayv1alpha2.HTTPRouteRule{
 				{
+					Matches: []gatewayv1alpha2.HTTPRouteMatch{
+						{
+							Path: &gatewayv1alpha2.HTTPPathMatch{
+								Value: utilpointer.String("/web"),
+							},
+						},
+					},
 					BackendRefs: []gatewayv1alpha2.HTTPBackendRef{
 						{
 							BackendRef: gatewayv1alpha2.BackendRef{
@@ -49,6 +58,17 @@ var (
 						{
 							Path: &gatewayv1alpha2.HTTPPathMatch{
 								Value: utilpointer.String("/store"),
+							},
+							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								{
+									Name:  "version",
+									Value: "v2",
+								},
+							},
+						},
+						{
+							Path: &gatewayv1alpha2.HTTPPathMatch{
+								Value: utilpointer.String("/v2/store"),
 							},
 						},
 					},
@@ -88,7 +108,7 @@ var (
 					Matches: []gatewayv1alpha2.HTTPRouteMatch{
 						{
 							Path: &gatewayv1alpha2.HTTPPathMatch{
-								Value: utilpointer.String("/storev2"),
+								Value: utilpointer.String("/storage"),
 							},
 						},
 					},
@@ -113,67 +133,124 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 	cases := []struct {
 		name          string
 		getRouteRules func() []gatewayv1alpha2.HTTPRouteRule
-		canaryPercent int32
+		getRoutes     func() (*int32, []rolloutsv1alpha1.HttpRouteMatch)
 		desiredRules  func() []gatewayv1alpha2.HTTPRouteRule
 	}{
 		{
-			name: "canary weight: 20",
+			name: "test1 headers",
 			getRouteRules: func() []gatewayv1alpha2.HTTPRouteRule {
 				rules := routeDemo.DeepCopy().Spec.Rules
 				return rules
 			},
-			canaryPercent: 20,
+			getRoutes: func() (*int32, []rolloutsv1alpha1.HttpRouteMatch) {
+				iType := gatewayv1alpha2.HeaderMatchRegularExpression
+				return nil, []rolloutsv1alpha1.HttpRouteMatch{
+					// header
+					{
+						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+							{
+								Name:  "user_id",
+								Value: "123*",
+								Type:  &iType,
+							},
+							{
+								Name:  "canary",
+								Value: "true",
+							},
+						},
+					},
+				}
+			},
 			desiredRules: func() []gatewayv1alpha2.HTTPRouteRule {
 				rules := routeDemo.DeepCopy().Spec.Rules
-				rules[1].BackendRefs = []gatewayv1alpha2.HTTPBackendRef{
-					{
-						BackendRef: gatewayv1alpha2.BackendRef{
-							BackendObjectReference: gatewayv1alpha2.BackendObjectReference{
-								Kind: &kindSvc,
-								Name: "store-svc",
-								Port: &portNum,
+				iType := gatewayv1alpha2.HeaderMatchRegularExpression
+				rules = append(rules, gatewayv1alpha2.HTTPRouteRule{
+					Matches: []gatewayv1alpha2.HTTPRouteMatch{
+						{
+							Path: &gatewayv1alpha2.HTTPPathMatch{
+								Value: utilpointer.String("/store"),
 							},
-							Weight: utilpointer.Int32(80),
+							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								{
+									Name:  "version",
+									Value: "v2",
+								},
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+						{
+							Path: &gatewayv1alpha2.HTTPPathMatch{
+								Value: utilpointer.String("/v2/store"),
+							},
+							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
 						},
 					},
-					{
-						BackendRef: gatewayv1alpha2.BackendRef{
-							BackendObjectReference: gatewayv1alpha2.BackendObjectReference{
-								Kind: &kindSvc,
-								Name: "store-svc-canary",
-								Port: &portNum,
+					BackendRefs: []gatewayv1alpha2.HTTPBackendRef{
+						{
+							BackendRef: gatewayv1alpha2.BackendRef{
+								BackendObjectReference: gatewayv1alpha2.BackendObjectReference{
+									Kind: &kindSvc,
+									Name: "store-svc-canary",
+									Port: &portNum,
+								},
 							},
-							Weight: utilpointer.Int32(20),
 						},
 					},
-				}
-				rules[3].BackendRefs = []gatewayv1alpha2.HTTPBackendRef{
-					{
-						BackendRef: gatewayv1alpha2.BackendRef{
-							BackendObjectReference: gatewayv1alpha2.BackendObjectReference{
-								Kind: &kindSvc,
-								Name: "store-svc",
-								Port: &portNum,
+				})
+				rules = append(rules, gatewayv1alpha2.HTTPRouteRule{
+					Matches: []gatewayv1alpha2.HTTPRouteMatch{
+						{
+							Path: &gatewayv1alpha2.HTTPPathMatch{
+								Value: utilpointer.String("/storage"),
 							},
-							Weight: utilpointer.Int32(80),
+							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
 						},
 					},
-					{
-						BackendRef: gatewayv1alpha2.BackendRef{
-							BackendObjectReference: gatewayv1alpha2.BackendObjectReference{
-								Kind: &kindSvc,
-								Name: "store-svc-canary",
-								Port: &portNum,
+					BackendRefs: []gatewayv1alpha2.HTTPBackendRef{
+						{
+							BackendRef: gatewayv1alpha2.BackendRef{
+								BackendObjectReference: gatewayv1alpha2.BackendObjectReference{
+									Kind: &kindSvc,
+									Name: "store-svc-canary",
+									Port: &portNum,
+								},
 							},
-							Weight: utilpointer.Int32(20),
 						},
 					},
-				}
+				})
 				return rules
 			},
 		},
 		{
-			name: "canary weight: 0",
+			name: "canary weight: 20",
 			getRouteRules: func() []gatewayv1alpha2.HTTPRouteRule {
 				rules := routeDemo.DeepCopy().Spec.Rules
 				rules[1].BackendRefs = []gatewayv1alpha2.HTTPBackendRef{
@@ -222,7 +299,9 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				}
 				return rules
 			},
-			canaryPercent: 0,
+			getRoutes: func() (*int32, []rolloutsv1alpha1.HttpRouteMatch) {
+				return utilpointer.Int32(20), nil
+			},
 			desiredRules: func() []gatewayv1alpha2.HTTPRouteRule {
 				rules := routeDemo.DeepCopy().Spec.Rules
 				rules[1].BackendRefs = []gatewayv1alpha2.HTTPBackendRef{
@@ -233,7 +312,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 								Name: "store-svc",
 								Port: &portNum,
 							},
-							Weight: utilpointer.Int32(100),
+							Weight: utilpointer.Int32(80),
 						},
 					},
 					{
@@ -243,7 +322,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 								Name: "store-svc-canary",
 								Port: &portNum,
 							},
-							Weight: utilpointer.Int32(0),
+							Weight: utilpointer.Int32(20),
 						},
 					},
 				}
@@ -255,7 +334,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 								Name: "store-svc",
 								Port: &portNum,
 							},
-							Weight: utilpointer.Int32(100),
+							Weight: utilpointer.Int32(80),
 						},
 					},
 					{
@@ -265,7 +344,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 								Name: "store-svc-canary",
 								Port: &portNum,
 							},
-							Weight: utilpointer.Int32(0),
+							Weight: utilpointer.Int32(20),
 						},
 					},
 				}
@@ -320,11 +399,47 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 						},
 					},
 				}
+				iType := gatewayv1alpha2.HeaderMatchRegularExpression
+				rules = append(rules, gatewayv1alpha2.HTTPRouteRule{
+					Matches: []gatewayv1alpha2.HTTPRouteMatch{
+						{
+							Path: &gatewayv1alpha2.HTTPPathMatch{
+								Value: utilpointer.String("/storage"),
+							},
+							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+					},
+					BackendRefs: []gatewayv1alpha2.HTTPBackendRef{
+						{
+							BackendRef: gatewayv1alpha2.BackendRef{
+								BackendObjectReference: gatewayv1alpha2.BackendObjectReference{
+									Kind: &kindSvc,
+									Name: "store-svc-canary",
+									Port: &portNum,
+								},
+							},
+						},
+					},
+				})
 				return rules
 			},
-			canaryPercent: -1,
+			getRoutes: func() (*int32, []rolloutsv1alpha1.HttpRouteMatch) {
+				return utilpointer.Int32(-1), nil
+			},
 			desiredRules: func() []gatewayv1alpha2.HTTPRouteRule {
 				rules := routeDemo.DeepCopy().Spec.Rules
+				rules[3].BackendRefs[0].Weight = utilpointer.Int32(1)
+				rules[1].BackendRefs[0].Weight = utilpointer.Int32(1)
 				return rules
 			},
 		},
@@ -339,9 +454,11 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			controller := &gatewayController{conf: conf}
-			desired := controller.buildDesiredHTTPRoute(cs.getRouteRules(), cs.canaryPercent)
-			if !reflect.DeepEqual(desired, cs.desiredRules()) {
-				t.Fatalf("expect: %v, but get %v", cs.desiredRules(), desired)
+			weight, matches := cs.getRoutes()
+			current := controller.buildDesiredHTTPRoute(cs.getRouteRules(), weight, matches)
+			desired := cs.desiredRules()
+			if !reflect.DeepEqual(current, desired) {
+				t.Fatalf("expect: %v, but get %v", util.DumpJSON(desired), util.DumpJSON(current))
 			}
 		})
 	}

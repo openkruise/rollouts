@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
@@ -40,17 +41,14 @@ type Config struct {
 
 type gatewayController struct {
 	client.Client
-	//stableIngress *netv1.Ingress
-	conf      Config
-	newStatus *rolloutv1alpha1.RolloutStatus
+	conf Config
 }
 
 // NewGatewayTrafficRouting The Gateway API is a part of the SIG Network.
-func NewGatewayTrafficRouting(client client.Client, newStatus *rolloutv1alpha1.RolloutStatus, conf Config) (trafficrouting.Controller, error) {
+func NewGatewayTrafficRouting(client client.Client, conf Config) (trafficrouting.Controller, error) {
 	r := &gatewayController{
-		Client:    client,
-		conf:      conf,
-		newStatus: newStatus,
+		Client: client,
+		conf:   conf,
 	}
 	return r, nil
 }
@@ -60,25 +58,17 @@ func (r *gatewayController) Initialize(ctx context.Context) error {
 	return r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: *r.conf.TrafficConf.HTTPRouteName}, route)
 }
 
-func (r *gatewayController) EnsureRoutes(ctx context.Context, desiredWeight int32) (bool, error) {
+func (r *gatewayController) EnsureRoutes(ctx context.Context, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch) (bool, error) {
 	var httpRoute gatewayv1alpha2.HTTPRoute
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: *r.conf.TrafficConf.HTTPRouteName}, &httpRoute)
 	if err != nil {
-		// When desiredWeight=0, it means that rollout has been completed and the final traffic switching process is in progress,
-		// and The removal of httpRoute is expected.
-		if desiredWeight == 0 && errors.IsNotFound(err) {
-			klog.Infof("rollout(%s/%s) verify canary HTTPRoute has been deleted", r.conf.RolloutNs, r.conf.RolloutName)
-			return true, nil
-		}
 		return false, err
 	}
-
 	// desired route
-	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, desiredWeight)
+	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, weight, matches)
 	if reflect.DeepEqual(httpRoute.Spec.Rules, desiredRule) {
 		return true, nil
 	}
-
 	// set route
 	routeClone := &gatewayv1alpha2.HTTPRoute{}
 	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
@@ -92,24 +82,24 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, desiredWeight int3
 		klog.Errorf("update rollout(%s/%s) httpRoute(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, httpRoute.Name, err.Error())
 		return false, err
 	}
-	klog.Infof("rollout(%s/%s) set HTTPRoute(name:%s weight:%d) success", r.conf.RolloutNs, r.conf.RolloutName, *r.conf.TrafficConf.HTTPRouteName, desiredWeight)
+	klog.Infof("rollout(%s/%s) set HTTPRoute(name:%s weight:%d) success", r.conf.RolloutNs, r.conf.RolloutName, *r.conf.TrafficConf.HTTPRouteName, *weight)
 	return false, nil
 }
 
-func (r *gatewayController) Finalise(ctx context.Context) error {
+func (r *gatewayController) Finalise(ctx context.Context) (bool, error) {
 	httpRoute := &gatewayv1alpha2.HTTPRoute{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: *r.conf.TrafficConf.HTTPRouteName}, httpRoute)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return nil
+			return true, nil
 		}
 		klog.Errorf("rollout(%s/%s) get HTTPRoute failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
-		return err
+		return false, err
 	}
 	// desired rule
-	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, -1)
+	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, utilpointer.Int32(-1), nil)
 	if reflect.DeepEqual(httpRoute.Spec.Rules, desiredRule) {
-		return nil
+		return true, nil
 	}
 	routeClone := &gatewayv1alpha2.HTTPRoute{}
 	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
@@ -121,13 +111,68 @@ func (r *gatewayController) Finalise(ctx context.Context) error {
 		return r.Client.Update(context.TODO(), routeClone)
 	}); err != nil {
 		klog.Errorf("update rollout(%s/%s) httpRoute(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, httpRoute.Name, err.Error())
-		return err
+		return false, err
 	}
 	klog.Infof("rollout(%s/%s) TrafficRouting Finalise success", r.conf.RolloutNs, r.conf.RolloutName)
-	return nil
+	return false, nil
 }
 
-func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRouteRule, canaryPercent int32) []gatewayv1alpha2.HTTPRouteRule {
+func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch) []gatewayv1alpha2.HTTPRouteRule {
+	var desired []gatewayv1alpha2.HTTPRouteRule
+	// Only when finalize method parameter weight=-1,
+	// then we need to remove the canary route policy and restore to the original configuration
+	if weight != nil && *weight == -1 {
+		for i := range rules {
+			rule := rules[i]
+			filterOutServiceBackendRef(&rule, r.conf.CanaryService)
+			_, stableRef := getServiceBackendRef(rule, r.conf.StableService)
+			if stableRef != nil {
+				stableRef.Weight = utilpointer.Int32(1)
+				setServiceBackendRef(&rule, *stableRef)
+			}
+			if len(rule.BackendRefs) != 0 {
+				desired = append(desired, rule)
+			}
+		}
+		return desired
+		// according to the Gateway API definition, weight and headers cannot be supported at the same time.
+		// A/B Testing, according to headers. current only support one match
+	} else if len(matches) > 0 {
+		return r.buildCanaryHeaderHttpRoutes(rules, matches[0].Headers)
+	}
+	// canary release, according to percentage of traffic routing
+	return r.buildCanaryWeightHttpRoutes(rules, weight)
+}
+
+func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.HTTPRouteRule, headers []gatewayv1alpha2.HTTPHeaderMatch) []gatewayv1alpha2.HTTPRouteRule {
+	var desired []gatewayv1alpha2.HTTPRouteRule
+	var canarys []gatewayv1alpha2.HTTPRouteRule
+	for i := range rules {
+		rule := rules[i]
+		if _, canaryRef := getServiceBackendRef(rule, r.conf.CanaryService); canaryRef != nil {
+			continue
+		}
+		desired = append(desired, rule)
+		if _, stableRef := getServiceBackendRef(rule, r.conf.StableService); stableRef == nil {
+			continue
+		}
+		// according to stable rule to create canary rule
+		canaryRule := rule.DeepCopy()
+		_, canaryRef := getServiceBackendRef(*canaryRule, r.conf.StableService)
+		canaryRef.Name = gatewayv1alpha2.ObjectName(r.conf.CanaryService)
+		canaryRule.BackendRefs = []gatewayv1alpha2.HTTPBackendRef{*canaryRef}
+		// set canary headers in httpRoute
+		for j := range canaryRule.Matches {
+			match := &canaryRule.Matches[j]
+			match.Headers = append(match.Headers, headers...)
+		}
+		canarys = append(canarys, *canaryRule)
+	}
+	desired = append(desired, canarys...)
+	return desired
+}
+
+func (r *gatewayController) buildCanaryWeightHttpRoutes(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32) []gatewayv1alpha2.HTTPRouteRule {
 	var desired []gatewayv1alpha2.HTTPRouteRule
 	for i := range rules {
 		rule := rules[i]
@@ -136,24 +181,16 @@ func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRo
 			desired = append(desired, rule)
 			continue
 		}
-		// If canaryPercent = -1, delete canary backendRef
-		if canaryPercent == -1 {
-			filterOutServiceBackendRef(&rule, r.conf.CanaryService)
-			stableRef.Weight = nil
-			setServiceBackendRef(&rule, *stableRef)
-			// canaryPercent[0,100]
-		} else {
-			_, canaryRef := getServiceBackendRef(rule, r.conf.CanaryService)
-			if canaryRef == nil {
-				canaryRef = stableRef.DeepCopy()
-				canaryRef.Name = gatewayv1alpha2.ObjectName(r.conf.CanaryService)
-			}
-			stableWeight, canaryWeight := generateCanaryWeight(canaryPercent)
-			stableRef.Weight = &stableWeight
-			canaryRef.Weight = &canaryWeight
-			setServiceBackendRef(&rule, *stableRef)
-			setServiceBackendRef(&rule, *canaryRef)
+		_, canaryRef := getServiceBackendRef(rule, r.conf.CanaryService)
+		if canaryRef == nil {
+			canaryRef = stableRef.DeepCopy()
+			canaryRef.Name = gatewayv1alpha2.ObjectName(r.conf.CanaryService)
 		}
+		stableWeight, canaryWeight := generateCanaryWeight(*weight)
+		stableRef.Weight = &stableWeight
+		canaryRef.Weight = &canaryWeight
+		setServiceBackendRef(&rule, *stableRef)
+		setServiceBackendRef(&rule, *canaryRef)
 		desired = append(desired, rule)
 	}
 	return desired
