@@ -203,6 +203,10 @@ func (c *deploymentController) releaseDeployment(stableDeploy *apps.Deployment, 
 
 // scale the deployment
 func (c *deploymentController) patchDeploymentReplicas(deploy *apps.Deployment, replicas int32) error {
+	if *deploy.Spec.Replicas >= replicas {
+		return nil
+	}
+
 	patch := map[string]interface{}{
 		"spec": map[string]interface{}{
 			"replicas": pointer.Int32Ptr(replicas),

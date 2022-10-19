@@ -99,7 +99,7 @@ func (r *RolloutReconciler) updateRolloutStatus(rollout *rolloutv1alpha1.Rollout
 			newStatus.Phase = rolloutv1alpha1.RolloutPhaseProgressing
 			cond := util.NewRolloutCondition(rolloutv1alpha1.RolloutConditionProgressing, corev1.ConditionFalse, rolloutv1alpha1.ProgressingReasonInitializing, "Rollout is in Progressing")
 			util.SetRolloutCondition(&newStatus, *cond)
-		} else if workload.IsInStable && newStatus.CanaryStatus == nil {
+		} else if newStatus.CanaryStatus == nil {
 			// The following logic is to make PaaS be able to judge whether the rollout is ready
 			// at the first deployment of the Rollout/Workload. For example: generally, a PaaS
 			// platform can use the following code to judge whether the rollout progression is completed:

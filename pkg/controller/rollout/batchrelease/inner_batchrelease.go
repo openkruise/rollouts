@@ -63,6 +63,30 @@ func NewInnerBatchController(c client.Client, rollout *rolloutv1alpha1.Rollout, 
 	return r
 }
 
+func (r *innerBatchRelease) SyncRolloutID(currentID string) error {
+	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		batch := &rolloutv1alpha1.BatchRelease{}
+		if err := r.Get(context.TODO(), client.ObjectKey{Namespace: r.rollout.Namespace, Name: r.batchName}, batch); err != nil {
+			if errors.IsNotFound(err) {
+				return nil // just return nil if batchRelease not exist
+			}
+			return err
+		}
+		if batch.Spec.ReleasePlan.RolloutID == currentID {
+			return nil
+		}
+		batch.Spec.ReleasePlan.RolloutID = r.rolloutID
+		if err := r.Client.Update(context.TODO(), batch); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		klog.Errorf("rollout(%s/%s) update batchRelease rolloutID %s failed: %s", r.rollout.Namespace, r.rollout.Name, currentID, err.Error())
+		return err
+	}
+	return nil
+}
+
 func (r *innerBatchRelease) Verify(index int32) (bool, error) {
 	index = index - 1
 	batch := &rolloutv1alpha1.BatchRelease{}
@@ -84,7 +108,7 @@ func (r *innerBatchRelease) Verify(index int32) (bool, error) {
 
 	// check whether batchRelease configuration is the latest
 	newBr := createBatchRelease(r.rollout, r.batchName, r.rolloutID)
-	if reflect.DeepEqual(batch.Spec.ReleasePlan.Batches, newBr.Spec.ReleasePlan.Batches) {
+	if batchPlanDeepEqual(batch, newBr, index) {
 		klog.Infof("rollout(%s/%s) batchRelease(generation:%d) configuration is the latest", r.rollout.Namespace, r.rollout.Name, batch.Generation)
 		return true, nil
 	}
@@ -95,6 +119,7 @@ func (r *innerBatchRelease) Verify(index int32) (bool, error) {
 			klog.Errorf("error getting updated BatchRelease(%s/%s) from client", batch.Namespace, batch.Name)
 			return err
 		}
+		batch.Spec.ReleasePlan.RolloutID = r.rolloutID
 		batch.Spec.ReleasePlan.Batches = newBr.Spec.ReleasePlan.Batches
 		batch.Spec.ReleasePlan.BatchPartition = utilpointer.Int32Ptr(index)
 		if err = r.Client.Update(context.TODO(), batch); err != nil {
@@ -362,4 +387,14 @@ func IsPromoted(rollout *rolloutv1alpha1.Rollout, batch *rolloutv1alpha1.BatchRe
 		return false
 	}
 	return true
+}
+
+func batchPlanDeepEqual(old, new *rolloutv1alpha1.BatchRelease, currentBatch int32) bool {
+	if old.Spec.ReleasePlan.BatchPartition == nil || *old.Spec.ReleasePlan.BatchPartition != currentBatch {
+		return false
+	}
+	if old.Spec.ReleasePlan.RolloutID != new.Spec.ReleasePlan.RolloutID {
+		return false
+	}
+	return reflect.DeepEqual(old.Spec.ReleasePlan.Batches, new.Spec.ReleasePlan.Batches)
 }

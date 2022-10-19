@@ -82,6 +82,19 @@ func IsConsistentWithRevision(pod *v1.Pod, revision string) bool {
 	return false
 }
 
+func IsEqualRevision(a, b *v1.Pod) bool {
+	if a.Labels[appsv1.DefaultDeploymentUniqueLabelKey] != "" &&
+		a.Labels[appsv1.DefaultDeploymentUniqueLabelKey] == b.Labels[appsv1.DefaultDeploymentUniqueLabelKey] {
+		return true
+	}
+
+	if a.Labels[appsv1.ControllerRevisionHashLabelKey] != "" &&
+		a.Labels[appsv1.ControllerRevisionHashLabelKey] == b.Labels[appsv1.ControllerRevisionHashLabelKey] {
+		return true
+	}
+	return false
+}
+
 // FilterActivePods will filter out terminating pods
 func FilterActivePods(pods []*v1.Pod) []*v1.Pod {
 	var activePods []*v1.Pod

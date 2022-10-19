@@ -71,7 +71,7 @@ func (p podEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingI
 	if !oldOK || !newOK {
 		return
 	}
-	if oldPod.ResourceVersion == newPod.ResourceVersion || util.IsPodReady(oldPod) == util.IsPodReady(newPod) {
+	if oldPod.ResourceVersion == newPod.ResourceVersion || (util.IsEqualRevision(oldPod, newPod) && util.IsPodReady(oldPod) == util.IsPodReady(newPod)) {
 		return
 	}
 

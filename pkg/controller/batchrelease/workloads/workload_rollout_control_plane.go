@@ -66,40 +66,6 @@ func NewUnifiedWorkloadRolloutControlPlane(f NewUnifiedControllerFunc, c client.
 
 // VerifyWorkload verifies that the workload is ready to execute release plan
 func (c *UnifiedWorkloadRolloutControlPlane) VerifyWorkload() (bool, error) {
-	var err error
-	var message string
-	defer func() {
-		if err != nil {
-			c.recorder.Event(c.release, v1.EventTypeWarning, "VerifyFailed", err.Error())
-		} else if message != "" {
-			klog.Warningf(message)
-		}
-	}()
-
-	workloadInfo, err := c.GetWorkloadInfo()
-	if err != nil {
-		return false, err
-	}
-
-	// If the workload status is untrustworthy
-	if workloadInfo.Status.ObservedGeneration != workloadInfo.Generation {
-		message = fmt.Sprintf("%v is still reconciling, wait for it to be done", workloadInfo.GVKWithName)
-		return false, nil
-	}
-
-	// If the workload has been promoted, no need to go on
-	if workloadInfo.Status.UpdatedReplicas == *workloadInfo.Replicas {
-		message = fmt.Sprintf("%v update revision has been promoted, no need to reconcile", workloadInfo.GVKWithName)
-		return false, nil
-	}
-
-	// If the workload is not paused and is not under our control
-	if !workloadInfo.Paused {
-		message = fmt.Sprintf("%v should be paused before execute the release plan", workloadInfo.GVKWithName)
-		return false, nil
-	}
-
-	c.recorder.Event(c.release, v1.EventTypeNormal, "VerifiedSuccessfully", "ReleasePlan and the workload resource are verified")
 	return true, nil
 }
 

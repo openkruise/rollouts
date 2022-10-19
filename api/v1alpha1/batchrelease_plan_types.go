@@ -68,6 +68,10 @@ type BatchReleaseStatus struct {
 	// It corresponds to this BatchRelease's generation, which is updated on mutation
 	// by the API Server, and only if BatchRelease Spec was changed, its generation will increase 1.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// ObservedRolloutID is the most recent rollout-id observed for this BatchRelease.
+	// If RolloutID was changed, we will restart to roll out from batch 0,
+	// to ensure the batch-id and rollout-id labels of Pods are correct.
+	ObservedRolloutID string `json:"observedRolloutID,omitempty"`
 	// ObservedWorkloadReplicas is observed replicas of target referenced workload.
 	// This field is designed to deal with scaling event during rollout, if this field changed,
 	// it means that the workload is scaling during rollout.

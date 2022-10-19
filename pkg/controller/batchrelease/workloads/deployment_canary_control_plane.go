@@ -62,46 +62,10 @@ func NewDeploymentRolloutController(cli client.Client, recorder record.EventReco
 
 // VerifyWorkload verifies that the workload is ready to execute release plan
 func (c *DeploymentsRolloutController) VerifyWorkload() (bool, error) {
-	var err error
-	var message string
-	defer func() {
-		if err != nil {
-			c.recorder.Event(c.release, v1.EventTypeWarning, "VerifyFailed", err.Error())
-		} else if message != "" {
-			klog.Warningf(message)
-		}
-	}()
-
-	if err = c.fetchStableDeployment(); err != nil {
-		return false, err
-	}
-
-	if err = c.fetchCanaryDeployment(); client.IgnoreNotFound(err) != nil {
-		return false, err
-	}
-
-	// if the workload status is untrustworthy, return and retry
-	if c.stable.Status.ObservedGeneration != c.stable.Generation {
-		message = fmt.Sprintf("deployment(%v) is still reconciling, wait for it to be done", c.stableNamespacedName)
-		return false, nil
-	}
-
-	// if the workload has been promoted, return and not retry
-	if c.stable.Status.UpdatedReplicas == *c.stable.Spec.Replicas {
-		message = fmt.Sprintf("deployment(%v) update revision has been promoted, no need to rollout", c.stableNamespacedName)
-		return false, nil
-	}
-
-	// if the workload is not paused, no need to progress it
-	if !c.stable.Spec.Paused {
-		message = fmt.Sprintf("deployment(%v) should be paused before execute the release plan", c.stableNamespacedName)
-		return false, nil
-	}
-
 	// claim the deployment is under our control, and create canary deployment if it needs.
 	// Do not move this function to Preparing phase, otherwise multi canary deployments
 	// will be repeatedly created due to informer cache latency.
-	if _, err = c.claimDeployment(c.stable, c.canary); err != nil {
+	if _, err := c.claimDeployment(c.stable, c.canary); err != nil {
 		return false, err
 	}
 
@@ -145,11 +109,8 @@ func (c *DeploymentsRolloutController) UpgradeOneBatch() (bool, error) {
 		"current-canary-replicas", currentCanaryReplicas,
 		"current-canary-status-replicas", c.canary.Status.UpdatedReplicas)
 
-	// upgrade pods if it needs
-	if currentCanaryReplicas < canaryGoal {
-		if err := c.patchDeploymentReplicas(c.canary, canaryGoal); err != nil {
-			return false, err
-		}
+	if err := c.patchDeploymentReplicas(c.canary, canaryGoal); err != nil {
+		return false, err
 	}
 
 	// patch current batch label to pods

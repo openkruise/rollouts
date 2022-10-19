@@ -3663,6 +3663,186 @@ var _ = SIGDescribe("Rollout", func() {
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "4", 1)
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "5", 1)
 		})
+
+		It("patch batch id to pods: only rollout-id changes", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.ObjectRef.WorkloadRef = &rolloutsv1alpha1.WorkloadRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "CloneSet",
+				Name:       "echoserver",
+			}
+			rollout.Spec.Strategy.Canary.TrafficRoutings = nil
+			rollout.Annotations = map[string]string{
+				util.RollbackInBatchAnnotation: "true",
+			}
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
+				{
+					Weight: utilpointer.Int32(20),
+					Pause:  rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: utilpointer.Int32(40),
+					Pause:  rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: utilpointer.Int32(60),
+					Pause:  rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: utilpointer.Int32(80),
+					Pause:  rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: utilpointer.Int32(100),
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(0),
+					},
+				},
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			workload := &appsv1alpha1.CloneSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/cloneset.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitCloneSetAllPodsReady(workload)
+
+			By("Only update rollout id = '1', and start rollout")
+			workload.Labels[util.RolloutIDLabel] = "1"
+			workload.Annotations[util.InRolloutProgressingAnnotation] = "true"
+			UpdateCloneSet(workload)
+
+			By("wait step(1) pause")
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "1", 1)
+
+			By("wait step(2) pause")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "2", 1)
+
+			By("wait step(3) pause")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "3", 1)
+
+			By("Only update rollout id = '2', and check batch label again")
+			workload.Labels[util.RolloutIDLabel] = "2"
+			UpdateCloneSet(workload)
+
+			By("wait step(3) pause again")
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			time.Sleep(30 * time.Second)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "1", 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "2", 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "3", 1)
+
+			By("wait step(4) pause")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 4)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "4", 1)
+
+			By("Wait rollout complete")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "1", 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "2", 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "3", 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "4", 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "5", 1)
+		})
+
+		It("patch batch id to pods: only change rollout-id after rolling the first step", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.ObjectRef.WorkloadRef = &rolloutsv1alpha1.WorkloadRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "CloneSet",
+				Name:       "echoserver",
+			}
+			rollout.Spec.Strategy.Canary.TrafficRoutings = nil
+			rollout.Annotations = map[string]string{
+				util.RollbackInBatchAnnotation: "true",
+			}
+			rollout.Spec.Strategy.Canary.Steps = []rolloutsv1alpha1.CanaryStep{
+				{
+					Weight: utilpointer.Int32(20),
+					Pause:  rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: utilpointer.Int32(40),
+					Pause:  rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: utilpointer.Int32(60),
+					Pause:  rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: utilpointer.Int32(80),
+					Pause:  rolloutsv1alpha1.RolloutPause{},
+				},
+				{
+					Weight: utilpointer.Int32(100),
+					Pause: rolloutsv1alpha1.RolloutPause{
+						Duration: utilpointer.Int32(0),
+					},
+				},
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			workload := &appsv1alpha1.CloneSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/cloneset.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitCloneSetAllPodsReady(workload)
+
+			By("Only update rollout id = '1', and start rollout")
+			workload.Labels[util.RolloutIDLabel] = "1"
+			workload.Annotations[util.InRolloutProgressingAnnotation] = "true"
+			UpdateCloneSet(workload)
+
+			By("wait step(1) pause")
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "1", 1)
+
+			By("Only update rollout id = '2', and check batch label again")
+			workload.Labels[util.RolloutIDLabel] = "2"
+			UpdateCloneSet(workload)
+
+			By("wait 30s")
+			time.Sleep(30 * time.Second)
+
+			By("wait step(1) pause")
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "1", 1)
+
+			By("wait step(2) pause")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "2", 1)
+
+			By("wait step(3) pause")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "3", 1)
+
+			By("wait step(4) pause")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 4)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "4", 1)
+
+			By("Wait rollout complete")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutStatusPhase(rollout.Name, rolloutsv1alpha1.RolloutPhaseHealthy)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "1", 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "2", 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "3", 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "4", 1)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "5", 1)
+		})
 	})
 })
 

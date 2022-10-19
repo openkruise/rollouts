@@ -57,40 +57,6 @@ func NewCloneSetRolloutController(cli client.Client, recorder record.EventRecord
 
 // VerifyWorkload verifies that the workload is ready to execute release plan
 func (c *CloneSetRolloutController) VerifyWorkload() (bool, error) {
-	var err error
-	var message string
-	defer func() {
-		if err != nil {
-			c.recorder.Event(c.release, v1.EventTypeWarning, "VerifyFailed", err.Error())
-		} else if message != "" {
-			klog.Warningf(message)
-		}
-	}()
-
-	if err = c.fetchCloneSet(); err != nil {
-		message = err.Error()
-		return false, err
-	}
-
-	// if the workload status is untrustworthy
-	if c.clone.Status.ObservedGeneration != c.clone.Generation {
-		message = fmt.Sprintf("CloneSet(%v) is still reconciling, wait for it to be done", c.targetNamespacedName)
-		return false, nil
-	}
-
-	// if the cloneSet has been promoted, no need to go on
-	if c.clone.Status.UpdatedReplicas == *c.clone.Spec.Replicas {
-		message = fmt.Sprintf("CloneSet(%v) update revision has been promoted, no need to reconcile", c.targetNamespacedName)
-		return false, nil
-	}
-
-	// if the cloneSet is not paused and is not under our control
-	if !(c.clone.Spec.UpdateStrategy.Paused || c.clone.Spec.UpdateStrategy.Partition.IntVal > *c.clone.Spec.Replicas || c.clone.Spec.UpdateStrategy.Partition.StrVal == "100%") {
-		message = fmt.Sprintf("CloneSet(%v) should be paused before execute the release plan", c.targetNamespacedName)
-		return false, nil
-	}
-
-	c.recorder.Event(c.release, v1.EventTypeNormal, "VerifiedSuccessfully", "ReleasePlan and the CloneSet resource are verified")
 	return true, nil
 }
 
@@ -238,10 +204,8 @@ func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 		"expectedBatchStableReplicas", expectedBatchStableReplicas,
 		"expectedPartition", expectedPartition)
 
-	// 1. the number of upgrade pod satisfied; 2. partition has been satisfied
-	IsWorkloadUpgraded := updatedReplicas >= expectedBatchCanaryReplicas && int32(partitionedStableReplicas) <= expectedBatchStableReplicas
-	if !IsWorkloadUpgraded {
-		return false, c.patchCloneSetPartition(c.clone, &expectedPartition)
+	if err := c.patchCloneSetPartition(c.clone, &expectedPartition); err != nil {
+		return false, err
 	}
 
 	patchDone, err := c.patchPodBatchLabel(pods, plannedBatchCanaryReplicas, expectedBatchStableReplicas)
