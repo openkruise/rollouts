@@ -160,20 +160,8 @@ spec:
                   type: object
                 type: array
               phase:
-                description: Phase indicates phase of RolloutHistory, such as "pending",
-                  "updated", "completed"
+                description: Phase indicates phase of RolloutHistory, just "" or "completed"
                 type: string
-              rolloutState:
-                description: RolloutState indicates the rollouts status
-                properties:
-                  message:
-                    description: Message provides details on why the rollout is in
-                      its current phase
-                    type: string
-                  phase:
-                    description: RolloutPhase is the rollout phase.
-                    type: string
-                type: object
             type: object
         type: object
     served: true

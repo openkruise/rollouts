@@ -92,20 +92,10 @@ type RolloutHistoryStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Phase indicates phase of RolloutHistory, such as "pending", "updated", "completed"
+	// Phase indicates phase of RolloutHistory, just "" or "completed"
 	Phase string `json:"phase,omitempty"`
-	// RolloutState indicates the rollouts status
-	RolloutState RolloutState `json:"rolloutState,omitempty"`
 	// CanarySteps indicates the pods released each step
 	CanarySteps []CanaryStepInfo `json:"canarySteps,omitempty"`
-}
-
-// RolloutState indicates the rollouts status
-type RolloutState struct {
-	// RolloutPhase is the rollout phase.
-	RolloutPhase RolloutPhase `json:"phase,omitempty"`
-	// Message provides details on why the rollout is in its current phase
-	Message string `json:"message,omitempty"`
 }
 
 // CanaryStepInfo indicates the pods for a revision
@@ -129,15 +119,10 @@ type Pod struct {
 	// State string `json:"state, omitempty"`
 }
 
-// Phase indicates rollouthistory status/phase
+// Phase indicates rollouthistory phase
 const (
-	PhasePending   string = "pending"
-	PhaseUpdated   string = "updated"
 	PhaseCompleted string = "completed"
 )
-
-// MaxRolloutHistoryNum indicates how many rollouthistories there can be at most
-const MaxRolloutHistoryNum int = 10
 
 // +genclient
 //+kubebuilder:object:root=true
