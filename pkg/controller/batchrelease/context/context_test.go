@@ -151,11 +151,11 @@ func TestIsBatchReady(t *testing.T) {
 func generatePods(updatedReplicas, noNeedRollbackReplicas int) []*corev1.Pod {
 	podsNoNeed := generatePodsWith(map[string]string{
 		util.NoNeedUpdatePodLabel:           "0x1",
-		util.RolloutIDLabel:                 "1",
+		v1alpha1.RolloutIDLabel:             "1",
 		apps.ControllerRevisionHashLabelKey: "version-1",
 	}, noNeedRollbackReplicas, 0)
 	return append(generatePodsWith(map[string]string{
-		util.RolloutIDLabel:                 "1",
+		v1alpha1.RolloutIDLabel:             "1",
 		apps.ControllerRevisionHashLabelKey: "version-1",
 	}, updatedReplicas-noNeedRollbackReplicas, noNeedRollbackReplicas), podsNoNeed...)
 }

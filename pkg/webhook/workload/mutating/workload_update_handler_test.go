@@ -221,6 +221,9 @@ var (
 					Name:       "echoserver",
 				},
 			},
+			Strategy: appsv1alpha1.RolloutStrategy{
+				Canary: &appsv1alpha1.CanaryStrategy{},
+			},
 		},
 	}
 )
@@ -313,7 +316,18 @@ func TestHandlerDeployment(t *testing.T) {
 				return []*apps.ReplicaSet{rs1, rs2}
 			},
 			getRollout: func() *appsv1alpha1.Rollout {
-				return rolloutDemo.DeepCopy()
+				demo := rolloutDemo.DeepCopy()
+				demo.Spec.Strategy.Canary = &appsv1alpha1.CanaryStrategy{
+					TrafficRoutings: []*appsv1alpha1.TrafficRouting{
+						{
+							Service: "echoserver",
+							Ingress: &appsv1alpha1.IngressTrafficRouting{
+								Name: "echoserver",
+							},
+						},
+					},
+				}
+				return demo
 			},
 		},
 		{
@@ -362,6 +376,81 @@ func TestHandlerDeployment(t *testing.T) {
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":true}`
 				obj.Spec.Paused = true
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				return obj
+			},
+		},
+		{
+			name: "rolloutId and podTemplateSpec changed",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Annotations[appsv1alpha1.RolloutIDLabel] = "v2"
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.Paused = true
+				obj.Annotations[appsv1alpha1.RolloutIDLabel] = "v2"
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				return obj
+			},
+		},
+		{
+			name: "rolloutId change, and podTemplateSpec no change",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Annotations[appsv1alpha1.RolloutIDLabel] = "v1-alpha1"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.Paused = true
+				obj.Annotations[appsv1alpha1.RolloutIDLabel] = "v1-alpha1"
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				return obj
+			},
+		},
+		{
+			name: "rolloutId no change, and podTemplateSpec change",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Annotations[appsv1alpha1.RolloutIDLabel] = "v1"
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				newObj.Annotations[appsv1alpha1.RolloutIDLabel] = "v1"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[appsv1alpha1.RolloutIDLabel] = "v1"
 				return obj
 			},
 			getRs: func() []*apps.ReplicaSet {

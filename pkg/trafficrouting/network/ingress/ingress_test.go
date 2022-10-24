@@ -1,12 +1,9 @@
 /*
 Copyright 2022 The Kruise Authors.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -85,7 +82,6 @@ var (
 					string.gsub(input, '[^' .. delimiter ..']+', function(w) table.insert(arr, w) end)
 					return arr
 				end
-
 				annotations = obj.annotations
 				annotations["alb.ingress.kubernetes.io/canary"] = "true"
 				annotations["alb.ingress.kubernetes.io/canary-by-cookie"] = nil
@@ -103,6 +99,16 @@ var (
 				then
 					return annotations
 				end
+				if ( annotations["alb.ingress.kubernetes.io/backend-svcs-protocols"] )
+				then
+					protocolobj = json.decode(annotations["alb.ingress.kubernetes.io/backend-svcs-protocols"])
+					newprotocolobj = {}
+					for _, v in pairs(protocolobj) do
+						newprotocolobj[obj.canaryService] = v
+					end
+					annotations["alb.ingress.kubernetes.io/backend-svcs-protocols"] = json.encode(newprotocolobj)
+				end
+
 				conditions = {}
 				match = obj.matches[1]
 				for _,header in ipairs(match.headers) do
@@ -445,6 +451,7 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Name = "echoserver-canary"
 				canary.Annotations["alb.ingress.kubernetes.io/canary"] = "true"
 				canary.Annotations["alb.ingress.kubernetes.io/canary-weight"] = "0"
+				canary.Annotations["alb.ingress.kubernetes.io/backend-svcs-protocols"] = `{"echoserver":"http"}`
 				canary.Spec.Rules[0].HTTP.Paths = canary.Spec.Rules[0].HTTP.Paths[:1]
 				canary.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
@@ -475,6 +482,7 @@ func TestEnsureRoutes(t *testing.T) {
 				expect := demoIngress.DeepCopy()
 				expect.Name = "echoserver-canary"
 				expect.Annotations["alb.ingress.kubernetes.io/canary"] = "true"
+				expect.Annotations["alb.ingress.kubernetes.io/backend-svcs-protocols"] = `{"echoserver-canary":"http"}`
 				expect.Annotations["alb.ingress.kubernetes.io/conditions.echoserver-canary"] = `[{"cookieConfig":{"values":[{"key":"demo1","value":"value1"},{"key":"demo2","value":"value2"}]},"type":"Cookie"},{"sourceIpConfig":{"values":["192.168.0.0/16","172.16.0.0/16"]},"type":"SourceIp"},{"headerConfig":{"key":"headername","values":["headervalue1","headervalue2"]},"type":"Header"}]`
 				expect.Spec.Rules[0].HTTP.Paths = expect.Spec.Rules[0].HTTP.Paths[:1]
 				expect.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
@@ -542,34 +550,6 @@ func TestFinalise(t *testing.T) {
 				canary := demoIngress.DeepCopy()
 				canary.Name = "echoserver-canary"
 				canary.Annotations["nginx.ingress.kubernetes.io/canary"] = "true"
-				canary.Annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = "demo"
-				canary.Annotations["nginx.ingress.kubernetes.io/canary-by-header"] = "user_id"
-				canary.Annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = "123456"
-				canary.Spec.Rules[0].HTTP.Paths = canary.Spec.Rules[0].HTTP.Paths[:1]
-				canary.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
-			},
-			expectIngress: func() *netv1.Ingress {
-				expect := demoIngress.DeepCopy()
-				expect.Name = "echoserver-canary"
-				expect.Annotations["nginx.ingress.kubernetes.io/canary"] = "true"
-				expect.Annotations["nginx.ingress.kubernetes.io/canary-weight"] = "0"
-				expect.Spec.Rules[0].HTTP.Paths = expect.Spec.Rules[0].HTTP.Paths[:1]
-				expect.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				expect.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				return expect
-			},
-		},
-		{
-			name: "finalise test2",
-			getConfigmap: func() *corev1.ConfigMap {
-				return demoConf.DeepCopy()
-			},
-			getIngress: func() []*netv1.Ingress {
-				canary := demoIngress.DeepCopy()
-				canary.Name = "echoserver-canary"
-				canary.Annotations["nginx.ingress.kubernetes.io/canary"] = "true"
 				canary.Annotations["nginx.ingress.kubernetes.io/canary-weight"] = "0"
 				canary.Spec.Rules[0].HTTP.Paths = canary.Spec.Rules[0].HTTP.Paths[:1]
 				canary.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
@@ -602,7 +582,7 @@ func TestFinalise(t *testing.T) {
 				t.Fatalf("NewIngressTrafficRouting failed: %s", err.Error())
 				return
 			}
-			_, err = controller.Finalise(context.TODO())
+			err = controller.Finalise(context.TODO())
 			if err != nil {
 				t.Fatalf("EnsureRoutes failed: %s", err.Error())
 				return

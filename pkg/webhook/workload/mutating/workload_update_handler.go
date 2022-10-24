@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"reflect"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -53,16 +54,23 @@ type WorkloadHandler struct {
 var _ admission.Handler = &WorkloadHandler{}
 
 // Handle handles admission requests.
-//  TODO
-//  Currently there is an implicit condition for rollout: the workload must be currently in a stable version (only one version of Pods),
-//  if not, it will not enter the rollout process. There is an additional problem here, the user may not be aware of this.
-//  when user does a release and thinks it enters the rollout process, but due to the implicit condition above,
-//  it actually goes through the normal release process. No good idea to solve this problem has been found yet.
 func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
 	// if subResources, then ignore
 	if req.Operation != admissionv1.Update || req.SubResource != "" {
 		return admission.Allowed("")
 	}
+
+	// Because kruise Rollout is a bypassed approach, needs to be determined in the webhook if the workload meet to enter the rollout progressing:
+	// 1. Traffic Routing, all the following conditions must be met
+	//   a. PodTemplateSpec is changed
+	//   b. Workload must only contain one version of Pods
+	// 2. No Traffic Routing, Only Release in batches
+	//   a. No RolloutId
+	//    - PodTemplateSpec is changed
+	//   b. Configure RolloutId
+	//    - RolloutId and PodTemplateSpec change, enter the rollout progressing.
+	//    - RolloutId changes and PodTemplateSpec no change, enter the rollout progressing
+	//    - RolloutId no change and PodTemplateSpec change, do not enter the rollout progressing
 
 	switch req.Kind.Group {
 	// kruise cloneSet
@@ -156,40 +164,31 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 	}
 }
 
-func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstructured.Unstructured) (changed bool, err error) {
+func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstructured.Unstructured) (bool, error) {
 	// indicate whether the workload can enter the rollout process
 	// 1. replicas > 0
-	replicas := util.GetReplicas(newObj)
-	if replicas == 0 {
+	if util.GetReplicas(newObj) == 0 || !util.IsStatefulSetRollingUpdate(newObj) {
 		return false, nil
 	}
-	oldTemplate := util.GetTemplate(oldObj)
-	if oldTemplate == nil {
+	oldTemplate, newTemplate := util.GetTemplate(oldObj), util.GetTemplate(newObj)
+	if oldTemplate == nil || newTemplate == nil {
 		return false, nil
 	}
-	newTemplate := util.GetTemplate(newObj)
-	if newTemplate == nil {
+	oldMetadata, newMetadata := util.GetMetadata(oldObj), util.GetMetadata(newObj)
+	if newMetadata.Annotations[appsv1alpha1.RolloutIDLabel] != "" &&
+		oldMetadata.Annotations[appsv1alpha1.RolloutIDLabel] == newMetadata.Annotations[appsv1alpha1.RolloutIDLabel] {
+		return false, nil
+	} else if newMetadata.Annotations[appsv1alpha1.RolloutIDLabel] == "" && util.EqualIgnoreHash(oldTemplate, newTemplate) {
 		return false, nil
 	}
 
-	// 2. statefulset.spec.template is changed
-	if util.EqualIgnoreHash(oldTemplate, newTemplate) {
-		return
-	}
-	// 3. have matched rollout crd
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
-		return
-	} else if rollout == nil {
-		return
+		return false, err
+	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
+		return false, nil
 	}
 
-	klog.Infof("StatefulSet-Like Workload(%s/%s) will be in rollout progressing, and paused", newObj.GetNamespace(), newObj.GetName())
-	if !util.IsStatefulSetRollingUpdate(newObj) {
-		return
-	}
-
-	changed = true
 	util.SetStatefulSetPartition(newObj, math.MaxInt16)
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
@@ -199,53 +198,50 @@ func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstruct
 	}
 	annotation[util.InRolloutProgressingAnnotation] = string(by)
 	newObj.SetAnnotations(annotation)
-	return
+	klog.Infof("StatefulSet(%s/%s) will be released incrementally based on Rollout(%s)", newMetadata.Namespace, newMetadata.Name, rollout.Name)
+	return true, nil
 }
 
-func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (changed bool, err error) {
+func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (bool, error) {
 	// in rollout progressing
-	if state, _ := util.GetRolloutState(newObj.Annotations); state != nil {
-		// deployment paused=false is not allowed until the rollout is completed
-		if newObj.Spec.Paused == false {
-			changed = true
+	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
+		if !newObj.Spec.Paused || !reflect.DeepEqual(newObj.Spec.Strategy, oldObj.Spec.Strategy) {
 			newObj.Spec.Paused = true
-			klog.Warningf("deployment(%s/%s) is in rollout(%s) progressing, and set paused=true", newObj.Namespace, newObj.Name, state.RolloutName)
+			newObj.Spec.Strategy = oldObj.Spec.Strategy
+			klog.Warningf("deployment(%s/%s) is in rollout progressing, and do not modify strategy", newObj.Namespace, newObj.Name)
+			return true, nil
 		}
-		return
+		return false, nil
 	}
 
 	// indicate whether the workload can enter the rollout process
-	// 1. replicas > 0
+	// replicas > 0
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
-		return
+		return false, nil
 	}
-	// 2. deployment.spec.strategy.type must be RollingUpdate
-	if newObj.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
-		klog.Warningf("deployment(%s/%s) strategy type is 'Recreate', rollout will not work on it", newObj.Namespace, newObj.Name)
-		return
+	if newObj.Annotations[appsv1alpha1.RolloutIDLabel] != "" &&
+		oldObj.Annotations[appsv1alpha1.RolloutIDLabel] == newObj.Annotations[appsv1alpha1.RolloutIDLabel] {
+		return false, nil
+	} else if newObj.Annotations[appsv1alpha1.RolloutIDLabel] == "" && util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
+		return false, nil
 	}
-	// 3. deployment.spec.PodTemplate not change
-	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
-		return
-	}
-	// 4. the deployment must be in a stable version (only one version of rs)
-	rss, err := h.Finder.GetReplicaSetsForDeployment(newObj)
-	if err != nil {
-		return
-	} else if len(rss) != 1 {
-		klog.Warningf("deployment(%s/%s) contains len(%d) replicaSet, can't in rollout progressing", newObj.Namespace, newObj.Name, len(rss))
-		return
-	}
-	// 5. have matched rollout crd
+
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
-		return
-	} else if rollout == nil {
-		return
+		return false, err
+	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
+		return false, nil
 	}
-	klog.Infof("deployment(%s/%s) will be in rollout progressing, and set paused=true", newObj.Namespace, newObj.Name)
+	// if traffic routing, workload must only be one version of Pods
+	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
+		if rss, err := h.Finder.GetReplicaSetsForDeployment(newObj); err != nil {
+			return false, nil
+		} else if len(rss) != 1 {
+			klog.Warningf("Because deployment(%s/%s) have multiple versions of Pods, so can not enter rollout progressing", newObj.Namespace, newObj.Name)
+			return false, nil
+		}
+	}
 
-	changed = true
 	// need set workload paused = true
 	newObj.Spec.Paused = true
 	state := &util.RolloutState{RolloutName: rollout.Name}
@@ -254,30 +250,35 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (cha
 		newObj.Annotations = map[string]string{}
 	}
 	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
-	return
+	klog.Infof("Deployment(%s/%s) will be released incrementally based on Rollout(%s)", newObj.Namespace, newObj.Name, rollout.Name)
+	return true, nil
 }
 
-func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) (changed bool, err error) {
+func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.CloneSet) (bool, error) {
 	// indicate whether the workload can enter the rollout process
-	// 1. replicas > 0
+	// when cloneSet don't contain any pods, no need to enter rollout progressing
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
-		return
+		return false, nil
 	}
-	// 2. cloneSet.spec.PodTemplate is changed
-	if util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
-		return
-	}
-	// 3. have matched rollout crd
-	rollout, err := h.fetchMatchedRollout(newObj)
-	if err != nil {
-		return
-	} else if rollout == nil {
-		return
+	if newObj.Annotations[appsv1alpha1.RolloutIDLabel] != "" &&
+		oldObj.Annotations[appsv1alpha1.RolloutIDLabel] == newObj.Annotations[appsv1alpha1.RolloutIDLabel] {
+		return false, nil
+	} else if newObj.Annotations[appsv1alpha1.RolloutIDLabel] == "" && util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
+		return false, nil
 	}
 
-	klog.Infof("cloneSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
-	changed = true
-	// need set workload partition = 100%
+	rollout, err := h.fetchMatchedRollout(newObj)
+	if err != nil {
+		return false, err
+	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
+		return false, nil
+	}
+	// if traffic routing, there must only be one version of Pods
+	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 && newObj.Status.Replicas != newObj.Status.UpdatedReplicas {
+		klog.Warningf("Because cloneSet(%s/%s) have multiple versions of Pods, so can not enter rollout progressing", newObj.Namespace, newObj.Name)
+		return false, nil
+	}
+
 	newObj.Spec.UpdateStrategy.Partition = &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
@@ -285,7 +286,8 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 		newObj.Annotations = map[string]string{}
 	}
 	newObj.Annotations[util.InRolloutProgressingAnnotation] = string(by)
-	return
+	klog.Infof("CloneSet(%s/%s) will be released incrementally based on Rollout(%s)", newObj.Namespace, newObj.Name, rollout.Name)
+	return true, nil
 }
 
 func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.Rollout, error) {

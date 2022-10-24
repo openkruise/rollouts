@@ -17,12 +17,19 @@ limitations under the License.
 package rollout
 
 import (
+	"fmt"
+
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/configuration"
 	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	utilpointer "k8s.io/utils/pointer"
 )
@@ -30,46 +37,110 @@ import (
 var (
 	scheme *runtime.Scheme
 
-	rolloutDemo = &rolloutv1alpha1.Rollout{
+	rolloutDemo = &v1alpha1.Rollout{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rollout-demo",
 			Labels: map[string]string{},
+			Annotations: map[string]string{
+				util.RolloutHashAnnotation: "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd",
+			},
 		},
-		Spec: rolloutv1alpha1.RolloutSpec{
-			ObjectRef: rolloutv1alpha1.ObjectRef{
-				WorkloadRef: &rolloutv1alpha1.WorkloadRef{
+		Spec: v1alpha1.RolloutSpec{
+			ObjectRef: v1alpha1.ObjectRef{
+				WorkloadRef: &v1alpha1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
 					Name:       "echoserver",
 				},
 			},
-			Strategy: rolloutv1alpha1.RolloutStrategy{
-				Canary: &rolloutv1alpha1.CanaryStrategy{},
+			Strategy: v1alpha1.RolloutStrategy{
+				Canary: &v1alpha1.CanaryStrategy{
+					Steps: []v1alpha1.CanaryStep{
+						{
+							Weight:   utilpointer.Int32(5),
+							Replicas: &intstr.IntOrString{IntVal: 1},
+						},
+						{
+							Weight:   utilpointer.Int32(20),
+							Replicas: &intstr.IntOrString{IntVal: 2},
+						},
+						{
+							Weight:   utilpointer.Int32(60),
+							Replicas: &intstr.IntOrString{IntVal: 6},
+						},
+						{
+							Weight:   utilpointer.Int32(100),
+							Replicas: &intstr.IntOrString{IntVal: 10},
+						},
+					},
+					TrafficRoutings: []*v1alpha1.TrafficRouting{
+						{
+							Service: "echoserver",
+							Ingress: &v1alpha1.IngressTrafficRouting{
+								Name: "echoserver",
+							},
+						},
+					},
+				},
+			},
+		},
+		Status: v1alpha1.RolloutStatus{
+			Phase:        v1alpha1.RolloutPhaseProgressing,
+			CanaryStatus: &v1alpha1.CanaryStatus{},
+			Conditions: []v1alpha1.RolloutCondition{
+				{
+					Type:   v1alpha1.RolloutConditionProgressing,
+					Reason: v1alpha1.ProgressingReasonInitializing,
+					Status: corev1.ConditionTrue,
+				},
 			},
 		},
 	}
-
+	maxUnavailable = intstr.FromString("20%")
 	deploymentDemo = &apps.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
 			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:       "echoserver",
-			Labels:     map[string]string{},
-			Generation: 1,
+			Name:   "echoserver",
+			Labels: map[string]string{},
+			Annotations: map[string]string{
+				util.InRolloutProgressingAnnotation: "rollout-demo",
+			},
+			Generation: 2,
 			UID:        types.UID("606132e0-85ef-460a-8cf5-cd8f915a8cc3"),
 		},
 		Spec: apps.DeploymentSpec{
-			Replicas: utilpointer.Int32(100),
+			Replicas: utilpointer.Int32(10),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": "echoserver",
 				},
 			},
+			Strategy: apps.DeploymentStrategy{
+				RollingUpdate: &apps.RollingUpdateDeployment{
+					MaxUnavailable: &maxUnavailable,
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "echoserver",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "main",
+							Image: "echoserver:v2",
+						},
+					},
+				},
+			},
 		},
 		Status: apps.DeploymentStatus{
-			ObservedGeneration: 1,
+			ObservedGeneration: 2,
 		},
 	}
 
@@ -79,9 +150,10 @@ var (
 			Kind:       "ReplicaSet",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "echoserver-xxx",
+			Name: "echoserver-1",
 			Labels: map[string]string{
-				"app": "echoserver",
+				"app":               "echoserver",
+				"pod-template-hash": "pod-template-hash-v1",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
@@ -93,21 +165,147 @@ var (
 				},
 			},
 		},
+		Spec: apps.ReplicaSetSpec{
+			Replicas: utilpointer.Int32(10),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "echoserver",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "echoserver",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "main",
+							Image: "echoserver:v1",
+						},
+					},
+				},
+			},
+		},
 	}
 
-	batchDemo = &rolloutv1alpha1.BatchRelease{
+	batchDemo = &v1alpha1.BatchRelease{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "rollout-demo",
-			Labels: map[string]string{},
+			Name:       "rollout-demo",
+			Labels:     map[string]string{},
+			Generation: 1,
 		},
-		Spec: rolloutv1alpha1.BatchReleaseSpec{
-			TargetRef: rolloutv1alpha1.ObjectRef{
-				WorkloadRef: &rolloutv1alpha1.WorkloadRef{
+		Spec: v1alpha1.BatchReleaseSpec{
+			TargetRef: v1alpha1.ObjectRef{
+				WorkloadRef: &v1alpha1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
 					Name:       "echoserver",
 				},
 			},
+		},
+		Status: v1alpha1.BatchReleaseStatus{},
+	}
+
+	demoService = corev1.Service{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Service",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "echoserver",
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "http",
+					Port:       80,
+					TargetPort: intstr.FromInt(8080),
+				},
+			},
+			Selector: map[string]string{
+				"app": "echoserver",
+			},
+		},
+	}
+
+	demoIngress = netv1.Ingress{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "networking.k8s.io/v1",
+			Kind:       "Ingress",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "echoserver",
+			Annotations: map[string]string{
+				"kubernetes.io/ingress.class": "nginx",
+			},
+		},
+		Spec: netv1.IngressSpec{
+			Rules: []netv1.IngressRule{
+				{
+					Host: "echoserver.example.com",
+					IngressRuleValue: netv1.IngressRuleValue{
+						HTTP: &netv1.HTTPIngressRuleValue{
+							Paths: []netv1.HTTPIngressPath{
+								{
+									Path: "/apis/echo",
+									Backend: netv1.IngressBackend{
+										Service: &netv1.IngressServiceBackend{
+											Name: "echoserver",
+											Port: netv1.ServiceBackendPort{
+												Name: "http",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	demoConf = corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configuration.RolloutConfigurationName,
+			Namespace: util.GetRolloutNamespace(),
+		},
+		Data: map[string]string{
+			fmt.Sprintf("%s.nginx", configuration.LuaTrafficRoutingIngressTypePrefix): `
+				annotations = obj.annotations
+				annotations["nginx.ingress.kubernetes.io/canary"] = "true"
+				annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = nil
+				annotations["nginx.ingress.kubernetes.io/canary-by-header"] = nil
+				annotations["nginx.ingress.kubernetes.io/canary-by-header-pattern"] = nil
+				annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = nil
+				annotations["nginx.ingress.kubernetes.io/canary-weight"] = nil
+				if ( obj.weight ~= "-1" )
+				then
+					annotations["nginx.ingress.kubernetes.io/canary-weight"] = obj.weight
+				end
+				if ( not obj.matches )
+				then
+					return annotations
+				end
+				for _,match in ipairs(obj.matches) do
+					header = match.headers[1]
+					if ( header.name == "canary-by-cookie" )
+					then
+						annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = header.value
+					else
+						annotations["nginx.ingress.kubernetes.io/canary-by-header"] = header.name
+						if ( header.type == "RegularExpression" )
+						then
+							annotations["nginx.ingress.kubernetes.io/canary-by-header-pattern"] = header.value
+						else
+							annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = header.value
+						end
+					end
+				end
+				return annotations
+ 			`,
 		},
 	}
 )
@@ -116,5 +314,5 @@ func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = kruisev1aplphal.AddToScheme(scheme)
-	_ = rolloutv1alpha1.AddToScheme(scheme)
+	_ = v1alpha1.AddToScheme(scheme)
 }

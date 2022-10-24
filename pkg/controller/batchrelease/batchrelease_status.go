@@ -192,7 +192,7 @@ func isWorkloadRevisionChanged(event control.WorkloadEventType, release *v1alpha
 }
 
 func isWorkloadRollbackInBatch(event control.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
-	return (event == control.WorkloadRollbackInBatch || release.Annotations[util.RollbackInBatchAnnotation] != "") &&
+	return (event == control.WorkloadRollbackInBatch || release.Annotations[v1alpha1.RollbackInBatchAnnotation] != "") &&
 		release.Status.CanaryStatus.NoNeedUpdateReplicas == nil && release.Status.Phase == v1alpha1.RolloutPhaseProgressing
 }
 
@@ -201,7 +201,7 @@ func isWorkloadUnstable(event control.WorkloadEventType, _ *v1alpha1.BatchReleas
 }
 
 func isRollbackInBatchSatisfied(workloadInfo *util.WorkloadInfo, release *v1alpha1.BatchRelease) bool {
-	return workloadInfo.Status.StableRevision == workloadInfo.Status.UpdateRevision && release.Annotations[util.RollbackInBatchAnnotation] != ""
+	return workloadInfo.Status.StableRevision == workloadInfo.Status.UpdateRevision && release.Annotations[v1alpha1.RollbackInBatchAnnotation] != ""
 }
 
 func signalRePrepareRollback(newStatus *v1alpha1.BatchReleaseStatus) {

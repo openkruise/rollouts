@@ -24,7 +24,7 @@ import (
 
 	jsonpatch "github.com/evanphx/json-patch"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting"
+	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
 	"github.com/openkruise/rollouts/pkg/util/luamanager"
@@ -58,7 +58,7 @@ type Config struct {
 	OwnerRef      metav1.OwnerReference
 }
 
-func NewIngressTrafficRouting(client client.Client, conf Config) (trafficrouting.Controller, error) {
+func NewIngressTrafficRouting(client client.Client, conf Config) (network.NetworkProvider, error) {
 	r := &ingressController{
 		Client:            client,
 		conf:              conf,
@@ -108,6 +108,9 @@ func (r *ingressController) EnsureRoutes(ctx context.Context, weight *int32, mat
 	canaryIngress := &netv1.Ingress{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: defaultCanaryIngressName(r.conf.TrafficConf.Name)}, canaryIngress)
 	if err != nil {
+		if weight != nil && *weight == 0 && errors.IsNotFound(err) {
+			return true, nil
+		}
 		klog.Errorf("rollout(%s/%s) get canary ingress failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
 		return false, err
 	}
@@ -135,48 +138,23 @@ func (r *ingressController) EnsureRoutes(ctx context.Context, weight *int32, mat
 	return false, nil
 }
 
-func (r *ingressController) Finalise(ctx context.Context) (bool, error) {
+func (r *ingressController) Finalise(ctx context.Context) error {
 	canaryIngress := &netv1.Ingress{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.canaryIngressName}, canaryIngress)
 	if err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("rollout(%s/%s) get canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, r.canaryIngressName, err.Error())
-		return false, err
+		return err
 	}
-	if errors.IsNotFound(err) {
-		return true, nil
-	} else if !canaryIngress.DeletionTimestamp.IsZero() {
-		return false, nil
+	if errors.IsNotFound(err) || !canaryIngress.DeletionTimestamp.IsZero() {
+		return nil
 	}
-	// First, set canary route 0 weight.
-	newAnnotations, err := r.executeLuaForCanary(canaryIngress.Annotations, utilpointer.Int32(0), nil)
-	if err != nil {
-		klog.Errorf("rollout(%s/%s) execute lua failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
-		return false, err
-	}
-	if !reflect.DeepEqual(canaryIngress.Annotations, newAnnotations) {
-		byte1, _ := json.Marshal(metav1.ObjectMeta{Annotations: canaryIngress.Annotations})
-		byte2, _ := json.Marshal(metav1.ObjectMeta{Annotations: newAnnotations})
-		patch, err := jsonpatch.CreateMergePatch(byte1, byte2)
-		if err != nil {
-			klog.Errorf("rollout(%s/%s) create merge patch failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
-			return false, err
-		}
-		body := fmt.Sprintf(`{"metadata":%s}`, string(patch))
-		if err = r.Patch(ctx, canaryIngress, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
-			klog.Errorf("rollout(%s/%s) set canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
-			return false, err
-		}
-		klog.Infof("rollout(%s/%s) set canary ingress annotations(%s) success", r.conf.RolloutNs, r.conf.RolloutName, util.DumpJSON(newAnnotations))
-		return false, nil
-	}
-
-	// Second, delete canary ingress
+	// immediate delete canary ingress
 	if err = r.Delete(ctx, canaryIngress); err != nil {
 		klog.Errorf("rollout(%s/%s) remove canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
-		return false, err
+		return err
 	}
 	klog.Infof("rollout(%s/%s) remove canary ingress(%s) success", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name)
-	return false, nil
+	return nil
 }
 
 func (r *ingressController) buildCanaryIngress(stableIngress *netv1.Ingress) *netv1.Ingress {

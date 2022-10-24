@@ -25,7 +25,7 @@ import (
 )
 
 // patch -> file.Content,
-// for example:  lua_configuration/trafficrouting_ingress/nginx.lua -> nginx.lua content
+// for example:  lua_configuration/trafficrouting_ingress/ingress.lua -> ingress.lua content
 var luaConfigurationList map[string]string
 
 func init() {

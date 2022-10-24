@@ -201,7 +201,7 @@ func (rc *realBatchControlPlane) SyncWorkloadInformation() (control.WorkloadEven
 // - err: whether error occurs.
 func (rc *realBatchControlPlane) markNoNeedUpdatePodsIfNeeds() (*int32, error) {
 	// currently, we only support rollback scene, in the future, we may support more scenes.
-	if rc.release.Annotations[util.RollbackInBatchAnnotation] == "" {
+	if rc.release.Annotations[v1alpha1.RollbackInBatchAnnotation] == "" {
 		return nil, nil
 	}
 	// currently, if rollout-id is not set, it is no scene which require patch this label

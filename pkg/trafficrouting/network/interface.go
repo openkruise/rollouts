@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package trafficrouting
+package network
 
 import (
 	"context"
@@ -22,11 +22,10 @@ import (
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 )
 
-// Controller common function across all TrafficRouting implementation
-type Controller interface {
-	// Initialize will validate the traffic routing resource
-	// 1. Ingress type, verify the existence of the ingress resource and generate the canary ingress[weight=0%]
-	// 2. Gateway type, verify the existence of the gateway resource
+// NetworkProvider common function across all TrafficRouting implementation
+type NetworkProvider interface {
+	// Initialize determine if the network resources(ingress & gateway api) exist.
+	// If it is Ingress, init method will create the canary ingress resources, and set weight=0.
 	Initialize(ctx context.Context) error
 	// EnsureRoutes check and set canary weight and matches.
 	// weight indicates percentage of traffic to canary service, and range of values[0,100]
@@ -37,7 +36,5 @@ type Controller interface {
 	EnsureRoutes(ctx context.Context, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch) (bool, error)
 	// Finalise will do some cleanup work after the canary rollout complete, such as delete canary ingress.
 	// Finalise is called with a 3-second delay after completing the canary.
-	// bool indicates whether function Finalise is complete,
-	// for example, when ingress type, only canary ingress Not Found is considered function finalise complete
-	Finalise(ctx context.Context) (bool, error)
+	Finalise(ctx context.Context) error
 }

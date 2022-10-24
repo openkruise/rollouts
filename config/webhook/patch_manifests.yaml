@@ -8,3 +8,10 @@ webhooks:
       matchExpressions:
         - key: rollouts.kruise.io/workload-type
           operator: Exists
+  - name: mdeployment.kb.io
+    objectSelector:
+      matchExpressions:
+        - key: control-plane
+          operator: NotIn
+          values:
+            - controller-manager

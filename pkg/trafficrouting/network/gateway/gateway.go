@@ -1,12 +1,9 @@
 /*
 Copyright 2022 The Kruise Authors.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -21,7 +18,7 @@ import (
 	"reflect"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/rollout/trafficrouting"
+	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -45,7 +42,7 @@ type gatewayController struct {
 }
 
 // NewGatewayTrafficRouting The Gateway API is a part of the SIG Network.
-func NewGatewayTrafficRouting(client client.Client, conf Config) (trafficrouting.Controller, error) {
+func NewGatewayTrafficRouting(client client.Client, conf Config) (network.NetworkProvider, error) {
 	r := &gatewayController{
 		Client: client,
 		conf:   conf,
@@ -86,20 +83,20 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, weight *int32, mat
 	return false, nil
 }
 
-func (r *gatewayController) Finalise(ctx context.Context) (bool, error) {
+func (r *gatewayController) Finalise(ctx context.Context) error {
 	httpRoute := &gatewayv1alpha2.HTTPRoute{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: *r.conf.TrafficConf.HTTPRouteName}, httpRoute)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return true, nil
+			return nil
 		}
 		klog.Errorf("rollout(%s/%s) get HTTPRoute failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
-		return false, err
+		return err
 	}
 	// desired rule
 	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, utilpointer.Int32(-1), nil)
 	if reflect.DeepEqual(httpRoute.Spec.Rules, desiredRule) {
-		return true, nil
+		return nil
 	}
 	routeClone := &gatewayv1alpha2.HTTPRoute{}
 	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
@@ -111,10 +108,10 @@ func (r *gatewayController) Finalise(ctx context.Context) (bool, error) {
 		return r.Client.Update(context.TODO(), routeClone)
 	}); err != nil {
 		klog.Errorf("update rollout(%s/%s) httpRoute(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, httpRoute.Name, err.Error())
-		return false, err
+		return err
 	}
 	klog.Infof("rollout(%s/%s) TrafficRouting Finalise success", r.conf.RolloutNs, r.conf.RolloutName)
-	return false, nil
+	return nil
 }
 
 func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch) []gatewayv1alpha2.HTTPRouteRule {
