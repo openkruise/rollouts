@@ -51,18 +51,13 @@ type WorkloadHandler struct {
 
 var _ admission.Handler = &WorkloadHandler{}
 
-// Handle handles admission requests.
-//  TODO
-//  Currently there is an implicit condition for rollout: the workload must be currently in a stable version (only one version of Pods),
-//  if not, it will not enter the rollout process. There is an additional problem here, the user may not be aware of this.
-//  when user does a release and thinks it enters the rollout process, but due to the implicit condition above,
-//  it actually goes through the normal release process. No good idea to solve this problem has been found yet.
 func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
 	// if subResources, then ignore
 	if req.Operation != admissionv1.Update || req.SubResource != "" {
 		return admission.Allowed("")
 	}
 
+	// Rollout是旁路式的方案，因此需要
 	switch req.Kind.Group {
 	// kruise cloneSet
 	case kruiseappsv1alpha1.GroupVersion.Group:

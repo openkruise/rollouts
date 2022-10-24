@@ -144,22 +144,19 @@ func (r *nginxController) buildCanaryIngress(stableIngress *netv1.Ingress, desir
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        r.defaultCanaryIngressName(),
 			Namespace:   stableIngress.Namespace,
-			Annotations: map[string]string{},
+			Annotations: stableIngress.Annotations,
+			Labels:      stableIngress.Labels,
 		},
 		Spec: netv1.IngressSpec{
-			Rules: make([]netv1.IngressRule, 0),
+			Rules:            make([]netv1.IngressRule, 0),
+			IngressClassName: stableIngress.Spec.IngressClassName,
+			TLS:              stableIngress.Spec.TLS,
 		},
 	}
 
 	// Preserve ingressClassName from stable ingress
 	if stableIngress.Spec.IngressClassName != nil {
 		desiredCanaryIngress.Spec.IngressClassName = stableIngress.Spec.IngressClassName
-	}
-
-	// Must preserve ingress.class on canary ingress, no other annotations matter
-	// See: https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/#canary
-	if val, ok := stableIngress.Annotations[k8sIngressClassAnnotation]; ok {
-		desiredCanaryIngress.Annotations[k8sIngressClassAnnotation] = val
 	}
 
 	// Ensure canaryIngress is owned by this Rollout for cleanup
