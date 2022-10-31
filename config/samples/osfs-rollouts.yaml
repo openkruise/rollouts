@@ -1,0 +1,41 @@
+apiVersion: rollouts.kruise.io/v1alpha1
+kind: Rollout
+metadata:
+  name: dep-rollouts
+spec:
+  #定义了运行这个灰度策略允许运行的时间
+  allowRunTime:
+    # 时区，可选，默认使用标准时区
+    # 我们在东八区, 时间偏移为8小时
+    timeZone:
+      name: "UTC"
+      offset: 28800
+    # 运行策略执行的时间范围，可选，默认全天可执行
+    # 格式为 时:分:秒
+    timeRanges:
+      - startTime: 00:00:00
+        endTime: 08:00:00
+      - startTime: 10:00:00
+        endTime: 12:00:00
+      - startTime: 14:00:00
+        endTime: 19:00:00
+      - startTime: 23:00:00
+        endTime: 23:59:59
+  # 策略作用工作负载对象，必填
+  objectRef:
+    workloadRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: dep-test
+  # 策略，必填
+  strategy:
+    canary:
+      steps: # 策略具体执行步骤，必填，可由多步组成。
+        - pause:
+            duration: 20 # 暂停时间，可选，当前这步策略执行完后等待多久执行下一步。为空则需要手动进入下一步。
+          replicas: 20% # 副本数，必填，为数值或百分比，每一步递增。
+        - pause: { }
+          replicas: 40%
+        - pause:
+            duration: 20
+          replicas: 100%
