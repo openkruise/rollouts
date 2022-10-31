@@ -4,6 +4,7 @@
 resources:
 - bases/rollouts.kruise.io_rollouts.yaml
 - bases/rollouts.kruise.io_batchreleases.yaml
+- bases/rollouts.kruise.io_rollouthistories.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:

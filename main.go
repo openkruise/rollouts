@@ -25,9 +25,12 @@ import (
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
 	"github.com/openkruise/rollouts/pkg/controller/rollout"
+	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"github.com/openkruise/rollouts/pkg/webhook"
+	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -66,8 +69,10 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	utilfeature.DefaultMutableFeatureGate.AddFlag(pflag.CommandLine)
 	klog.InitFlags(nil)
-	flag.Parse()
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
 	ctrl.SetLogger(klogr.New())
 
 	cfg := ctrl.GetConfigOrDie()
@@ -106,6 +111,11 @@ func main() {
 
 	if err = br.Add(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "BatchRelease")
+		os.Exit(1)
+	}
+
+	if err = rollouthistory.Add(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "rollouthistory")
 		os.Exit(1)
 	}
 
