@@ -25,6 +25,9 @@ type BatchRelease interface {
 	// return whether the batchRelease configuration is consistent with the rollout step
 	Verify(index int32) (bool, error)
 
+	// SyncRolloutID will sync rollout id from Rollout to BatchRelease
+	SyncRolloutID(currentID string) error
+
 	// 1. Promote release workload in step(index), 1<=index<=len(step)
 	// 2. Promote will resume stable workload if the last batch(index=-1) is finished
 	Promote(index int32, isRollback, checkReady bool) (bool, error)

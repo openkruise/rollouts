@@ -216,6 +216,12 @@ spec:
                 description: ObservedReleasePlanHash is a hash code of observed itself
                   spec.releasePlan.
                 type: string
+              observedRolloutID:
+                description: ObservedRolloutID is the most recent rollout-id observed
+                  for this BatchRelease. If RolloutID was changed, we will restart
+                  to roll out from batch 0, to ensure the batch-id and rollout-id
+                  labels of Pods are correct.
+                type: string
               observedWorkloadReplicas:
                 description: ObservedWorkloadReplicas is observed replicas of target
                   referenced workload. This field is designed to deal with scaling

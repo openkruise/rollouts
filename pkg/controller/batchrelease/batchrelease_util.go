@@ -74,15 +74,19 @@ func signalRecalculate(release *v1alpha1.BatchRelease, newStatus *v1alpha1.Batch
 	// When BatchRelease plan was changed, rollout controller will update this batchRelease cr,
 	// and rollout controller will set BatchPartition as its expected current batch index.
 	currentBatch := int32(0)
-	if release.Spec.ReleasePlan.BatchPartition != nil {
+	// if rollout-id is not changed, just use batchPartition;
+	// if rollout-id is changed, we should patch pod batch id from batch 0.
+	observedRolloutID := release.Status.ObservedRolloutID
+	if release.Spec.ReleasePlan.BatchPartition != nil && release.Spec.ReleasePlan.RolloutID == observedRolloutID {
 		// ensure current batch upper bound
 		currentBatch = integer.Int32Min(*release.Spec.ReleasePlan.BatchPartition, int32(len(release.Spec.ReleasePlan.Batches)-1))
 	}
 
-	klog.Infof("BatchRelease(%v) canary batch changed from %v to %v when the release plan changed",
-		client.ObjectKeyFromObject(release), newStatus.CanaryStatus.CurrentBatch, currentBatch)
+	klog.Infof("BatchRelease(%v) canary batch changed from %v to %v when the release plan changed, observed-rollout-id: %s, current-rollout-id: %s",
+		client.ObjectKeyFromObject(release), newStatus.CanaryStatus.CurrentBatch, currentBatch, observedRolloutID, release.Spec.ReleasePlan.RolloutID)
 	newStatus.CanaryStatus.BatchReadyTime = nil
 	newStatus.CanaryStatus.CurrentBatch = currentBatch
+	newStatus.ObservedRolloutID = release.Spec.ReleasePlan.RolloutID
 	newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
 	newStatus.ObservedReleasePlanHash = util.HashReleasePlanBatches(&release.Spec.ReleasePlan)
 }

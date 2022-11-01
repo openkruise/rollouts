@@ -4,6 +4,8 @@ metadata:
   name: echoserver
   labels:
     app: echoserver
+  annotations:
+    rollouts.kruise.io/e2e-test-sample: "true"
 spec:
   replicas: 5
   updateStrategy:

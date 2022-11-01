@@ -38,6 +38,7 @@ func (r *rolloutContext) runCanary() error {
 	if canaryStatus.CanaryRevision == "" {
 		canaryStatus.CurrentStepState = rolloutv1alpha1.CanaryStepStateUpgrade
 		canaryStatus.CanaryRevision = r.workload.CanaryRevision
+		canaryStatus.ObservedRolloutID = getRolloutID(r.workload, r.rollout)
 		canaryStatus.CurrentStepIndex = 1
 		canaryStatus.RolloutHash = r.rollout.Annotations[util.RolloutHashAnnotation]
 	}
@@ -45,11 +46,19 @@ func (r *rolloutContext) runCanary() error {
 	// update canary status
 	batch, err := r.batchControl.FetchBatchRelease()
 	if err != nil {
+		canaryStatus.Message = "BatchRelease not found"
 		canaryStatus.CanaryReplicas = r.workload.CanaryReplicas
 		canaryStatus.CanaryReadyReplicas = r.workload.CanaryReadyReplicas
 	} else {
+		canaryStatus.Message = fmt.Sprintf("BatchRelease at state %s, id %s, step %d",
+			batch.Status.CanaryStatus.CurrentBatchState, batch.Status.ObservedRolloutID, batch.Status.CanaryStatus.CurrentBatch+1)
 		canaryStatus.CanaryReplicas = batch.Status.CanaryStatus.UpdatedReplicas
 		canaryStatus.CanaryReadyReplicas = batch.Status.CanaryStatus.UpdatedReadyReplicas
+	}
+
+	// sync rollout-id to batchRelease if we need
+	if err := r.batchControl.SyncRolloutID(r.newStatus.CanaryStatus.ObservedRolloutID); err != nil {
+		return err
 	}
 
 	switch canaryStatus.CurrentStepState {

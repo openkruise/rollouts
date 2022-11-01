@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -138,6 +139,10 @@ func (c *cloneSetController) releaseCloneSet(clone *kruiseappsv1alpha1.CloneSet,
 
 // scale the deployment
 func (c *cloneSetController) patchCloneSetPartition(clone *kruiseappsv1alpha1.CloneSet, partition *intstr.IntOrString) error {
+	if reflect.DeepEqual(clone.Spec.UpdateStrategy.Partition, partition) {
+		return nil
+	}
+
 	patch := map[string]interface{}{
 		"spec": map[string]interface{}{
 			"updateStrategy": map[string]interface{}{
