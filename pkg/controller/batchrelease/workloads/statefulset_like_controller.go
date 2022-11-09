@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
@@ -36,18 +35,18 @@ import (
 type StatefulSetLikeController struct {
 	client.Client
 	recorder       record.EventRecorder
-	planController *appsv1alpha1.BatchRelease
+	release        *appsv1alpha1.BatchRelease
 	namespacedName types.NamespacedName
 	workloadObj    client.Object
 	gvk            schema.GroupVersionKind
 	pods           []*v1.Pod
 }
 
-func NewStatefulSetLikeController(c client.Client, r record.EventRecorder, p *appsv1alpha1.BatchRelease, n types.NamespacedName, gvk schema.GroupVersionKind) UnifiedWorkloadController {
+func NewStatefulSetLikeController(c client.Client, r record.EventRecorder, b *appsv1alpha1.BatchRelease, n types.NamespacedName, gvk schema.GroupVersionKind) UnifiedWorkloadController {
 	return &StatefulSetLikeController{
 		Client:         c,
 		recorder:       r,
-		planController: p,
+		release:        b,
 		namespacedName: n,
 		gvk:            gvk,
 	}
@@ -76,7 +75,11 @@ func (c *StatefulSetLikeController) GetWorkloadInfo() (*util.WorkloadInfo, error
 	workloadInfo := util.ParseStatefulSetInfo(set, c.namespacedName)
 	workloadInfo.Paused = true
 	if workloadInfo.Status.UpdatedReadyReplicas <= 0 {
-		updatedReadyReplicas, err := c.countUpdatedReadyPods(workloadInfo.Status.UpdateRevision)
+		pods, err := c.ListOwnedPods()
+		if err != nil {
+			return nil, err
+		}
+		updatedReadyReplicas, err := c.countUpdatedReadyPods(pods, workloadInfo.Status.UpdateRevision)
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +95,7 @@ func (c *StatefulSetLikeController) ClaimWorkload() (bool, error) {
 		return false, err
 	}
 
-	err = claimWorkload(c.Client, c.planController, set, map[string]interface{}{
+	err = claimWorkload(c.Client, c.release, set, map[string]interface{}{
 		"type": apps.RollingUpdateStatefulSetStrategyType,
 		"rollingUpdate": map[string]interface{}{
 			"partition": pointer.Int32(util.GetReplicas(set)),
@@ -117,7 +120,7 @@ func (c *StatefulSetLikeController) ReleaseWorkload(cleanup bool) (bool, error) 
 
 	err = releaseWorkload(c.Client, set)
 	if err != nil {
-		c.recorder.Eventf(c.planController, v1.EventTypeWarning, "ReleaseFailed", err.Error())
+		c.recorder.Eventf(c.release, v1.EventTypeWarning, "ReleaseFailed", err.Error())
 		return false, err
 	}
 
@@ -161,48 +164,6 @@ func (c *StatefulSetLikeController) IsOrderedUpdate() (bool, error) {
 	return !util.IsStatefulSetUnorderedUpdate(set), nil
 }
 
-func (c *StatefulSetLikeController) IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error) {
-	workloadInfo, err := c.GetWorkloadInfo()
-	if err != nil {
-		return false, err
-	}
-
-	// ignore this corner case
-	if canaryReplicasGoal <= 0 {
-		return true, nil
-	}
-
-	// first: make sure that the canary goal is met
-	firstCheckPointReady := workloadInfo.Status.UpdatedReplicas >= canaryReplicasGoal
-	if !firstCheckPointReady {
-		return false, nil
-	}
-
-	updatedReadyReplicas := int32(0)
-	// TODO: add updatedReadyReplicas for advanced statefulset
-	if workloadInfo.Status.UpdatedReadyReplicas > 0 {
-		updatedReadyReplicas = workloadInfo.Status.UpdatedReadyReplicas
-	} else {
-		updatedReadyReplicas, err = c.countUpdatedReadyPods(workloadInfo.Status.UpdateRevision)
-		if err != nil {
-			return false, err
-		}
-	}
-
-	maxUnavailable := 0
-	if workloadInfo.MaxUnavailable != nil {
-		maxUnavailable, _ = intstr.GetScaledValueFromIntOrPercent(workloadInfo.MaxUnavailable, int(canaryReplicasGoal), true)
-	}
-
-	secondCheckPointReady := func() bool {
-		// 1. make sure updatedReadyReplicas has achieved the goal
-		return updatedReadyReplicas+int32(maxUnavailable) >= canaryReplicasGoal &&
-			// 2. make sure at latest one updated pod is available if canaryReplicasGoal != 0
-			(canaryReplicasGoal == 0 || updatedReadyReplicas >= 1)
-	}
-	return secondCheckPointReady(), nil
-}
-
 func (c *StatefulSetLikeController) ListOwnedPods() ([]*v1.Pod, error) {
 	if c.pods != nil {
 		return c.pods, nil
@@ -215,11 +176,7 @@ func (c *StatefulSetLikeController) ListOwnedPods() ([]*v1.Pod, error) {
 	return c.pods, err
 }
 
-func (c *StatefulSetLikeController) countUpdatedReadyPods(updateRevision string) (int32, error) {
-	pods, err := c.ListOwnedPods()
-	if err != nil {
-		return 0, err
-	}
+func (c *StatefulSetLikeController) countUpdatedReadyPods(pods []*v1.Pod, updateRevision string) (int32, error) {
 	activePods := util.FilterActivePods(pods)
 	updatedReadyReplicas := int32(0)
 	for _, pod := range activePods {

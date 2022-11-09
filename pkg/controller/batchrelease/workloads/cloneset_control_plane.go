@@ -158,10 +158,14 @@ func (c *CloneSetRolloutController) UpgradeOneBatch() (bool, error) {
 		return false, nil
 	}
 
-	pods, err := util.ListOwnedPods(c.client, c.clone)
-	if err != nil {
-		klog.Errorf("Failed to list pods for CloneSet %v", c.targetNamespacedName)
-		return false, err
+	var err error
+	var pods []*v1.Pod
+	if c.release.Spec.ReleasePlan.RolloutID != "" {
+		pods, err = util.ListOwnedPods(c.client, c.clone)
+		if err != nil {
+			klog.Errorf("Failed to list pods for CloneSet %v", c.targetNamespacedName)
+			return false, err
+		}
 	}
 
 	var noNeedRollbackReplicas int32
@@ -228,9 +232,23 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 		return false, nil
 	}
 
+	rolloutID := c.release.Spec.ReleasePlan.RolloutID
+
+	var err error
+	var pods []*v1.Pod
+	// if rolloutID is not set, no need to list pods,
+	// because we cannot patch correct batch label to pod.
+	if rolloutID != "" {
+		pods, err = util.ListOwnedPods(c.client, c.clone)
+		if err != nil {
+			return false, err
+		}
+	}
+
 	var noNeedRollbackReplicas int32
 	if c.newStatus.CanaryStatus.NoNeedUpdateReplicas != nil {
-		noNeedRollbackReplicas = *c.newStatus.CanaryStatus.NoNeedUpdateReplicas
+		noNeedRollbackReplicas = countNoNeedRollbackReplicas(pods, c.newStatus.UpdateRevision, c.release.Spec.ReleasePlan.RolloutID)
+		c.newStatus.CanaryStatus.NoNeedUpdateReplicas = pointer.Int32(noNeedRollbackReplicas)
 	}
 
 	replicas := *c.clone.Spec.Replicas
@@ -241,19 +259,16 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 
 	// current batch id
 	currentBatch := c.newStatus.CanaryStatus.CurrentBatch
+	// the number of canary pods should have in current batch in plan
+	plannedUpdatedReplicas := c.calculateCurrentCanary(c.newStatus.ObservedWorkloadReplicas)
 	// the number of pods will be partitioned by cloneSet
 	partitionedStableReplicas, _ := intstr.GetValueFromIntOrPercent(c.clone.Spec.UpdateStrategy.Partition, int(replicas), true)
 	// the number of canary pods that consider rollback context and other real-world situations
-	expectedBatchCanaryReplicas := c.calculateCurrentCanary(replicas - noNeedRollbackReplicas)
+	expectedUpdatedReplicas := c.calculateCurrentCanary(replicas - noNeedRollbackReplicas)
 	// the number of stable pods that consider rollback context and other real-world situations
-	expectedBatchStableReplicas := replicas - noNeedRollbackReplicas - expectedBatchCanaryReplicas
+	expectedStableReplicas := replicas - noNeedRollbackReplicas - expectedUpdatedReplicas
 	// the number of canary pods that cloneSet will be upgraded
-	realNeedUpgradeCanaryReplicas := CalculateRealCanaryReplicasGoal(expectedBatchStableReplicas, replicas, &c.release.Spec.ReleasePlan.Batches[currentBatch].CanaryReplicas)
-
-	var maxUnavailableReplicas int
-	if c.clone.Spec.UpdateStrategy.MaxUnavailable != nil {
-		maxUnavailableReplicas, _ = intstr.GetValueFromIntOrPercent(c.clone.Spec.UpdateStrategy.MaxUnavailable, int(realNeedUpgradeCanaryReplicas), true)
-	}
+	realDesiredUpdatedReplicas := CalculateRealCanaryReplicasGoal(expectedStableReplicas, replicas, &c.release.Spec.ReleasePlan.Batches[currentBatch].CanaryReplicas)
 
 	klog.V(3).InfoS("check one batch, current info:",
 		"BatchRelease", c.releasePlanKey,
@@ -261,21 +276,18 @@ func (c *CloneSetRolloutController) CheckOneBatchReady() (bool, error) {
 		"replicas", replicas,
 		"updatedReplicas", updatedReplicas,
 		"noNeedRollbackReplicas", noNeedRollbackReplicas,
-		"maxUnavailableReplicas", maxUnavailableReplicas,
 		"partitionedStableReplicas", partitionedStableReplicas,
-		"expectedBatchCanaryReplicas", expectedBatchCanaryReplicas,
-		"expectedBatchStableReplicas", expectedBatchStableReplicas)
+		"expectedUpdatedReplicas", expectedUpdatedReplicas,
+		"realDesiredUpdatedReplicas", realDesiredUpdatedReplicas,
+		"expectedStableReplicas", expectedStableReplicas)
 
-	currentBatchIsReady := updatedReplicas >= realNeedUpgradeCanaryReplicas && // 1.the number of upgrade pods achieved the goal
-		updatedReadyReplicas+int32(maxUnavailableReplicas) >= realNeedUpgradeCanaryReplicas && // 2.the number of upgraded available pods achieved the goal
-		(realNeedUpgradeCanaryReplicas == 0 || updatedReadyReplicas >= 1) // 3.make sure that at least one upgrade pod is available
-
-	if !currentBatchIsReady {
-		klog.InfoS("the batch is not ready yet", "BatchRelease", c.releasePlanKey, "current-batch", c.newStatus.CanaryStatus.CurrentBatch)
+	if !isBatchReady(c.release, pods, c.clone.Spec.UpdateStrategy.MaxUnavailable,
+		plannedUpdatedReplicas, realDesiredUpdatedReplicas, updatedReplicas, updatedReadyReplicas) {
+		klog.Infof("BatchRelease(%v) batch is not ready yet, current batch=%d", klog.KObj(c.release), currentBatch)
 		return false, nil
 	}
 
-	c.recorder.Eventf(c.release, v1.EventTypeNormal, "BatchAvailable", "Batch %d is available", c.newStatus.CanaryStatus.CurrentBatch)
+	klog.Infof("BatchRelease(%v) batch is ready, current batch=%d", klog.KObj(c.release), currentBatch)
 	return true, nil
 }
 
@@ -380,7 +392,7 @@ func (c *CloneSetRolloutController) recordCloneSetRevisionAndReplicas() {
 
 func (c *CloneSetRolloutController) patchPodBatchLabel(pods []*v1.Pod, plannedBatchCanaryReplicas, expectedBatchStableReplicas int32) (bool, error) {
 	rolloutID := c.release.Spec.ReleasePlan.RolloutID
-	if rolloutID == "" {
+	if rolloutID == "" || len(pods) == 0 {
 		return true, nil
 	}
 

@@ -143,37 +143,37 @@ func (c *DeploymentsRolloutController) CheckOneBatchReady() (bool, error) {
 	availableCanaryPodCount := c.canary.Status.AvailableReplicas
 	// canary goal that should have in current batch
 	canaryGoal := c.calculateCurrentCanary(c.newStatus.ObservedWorkloadReplicas)
-	// max unavailable allowed replicas
-	maxUnavailable := 0
-	if c.canary.Spec.Strategy.RollingUpdate != nil &&
-		c.canary.Spec.Strategy.RollingUpdate.MaxUnavailable != nil {
-		maxUnavailable, _ = intstr.GetScaledValueFromIntOrPercent(c.canary.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*c.canary.Spec.Replicas), true)
+	// max unavailable of deployment
+	var maxUnavailable *intstr.IntOrString
+	if c.canary.Spec.Strategy.RollingUpdate != nil {
+		maxUnavailable = c.canary.Spec.Strategy.RollingUpdate.MaxUnavailable
+	}
+
+	var err error
+	var pods []*v1.Pod
+	// if rolloutID is not set, no need to list pods,
+	// because we cannot patch correct batch label to pod.
+	if c.release.Spec.ReleasePlan.RolloutID != "" {
+		pods, err = util.ListOwnedPods(c.client, c.canary)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	klog.InfoS("checking the batch releasing progress",
 		"BatchRelease", c.releaseKey,
-		"current-batch", c.newStatus.CanaryStatus.CurrentBatch,
+		"len(pods)", len(pods),
 		"canary-goal", canaryGoal,
+		"current-batch", c.newStatus.CanaryStatus.CurrentBatch,
 		"canary-available-pod-count", availableCanaryPodCount,
-		"stable-pod-status-replicas", c.stable.Status.Replicas,
-		"maxUnavailable", maxUnavailable)
+		"stable-pod-status-replicas", c.stable.Status.Replicas)
 
-	currentBatchIsNotReadyYet := func() bool {
-		// the number of upgrade pods does not achieve the goal
-		return canaryPodCount < canaryGoal ||
-			// the number of upgraded available pods does not achieve the goal
-			availableCanaryPodCount+int32(maxUnavailable) < canaryGoal ||
-			// make sure that at least one upgrade pod is available
-			(canaryGoal > 0 && availableCanaryPodCount == 0)
-	}
-
-	// make sure there is at least one pod is available
-	if currentBatchIsNotReadyYet() {
-		klog.Infof("BatchRelease(%v) batch is not ready yet, current batch=%v", c.releaseKey, c.newStatus.CanaryStatus.CurrentBatch)
+	if !isBatchReady(c.release, pods, maxUnavailable, canaryGoal, canaryGoal, canaryPodCount, availableCanaryPodCount) {
+		klog.Infof("BatchRelease(%v) batch is not ready yet, current batch=%d", c.releaseKey, c.newStatus.CanaryStatus.CurrentBatch)
 		return false, nil
 	}
 
-	c.recorder.Eventf(c.release, v1.EventTypeNormal, "BatchReady", "Batch %d is available", c.newStatus.CanaryStatus.CurrentBatch)
+	klog.Infof("BatchRelease(%v) batch is ready, current batch=%d", c.releaseKey, c.newStatus.CanaryStatus.CurrentBatch)
 	return true, nil
 }
 
@@ -333,6 +333,8 @@ func (c *DeploymentsRolloutController) recordDeploymentRevisionAndReplicas() err
 
 func (c *DeploymentsRolloutController) patchPodBatchLabel(canaryGoal int32) (bool, error) {
 	rolloutID := c.release.Spec.ReleasePlan.RolloutID
+	// if rolloutID is not set, no need to list pods,
+	// because we cannot patch correct batch label to pod.
 	if rolloutID == "" || c.canary == nil {
 		return true, nil
 	}

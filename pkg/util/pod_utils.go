@@ -141,3 +141,14 @@ func ListOwnedPods(c client.Client, workload client.Object) ([]*v1.Pod, error) {
 	}
 	return pods, nil
 }
+
+// WrappedPodCount return the number of pods which satisfy the filter
+func WrappedPodCount(pods []*v1.Pod, filter func(pod *v1.Pod) bool) int {
+	count := 0
+	for _, pod := range pods {
+		if filter(pod) {
+			count++
+		}
+	}
+	return count
+}

@@ -92,6 +92,16 @@ spec:
                     description: CanaryStrategy defines parameters for a Replica Based
                       Canary
                     properties:
+                      failureThreshold:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: FailureThreshold indicates how many failed pods
+                          can be tolerated in all upgraded pods. Only when FailureThreshold
+                          are satisfied, Rollout can enter ready state. If FailureThreshold
+                          is nil, Rollout will use the MaxUnavailable of workload
+                          as its FailureThreshold. Defaults to nil.
+                        x-kubernetes-int-or-string: true
                       steps:
                         description: Steps define the order of phases to execute release
                           in batches(20%, 40%, 60%, 80%, 100%)
@@ -117,6 +127,8 @@ spec:
                                 5) or a percentage of total pods.'
                               x-kubernetes-int-or-string: true
                             weight:
+                              description: Weight indicate how many percentage of
+                                traffic the canary pods should receive
                               format: int32
                               type: integer
                           type: object

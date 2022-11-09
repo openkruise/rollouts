@@ -243,3 +243,43 @@ func getPodOrdinal(pod *corev1.Pod) int {
 	ord, _ := strconv.Atoi(pod.Name[strings.LastIndex(pod.Name, "-")+1:])
 	return ord
 }
+
+func failureThreshold(threshold, maxUnavailable *intstr.IntOrString, replicas int32) int32 {
+	globalThreshold := 0
+	if threshold != nil {
+		globalThreshold, _ = intstr.GetScaledValueFromIntOrPercent(threshold, int(replicas), true)
+	} else if maxUnavailable != nil {
+		globalThreshold, _ = intstr.GetScaledValueFromIntOrPercent(maxUnavailable, int(replicas), true)
+	}
+	return int32(integer.IntMax(0, globalThreshold))
+}
+
+func isBatchReady(release *v1alpha1.BatchRelease, pods []*corev1.Pod, maxUnavailable *intstr.IntOrString, labelDesired, desired, updated, updatedReady int32) bool {
+	updateRevision := release.Status.UpdateRevision
+	if updatedReady <= 0 { // Some workloads, such as StatefulSet, may not have such field
+		updatedReady = int32(util.WrappedPodCount(pods, func(pod *corev1.Pod) bool {
+			return pod.DeletionTimestamp.IsZero() && util.IsConsistentWithRevision(pod, updateRevision) && util.IsPodReady(pod)
+		}))
+	}
+
+	rolloutID := release.Spec.ReleasePlan.RolloutID
+	threshold := failureThreshold(release.Spec.ReleasePlan.FailureThreshold, maxUnavailable, updated)
+	podReady := updated >= desired && updatedReady+threshold >= desired && (desired == 0 || updatedReady > 0)
+	return podReady && isPodBatchLabelSatisfied(pods, rolloutID, labelDesired)
+}
+
+func isPodBatchLabelSatisfied(pods []*corev1.Pod, rolloutID string, targetCount int32) bool {
+	if len(rolloutID) == 0 || len(pods) == 0 {
+		return true
+	}
+	labeledCount := int32(0)
+	for _, pod := range pods {
+		if !pod.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if pod.Labels[util.RolloutIDLabel] == rolloutID {
+			labeledCount++
+		}
+	}
+	return labeledCount >= targetCount
+}
