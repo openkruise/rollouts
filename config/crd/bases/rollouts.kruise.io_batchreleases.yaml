@@ -92,6 +92,16 @@ spec:
                       - canaryReplicas
                       type: object
                     type: array
+                  failureThreshold:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: FailureThreshold indicates how many failed pods can
+                      be tolerated in all upgraded pods. Only when FailureThreshold
+                      are satisfied, Rollout can enter ready state. If FailureThreshold
+                      is nil, Rollout will use the MaxUnavailable of workload as its
+                      FailureThreshold. Defaults to nil.
+                    x-kubernetes-int-or-string: true
                   rolloutID:
                     description: RolloutID indicates an id for each rollout progress
                     type: string

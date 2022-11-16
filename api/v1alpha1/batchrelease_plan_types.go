@@ -44,6 +44,12 @@ type ReleasePlan struct {
 	BatchPartition *int32 `json:"batchPartition,omitempty"`
 	// RolloutID indicates an id for each rollout progress
 	RolloutID string `json:"rolloutID,omitempty"`
+	// FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
+	// Only when FailureThreshold are satisfied, Rollout can enter ready state.
+	// If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
+	// FailureThreshold.
+	// Defaults to nil.
+	FailureThreshold *intstr.IntOrString `json:"failureThreshold,omitempty"`
 }
 
 // ReleaseBatch is used to describe how each batch release should be

@@ -244,7 +244,8 @@ var _ = SIGDescribe("Rollout", func() {
 				return false
 			}
 			klog.Infof("current step:%v target step:%v current step state %v", clone.Status.CanaryStatus.CurrentStepIndex, stepIndex, clone.Status.CanaryStatus.CurrentStepState)
-			return clone.Status.CanaryStatus.CurrentStepIndex == stepIndex && clone.Status.CanaryStatus.CurrentStepState == rolloutsv1alpha1.CanaryStepStatePaused
+			return clone.Status.CanaryStatus.CurrentStepIndex == stepIndex && (clone.Status.CanaryStatus.CurrentStepState == rolloutsv1alpha1.CanaryStepStatePaused ||
+				clone.Status.CanaryStatus.CurrentStepState == rolloutsv1alpha1.CanaryStepStateCompleted)
 		}, 20*time.Minute, time.Second).Should(BeTrue())
 	}
 
@@ -3842,6 +3843,83 @@ var _ = SIGDescribe("Rollout", func() {
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "3", 1)
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "4", 1)
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "5", 1)
+		})
+	})
+
+	KruiseDescribe("Test", func() {
+		It("failure threshold", func() {
+			By("Creating Rollout...")
+			rollout := &rolloutsv1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.ObjectRef.WorkloadRef = &rolloutsv1alpha1.WorkloadRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "CloneSet",
+				Name:       "echoserver",
+			}
+			rollout.Spec.Strategy.Canary = &rolloutsv1alpha1.CanaryStrategy{
+				FailureThreshold: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
+				Steps: []rolloutsv1alpha1.CanaryStep{
+					{
+						Weight: utilpointer.Int32(10),
+						Pause:  rolloutsv1alpha1.RolloutPause{},
+					},
+					{
+						Weight: utilpointer.Int32(30),
+						Pause:  rolloutsv1alpha1.RolloutPause{},
+					},
+					{
+						Weight: utilpointer.Int32(60),
+						Pause:  rolloutsv1alpha1.RolloutPause{},
+					},
+					{
+						Weight: utilpointer.Int32(100),
+						Pause:  rolloutsv1alpha1.RolloutPause{},
+					},
+				},
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			workload := &appsv1alpha1.CloneSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/cloneset.yaml", workload)).ToNot(HaveOccurred())
+			workload.Spec.Replicas = utilpointer.Int32(10)
+			workload.Spec.UpdateStrategy.MaxUnavailable = &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}
+			CreateObject(workload)
+			WaitCloneSetAllPodsReady(workload)
+
+			checkUpdateReadyPods := func(lower, upper int32) bool {
+				Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+				return lower <= workload.Status.UpdatedReadyReplicas && workload.Status.UpdatedReadyReplicas <= upper
+			}
+
+			By("start rollout")
+			workload.Labels[util.RolloutIDLabel] = "1"
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateCloneSet(workload)
+
+			By("wait step(1) pause")
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			Expect(checkUpdateReadyPods(1, 1)).Should(BeTrue())
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "1", 1)
+
+			By("wait step(2) pause")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+			Expect(checkUpdateReadyPods(2, 3)).Should(BeTrue())
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "2", 2)
+
+			By("wait step(3) pause")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+			Expect(checkUpdateReadyPods(4, 6)).Should(BeTrue())
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "3", 3)
+
+			By("wait step(4) pause")
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutCanaryStepPaused(rollout.Name, 4)
+			Expect(checkUpdateReadyPods(8, 10)).Should(BeTrue())
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "4", 4)
 		})
 	})
 })

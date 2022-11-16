@@ -37,7 +37,6 @@ type UnifiedWorkloadController interface {
 	ClaimWorkload() (bool, error)
 	ReleaseWorkload(cleanup bool) (bool, error)
 	UpgradeBatch(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
-	IsBatchReady(canaryReplicasGoal, stableReplicasGoal int32) (bool, error)
 	ListOwnedPods() ([]*v1.Pod, error)
 	IsOrderedUpdate() (bool, error)
 }
@@ -249,20 +248,27 @@ func (c *UnifiedWorkloadRolloutControlPlane) CheckOneBatchReady() (bool, error) 
 	}
 
 	replicas := c.newStatus.ObservedWorkloadReplicas
-	currentBatch := c.newStatus.CanaryStatus.CurrentBatch
+	updatedReplicas := workloadInfo.Status.UpdatedReplicas
+	updatedReadyReplicas := workloadInfo.Status.UpdatedReadyReplicas
 
+	currentBatch := c.newStatus.CanaryStatus.CurrentBatch
 	// the number of canary pods should have in current batch in plan
-	plannedBatchCanaryReplicas := c.calculateCurrentCanary(c.newStatus.ObservedWorkloadReplicas)
+	plannedUpdatedReplicas := c.calculateCurrentCanary(c.newStatus.ObservedWorkloadReplicas)
 	// the number of canary pods that consider rollback context and other real-world situations
-	expectedBatchCanaryReplicas := c.calculateCurrentCanary(replicas - noNeedRollbackReplicas)
+	expectedUpdatedReplicas := c.calculateCurrentCanary(replicas - noNeedRollbackReplicas)
 	// the number of canary pods that consider rollback context and other real-world situations
-	expectedBatchStableReplicas := replicas - expectedBatchCanaryReplicas
+	expectedStableReplicas := replicas - expectedUpdatedReplicas
+	// the number of pods that should be upgraded in this batch
+	updatedReplicasInBatch := plannedUpdatedReplicas
+	if currentBatch > 0 {
+		updatedReplicasInBatch -= int32(calculateNewBatchTarget(&c.release.Spec.ReleasePlan, int(replicas), int(currentBatch-1)))
+	}
 
 	// if ordered update, partition is related with pod ordinals
 	// if unordered update, partition just like cloneSet partition
 	orderedUpdate, _ := c.IsOrderedUpdate()
 	if !orderedUpdate {
-		expectedBatchStableReplicas -= noNeedRollbackReplicas
+		expectedStableReplicas -= noNeedRollbackReplicas
 	}
 
 	klog.V(3).InfoS("check one batch, current info:",
@@ -270,17 +276,23 @@ func (c *UnifiedWorkloadRolloutControlPlane) CheckOneBatchReady() (bool, error) 
 		"currentBatch", currentBatch,
 		"replicas", replicas,
 		"noNeedRollbackReplicas", noNeedRollbackReplicas,
-		"plannedBatchCanaryReplicas", plannedBatchCanaryReplicas,
-		"expectedBatchCanaryReplicas", expectedBatchCanaryReplicas,
-		"expectedBatchStableReplicas", expectedBatchStableReplicas)
+		"updatedReplicasInBatch", updatedReplicasInBatch,
+		"plannedUpdatedReplicas", plannedUpdatedReplicas,
+		"expectedUpdatedReplicas", expectedUpdatedReplicas,
+		"expectedStableReplicas", expectedStableReplicas)
 
-	if ready, err := c.IsBatchReady(expectedBatchCanaryReplicas, expectedBatchStableReplicas); err != nil || !ready {
-		klog.InfoS("the batch is not ready yet", "Workload", workloadInfo.GVKWithName,
-			"BatchRelease", client.ObjectKeyFromObject(c.release), "current-batch", c.release.Status.CanaryStatus.CurrentBatch)
+	pods, err := c.ListOwnedPods()
+	if err != nil {
+		return false, err
+	}
+
+	if !isBatchReady(c.release, pods, workloadInfo.MaxUnavailable,
+		plannedUpdatedReplicas, expectedUpdatedReplicas, updatedReplicas, updatedReadyReplicas) {
+		klog.Infof("BatchRelease(%v) batch is not ready yet, current batch=%d", klog.KObj(c.release), currentBatch)
 		return false, nil
 	}
 
-	c.recorder.Eventf(c.release, v1.EventTypeNormal, "BatchAvailable", "Batch %d is available", c.release.Status.CanaryStatus.CurrentBatch)
+	klog.Infof("BatchRelease(%v) %d batch is ready", klog.KObj(c.release), currentBatch)
 	return true, nil
 }
 

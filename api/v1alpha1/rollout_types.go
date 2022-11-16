@@ -96,13 +96,18 @@ type CanaryStrategy struct {
 	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
 	// todo current only support one TrafficRouting
 	TrafficRoutings []*TrafficRouting `json:"trafficRoutings,omitempty"`
+	// FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
+	// Only when FailureThreshold are satisfied, Rollout can enter ready state.
+	// If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
+	// FailureThreshold.
+	// Defaults to nil.
+	FailureThreshold *intstr.IntOrString `json:"failureThreshold,omitempty"`
 	// MetricsAnalysis *MetricsAnalysisBackground `json:"metricsAnalysis,omitempty"`
 }
 
 // CanaryStep defines a step of a canary workload.
 type CanaryStep struct {
-	// SetWeight sets what percentage of the canary pods should receive
-
+	// Weight indicate how many percentage of traffic the canary pods should receive
 	// +optional
 	Weight *int32 `json:"weight,omitempty"`
 	// Replicas is the number of expected canary pods in this batch

@@ -7,10 +7,12 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func TestFilterPodsForUnorderedRollback(t *testing.T) {
@@ -244,6 +246,141 @@ func TestFilterPodsForOrderedRollback(t *testing.T) {
 	}
 }
 
+func TestIsBatchReady(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	p := func(f intstr.IntOrString) *intstr.IntOrString {
+		return &f
+	}
+	r := func(f *intstr.IntOrString, id, revision string) *v1alpha1.BatchRelease {
+		return &v1alpha1.BatchRelease{
+			Spec:   v1alpha1.BatchReleaseSpec{ReleasePlan: v1alpha1.ReleasePlan{RolloutID: id, FailureThreshold: f}},
+			Status: v1alpha1.BatchReleaseStatus{UpdateRevision: revision},
+		}
+	}
+	cases := map[string]struct {
+		release        *v1alpha1.BatchRelease
+		pods           []*corev1.Pod
+		maxUnavailable *intstr.IntOrString
+		labelDesired   int32
+		desired        int32
+		updated        int32
+		updatedReady   int32
+		result         bool
+	}{
+		"ready: no-rollout-id, all pod ready": {
+			release:        r(p(intstr.FromInt(1)), "", "v2"),
+			pods:           nil,
+			maxUnavailable: p(intstr.FromInt(1)),
+			labelDesired:   5,
+			desired:        5,
+			updated:        5,
+			updatedReady:   5,
+			result:         true,
+		},
+		"ready: no-rollout-id, tolerated failed pods": {
+			release:        r(p(intstr.FromInt(1)), "", "v2"),
+			pods:           nil,
+			maxUnavailable: p(intstr.FromInt(1)),
+			labelDesired:   5,
+			desired:        5,
+			updated:        5,
+			updatedReady:   4,
+			result:         true,
+		},
+		"false: no-rollout-id, un-tolerated failed pods": {
+			release:        r(p(intstr.FromInt(1)), "", "v2"),
+			pods:           nil,
+			maxUnavailable: p(intstr.FromInt(5)),
+			labelDesired:   5,
+			desired:        5,
+			updated:        5,
+			updatedReady:   3,
+			result:         false,
+		},
+		"false: no-rollout-id, tolerated failed pods, but 1 pod isn't updated": {
+			release:        r(p(intstr.FromString("60%")), "", "v2"),
+			pods:           nil,
+			maxUnavailable: p(intstr.FromInt(5)),
+			labelDesired:   5,
+			desired:        5,
+			updated:        4,
+			updatedReady:   4,
+			result:         false,
+		},
+		"false: no-rollout-id, tolerated, but no-pod-ready": {
+			release:        r(p(intstr.FromInt(100)), "", "v2"),
+			pods:           nil,
+			maxUnavailable: p(intstr.FromInt(5)),
+			labelDesired:   5,
+			desired:        5,
+			updated:        5,
+			updatedReady:   0,
+			result:         false,
+		},
+		"true: no-rollout-id, tolerated failed pods, failureThreshold=nil": {
+			release:        r(nil, "", "v2"),
+			pods:           nil,
+			maxUnavailable: p(intstr.FromInt(3)),
+			labelDesired:   5,
+			desired:        5,
+			updated:        5,
+			updatedReady:   3,
+			result:         true,
+		},
+		"false: no-rollout-id, un-tolerated failed pods, failureThreshold=nil": {
+			release:        r(nil, "", "v2"),
+			pods:           nil,
+			maxUnavailable: p(intstr.FromInt(1)),
+			labelDesired:   5,
+			desired:        5,
+			updated:        5,
+			updatedReady:   3,
+			result:         false,
+		},
+		"true: rollout-id, labeled pods satisfied": {
+			release:        r(p(intstr.FromInt(1)), "1", "version-1"),
+			pods:           generatePods(5, 0),
+			maxUnavailable: p(intstr.FromInt(5)),
+			labelDesired:   5,
+			desired:        5,
+			updated:        5,
+			updatedReady:   5,
+			result:         true,
+		},
+		"false: rollout-id, labeled pods not satisfied": {
+			release:        r(p(intstr.FromInt(1)), "1", "version-1"),
+			pods:           generatePods(3, 0),
+			maxUnavailable: p(intstr.FromInt(5)),
+			labelDesired:   5,
+			desired:        5,
+			updated:        5,
+			updatedReady:   5,
+			result:         false,
+		},
+		"true: rollout-id, no updated-ready field": {
+			release:        r(p(intstr.FromInt(1)), "1", "version-1"),
+			pods:           generatePods(5, 0),
+			maxUnavailable: p(intstr.FromInt(5)),
+			labelDesired:   5,
+			desired:        5,
+			updated:        5,
+			updatedReady:   0,
+			result:         true,
+		},
+	}
+
+	for name, cs := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := isBatchReady(cs.release, cs.pods, cs.maxUnavailable, cs.labelDesired, cs.desired, cs.updated, cs.updatedReady)
+			fmt.Printf("%v  %v", got, cs.result)
+			Expect(got).To(Equal(cs.result))
+			fmt.Printf("%v  %v", got, cs.result)
+
+		})
+	}
+}
+
 func TestSortPodsByOrdinal(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -261,9 +398,11 @@ func TestSortPodsByOrdinal(t *testing.T) {
 func generatePods(updatedReplicas, noNeedRollbackReplicas int) []*corev1.Pod {
 	podsNoNeed := generatePodsWith(map[string]string{
 		util.NoNeedUpdatePodLabel:           "0x1",
+		util.RolloutIDLabel:                 "1",
 		apps.ControllerRevisionHashLabelKey: "version-1",
 	}, noNeedRollbackReplicas, 0)
 	return append(generatePodsWith(map[string]string{
+		util.RolloutIDLabel:                 "1",
 		apps.ControllerRevisionHashLabelKey: "version-1",
 	}, updatedReplicas-noNeedRollbackReplicas, noNeedRollbackReplicas), podsNoNeed...)
 }
@@ -275,6 +414,14 @@ func generatePodsWith(labels map[string]string, replicas int, beginOrder int) []
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   fmt.Sprintf("pod-name-%d", beginOrder+i),
 				Labels: labels,
+			},
+			Status: corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				},
 			},
 		}
 	}

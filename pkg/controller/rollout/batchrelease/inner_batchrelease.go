@@ -356,9 +356,10 @@ func createBatchRelease(rollout *rolloutv1alpha1.Rollout, batchName, rolloutID s
 				},
 			},
 			ReleasePlan: rolloutv1alpha1.ReleasePlan{
-				Batches:        batches,
-				RolloutID:      rolloutID,
-				BatchPartition: utilpointer.Int32Ptr(0),
+				Batches:          batches,
+				RolloutID:        rolloutID,
+				BatchPartition:   utilpointer.Int32Ptr(0),
+				FailureThreshold: rollout.Spec.Strategy.Canary.FailureThreshold,
 			},
 		},
 	}
