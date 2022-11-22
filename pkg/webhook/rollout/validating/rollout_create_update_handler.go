@@ -193,9 +193,6 @@ func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldP
 		if traffic.Ingress.Name == "" {
 			errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting.Ingress.Ingress cannot be empty"))
 		}
-		if traffic.Ingress.ClassType != "" && traffic.Ingress.ClassType != "nginx" {
-			errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting.Ingress.ClassType only support nginx"))
-		}
 	}
 	if traffic.Gateway != nil {
 		if traffic.Gateway.HTTPRouteName == nil || *traffic.Gateway.HTTPRouteName == "" {
@@ -214,8 +211,8 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 
 	for i := range steps {
 		s := &steps[i]
-		if isTraffic && s.Weight == nil {
-			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `weight cannot be empty for traffic routing`)}
+		if isTraffic && s.Weight == nil && len(s.Matches) == 0 {
+			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `weight or matches cannot be empty for traffic routing`)}
 		} else if s.Weight == nil && s.Replicas == nil {
 			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `weight and replicas cannot be empty at the same time`)}
 		}
@@ -231,7 +228,7 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 	for i := 1; i < stepCount; i++ {
 		prev := &steps[i-1]
 		curr := &steps[i]
-		if isTraffic && *curr.Weight < *prev.Weight {
+		if isTraffic && curr.Weight != nil && prev.Weight != nil && *curr.Weight < *prev.Weight {
 			return field.ErrorList{field.Invalid(fldPath.Child("Weight"), steps, `Steps.Weight must be a non decreasing sequence`)}
 		}
 

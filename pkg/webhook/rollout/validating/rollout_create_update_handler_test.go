@@ -232,15 +232,6 @@ func TestRolloutValidateCreate(t *testing.T) {
 		//		return []client.Object{object}
 		//	},
 		//},
-		{
-			Name:    "Wrong Traffic type",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.TrafficRoutings[0].Ingress.ClassType = "Whatever"
-				return []client.Object{object}
-			},
-		},
 		/****************************************************************
 			The following cases are conflict cases
 		 ***************************************************************/

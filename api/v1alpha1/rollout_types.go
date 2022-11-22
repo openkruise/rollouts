@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -64,11 +65,6 @@ type WorkloadRef struct {
 	// Name of the referent
 	Name string `json:"name"`
 }
-
-/*type ControllerRevisionRef struct {
-	TargetRevisionName string `json:"targetRevisionName"`
-	SourceRevisionName string `json:"sourceRevisionName"`
-}*/
 
 // RolloutStrategy defines strategy to apply during next rollout
 type RolloutStrategy struct {
@@ -116,7 +112,19 @@ type CanaryStep struct {
 	// Pause defines a pause stage for a rollout, manual or auto
 	// +optional
 	Pause RolloutPause `json:"pause,omitempty"`
-	// MetricsAnalysis *RolloutAnalysis `json:"metricsAnalysis,omitempty"`
+	// Matches define conditions used for matching the incoming HTTP requests to canary service.
+	// Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
+	// If Gateway API, current only support one match.
+	// And cannot support both weight and matches, if both are configured, then matches takes precedence.
+	Matches []HttpRouteMatch `json:"matches,omitempty"`
+}
+
+type HttpRouteMatch struct {
+	// Headers specifies HTTP request header matchers. Multiple match values are
+	// ANDed together, meaning, a request must match all the specified headers
+	// to select the route.
+	// +kubebuilder:validation:MaxItems=16
+	Headers []gatewayv1alpha2.HTTPHeaderMatch `json:"headers,omitempty"`
 }
 
 // RolloutPause defines a pause stage for a rollout
@@ -141,7 +149,8 @@ type TrafficRouting struct {
 
 // IngressTrafficRouting configuration for ingress controller to control traffic routing
 type IngressTrafficRouting struct {
-	// ClassType refers to the class type of an `Ingress`, e.g. Nginx. Default is Nginx
+	// ClassType refers to the type of `Ingress`.
+	// current support nginx, aliyun-alb. default is nginx.
 	// +optional
 	ClassType string `json:"classType,omitempty"`
 	// Name refers to the name of an `Ingress` resource in the same namespace as the `Rollout`

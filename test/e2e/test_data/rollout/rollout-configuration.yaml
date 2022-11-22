@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kruise-rollout-configuration
+  namespace: kruise-rollout
+data:
+  "lua.traffic.routing.ingress.aliyun-alb": |
+    function split(input, delimiter)
+        local arr = {}
+        string.gsub(input, '[^' .. delimiter ..']+', function(w) table.insert(arr, w) end)
+        return arr
+    end
+    annotations = {}
+    if ( obj.annotations )
+    then
+        annotations = obj.annotations
+    end
+
+    annotations["alb.ingress.kubernetes.io/canary"] = "true"
+    annotations["alb.ingress.kubernetes.io/canary-by-cookie"] = nil
+    annotations["alb.ingress.kubernetes.io/canary-by-header"] = nil
+    annotations["alb.ingress.kubernetes.io/canary-by-header-pattern"] = nil
+    annotations["alb.ingress.kubernetes.io/canary-by-header-value"] = nil
+    annotations["alb.ingress.kubernetes.io/canary-weight"] = nil
+    conditionKey = string.format("alb.ingress.kubernetes.io/conditions.%s", obj.canaryService)
+    annotations[conditionKey] = nil
+    if ( obj.weight ~= "-1" )
+    then
+        annotations["alb.ingress.kubernetes.io/canary-weight"] = obj.weight
+    end
+    if ( not obj.matches )
+    then
+        return annotations
+    end
+    conditions = {}
+    match = obj.matches[1]
+    for _,header in ipairs(match.headers) do
+        local condition = {}
+        if ( header.name == "Cookie" )
+        then
+            condition.type = "Cookie"
+            condition.cookieConfig = {}
+            cookies = split(header.value, ";")
+            values = {}
+            for _,cookieStr in ipairs(cookies) do
+                cookie = split(cookieStr, "=")
+                value = {}
+                value.key = cookie[1]
+                value.value = cookie[2]
+                table.insert(values, value)
+            end
+            condition.cookieConfig.values = values
+        elseif ( header.name == "SourceIp" )
+        then
+            condition.type = "SourceIp"
+            condition.sourceIpConfig = {}
+            ips = split(header.value, ";")
+            values = {}
+            for _,ip in ipairs(ips) do
+                table.insert(values, ip)
+            end
+            condition.sourceIpConfig.values = values
+        else
+            condition.type = "Header"
+            condition.headerConfig = {}
+            condition.headerConfig.key = header.name
+            vals = split(header.value, ";")
+            values = {}
+            for _,val in ipairs(vals) do
+                table.insert(values, val)
+            end
+            condition.headerConfig.values = values
+        end
+        table.insert(conditions, condition)
+    end
+    annotations[conditionKey] = json.encode(conditions)
+    return annotations
