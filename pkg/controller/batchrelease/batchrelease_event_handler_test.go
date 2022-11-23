@@ -26,7 +26,9 @@ import (
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,7 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
-func TestEventHandler_Update(t *testing.T) {
+func TestWorkloadEventHandler_Update(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	cases := []struct {
@@ -141,7 +143,7 @@ func TestEventHandler_Update(t *testing.T) {
 	}
 }
 
-func TestEventHandler_Create(t *testing.T) {
+func TestWorkloadEventHandler_Create(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	cases := []struct {
@@ -197,7 +199,7 @@ func TestEventHandler_Create(t *testing.T) {
 	}
 }
 
-func TestEventHandler_Delete(t *testing.T) {
+func TestWorkloadEventHandler_Delete(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	cases := []struct {
@@ -251,4 +253,246 @@ func TestEventHandler_Delete(t *testing.T) {
 			Expect(deleteQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}
+}
+
+func TestPodEventHandler_Update(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	cases := []struct {
+		Name             string
+		GetOldPod        func() client.Object
+		GetNewPod        func() client.Object
+		GetWorkload      func() client.Object
+		ExpectedQueueLen int
+	}{
+		{
+			Name: "CloneSet Pod NotReady -> Ready",
+			GetOldPod: func() client.Object {
+				return generatePod(false, true, "version-1")
+			},
+			GetNewPod: func() client.Object {
+				return generatePod(true, true, "version-1")
+			},
+			GetWorkload: func() client.Object {
+				clone := stableClone.DeepCopy()
+				owner, _ := json.Marshal(metav1.NewControllerRef(releaseClone, releaseClone.GetObjectKind().GroupVersionKind()))
+				clone.Annotations = map[string]string{
+					util.BatchReleaseControlAnnotation: string(owner),
+				}
+				return clone
+			},
+			ExpectedQueueLen: 1,
+		},
+		{
+			Name: "CloneSet Pod Ready -> Ready",
+			GetOldPod: func() client.Object {
+				return generatePod(true, true, "version-1")
+			},
+			GetNewPod: func() client.Object {
+				return generatePod(true, true, "version-1")
+			},
+			GetWorkload: func() client.Object {
+				clone := stableClone.DeepCopy()
+				owner, _ := json.Marshal(metav1.NewControllerRef(releaseClone, releaseClone.GetObjectKind().GroupVersionKind()))
+				clone.Annotations = map[string]string{
+					util.BatchReleaseControlAnnotation: string(owner),
+				}
+				return clone
+			},
+			ExpectedQueueLen: 0,
+		},
+		{
+			Name: "Orphan Pod NotReady -> Ready",
+			GetOldPod: func() client.Object {
+				return generatePod(false, false, "version-1")
+			},
+			GetNewPod: func() client.Object {
+				return generatePod(true, false, "version-1")
+			},
+			GetWorkload: func() client.Object {
+				clone := stableClone.DeepCopy()
+				owner, _ := json.Marshal(metav1.NewControllerRef(releaseClone, releaseClone.GetObjectKind().GroupVersionKind()))
+				clone.Annotations = map[string]string{
+					util.BatchReleaseControlAnnotation: string(owner),
+				}
+				return clone
+			},
+			ExpectedQueueLen: 0,
+		},
+		{
+			Name: "Orphan Pod Ready -> Ready",
+			GetOldPod: func() client.Object {
+				return generatePod(true, false, "version-1")
+			},
+			GetNewPod: func() client.Object {
+				return generatePod(true, false, "version-1")
+			},
+			GetWorkload: func() client.Object {
+				clone := stableClone.DeepCopy()
+				owner, _ := json.Marshal(metav1.NewControllerRef(releaseClone, releaseClone.GetObjectKind().GroupVersionKind()))
+				clone.Annotations = map[string]string{
+					util.BatchReleaseControlAnnotation: string(owner),
+				}
+				return clone
+			},
+			ExpectedQueueLen: 0,
+		},
+		{
+			Name: "Free CloneSet Pod NotReady -> Ready",
+			GetOldPod: func() client.Object {
+				return generatePod(false, false, "version-1")
+			},
+			GetNewPod: func() client.Object {
+				return generatePod(true, false, "version-1")
+			},
+			GetWorkload: func() client.Object {
+				clone := stableClone.DeepCopy()
+				return clone
+			},
+			ExpectedQueueLen: 0,
+		},
+		{
+			Name: "Free CloneSet Pod Ready -> Ready",
+			GetOldPod: func() client.Object {
+				return generatePod(true, false, "version-1")
+			},
+			GetNewPod: func() client.Object {
+				return generatePod(true, false, "version-1")
+			},
+			GetWorkload: func() client.Object {
+				clone := stableClone.DeepCopy()
+				return clone
+			},
+			ExpectedQueueLen: 0,
+		},
+		{
+			Name: "CloneSet Pod V1 -> V2",
+			GetOldPod: func() client.Object {
+				return generatePod(true, true, "version-1")
+			},
+			GetNewPod: func() client.Object {
+				return generatePod(true, true, "version-2")
+			},
+			GetWorkload: func() client.Object {
+				clone := stableClone.DeepCopy()
+				owner, _ := json.Marshal(metav1.NewControllerRef(releaseClone, releaseClone.GetObjectKind().GroupVersionKind()))
+				clone.Annotations = map[string]string{
+					util.BatchReleaseControlAnnotation: string(owner),
+				}
+				return clone
+			},
+			ExpectedQueueLen: 1,
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.Name, func(t *testing.T) {
+			oldObject := cs.GetOldPod()
+			newObject := cs.GetNewPod()
+			workload := cs.GetWorkload()
+			newSJk := scheme
+			fmt.Println(newSJk)
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(releaseDeploy.DeepCopy(), workload).Build()
+			handler := podEventHandler{Reader: cli}
+			updateQ := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+			updateEvt := event.UpdateEvent{
+				ObjectOld: oldObject,
+				ObjectNew: newObject,
+			}
+			handler.Update(updateEvt, updateQ)
+			Expect(updateQ.Len()).Should(Equal(cs.ExpectedQueueLen))
+		})
+	}
+}
+
+func TestPodEventHandler_Create(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	cases := []struct {
+		Name             string
+		GetNewPod        func() client.Object
+		GetWorkload      func() client.Object
+		ExpectedQueueLen int
+	}{
+		{
+			Name: "CloneSet Pod",
+			GetNewPod: func() client.Object {
+				return generatePod(false, true, "version-1")
+			},
+			GetWorkload: func() client.Object {
+				clone := stableClone.DeepCopy()
+				owner, _ := json.Marshal(metav1.NewControllerRef(releaseClone, releaseClone.GetObjectKind().GroupVersionKind()))
+				clone.Annotations = map[string]string{
+					util.BatchReleaseControlAnnotation: string(owner),
+				}
+				return clone
+			},
+			ExpectedQueueLen: 1,
+		},
+		{
+			Name: "Orphan Pod",
+			GetNewPod: func() client.Object {
+				return generatePod(false, false, "version-1")
+			},
+			GetWorkload: func() client.Object {
+				clone := stableClone.DeepCopy()
+				owner, _ := json.Marshal(metav1.NewControllerRef(releaseClone, releaseClone.GetObjectKind().GroupVersionKind()))
+				clone.Annotations = map[string]string{
+					util.BatchReleaseControlAnnotation: string(owner),
+				}
+				return clone
+			},
+			ExpectedQueueLen: 0,
+		},
+		{
+			Name: "Free CloneSet Pod",
+			GetNewPod: func() client.Object {
+				return generatePod(false, true, "version-1")
+			},
+			GetWorkload: func() client.Object {
+				return stableClone.DeepCopy()
+			},
+			ExpectedQueueLen: 0,
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.Name, func(t *testing.T) {
+			newObject := cs.GetNewPod()
+			workload := cs.GetWorkload()
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(releaseDeploy.DeepCopy(), workload).Build()
+			handler := podEventHandler{Reader: cli}
+			createQ := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+			createEvt := event.CreateEvent{
+				Object: newObject,
+			}
+			handler.Create(createEvt, createQ)
+			Expect(createQ.Len()).Should(Equal(cs.ExpectedQueueLen))
+		})
+	}
+}
+
+func generatePod(ready, owned bool, version string) *corev1.Pod {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "pod",
+			Namespace:       stableClone.Namespace,
+			ResourceVersion: string(uuid.NewUUID()),
+			Labels: map[string]string{
+				apps.ControllerRevisionHashLabelKey: version,
+			},
+		},
+	}
+	if ready {
+		pod.Status.Phase = corev1.PodRunning
+		pod.Status.Conditions = append(pod.Status.Conditions, corev1.PodCondition{
+			Type:   corev1.PodReady,
+			Status: corev1.ConditionTrue,
+		})
+	}
+	if owned {
+		pod.OwnerReferences = append(pod.OwnerReferences,
+			*metav1.NewControllerRef(stableClone, stableClone.GroupVersionKind()))
+	}
+	return pod
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	expectations "github.com/openkruise/rollouts/pkg/util/expectation"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,10 +62,13 @@ func (p podEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimitingI
 	}
 	p.enqueue(pod, q)
 }
+
 func (p podEventHandler) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
+
 func (p podEventHandler) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 }
+
 func (p podEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	oldPod, oldOK := evt.ObjectOld.(*corev1.Pod)
 	newPod, newOK := evt.ObjectNew.(*corev1.Pod)
@@ -118,6 +122,7 @@ type workloadEventHandler struct {
 }
 
 func (w workloadEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+	expectationObserved(evt.Object)
 	w.handleWorkload(q, evt.Object, CreateEventAction)
 }
 
@@ -140,6 +145,7 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 
 	oldObject := evt.ObjectNew
 	newObject := evt.ObjectOld
+	expectationObserved(newObject)
 	if newObject.GetResourceVersion() == oldObject.GetResourceVersion() {
 		return
 	}
@@ -243,4 +249,25 @@ func getBatchRelease(c client.Reader, workloadNamespaceName types.NamespacedName
 	}
 
 	return
+}
+
+func expectationObserved(object client.Object) {
+	controllerKey := getControllerKey(object)
+	if controllerKey != nil {
+		klog.V(3).Infof("observed %v, remove from expectation %s: %s",
+			klog.KObj(object), *controllerKey, string(object.GetUID()))
+		expectations.ResourceExpectations.Observe(*controllerKey, expectations.Create, string(object.GetUID()))
+	}
+}
+
+func getControllerKey(object client.Object) *string {
+	owner := metav1.GetControllerOfNoCopy(object)
+	if owner == nil {
+		return nil
+	}
+	if owner.APIVersion == v1alpha1.GroupVersion.String() {
+		key := types.NamespacedName{Namespace: object.GetNamespace(), Name: owner.Name}.String()
+		return &key
+	}
+	return nil
 }

@@ -52,10 +52,6 @@ spec:
             description: BatchReleaseSpec defines how to describe an update between
               different compRevision
             properties:
-              paused:
-                description: Paused the rollout, the release progress will be paused
-                  util paused is false. default is false
-                type: boolean
               releasePlan:
                 description: ReleasePlan is the details on how to rollout the resources
                 properties:
@@ -63,7 +59,7 @@ spec:
                     description: All pods in the batches up to the batchPartition
                       (included) will have the target resource specification while
                       the rest still is the stable revision. This is designed for
-                      the operators to manually rollout Default is nil, which means
+                      the operators to manually rollout. Default is nil, which means
                       no partition and will release all batches. BatchPartition start
                       from 0.
                     format: int32
@@ -102,6 +98,10 @@ spec:
                       is nil, Rollout will use the MaxUnavailable of workload as its
                       FailureThreshold. Defaults to nil.
                     x-kubernetes-int-or-string: true
+                  finalizingPolicy:
+                    description: FinalizingPolicy define the behavior of controller
+                      when phase enter Finalizing Defaults to "Immediate"
+                    type: string
                   rolloutID:
                     description: RolloutID indicates an id for each rollout progress
                     type: string

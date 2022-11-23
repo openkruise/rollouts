@@ -375,7 +375,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCancelled))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2: ScalingUp, Percentage, 100%, Succeeded", func() {
@@ -799,7 +799,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCancelled))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2: ScalingUp, Percentage, 100%, Succeeded", func() {
@@ -1134,7 +1134,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 				clone := &rolloutsv1alpha1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCancelled))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
 		})
 
 		It("Rollback V1->V2: Delete BatchRelease, Percentage, 100%, Succeeded", func() {

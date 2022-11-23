@@ -22,13 +22,10 @@ import (
 	"reflect"
 	"strconv"
 
-	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
-	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -171,7 +168,6 @@ func (r *innerBatchRelease) Promote(index int32, isRollback, checkReady bool) (b
 			batch.Annotations[util.RollbackInBatchAnnotation] = r.rollout.Annotations[util.RollbackInBatchAnnotation]
 		}
 
-		batch.Spec.Paused = false
 		if batch.Labels == nil {
 			batch.Labels = map[string]string{}
 		}
@@ -188,113 +184,52 @@ func (r *innerBatchRelease) Promote(index int32, isRollback, checkReady bool) (b
 	return false, nil
 }
 
-func (r *innerBatchRelease) resumeStableWorkload(checkReady bool) (bool, error) {
-	// cloneSet
-	switch r.rollout.Spec.ObjectRef.WorkloadRef.Kind {
-	case util.ControllerKruiseKindCS.Kind:
-		dName := r.rollout.Spec.ObjectRef.WorkloadRef.Name
-		obj := &appsv1alpha1.CloneSet{}
-		err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				klog.Warningf("rollout(%s/%s) cloneSet(%s) not found, and return true", r.rollout.Namespace, r.rollout.Name, dName)
-				return true, nil
-			}
-			return false, err
-		}
-		// default partition.IntVal=0
-		if !obj.Spec.UpdateStrategy.Paused && obj.Spec.UpdateStrategy.Partition.IntVal == 0 && obj.Spec.UpdateStrategy.Partition.Type == intstr.Int {
+func (r *innerBatchRelease) resumeStableWorkload(waitReady bool) (bool, error) {
+	batch, err := r.FetchBatchRelease()
+	if err != nil {
+		if errors.IsNotFound(err) {
 			return true, nil
 		}
+		return false, err
+	}
 
-		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-			if err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj); err != nil {
-				return err
-			}
-			obj.Spec.UpdateStrategy.Paused = false
-			obj.Spec.UpdateStrategy.Partition = nil
-			return r.Update(context.TODO(), obj)
-		})
-		if err != nil {
-			klog.Errorf("update rollout(%s/%s) cloneSet failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
-			return false, err
-		}
-		klog.Infof("resume rollout(%s/%s) cloneSet(paused=false,partition=nil) success", r.rollout.Namespace, r.rollout.Name)
-		return true, nil
-
-	case util.ControllerKindDep.Kind:
-		// deployment
-		dName := r.rollout.Spec.ObjectRef.WorkloadRef.Name
-		obj := &apps.Deployment{}
-		err := r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				klog.Warningf("rollout(%s/%s) stable deployment(%s) not found, and return true", r.rollout.Namespace, r.rollout.Name, dName)
-				return true, nil
-			}
-			return false, err
-		}
-		// set deployment paused=false
-		if obj.Spec.Paused {
-			err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-				if err = r.Get(context.TODO(), types.NamespacedName{Namespace: r.rollout.Namespace, Name: dName}, obj); err != nil {
-					return err
-				}
-				obj.Spec.Paused = false
-				return r.Update(context.TODO(), obj)
-			})
-			if err != nil {
-				klog.Errorf("update rollout(%s/%s) stable deployment failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
-				return false, err
-			}
-			klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) success", r.rollout.Namespace, r.rollout.Name)
-		}
-
-		// Whether to wait for pods are ready
-		if !checkReady {
-			return true, nil
-		}
-		data := util.DumpJSON(obj.Status)
-		// wait for all pods are ready
-		maxUnavailable, _ := intstr.GetScaledValueFromIntOrPercent(obj.Spec.Strategy.RollingUpdate.MaxUnavailable, int(*obj.Spec.Replicas), true)
-		if obj.Status.ObservedGeneration != obj.Generation || obj.Status.UpdatedReplicas != *obj.Spec.Replicas ||
-			obj.Status.Replicas != *obj.Spec.Replicas || *obj.Spec.Replicas-obj.Status.AvailableReplicas > int32(maxUnavailable) {
-			klog.Infof("rollout(%s/%s) stable deployment status(%s), and wait a moment", r.rollout.Namespace, r.rollout.Name, data)
-			return false, nil
-		}
-		klog.Infof("resume rollout(%s/%s) stable deployment(paused=false) status(%s) success", r.rollout.Namespace, r.rollout.Name, data)
-		return true, nil
-
-	default:
-		// statefulset-like workloads
-		workloadRef := r.rollout.Spec.ObjectRef.WorkloadRef
-		workloadNsn := types.NamespacedName{Namespace: r.rollout.Namespace, Name: workloadRef.Name}
-		workloadGVK := schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
-		obj := &unstructured.Unstructured{}
-		obj.SetGroupVersionKind(workloadGVK)
-		err := r.Get(context.TODO(), workloadNsn, obj)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				klog.Warningf("rollout(%s/%s) statefulset(%s) not found, and return true", r.rollout.Namespace, r.rollout.Name, workloadNsn.Name)
-				return true, nil
-			}
-			return false, err
-		}
-
-		if util.GetStatefulSetPartition(obj) == 0 {
-			return true, nil
-		}
-
-		cloneObj := obj.DeepCopy()
-		body := fmt.Sprintf(`{"spec":{"updateStrategy":{"rollingUpdate":{"partition":0}}}}`)
-		err = r.Patch(context.TODO(), cloneObj, client.RawPatch(types.MergePatchType, []byte(body)))
-		if err != nil {
-			klog.Errorf("patch rollout(%s/%s) statefulset failed: %s", r.rollout.Namespace, r.rollout.Name, err.Error())
-			return false, err
-		}
-		klog.Infof("resume rollout(%s/%s) statefulset(partition=0) success", r.rollout.Namespace, r.rollout.Name)
+	// The Completed phase means batchRelease controller has processed all it
+	// should process. If BatchRelease phase is completed, we can do nothing.
+	if batch.Status.Phase == rolloutv1alpha1.RolloutPhaseCompleted {
 		return true, nil
 	}
+
+	// If BatchPartition is nil, BatchRelease will directly resume workload via:
+	// - * set workload Paused = false if it needs;
+	// - * set workload Partition = null if it needs.
+	if batch.Spec.ReleasePlan.BatchPartition == nil {
+		// - If checkReady is true, finalizing policy must be "WaitResume";
+		// - If checkReady is false, finalizing policy must be NOT "WaitResume";
+		// Otherwise, we should correct it.
+		switch batch.Spec.ReleasePlan.FinalizingPolicy {
+		case rolloutv1alpha1.WaitResumeFinalizingPolicyType:
+			if waitReady { // no need to patch again
+				return false, nil
+			}
+		default:
+			if !waitReady { // no need to patch again
+				return false, nil
+			}
+		}
+	}
+
+	// Correct finalizing policy.
+	policy := rolloutv1alpha1.ImmediateFinalizingPolicyType
+	if waitReady {
+		policy = rolloutv1alpha1.WaitResumeFinalizingPolicyType
+	}
+
+	// Patch BatchPartition and FinalizingPolicy, BatchPartition always patch null here.
+	body := fmt.Sprintf(`{"spec":{"releasePlan":{"batchPartition":null,"finalizingPolicy":"%s"}}}`, policy)
+	if err = r.Patch(context.TODO(), batch, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 func (r *innerBatchRelease) Finalize() (bool, error) {

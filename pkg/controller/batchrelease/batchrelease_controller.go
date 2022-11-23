@@ -29,6 +29,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
@@ -186,11 +187,13 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return reconcile.Result{}, err
 	}
 
+	errList := field.ErrorList{}
+
 	// executor start to execute the batch release plan.
 	startTimestamp := time.Now()
 	result, currentStatus, err := r.executor.Do(release)
 	if err != nil {
-		return reconcile.Result{}, err
+		errList = append(errList, field.InternalError(field.NewPath("do-release"), err))
 	}
 
 	defer func() {
@@ -202,9 +205,14 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			"reconcile-result ", result, "time-cost", time.Since(startTimestamp))
 	}()
 
-	return result, r.updateStatus(release, currentStatus)
+	err = r.updateStatus(release, currentStatus)
+	if err != nil {
+		errList = append(errList, field.InternalError(field.NewPath("update-status"), err))
+	}
+	return result, errList.ToAggregate()
 }
 
+// updateStatus update BatchRelease status to newStatus
 func (r *BatchReleaseReconciler) updateStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) error {
 	var err error
 	defer func() {
@@ -235,6 +243,7 @@ func (r *BatchReleaseReconciler) updateStatus(release *v1alpha1.BatchRelease, ne
 	return err
 }
 
+// handleFinalizer will remove finalizer in finalized phase and add finalizer in the other phases.
 func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease) (bool, error) {
 	var err error
 	defer func() {
@@ -245,7 +254,7 @@ func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease)
 
 	// remove the release finalizer if it needs
 	if !release.DeletionTimestamp.IsZero() &&
-		HasTerminatingCondition(release.Status) &&
+		release.Status.Phase == v1alpha1.RolloutPhaseCompleted &&
 		controllerutil.ContainsFinalizer(release, ReleaseFinalizer) {
 		err = util.UpdateFinalizer(r.Client, release, util.RemoveFinalizerOpType, ReleaseFinalizer)
 		if client.IgnoreNotFound(err) != nil {

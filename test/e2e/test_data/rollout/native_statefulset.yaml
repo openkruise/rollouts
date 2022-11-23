@@ -18,7 +18,7 @@ spec:
       containers:
         - name: echoserver
           image: cilium/echoserver:latest
-          # imagePullPolicy: IfNotPresent
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:

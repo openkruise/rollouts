@@ -30,14 +30,13 @@ import (
 	"github.com/openkruise/rollouts/pkg/feature"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	netv1 "k8s.io/api/networking/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,18 +67,49 @@ type WorkloadStatus struct {
 
 type WorkloadInfo struct {
 	metav1.ObjectMeta
-	Paused         bool
-	Replicas       *int32
-	GVKWithName    string
-	Selector       labels.Selector
-	MaxUnavailable *intstr.IntOrString
-	Status         *WorkloadStatus
+	LogKey   string
+	Replicas int32
+	Status   WorkloadStatus
 }
 
-func NewWorkloadInfo() *WorkloadInfo {
-	return &WorkloadInfo{
-		Status: &WorkloadStatus{},
+// IsStable return ture if observed generation >= generation
+func (w *WorkloadInfo) IsStable() bool {
+	return w.Status.ObservedGeneration >= w.Generation
+}
+
+// IsPromoted return true if replicas == updatedReplicas
+func (w *WorkloadInfo) IsPromoted() bool {
+	return w.Status.Replicas == w.Status.UpdatedReplicas
+}
+
+// IsScaling return true if observed replicas != replicas
+func (w *WorkloadInfo) IsScaling(observed int32) bool {
+	if observed == -1 {
+		return false
 	}
+	return w.Replicas != observed
+}
+
+// IsRollback return true if workload stable revision equals to update revision.
+// this function is edge-triggerred.
+func (w *WorkloadInfo) IsRollback(observedStable, observedUpdate string) bool {
+	if observedUpdate == "" {
+		return false
+	}
+	// updateRevision == CurrentRevision means CloneSet is rolling back or newly-created.
+	return w.Status.UpdateRevision == w.Status.StableRevision &&
+		// stableRevision == UpdateRevision means CloneSet is rolling back instead of newly-created.
+		observedStable == w.Status.UpdateRevision &&
+		// StableRevision != observed UpdateRevision means the rollback event have not been observed.
+		observedStable != observedUpdate
+}
+
+// IsRevisionNotEqual this function will return true if observed update revision != update revision.
+func (w *WorkloadInfo) IsRevisionNotEqual(observed string) bool {
+	if observed == "" {
+		return false
+	}
+	return w.Status.UpdateRevision != observed
 }
 
 // DeepHashObject writes specified object to hash using the spew library
@@ -269,8 +299,76 @@ func IsWorkloadType(object client.Object, t WorkloadType) bool {
 	return WorkloadType(strings.ToLower(object.GetLabels()[WorkloadTypeLabel])) == t
 }
 
-// GenRandomStr returns a safe encoded string with a specific length
-func GenRandomStr(length int) string {
-	randStr := rand.String(length)
-	return rand.SafeEncodeString(randStr)
+// DeploymentMaxUnavailable returns the maximum unavailable pods a rolling deployment can take.
+func DeploymentMaxUnavailable(deployment *apps.Deployment) int32 {
+	strategy := deployment.Spec.Strategy
+	if strategy.Type != apps.RollingUpdateDeploymentStrategyType || *(deployment.Spec.Replicas) == 0 {
+		return int32(0)
+	}
+	// Error caught by validation
+	_, maxUnavailable, _ := resolveFenceposts(strategy.RollingUpdate.MaxSurge, strategy.RollingUpdate.MaxUnavailable, *(deployment.Spec.Replicas))
+	if maxUnavailable > *deployment.Spec.Replicas {
+		return *deployment.Spec.Replicas
+	}
+	return maxUnavailable
+}
+
+// resolveFenceposts resolves both maxSurge and maxUnavailable. This needs to happen in one
+// step. For example:
+//
+// 2 desired, max unavailable 1%, surge 0% - should scale old(-1), then new(+1), then old(-1), then new(+1)
+// 1 desired, max unavailable 1%, surge 0% - should scale old(-1), then new(+1)
+// 2 desired, max unavailable 25%, surge 1% - should scale new(+1), then old(-1), then new(+1), then old(-1)
+// 1 desired, max unavailable 25%, surge 1% - should scale new(+1), then old(-1)
+// 2 desired, max unavailable 0%, surge 1% - should scale new(+1), then old(-1), then new(+1), then old(-1)
+// 1 desired, max unavailable 0%, surge 1% - should scale new(+1), then old(-1)
+func resolveFenceposts(maxSurge, maxUnavailable *intstr.IntOrString, desired int32) (int32, int32, error) {
+	surge, err := intstr.GetScaledValueFromIntOrPercent(intstr.ValueOrDefault(maxSurge, intstr.FromInt(0)), int(desired), true)
+	if err != nil {
+		return 0, 0, err
+	}
+	unavailable, err := intstr.GetScaledValueFromIntOrPercent(intstr.ValueOrDefault(maxUnavailable, intstr.FromInt(0)), int(desired), false)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if surge == 0 && unavailable == 0 {
+		// Validation should never allow the user to explicitly use zero values for both maxSurge
+		// maxUnavailable. Due to rounding down maxUnavailable though, it may resolve to zero.
+		// If both fenceposts resolve to zero, then we should set maxUnavailable to 1 on the
+		// theory that surge might not work due to quota.
+		unavailable = 1
+	}
+
+	return int32(surge), int32(unavailable), nil
+}
+
+// GetEmptyObjectWithKey return an empty object with the same namespaced name
+func GetEmptyObjectWithKey(object client.Object) client.Object {
+	var empty client.Object
+	switch object.(type) {
+	case *v1.Pod:
+		empty = &v1.Pod{}
+	case *v1.Service:
+		empty = &v1.Service{}
+	case *netv1.Ingress:
+		empty = &netv1.Ingress{}
+	case *apps.Deployment:
+		empty = &apps.Deployment{}
+	case *apps.ReplicaSet:
+		empty = &apps.ReplicaSet{}
+	case *apps.StatefulSet:
+		empty = &apps.StatefulSet{}
+	case *appsv1alpha1.CloneSet:
+		empty = &appsv1alpha1.CloneSet{}
+	case *appsv1beta1.StatefulSet:
+		empty = &appsv1beta1.StatefulSet{}
+	case *unstructured.Unstructured:
+		unstructure := &unstructured.Unstructured{}
+		unstructure.SetGroupVersionKind(object.GetObjectKind().GroupVersionKind())
+		empty = unstructure
+	}
+	empty.SetName(object.GetName())
+	empty.SetNamespace(object.GetNamespace())
+	return empty
 }

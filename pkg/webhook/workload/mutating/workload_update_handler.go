@@ -19,6 +19,7 @@ package mutating
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
@@ -189,7 +190,7 @@ func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstruct
 	}
 
 	changed = true
-	util.SetStatefulSetPartition(newObj, replicas)
+	util.SetStatefulSetPartition(newObj, math.MaxInt16)
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
 	annotation := newObj.GetAnnotations()
@@ -276,8 +277,7 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 
 	klog.Infof("cloneSet(%s/%s) will be in rollout progressing, and paused", newObj.Namespace, newObj.Name)
 	changed = true
-	// need set workload paused = true
-	newObj.Spec.UpdateStrategy.Paused = true
+	// need set workload partition = 100%
 	newObj.Spec.UpdateStrategy.Partition = &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
