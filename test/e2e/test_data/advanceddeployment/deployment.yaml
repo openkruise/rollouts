@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample
+  labels:
+    app: busybox
+  Annotations:
+    rollouts.kruise.io/rolling-policy: "batch"
+    batchrelease.rollouts.kruise.io/control-info: '{"apiVersion":"rollouts.kruise.io/v1alpha1","kind":"BatchRelease","name":"rollouts-demo","uid":"45891961-8c29-4ea9-8e61-fd5a1fd19ffa","controller":true,"blockOwnerDeletion":true}'
+    rollouts.kruise.io/advanced-deployment-strategy: '{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":"25%","maxSurge":"25%"},"stableRevision":"1324324","desiredUpdatedReplicas":0}'
+spec:
+  paused: true
+  replicas: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: busybox
+  template:
+    metadata:
+      labels:
+        app: busybox
+    spec:
+      containers:
+        - name: busybox
+          image: busybox:1.32
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c", "sleep 10000"]
+          env:
+            - name: VERSION
+              value: version1
+          resources:
+            limits:
+              memory: "10Mi"
+              cpu: "10m"
