@@ -1,4 +1,4 @@
-name: E2E-Advanced-Deployment-1.23
+name: E2E-Advanced-Deployment-1.14
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
 env:
   # Common versions
   GO_VERSION: '1.17'
-  KIND_IMAGE: 'kindest/node:v1.23.3'
+  KIND_IMAGE: 'kindest/node:v1.14.6'
   KIND_CLUSTER_NAME: 'ci-testing'
 
 jobs:
