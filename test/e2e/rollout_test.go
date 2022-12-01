@@ -1366,7 +1366,7 @@ var _ = SIGDescribe("Rollout", func() {
 			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
 			UpdateDeployment(workload)
 			By("Update deployment env NODE_NAME from(version1) -> to(version2)")
-			time.Sleep(time.Second * 3)
+			time.Sleep(time.Second * 10)
 
 			// check workload status & paused
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
@@ -1374,7 +1374,7 @@ var _ = SIGDescribe("Rollout", func() {
 			By("check deployment status & paused success")
 
 			// delete rollout
-			Expect(k8sClient.DeleteAllOf(context.TODO(), &rolloutsv1alpha1.Rollout{}, client.InNamespace(namespace), client.PropagationPolicy(metav1.DeletePropagationForeground))).Should(Succeed())
+			Expect(k8sClient.Delete(context.TODO(), rollout, client.PropagationPolicy(metav1.DeletePropagationBackground))).Should(Succeed())
 			WaitRolloutNotFound(rollout.Name)
 			WaitDeploymentAllPodsReady(workload)
 			// check service & ingress & deployment
@@ -4158,9 +4158,7 @@ var _ = SIGDescribe("Rollout", func() {
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "4", 1)
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "2", "5", 1)
 		})
-	})
 
-	KruiseDescribe("Test", func() {
 		It("failure threshold", func() {
 			By("Creating Rollout...")
 			rollout := &rolloutsv1alpha1.Rollout{}

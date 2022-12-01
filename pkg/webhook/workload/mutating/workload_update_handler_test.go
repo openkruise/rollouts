@@ -19,6 +19,7 @@ package mutating
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"reflect"
 	"testing"
 
@@ -428,7 +429,6 @@ func TestHandlerCloneSet(t *testing.T) {
 				obj := cloneSetDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
-				obj.Spec.UpdateStrategy.Paused = true
 				obj.Spec.UpdateStrategy.Partition = &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}
 				return obj
 			},
@@ -493,7 +493,7 @@ func TestHandleStatefulSet(t *testing.T) {
 				obj := statefulset.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
-				obj.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32(10)
+				obj.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32(math.MaxInt16)
 				return obj
 			},
 			getRollout: func() *appsv1alpha1.Rollout {

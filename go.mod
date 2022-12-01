@@ -7,7 +7,7 @@ require (
 	github.com/evanphx/json-patch v4.11.0+incompatible
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
-	github.com/openkruise/kruise-api v1.0.0
+	github.com/openkruise/kruise-api v1.3.0
 	github.com/spf13/pflag v1.0.5
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64
 	gopkg.in/yaml.v2 v2.4.0

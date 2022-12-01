@@ -1,3 +1,19 @@
+/*
+Copyright 2022 The Kruise Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package util
 
 import (
@@ -329,12 +345,11 @@ func TestWorkloadParse(t *testing.T) {
 				Expect(err).NotTo(HaveOccurred())
 				uobject := &unstructured.Unstructured{Object: uo}
 				Expect(reflect.DeepEqual(GetTemplate(uobject), &o.Spec.Template)).Should(BeTrue())
-				statefulsetInfo := ParseStatefulSetInfo(uobject, client.ObjectKeyFromObject(uobject))
+				statefulsetInfo := ParseWorkload(uobject)
 				{
-					Expect(statefulsetInfo.MaxUnavailable).Should(BeNil())
 					Expect(reflect.DeepEqual(statefulsetInfo.ObjectMeta, o.ObjectMeta)).Should(BeTrue())
 					Expect(reflect.DeepEqual(statefulsetInfo.Generation, o.Generation)).Should(BeTrue())
-					Expect(reflect.DeepEqual(statefulsetInfo.Replicas, o.Spec.Replicas)).Should(BeTrue())
+					Expect(reflect.DeepEqual(statefulsetInfo.Replicas, *o.Spec.Replicas)).Should(BeTrue())
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.Replicas, o.Status.Replicas)).Should(BeTrue())
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.ReadyReplicas, o.Status.ReadyReplicas)).Should(BeTrue())
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.AvailableReplicas, o.Status.AvailableReplicas)).Should(BeTrue())
@@ -343,21 +358,17 @@ func TestWorkloadParse(t *testing.T) {
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.StableRevision, o.Status.CurrentRevision)).Should(BeTrue())
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.UpdateRevision, o.Status.UpdateRevision)).Should(BeTrue())
 					Expect(statefulsetInfo.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 0))
-					selector, err := metav1.LabelSelectorAsSelector(o.Spec.Selector)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(reflect.DeepEqual(statefulsetInfo.Selector, selector)).Should(BeTrue())
 				}
 			case *appsv1beta1.StatefulSet:
 				uo, err := runtime.DefaultUnstructuredConverter.ToUnstructured(o)
 				Expect(err).NotTo(HaveOccurred())
 				uobject := &unstructured.Unstructured{Object: uo}
 				Expect(reflect.DeepEqual(GetTemplate(uobject), &o.Spec.Template)).Should(BeTrue())
-				statefulsetInfo := ParseStatefulSetInfo(uobject, client.ObjectKeyFromObject(uobject))
+				statefulsetInfo := ParseWorkload(uobject)
 				{
 					Expect(reflect.DeepEqual(statefulsetInfo.ObjectMeta, o.ObjectMeta)).Should(BeTrue())
 					Expect(reflect.DeepEqual(statefulsetInfo.Generation, o.Generation)).Should(BeTrue())
-					Expect(reflect.DeepEqual(statefulsetInfo.Replicas, o.Spec.Replicas)).Should(BeTrue())
-					Expect(reflect.DeepEqual(statefulsetInfo.MaxUnavailable, o.Spec.UpdateStrategy.RollingUpdate.MaxUnavailable)).Should(BeTrue())
+					Expect(reflect.DeepEqual(statefulsetInfo.Replicas, *o.Spec.Replicas)).Should(BeTrue())
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.Replicas, o.Status.Replicas)).Should(BeTrue())
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.ReadyReplicas, o.Status.ReadyReplicas)).Should(BeTrue())
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.AvailableReplicas, o.Status.AvailableReplicas)).Should(BeTrue())
@@ -366,9 +377,6 @@ func TestWorkloadParse(t *testing.T) {
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.StableRevision, o.Status.CurrentRevision)).Should(BeTrue())
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.UpdateRevision, o.Status.UpdateRevision)).Should(BeTrue())
 					Expect(statefulsetInfo.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 0))
-					selector, err := metav1.LabelSelectorAsSelector(o.Spec.Selector)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(reflect.DeepEqual(statefulsetInfo.Selector, selector)).Should(BeTrue())
 				}
 			}
 		})

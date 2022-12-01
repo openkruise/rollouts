@@ -82,6 +82,7 @@ func IsConsistentWithRevision(pod *v1.Pod, revision string) bool {
 	return false
 }
 
+// IsEqualRevision return true if a and b have equal revision label
 func IsEqualRevision(a, b *v1.Pod) bool {
 	if a.Labels[appsv1.DefaultDeploymentUniqueLabelKey] != "" &&
 		a.Labels[appsv1.DefaultDeploymentUniqueLabelKey] == b.Labels[appsv1.DefaultDeploymentUniqueLabelKey] {

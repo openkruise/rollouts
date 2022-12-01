@@ -21,9 +21,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-// ReleaseStrategyType defines strategies for pods rollout
-type ReleaseStrategyType string
-
 // ReleasePlan fines the details of the release plan
 type ReleasePlan struct {
 	// Batches is the details on each batch of the ReleasePlan.
@@ -37,7 +34,7 @@ type ReleasePlan struct {
 	Batches []ReleaseBatch `json:"batches"`
 	// All pods in the batches up to the batchPartition (included) will have
 	// the target resource specification while the rest still is the stable revision.
-	// This is designed for the operators to manually rollout
+	// This is designed for the operators to manually rollout.
 	// Default is nil, which means no partition and will release all batches.
 	// BatchPartition start from 0.
 	// +optional
@@ -50,7 +47,21 @@ type ReleasePlan struct {
 	// FailureThreshold.
 	// Defaults to nil.
 	FailureThreshold *intstr.IntOrString `json:"failureThreshold,omitempty"`
+	// FinalizingPolicy define the behavior of controller when phase enter Finalizing
+	// Defaults to "Immediate"
+	FinalizingPolicy FinalizingPolicyType `json:"finalizingPolicy,omitempty"`
 }
+
+type FinalizingPolicyType string
+
+const (
+	// WaitResumeFinalizingPolicyType will wait workload to be resumed, which means
+	// controller will be hold at Finalizing phase util all pods of workload is upgraded.
+	// WaitResumeFinalizingPolicyType only works in canary-style BatchRelease controller.
+	WaitResumeFinalizingPolicyType FinalizingPolicyType = "WaitResume"
+	// ImmediateFinalizingPolicyType will not to wait workload to be resumed.
+	ImmediateFinalizingPolicyType FinalizingPolicyType = "Immediate"
+)
 
 // ReleaseBatch is used to describe how each batch release should be
 type ReleaseBatch struct {
@@ -123,38 +134,10 @@ const (
 )
 
 const (
-	// RolloutPhaseCancelled indicates a rollout is cancelled
-	RolloutPhaseCancelled RolloutPhase = "Cancelled"
-	// RolloutPhaseFinalizing indicates a rollout is finalizing
-	RolloutPhaseFinalizing RolloutPhase = "Finalizing"
-	// RolloutPhaseCompleted indicates a rollout is completed
-	RolloutPhaseCompleted RolloutPhase = "Completed"
 	// RolloutPhasePreparing indicates a rollout is preparing for next progress.
 	RolloutPhasePreparing RolloutPhase = "Preparing"
-)
-
-const (
-	// VerifyingBatchReleaseCondition indicates the controller is verifying whether workload
-	// is ready to do rollout.
-	VerifyingBatchReleaseCondition RolloutConditionType = "Verifying"
-	// PreparingBatchReleaseCondition indicates the controller is preparing something before executing
-	// release plan, such as create canary deployment and record stable & canary revisions.
-	PreparingBatchReleaseCondition RolloutConditionType = "Preparing"
-	// ProgressingBatchReleaseCondition indicates the controller is executing release plan.
-	ProgressingBatchReleaseCondition RolloutConditionType = "Progressing"
-	// FinalizingBatchReleaseCondition indicates the canary state is completed,
-	// and the controller is doing something, such as cleaning up canary deployment.
-	FinalizingBatchReleaseCondition RolloutConditionType = "Finalizing"
-	// TerminatingBatchReleaseCondition indicates the rollout is terminating when the
-	// BatchRelease cr is being deleted or cancelled.
-	TerminatingBatchReleaseCondition RolloutConditionType = "Terminating"
-	// TerminatedBatchReleaseCondition indicates the BatchRelease cr can be deleted.
-	TerminatedBatchReleaseCondition RolloutConditionType = "Terminated"
-	// CancelledBatchReleaseCondition indicates the release plan is cancelled during rollout.
-	CancelledBatchReleaseCondition RolloutConditionType = "Cancelled"
-	// CompletedBatchReleaseCondition indicates the release plan is completed successfully.
-	CompletedBatchReleaseCondition RolloutConditionType = "Completed"
-
-	SucceededBatchReleaseConditionReason = "Succeeded"
-	FailedBatchReleaseConditionReason    = "Failed"
+	// RolloutPhaseFinalizing indicates a rollout is finalizing
+	RolloutPhaseFinalizing RolloutPhase = "Finalizing"
+	// RolloutPhaseCompleted indicates a rollout is completed/cancelled/terminated
+	RolloutPhaseCompleted RolloutPhase = "Completed"
 )

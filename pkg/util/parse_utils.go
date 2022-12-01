@@ -1,8 +1,25 @@
+/*
+Copyright 2022 The Kruise Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package util
 
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
@@ -11,29 +28,26 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/klog/v2"
-	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func ParseStatefulSetInfo(object client.Object, namespacedName types.NamespacedName) *WorkloadInfo {
-	workloadGVKWithName := fmt.Sprintf("%v(%v)", object.GetObjectKind().GroupVersionKind(), namespacedName)
-	selector, err := getSelector(object)
-	if err != nil {
-		klog.Errorf("Failed to parse selector for workload(%v)", workloadGVKWithName)
+// ParseWorkload parse workload as WorkloadInfo
+func ParseWorkload(object client.Object) *WorkloadInfo {
+	if object == nil || reflect.ValueOf(object).IsNil() {
+		return nil
 	}
+	key := client.ObjectKeyFromObject(object)
+	gvk := object.GetObjectKind().GroupVersionKind()
 	return &WorkloadInfo{
-		ObjectMeta:     *getMetadata(object),
-		MaxUnavailable: getStatefulSetMaxUnavailable(object),
-		Replicas:       pointer.Int32(GetReplicas(object)),
-		Status:         ParseWorkloadStatus(object),
-		Selector:       selector,
-		GVKWithName:    workloadGVKWithName,
+		LogKey:     fmt.Sprintf("%s (%s)", key, gvk),
+		ObjectMeta: *getMetadata(object),
+		Replicas:   GetReplicas(object),
+		Status:     *ParseWorkloadStatus(object),
 	}
 }
 
+// IsStatefulSetRollingUpdate return true if updateStrategy of object is rollingUpdate type.
 func IsStatefulSetRollingUpdate(object client.Object) bool {
 	switch o := object.(type) {
 	case *apps.StatefulSet:
@@ -51,6 +65,7 @@ func IsStatefulSetRollingUpdate(object client.Object) bool {
 	}
 }
 
+// SetStatefulSetPartition set partition to object
 func SetStatefulSetPartition(object client.Object, partition int32) {
 	switch o := object.(type) {
 	case *apps.StatefulSet:
@@ -97,6 +112,7 @@ func SetStatefulSetPartition(object client.Object, partition int32) {
 	}
 }
 
+// GetStatefulSetPartition get partition of object
 func GetStatefulSetPartition(object client.Object) int32 {
 	partition := int32(0)
 	switch o := object.(type) {
@@ -119,6 +135,7 @@ func GetStatefulSetPartition(object client.Object) int32 {
 	return partition
 }
 
+// IsStatefulSetUnorderedUpdate return true if the updateStrategy of object is unordered update
 func IsStatefulSetUnorderedUpdate(object client.Object) bool {
 	switch o := object.(type) {
 	case *apps.StatefulSet:
@@ -136,6 +153,7 @@ func IsStatefulSetUnorderedUpdate(object client.Object) bool {
 	}
 }
 
+// getStatefulSetMaxUnavailable return maxUnavailable field of object
 func getStatefulSetMaxUnavailable(object client.Object) *intstr.IntOrString {
 	switch o := object.(type) {
 	case *apps.StatefulSet:
@@ -156,6 +174,7 @@ func getStatefulSetMaxUnavailable(object client.Object) *intstr.IntOrString {
 	}
 }
 
+// ParseWorkloadStatus parse status of object as WorkloadStatus
 func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 	switch o := object.(type) {
 	case *apps.Deployment:
@@ -165,6 +184,7 @@ func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 			AvailableReplicas:  o.Status.AvailableReplicas,
 			UpdatedReplicas:    o.Status.UpdatedReplicas,
 			ObservedGeneration: o.Status.ObservedGeneration,
+			UpdateRevision:     ComputeHash(&o.Spec.Template, nil),
 		}
 
 	case *appsv1alpha1.CloneSet:
@@ -220,20 +240,22 @@ func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 
 // GetReplicas return replicas from client workload object
 func GetReplicas(object client.Object) int32 {
+	replicas := int32(1)
 	switch o := object.(type) {
 	case *apps.Deployment:
-		return *o.Spec.Replicas
+		replicas = *o.Spec.Replicas
 	case *appsv1alpha1.CloneSet:
-		return *o.Spec.Replicas
+		replicas = *o.Spec.Replicas
 	case *apps.StatefulSet:
-		return *o.Spec.Replicas
+		replicas = *o.Spec.Replicas
 	case *appsv1beta1.StatefulSet:
-		return *o.Spec.Replicas
+		replicas = *o.Spec.Replicas
 	case *unstructured.Unstructured:
-		return parseReplicasFromUnstructured(o)
+		replicas = parseReplicasFromUnstructured(o)
 	default:
 		panic("unsupported workload type to ParseReplicasFrom function")
 	}
+	return replicas
 }
 
 // GetTemplate return pod template spec for client workload object
@@ -354,6 +376,7 @@ func parseMetadataFromUnstructured(object *unstructured.Unstructured) *metav1.Ob
 	return meta
 }
 
+// unmarshalIntStr return *intstr.IntOrString
 func unmarshalIntStr(m interface{}) *intstr.IntOrString {
 	field := &intstr.IntOrString{}
 	data, _ := json.Marshal(m)
