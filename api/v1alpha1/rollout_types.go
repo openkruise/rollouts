@@ -26,6 +26,23 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+const (
+	// RolloutIDLabel is set to workload labels.
+	// RolloutIDLabel is designed to distinguish each workload revision publications.
+	// The value of RolloutIDLabel corresponds Rollout.Spec.RolloutID.
+	RolloutIDLabel = "rollouts.kruise.io/rollout-id"
+
+	// RolloutBatchIDLabel is patched in pod labels.
+	// RolloutBatchIDLabel is the label key of batch id that will be patched to pods during rollout.
+	// Only when RolloutIDLabel is set, RolloutBatchIDLabel will be patched.
+	// Users can use RolloutIDLabel and RolloutBatchIDLabel to select the pods that are upgraded in some certain batch and release.
+	RolloutBatchIDLabel = "rollouts.kruise.io/rollout-batch-id"
+
+	// RollbackInBatchAnnotation is set to rollout annotations.
+	// RollbackInBatchAnnotation allow use disable quick rollback, and will roll back in batch style.
+	RollbackInBatchAnnotation = "rollouts.kruise.io/rollback-in-batch"
+)
+
 // RolloutSpec defines the desired state of Rollout
 type RolloutSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -34,9 +51,11 @@ type RolloutSpec struct {
 	ObjectRef ObjectRef `json:"objectRef"`
 	// rollout strategy
 	Strategy RolloutStrategy `json:"strategy"`
+	// DeprecatedRolloutID is the deprecated field.
+	// It is recommended that configure RolloutId in workload.annotations[rollouts.kruise.io/rollout-id].
 	// RolloutID should be changed before each workload revision publication.
 	// It is to distinguish consecutive multiple workload publications and rollout progress.
-	RolloutID string `json:"rolloutID,omitempty"`
+	DeprecatedRolloutID string `json:"rolloutID,omitempty"`
 }
 
 type ObjectRef struct {
@@ -172,17 +191,12 @@ type RolloutStatus struct {
 
 	// observedGeneration is the most recent generation observed for this Rollout.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// CanaryRevision the hash of the canary pod template
-	// +optional
-	//CanaryRevision string `json:"canaryRevision,omitempty"`
-	// StableRevision indicates the revision pods that has successfully rolled out
-	StableRevision string `json:"stableRevision,omitempty"`
-	// Conditions a list of conditions a rollout can have.
-	// +optional
-	Conditions []RolloutCondition `json:"conditions,omitempty"`
 	// Canary describes the state of the canary rollout
 	// +optional
 	CanaryStatus *CanaryStatus `json:"canaryStatus,omitempty"`
+	// Conditions a list of conditions a rollout can have.
+	// +optional
+	Conditions []RolloutCondition `json:"conditions,omitempty"`
 	// +optional
 	//BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
 	// Phase is the rollout phase.
@@ -221,10 +235,12 @@ const (
 	ProgressingReasonInitializing = "Initializing"
 	ProgressingReasonInRolling    = "InRolling"
 	ProgressingReasonFinalising   = "Finalising"
-	ProgressingReasonSucceeded    = "Succeeded"
+	ProgressingReasonCompleted    = "Completed"
 	ProgressingReasonCancelling   = "Cancelling"
-	ProgressingReasonCanceled     = "Canceled"
 	ProgressingReasonPaused       = "Paused"
+
+	// RolloutConditionSucceeded indicates whether rollout is succeeded or failed.
+	RolloutConditionSucceeded RolloutConditionType = "Succeeded"
 
 	// Terminating condition
 	RolloutConditionTerminating RolloutConditionType = "Terminating"
@@ -241,11 +257,10 @@ type CanaryStatus struct {
 	ObservedRolloutID string `json:"observedRolloutID,omitempty"`
 	// RolloutHash from rollout.spec object
 	RolloutHash string `json:"rolloutHash,omitempty"`
-	// CanaryService holds the name of a service which selects pods with canary version and don't select any pods with stable version.
-	CanaryService string `json:"canaryService"`
+	// StableRevision indicates the revision of stable pods
+	StableRevision string `json:"stableRevision,omitempty"`
 	// CanaryRevision is calculated by rollout based on podTemplateHash, and the internal logic flow uses
 	// It may be different from rs podTemplateHash in different k8s versions, so it cannot be used as service selector label
-	// +optional
 	CanaryRevision string `json:"canaryRevision"`
 	// pod template hash is used as service selector label
 	PodTemplateHash string `json:"podTemplateHash"`

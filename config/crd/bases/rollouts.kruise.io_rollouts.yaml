@@ -81,9 +81,11 @@ spec:
                     type: object
                 type: object
               rolloutID:
-                description: RolloutID should be changed before each workload revision
-                  publication. It is to distinguish consecutive multiple workload
-                  publications and rollout progress.
+                description: DeprecatedRolloutID is the deprecated field. It is recommended
+                  that configure RolloutId in workload.annotations[rollouts.kruise.io/rollout-id].
+                  RolloutID should be changed before each workload revision publication.
+                  It is to distinguish consecutive multiple workload publications
+                  and rollout progress.
                 type: string
               strategy:
                 description: rollout strategy
@@ -286,11 +288,6 @@ spec:
                       different from rs podTemplateHash in different k8s versions,
                       so it cannot be used as service selector label
                     type: string
-                  canaryService:
-                    description: CanaryService holds the name of a service which selects
-                      pods with canary version and don't select any pods with stable
-                      version.
-                    type: string
                   currentStepIndex:
                     description: CurrentStepIndex defines the current step of the
                       rollout is on. If the current step index is null, the controller
@@ -319,10 +316,13 @@ spec:
                   rolloutHash:
                     description: RolloutHash from rollout.spec object
                     type: string
+                  stableRevision:
+                    description: StableRevision indicates the revision of stable pods
+                    type: string
                 required:
                 - canaryReadyReplicas
                 - canaryReplicas
-                - canaryService
+                - canaryRevision
                 - currentStepState
                 - podTemplateHash
                 type: object
@@ -373,11 +373,6 @@ spec:
               phase:
                 description: BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
                   Phase is the rollout phase.
-                type: string
-              stableRevision:
-                description: CanaryRevision the hash of the canary pod template CanaryRevision
-                  string `json:"canaryRevision,omitempty"` StableRevision indicates
-                  the revision pods that has successfully rolled out
                 type: string
             type: object
         type: object

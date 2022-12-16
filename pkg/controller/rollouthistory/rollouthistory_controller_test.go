@@ -37,7 +37,6 @@ import (
 	"github.com/openkruise/kruise-api/apps/pub"
 	kruisev1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/util"
 )
 
 func init() {
@@ -133,7 +132,7 @@ var (
 					Name:       "workload-demo",
 				},
 			},
-			RolloutID: "1",
+			DeprecatedRolloutID: "1",
 			Strategy: rolloutv1alpha1.RolloutStrategy{
 				Canary: &rolloutv1alpha1.CanaryStrategy{
 					Steps: []rolloutv1alpha1.CanaryStep{
@@ -321,8 +320,8 @@ var (
 			Name:      "pod-demo",
 			Namespace: "default",
 			Labels: map[string]string{
-				util.RolloutBatchIDLabel: "1",
-				util.RolloutIDLabel:      "1",
+				rolloutv1alpha1.RolloutBatchIDLabel: "1",
+				rolloutv1alpha1.RolloutIDLabel:      "1",
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -409,9 +408,9 @@ func TestReconcile(t *testing.T) {
 					PodIP: "1.2.3.1",
 				}
 				pod1.Labels = map[string]string{
-					util.RolloutBatchIDLabel: "1",
-					util.RolloutIDLabel:      "2",
-					"app":                    "echoserver",
+					rolloutv1alpha1.RolloutBatchIDLabel: "1",
+					rolloutv1alpha1.RolloutIDLabel:      "2",
+					"app":                               "echoserver",
 				}
 
 				pod2 := podDemo.DeepCopy()
@@ -421,9 +420,9 @@ func TestReconcile(t *testing.T) {
 					PodIP: "1.2.3.2",
 				}
 				pod2.Labels = map[string]string{
-					util.RolloutBatchIDLabel: "2",
-					util.RolloutIDLabel:      "2",
-					"app":                    "echoserver",
+					rolloutv1alpha1.RolloutBatchIDLabel: "2",
+					rolloutv1alpha1.RolloutIDLabel:      "2",
+					"app":                               "echoserver",
 				}
 
 				pod3 := podDemo.DeepCopy()
@@ -433,9 +432,9 @@ func TestReconcile(t *testing.T) {
 					PodIP: "1.2.3.3",
 				}
 				pod3.Labels = map[string]string{
-					util.RolloutBatchIDLabel: "3",
-					util.RolloutIDLabel:      "2",
-					"app":                    "echoserver",
+					rolloutv1alpha1.RolloutBatchIDLabel: "3",
+					rolloutv1alpha1.RolloutIDLabel:      "2",
+					"app":                               "echoserver",
 				}
 
 				pod4 := podDemo.DeepCopy()
@@ -445,9 +444,9 @@ func TestReconcile(t *testing.T) {
 					PodIP: "1.2.3.4",
 				}
 				pod4.Labels = map[string]string{
-					util.RolloutBatchIDLabel: "3",
-					util.RolloutIDLabel:      "2",
-					"app":                    "echoserver",
+					rolloutv1alpha1.RolloutBatchIDLabel: "3",
+					rolloutv1alpha1.RolloutIDLabel:      "2",
+					"app":                               "echoserver",
 				}
 
 				pod5 := podDemo.DeepCopy()
@@ -457,9 +456,9 @@ func TestReconcile(t *testing.T) {
 					PodIP: "1.2.3.5",
 				}
 				pod5.Labels = map[string]string{
-					util.RolloutBatchIDLabel: "3",
-					util.RolloutIDLabel:      "2",
-					"app":                    "echoserver",
+					rolloutv1alpha1.RolloutBatchIDLabel: "3",
+					rolloutv1alpha1.RolloutIDLabel:      "2",
+					"app":                               "echoserver",
 				}
 
 				return []*corev1.Pod{pod1, pod2, pod3, pod4, pod5}
@@ -482,7 +481,7 @@ func TestReconcile(t *testing.T) {
 			},
 			getRollout: func() []*rolloutv1alpha1.Rollout {
 				rollout := rolloutDemo1.DeepCopy()
-				rollout.Spec.RolloutID = "2"
+				rollout.Spec.DeprecatedRolloutID = "2"
 				rollout.Status = rolloutv1alpha1.RolloutStatus{
 					CanaryStatus: &rolloutv1alpha1.CanaryStatus{
 						ObservedRolloutID: "2",
@@ -615,7 +614,7 @@ func TestReconcile(t *testing.T) {
 			},
 			getRollout: func() []*rolloutv1alpha1.Rollout {
 				rollout := rolloutDemo1.DeepCopy()
-				rollout.Spec.RolloutID = ""
+				rollout.Spec.DeprecatedRolloutID = ""
 				rollout.Status = rolloutv1alpha1.RolloutStatus{
 					CanaryStatus: &rolloutv1alpha1.CanaryStatus{
 						ObservedRolloutID: "",
@@ -663,7 +662,7 @@ func TestReconcile(t *testing.T) {
 			},
 			getRollout: func() []*rolloutv1alpha1.Rollout {
 				rollout := rolloutDemo1.DeepCopy()
-				rollout.Spec.RolloutID = "4"
+				rollout.Spec.DeprecatedRolloutID = "4"
 				rollout.Status = rolloutv1alpha1.RolloutStatus{
 					CanaryStatus: &rolloutv1alpha1.CanaryStatus{
 						ObservedRolloutID: "4",
@@ -869,7 +868,7 @@ func TestReconcile(t *testing.T) {
 			},
 			getRollout: func() []*rolloutv1alpha1.Rollout {
 				rollout := rolloutDemo1.DeepCopy()
-				rollout.Spec.RolloutID = "5"
+				rollout.Spec.DeprecatedRolloutID = "5"
 				rollout.Status = rolloutv1alpha1.RolloutStatus{
 					CanaryStatus: &rolloutv1alpha1.CanaryStatus{
 						ObservedRolloutID: "5",

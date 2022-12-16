@@ -20,7 +20,6 @@ import (
 	"context"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/controller/rollout/batchrelease"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -121,11 +120,7 @@ func (w *enqueueRequestForBatchRelease) Update(evt event.UpdateEvent, q workqueu
 }
 
 func (w *enqueueRequestForBatchRelease) handleEvent(q workqueue.RateLimitingInterface, obj client.Object) {
-	rollout := obj.GetLabels()[batchrelease.BatchReleaseOwnerRefLabel]
-	if rollout == "" {
-		return
-	}
-	klog.Infof("BatchRelease(%s/%s) and reconcile Rollout (%s)", obj.GetNamespace(), obj.GetName(), rollout)
-	nsn := types.NamespacedName{Namespace: obj.GetNamespace(), Name: rollout}
+	klog.Infof("BatchRelease(%s/%s) and reconcile Rollout (%s)", obj.GetNamespace(), obj.GetName(), obj.GetName())
+	nsn := types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}
 	q.Add(reconcile.Request{NamespacedName: nsn})
 }

@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -43,16 +44,6 @@ type RolloutState struct {
 	RolloutName string `json:"rolloutName"`
 }
 
-func GetRolloutState(annotations map[string]string) (*RolloutState, error) {
-	value, ok := annotations[InRolloutProgressingAnnotation]
-	if !ok || value == "" {
-		return nil, nil
-	}
-	var obj *RolloutState
-	err := json.Unmarshal([]byte(value), &obj)
-	return obj, err
-}
-
 func IsRollbackInBatchPolicy(rollout *rolloutv1alpha1.Rollout, labels map[string]string) bool {
 	// currently, only support the case of no traffic routing
 	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
@@ -63,8 +54,7 @@ func IsRollbackInBatchPolicy(rollout *rolloutv1alpha1.Rollout, labels map[string
 	if workloadRef.Kind == ControllerKindSts.Kind ||
 		workloadRef.Kind == ControllerKruiseKindCS.Kind ||
 		strings.EqualFold(labels[WorkloadTypeLabel], ControllerKindSts.Kind) {
-		value, ok := rollout.Annotations[RollbackInBatchAnnotation]
-		if ok && value == "true" {
+		if rollout.Annotations[rolloutv1alpha1.RollbackInBatchAnnotation] == "true" {
 			return true
 		}
 	}
@@ -160,4 +150,9 @@ func HashReleasePlanBatches(releasePlan *rolloutv1alpha1.ReleasePlan) string {
 func DumpJSON(o interface{}) string {
 	by, _ := json.Marshal(o)
 	return string(by)
+}
+
+// hash hashes `data` with sha256 and returns the hex string
+func EncodeHash(data string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(data)))
 }

@@ -25,8 +25,6 @@ const (
 	InRolloutProgressingAnnotation = "rollouts.kruise.io/in-progressing"
 	// RolloutHashAnnotation record observed rollout spec hash
 	RolloutHashAnnotation = "rollouts.kruise.io/hash"
-	// RollbackInBatchAnnotation allow use disable quick rollback, and will roll back in batch style.
-	RollbackInBatchAnnotation = "rollouts.kruise.io/rollback-in-batch"
 )
 
 // For Workloads
@@ -43,13 +41,6 @@ const (
 
 // For Pods
 const (
-	// RolloutIDLabel is designed to distinguish each workload revision publications.
-	// The value of RolloutIDLabel corresponds Rollout.Spec.RolloutID.
-	RolloutIDLabel = "rollouts.kruise.io/rollout-id"
-	// RolloutBatchIDLabel is the label key of batch id that will be patched to pods during rollout.
-	// Only when RolloutIDLabel is set, RolloutBatchIDLabel will be patched.
-	// Users can use RolloutIDLabel and RolloutBatchIDLabel to select the pods that are upgraded in some certain batch and release.
-	RolloutBatchIDLabel = "rollouts.kruise.io/rollout-batch-id"
 	// NoNeedUpdatePodLabel will be patched to pod when rollback in batches if the pods no need to rollback
 	NoNeedUpdatePodLabel = "rollouts.kruise.io/no-need-update"
 )

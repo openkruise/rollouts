@@ -41,7 +41,7 @@ func ParseWorkload(object client.Object) *WorkloadInfo {
 	gvk := object.GetObjectKind().GroupVersionKind()
 	return &WorkloadInfo{
 		LogKey:     fmt.Sprintf("%s (%s)", key, gvk),
-		ObjectMeta: *getMetadata(object),
+		ObjectMeta: *GetMetadata(object),
 		Replicas:   GetReplicas(object),
 		Status:     *ParseWorkloadStatus(object),
 	}
@@ -294,8 +294,8 @@ func getSelector(object client.Object) (labels.Selector, error) {
 	}
 }
 
-// getMetadata can parse the whole metadata field from client workload object
-func getMetadata(object client.Object) *metav1.ObjectMeta {
+// GetMetadata can parse the whole metadata field from client workload object
+func GetMetadata(object client.Object) *metav1.ObjectMeta {
 	switch o := object.(type) {
 	case *apps.Deployment:
 		return &o.ObjectMeta

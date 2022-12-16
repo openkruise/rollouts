@@ -26,7 +26,6 @@ import (
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/feature"
-	"github.com/openkruise/rollouts/pkg/util"
 	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 
 	corev1 "k8s.io/api/core/v1"
@@ -359,7 +358,7 @@ func (r *RolloutHistoryReconciler) recordStatusCanarySteps(rollout *rolloutv1alp
 			return err
 		}
 		// get extra labelSelector including rolloutBathID, rolloutID and workload selector
-		lableSelectorString := fmt.Sprintf("%v=%v,%v=%v,%v", util.RolloutBatchIDLabel, len(rolloutHistory.Status.CanarySteps)+1, util.RolloutIDLabel, rolloutHistory.Spec.Rollout.RolloutID, selector.String())
+		lableSelectorString := fmt.Sprintf("%v=%v,%v=%v,%v", rolloutv1alpha1.RolloutBatchIDLabel, len(rolloutHistory.Status.CanarySteps)+1, rolloutv1alpha1.RolloutIDLabel, rolloutHistory.Spec.Rollout.RolloutID, selector.String())
 		extraSelector, err = labels.Parse(lableSelectorString)
 		if err != nil {
 			return err

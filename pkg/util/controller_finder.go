@@ -47,10 +47,6 @@ type Workload struct {
 	CanaryRevision string
 	// pod template hash is used as service selector hash
 	PodTemplateHash string
-	// canary replicas
-	CanaryReplicas int32
-	// canary ready replicas
-	CanaryReadyReplicas int32
 	// Revision hash key
 	RevisionLabelKey string
 
@@ -130,22 +126,19 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 		return &Workload{IsStatusConsistent: false}, nil
 	}
 	workload := &Workload{
-		RevisionLabelKey:    apps.DefaultDeploymentUniqueLabelKey,
-		StableRevision:      cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
-		CanaryRevision:      cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
-		CanaryReplicas:      cloneSet.Status.UpdatedReplicas,
-		CanaryReadyReplicas: cloneSet.Status.UpdatedReadyReplicas,
-		ObjectMeta:          cloneSet.ObjectMeta,
-		Replicas:            *cloneSet.Spec.Replicas,
-		PodTemplateHash:     cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
-		IsStatusConsistent:  true,
+		RevisionLabelKey:   apps.DefaultDeploymentUniqueLabelKey,
+		StableRevision:     cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
+		CanaryRevision:     cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
+		ObjectMeta:         cloneSet.ObjectMeta,
+		Replicas:           *cloneSet.Spec.Replicas,
+		PodTemplateHash:    cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
+		IsStatusConsistent: true,
 	}
 
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
 	}
-
 	// in rollout progressing
 	workload.InRolloutProgressing = true
 	// Is it in rollback phase
@@ -193,7 +186,6 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
 	}
-
 	// in rollout progressing
 	workload.InRolloutProgressing = true
 	// workload is continuous release, indicates rollback(v1 -> v2 -> v1)
@@ -203,14 +195,11 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 		workload.IsInRollback = true
 		return workload, nil
 	}
-
 	// canary deployment
 	canary, err := r.getLatestCanaryDeployment(stable)
 	if err != nil || canary == nil {
 		return workload, err
 	}
-	workload.CanaryReplicas = canary.Status.Replicas
-	workload.CanaryReadyReplicas = canary.Status.ReadyReplicas
 	canaryRs, err := r.getDeploymentStableRs(canary)
 	if err != nil || canaryRs == nil {
 		return workload, err
@@ -243,29 +232,24 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 		return &Workload{IsStatusConsistent: false}, nil
 	}
 	workload := &Workload{
-		RevisionLabelKey:    apps.ControllerRevisionHashLabelKey,
-		StableRevision:      workloadInfo.Status.StableRevision,
-		CanaryRevision:      workloadInfo.Status.UpdateRevision,
-		CanaryReplicas:      workloadInfo.Status.UpdatedReplicas,
-		CanaryReadyReplicas: workloadInfo.Status.UpdatedReadyReplicas,
-		ObjectMeta:          workloadInfo.ObjectMeta,
-		Replicas:            workloadInfo.Replicas,
-		PodTemplateHash:     workloadInfo.Status.UpdateRevision,
-		IsStatusConsistent:  true,
+		RevisionLabelKey:   apps.ControllerRevisionHashLabelKey,
+		StableRevision:     workloadInfo.Status.StableRevision,
+		CanaryRevision:     workloadInfo.Status.UpdateRevision,
+		ObjectMeta:         workloadInfo.ObjectMeta,
+		Replicas:           workloadInfo.Replicas,
+		PodTemplateHash:    workloadInfo.Status.UpdateRevision,
+		IsStatusConsistent: true,
 	}
 
 	// not in rollout progressing
 	if _, ok := workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil
 	}
-
 	// in rollout progressing
 	workload.InRolloutProgressing = true
-
 	if workloadInfo.Status.UpdateRevision == workloadInfo.Status.StableRevision && workloadInfo.Status.UpdatedReplicas != workloadInfo.Status.Replicas {
 		workload.IsInRollback = true
 	}
-
 	return workload, nil
 }
 

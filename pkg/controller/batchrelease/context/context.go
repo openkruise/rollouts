@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -99,7 +100,7 @@ func batchLabelSatisfied(pods []*corev1.Pod, rolloutID string, targetCount int32
 		if !pod.DeletionTimestamp.IsZero() {
 			return false
 		}
-		return pod.Labels[util.RolloutIDLabel] == rolloutID
+		return pod.Labels[v1alpha1.RolloutIDLabel] == rolloutID
 	})
 	return patchedCount >= int(targetCount)
 }

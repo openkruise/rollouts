@@ -26,7 +26,6 @@ import (
 	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
 	"github.com/openkruise/rollouts/pkg/controller/rollout"
 	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
-	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"github.com/openkruise/rollouts/pkg/webhook"
@@ -102,7 +101,6 @@ func main() {
 	if err = (&rollout.RolloutReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Finder:   util.NewControllerFinder(mgr.GetClient()),
 		Recorder: mgr.GetEventRecorderFor("rollout-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Rollout")
