@@ -10,6 +10,7 @@ require (
 	github.com/openkruise/kruise-api v1.3.0
 	github.com/spf13/pflag v1.0.5
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64
+	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.22.6
 	k8s.io/apiextensions-apiserver v0.22.6

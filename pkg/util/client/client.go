@@ -17,6 +17,8 @@ limitations under the License.
 package client
 
 import (
+	"fmt"
+
 	kruiseclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/discovery"
@@ -74,4 +76,15 @@ func NewRegistry(c *rest.Config) error {
 // GetGenericClient returns default clientset
 func GetGenericClient() *GenericClientset {
 	return defaultGenericClient
+}
+
+// GetGenericClientWithName returns clientset with given name as user-agent
+func GetGenericClientWithName(name string) *GenericClientset {
+	if cfg == nil {
+		return nil
+	}
+	newCfg := *cfg
+	newCfg.UserAgent = fmt.Sprintf("%s/%s", cfg.UserAgent, name)
+	clientset, _ := newForConfig(cfg)
+	return clientset
 }

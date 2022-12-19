@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package feature
 
 import (
@@ -23,13 +24,15 @@ import (
 )
 
 const (
-	// PodProbeMarkerGate enable Kruise provide the ability to execute custom Probes.
-	// Note: custom probe execution requires kruise daemon, so currently only traditional Kubelet is supported, not virtual-kubelet.
-	RolloutHistoryGate featuregate.Feature = "RolloutHistoryGate"
+	// RolloutHistoryGate enable recording history for each rolling.
+	RolloutHistoryGate featuregate.Feature = "RolloutHistory"
+	// AdvancedDeploymentGate enable advanced deployment controller.
+	AdvancedDeploymentGate featuregate.Feature = "AdvancedDeployment"
 )
 
 var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	RolloutHistoryGate: {Default: false, PreRelease: featuregate.Alpha},
+	RolloutHistoryGate:     {Default: false, PreRelease: featuregate.Alpha},
+	AdvancedDeploymentGate: {Default: false, PreRelease: featuregate.Alpha},
 }
 
 func init() {
