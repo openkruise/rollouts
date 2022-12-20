@@ -31,6 +31,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/integer"
+	"k8s.io/utils/pointer"
 )
 
 func newDControllerRef(d *apps.Deployment) *metav1.OwnerReference {
@@ -1165,5 +1167,32 @@ func TestReplicasAnnotationsNeedUpdate(t *testing.T) {
 				t.Errorf("case[%d]:%s Expected %v, Got: %v", i, test.name, test.expected, result)
 			}
 		})
+	}
+}
+
+func TestNewRSReplicasLimit(t *testing.T) {
+	for partitionInt := 0; partitionInt < 1000; partitionInt++ {
+		partition := intstr.FromInt(partitionInt)
+		deployment := apps.Deployment{Spec: apps.DeploymentSpec{Replicas: pointer.Int32(100)}}
+		result := NewRSReplicasLimit(partition, &deployment)
+		expected := integer.Int32Min(int32(partitionInt), 100)
+		if result != expected {
+			t.Errorf("case[1]: Expected %v, Got: %v", expected, result)
+		}
+	}
+
+	for replicas := 0; replicas < 1000; replicas++ {
+		for partitionPercent := 0; partitionPercent <= 100; partitionPercent++ {
+			partition := intstr.FromString(fmt.Sprintf("%d%%", partitionPercent))
+			deployment := apps.Deployment{Spec: apps.DeploymentSpec{Replicas: pointer.Int32(int32(replicas))}}
+			result := NewRSReplicasLimit(partition, &deployment)
+			expected, _ := intstr.GetScaledValueFromIntOrPercent(&partition, replicas, true)
+			if partitionPercent != 100 && replicas > 1 {
+				expected = integer.IntMin(expected, replicas-1)
+			}
+			if result != int32(expected) {
+				t.Errorf("case[2]: Expected %v, Got: %v, replicas %d, partition %d%%", expected, result, replicas, partitionPercent)
+			}
+		}
 	}
 }
