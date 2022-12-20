@@ -17,7 +17,6 @@ limitations under the License.
 package util
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -30,17 +29,11 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	intstrutil "k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/apimachinery/pkg/util/wait"
-	appsclient "k8s.io/client-go/kubernetes/typed/apps/v1"
-	appslisters "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
-
-	labelsutil "github.com/openkruise/rollouts/pkg/util/labels"
 )
 
 const (
@@ -56,13 +49,6 @@ const (
 	// is deployment.spec.replicas + maxSurge. Used by the underlying replica sets to estimate their
 	// proportions in case the deployment has surge replicas.
 	MaxReplicasAnnotation = "deployment.kubernetes.io/max-replicas"
-
-	// RollbackRevisionNotFound is not found rollback event reason
-	RollbackRevisionNotFound = "DeploymentRollbackRevisionNotFound"
-	// RollbackTemplateUnchanged is the template unchanged rollback event reason
-	RollbackTemplateUnchanged = "DeploymentRollbackTemplateUnchanged"
-	// RollbackDone is the done rollback event reason
-	RollbackDone = "DeploymentRollback"
 
 	// Reasons for deployment conditions
 	//
@@ -197,23 +183,6 @@ func MaxRevision(allRSs []*apps.ReplicaSet) int64 {
 	return max
 }
 
-// LastRevision finds the second max revision number in all replica sets (the last revision)
-func LastRevision(allRSs []*apps.ReplicaSet) int64 {
-	max, secMax := int64(0), int64(0)
-	for _, rs := range allRSs {
-		if v, err := Revision(rs); err != nil {
-			// Skip the replica sets when it failed to parse their revision information
-			klog.V(4).Infof("Error: %v. Couldn't parse revision for replica set %#v, deployment controller will skip it when reconciling revisions.", err, rs)
-		} else if v >= max {
-			secMax = max
-			max = v
-		} else if v > secMax {
-			secMax = v
-		}
-	}
-	return secMax
-}
-
 // Revision returns the revision number of the input object.
 func Revision(obj runtime.Object) (int64, error) {
 	acc, err := meta.Accessor(obj)
@@ -327,28 +296,6 @@ func copyDeploymentAnnotationsToReplicaSet(deployment *apps.Deployment, rs *apps
 		rsAnnotationsChanged = true
 	}
 	return rsAnnotationsChanged
-}
-
-// SetDeploymentAnnotationsTo sets deployment's annotations as given RS's annotations.
-// This action should be done if and only if the deployment is rolling back to this rs.
-// Note that apply and revision annotations are not changed.
-func SetDeploymentAnnotationsTo(deployment *apps.Deployment, rollbackToRS *apps.ReplicaSet) {
-	deployment.Annotations = getSkippedAnnotations(deployment.Annotations)
-	for k, v := range rollbackToRS.Annotations {
-		if !skipCopyAnnotation(k) {
-			deployment.Annotations[k] = v
-		}
-	}
-}
-
-func getSkippedAnnotations(annotations map[string]string) map[string]string {
-	skippedAnnotations := make(map[string]string)
-	for k, v := range annotations {
-		if skipCopyAnnotation(k) {
-			skippedAnnotations[k] = v
-		}
-	}
-	return skippedAnnotations
 }
 
 // FindActiveOrLatest returns the only active or the latest replica set in case there is at most one active
@@ -510,21 +457,6 @@ func getReplicaSetFraction(rs apps.ReplicaSet, d apps.Deployment) int32 {
 	return integer.RoundToInt32(newRSsize) - *(rs.Spec.Replicas)
 }
 
-// RsListFromClient returns an rsListFunc that wraps the given client.
-func RsListFromClient(c appsclient.AppsV1Interface) RsListFunc {
-	return func(namespace string, options metav1.ListOptions) ([]*apps.ReplicaSet, error) {
-		rsList, err := c.ReplicaSets(namespace).List(context.TODO(), options)
-		if err != nil {
-			return nil, err
-		}
-		var ret []*apps.ReplicaSet
-		for i := range rsList.Items {
-			ret = append(ret, &rsList.Items[i])
-		}
-		return ret, err
-	}
-}
-
 // TODO: switch RsListFunc and podListFunc to full namespacers
 
 // RsListFunc returns the ReplicaSet from the ReplicaSet namespace and the List metav1.ListOptions.
@@ -641,16 +573,6 @@ func FindOldReplicaSets(deployment *apps.Deployment, rsList []*apps.ReplicaSet) 
 		}
 	}
 	return requiredRSs, allRSs
-}
-
-// SetFromReplicaSetTemplate sets the desired PodTemplateSpec from a replica set template to the given deployment.
-func SetFromReplicaSetTemplate(deployment *apps.Deployment, template v1.PodTemplateSpec) *apps.Deployment {
-	deployment.Spec.Template.ObjectMeta = template.ObjectMeta
-	deployment.Spec.Template.Spec = template.Spec
-	deployment.Spec.Template.ObjectMeta.Labels = labelsutil.CloneAndRemoveLabel(
-		deployment.Spec.Template.ObjectMeta.Labels,
-		apps.DefaultDeploymentUniqueLabelKey)
-	return deployment
 }
 
 // GetReplicaCountForReplicaSets returns the sum of Replicas of the given replica sets.
@@ -825,19 +747,6 @@ func IsSaturated(deployment *apps.Deployment, rs *apps.ReplicaSet) bool {
 		rs.Status.AvailableReplicas == *(deployment.Spec.Replicas)
 }
 
-// WaitForObservedDeployment polls for deployment to be updated so that deployment.Status.ObservedGeneration >= desiredGeneration.
-// Returns error if polling timesout.
-func WaitForObservedDeployment(getDeploymentFunc func() (*apps.Deployment, error), desiredGeneration int64, interval, timeout time.Duration) error {
-	// TODO: This should take clientset.Interface when all code is updated to use clientset. Keeping it this way allows the function to be used by callers who have client.Interface.
-	return wait.PollImmediate(interval, timeout, func() (bool, error) {
-		deployment, err := getDeploymentFunc()
-		if err != nil {
-			return false, err
-		}
-		return deployment.Status.ObservedGeneration >= desiredGeneration, nil
-	})
-}
-
 // ResolveFenceposts resolves both maxSurge and maxUnavailable. This needs to happen in one
 // step. For example:
 //
@@ -880,42 +789,6 @@ func HasProgressDeadline(d *apps.Deployment) bool {
 // the Deployment will keep all revisions.
 func HasRevisionHistoryLimit(d *apps.Deployment) bool {
 	return d.Spec.RevisionHistoryLimit != nil && *d.Spec.RevisionHistoryLimit != math.MaxInt32
-}
-
-// GetDeploymentsForReplicaSet returns a list of Deployments that potentially
-// match a ReplicaSet. Only the one specified in the ReplicaSet's ControllerRef
-// will actually manage it.
-// Returns an error only if no matching Deployments are found.
-func GetDeploymentsForReplicaSet(deploymentLister appslisters.DeploymentLister, rs *apps.ReplicaSet) ([]*apps.Deployment, error) {
-	if len(rs.Labels) == 0 {
-		return nil, fmt.Errorf("no deployments found for ReplicaSet %v because it has no labels", rs.Name)
-	}
-
-	// TODO: MODIFY THIS METHOD so that it checks for the podTemplateSpecHash label
-	dList, err := deploymentLister.Deployments(rs.Namespace).List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-
-	var deployments []*apps.Deployment
-	for _, d := range dList {
-		selector, err := metav1.LabelSelectorAsSelector(d.Spec.Selector)
-		if err != nil {
-			// This object has an invalid selector, it does not match the replicaset
-			continue
-		}
-		// If a deployment with a nil or empty selector creeps in, it should match nothing, not everything.
-		if selector.Empty() || !selector.Matches(labels.Set(rs.Labels)) {
-			continue
-		}
-		deployments = append(deployments, d)
-	}
-
-	if len(deployments) == 0 {
-		return nil, fmt.Errorf("could not find deployments set for ReplicaSet %s in namespace %s with labels: %v", rs.Name, rs.Namespace, rs.Labels)
-	}
-
-	return deployments, nil
 }
 
 // ReplicaSetsByRevision sorts a list of ReplicaSet by revision, using their creation timestamp or name as a tie breaker.

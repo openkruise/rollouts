@@ -28,7 +28,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	appslisters "k8s.io/client-go/listers/apps/v1"
@@ -177,18 +176,7 @@ func (r *ReconcileDeployment) Reconcile(_ context.Context, request reconcile.Req
 	return ctrl.Result{}, err
 }
 
-type controllerFactory struct {
-	client           clientset.Interface
-	eventBroadcaster record.EventBroadcaster
-	eventRecorder    record.EventRecorder
-
-	// dLister can list/get deployments from the shared informer's store
-	dLister appslisters.DeploymentLister
-	// rsLister can list/get replica sets from the shared informer's store
-	rsLister appslisters.ReplicaSetLister
-	// podLister can list/get pods from the shared informer's store
-	podLister corelisters.PodLister
-}
+type controllerFactory DeploymentController
 
 // NewController create a new DeploymentController
 // TODO: create new controller only when deployment is under our control
