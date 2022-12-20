@@ -29,8 +29,6 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -38,8 +36,6 @@ import (
 )
 
 var (
-	scheme *runtime.Scheme
-
 	demoConf = corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      configuration.RolloutConfigurationName,
@@ -226,12 +222,6 @@ var (
 	}
 )
 
-func init() {
-	scheme = runtime.NewScheme()
-	_ = clientgoscheme.AddToScheme(scheme)
-	_ = rolloutsv1alpha1.AddToScheme(scheme)
-}
-
 func TestInitialize(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -275,7 +265,7 @@ func TestInitialize(t *testing.T) {
 			for _, ingress := range cs.getIngress() {
 				fakeCli.Create(context.TODO(), ingress)
 			}
-			controller, err := NewIngressTrafficRouting(fakeCli, config)
+			controller, err := NewNginxIngressTrafficRouting(fakeCli, config)
 			if err != nil {
 				t.Fatalf("NewIngressTrafficRouting failed: %s", err.Error())
 				return
@@ -500,7 +490,7 @@ func TestEnsureRoutes(t *testing.T) {
 				fakeCli.Create(context.TODO(), ingress)
 			}
 			config.TrafficConf.ClassType = cs.ingressType
-			controller, err := NewIngressTrafficRouting(fakeCli, config)
+			controller, err := NewNginxIngressTrafficRouting(fakeCli, config)
 			if err != nil {
 				t.Fatalf("NewIngressTrafficRouting failed: %s", err.Error())
 				return
@@ -597,14 +587,14 @@ func TestFinalise(t *testing.T) {
 			for _, ingress := range cs.getIngress() {
 				fakeCli.Create(context.TODO(), ingress)
 			}
-			controller, err := NewIngressTrafficRouting(fakeCli, config)
+			controller, err := NewNginxIngressTrafficRouting(fakeCli, config)
 			if err != nil {
 				t.Fatalf("NewIngressTrafficRouting failed: %s", err.Error())
 				return
 			}
 			_, err = controller.Finalise(context.TODO())
 			if err != nil {
-				t.Fatalf("EnsureRoutes failed: %s", err.Error())
+				t.Fatalf("Finalise failed: %s", err.Error())
 				return
 			}
 			canaryIngress := &netv1.Ingress{}
