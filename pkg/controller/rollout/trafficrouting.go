@@ -60,6 +60,7 @@ func (r *rolloutContext) doCanaryTrafficRouting() (bool, error) {
 		if errors.IsNotFound(err) {
 			return false, nil
 		}
+
 		return false, err
 	}
 	// fetch canary service
@@ -226,9 +227,22 @@ func (r *rolloutContext) doFinalisingTrafficRouting() (bool, error) {
 
 func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (trafficrouting.Controller, error) {
 	trafficRouting := roCtx.rollout.Spec.Strategy.Canary.TrafficRoutings[0]
-	if trafficRouting.Ingress != nil {
-		gvk := schema.GroupVersionKind{Group: rolloutv1alpha1.GroupVersion.Group, Version: rolloutv1alpha1.GroupVersion.Version, Kind: "Rollout"}
-		return ingress.NewIngressTrafficRouting(r.Client, ingress.Config{
+
+	gvk := schema.GroupVersionKind{Group: rolloutv1alpha1.GroupVersion.Group, Version: rolloutv1alpha1.GroupVersion.Version, Kind: "Rollout"}
+
+	switch trafficRouting.Ingress.ClassType {
+	case "apisix":
+		return ingress.NewApisixIngressTrafficRouting(r.Client, ingress.Config{
+			RolloutName:   r.rollout.Name,
+			RolloutNs:     r.rollout.Namespace,
+			CanaryService: r.canaryService,
+			StableService: r.stableService,
+			TrafficConf:   trafficRouting.Ingress,
+			OwnerRef:      *metav1.NewControllerRef(r.rollout, gvk),
+		})
+	case "nginx":
+	default:
+		return ingress.NewNginxIngressTrafficRouting(r.Client, ingress.Config{
 			RolloutName:   r.rollout.Name,
 			RolloutNs:     r.rollout.Namespace,
 			CanaryService: r.canaryService,
@@ -237,6 +251,7 @@ func (r *rolloutContext) newTrafficRoutingController(roCtx *rolloutContext) (tra
 			OwnerRef:      *metav1.NewControllerRef(r.rollout, gvk),
 		})
 	}
+
 	if trafficRouting.Gateway != nil {
 		return gateway.NewGatewayTrafficRouting(r.Client, gateway.Config{
 			RolloutName:   r.rollout.Name,
