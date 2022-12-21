@@ -19,12 +19,10 @@ package deployment
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"reflect"
 
-	"github.com/openkruise/rollouts/pkg/feature"
-	clientutil "github.com/openkruise/rollouts/pkg/util/client"
-	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -44,6 +42,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
+	"github.com/openkruise/rollouts/pkg/feature"
+	clientutil "github.com/openkruise/rollouts/pkg/util/client"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 func init() {
@@ -135,6 +139,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	updateHandler := func(e event.UpdateEvent) bool {
 		oldObject := e.ObjectOld.(*appsv1.Deployment)
 		newObject := e.ObjectNew.(*appsv1.Deployment)
+		if !deploymentutil.IsUnderRolloutControl(newObject) {
+			return false
+		}
 		if oldObject.Generation != newObject.Generation || newObject.DeletionTimestamp != nil {
 			klog.V(3).Infof("Observed updated Spec for Deployment: %s/%s", newObject.Namespace, newObject.Name)
 			return true
@@ -153,7 +160,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 // Reconcile reads that state of the cluster for a Deployment object and makes changes based on the state read
 // and what is in the Deployment.Spec and Deployment.Annotations
 // Automatically generate RBAC rules to allow the Controller to read and write ReplicaSets
-func (r *ReconcileDeployment) Reconcile(_ context.Context, request reconcile.Request) (res reconcile.Result, retErr error) {
+func (r *ReconcileDeployment) Reconcile(_ context.Context, request reconcile.Request) (reconcile.Result, error) {
 	deployment := new(appsv1.Deployment)
 	err := r.Get(context.TODO(), request.NamespacedName, deployment)
 	if err != nil {
@@ -167,12 +174,12 @@ func (r *ReconcileDeployment) Reconcile(_ context.Context, request reconcile.Req
 	}
 
 	// TODO: create new controller only when deployment is under our control
-	dc, err := r.controllerFactory.NewController(deployment)
-	if err != nil {
+	dc := r.controllerFactory.NewController(deployment)
+	if dc == nil {
 		return reconcile.Result{}, nil
 	}
 
-	err = dc.syncDeployment(context.Background(), request.NamespacedName.String())
+	err = dc.syncDeployment(context.Background(), deployment)
 	return ctrl.Result{}, err
 }
 
@@ -180,7 +187,27 @@ type controllerFactory DeploymentController
 
 // NewController create a new DeploymentController
 // TODO: create new controller only when deployment is under our control
-func (f *controllerFactory) NewController(_ *appsv1.Deployment) (*DeploymentController, error) {
+func (f *controllerFactory) NewController(deployment *appsv1.Deployment) *DeploymentController {
+	if !deploymentutil.IsUnderRolloutControl(deployment) {
+		klog.Warningf("Deployment %v is not under rollout control, ignore", klog.KObj(deployment))
+		return nil
+	}
+
+	strategy := rolloutsv1alpha1.DeploymentStrategy{}
+	strategyAnno := deployment.Annotations[rolloutsv1alpha1.DeploymentStrategyAnnotation]
+	if err := json.Unmarshal([]byte(strategyAnno), &strategy); err != nil {
+		klog.Errorf("Failed to unmarshal strategy for deployment %v: %v", klog.KObj(deployment), strategyAnno)
+		return nil
+	}
+
+	// We do NOT process such deployment with canary rolling style
+	if strategy.RollingStyle == rolloutsv1alpha1.CanaryRollingStyleType {
+		return nil
+	}
+
+	marshaled, _ := json.Marshal(&strategy)
+	klog.V(4).Infof("Processing deployment %v strategy %v", klog.KObj(deployment), string(marshaled))
+
 	return &DeploymentController{
 		client:           f.client,
 		eventBroadcaster: f.eventBroadcaster,
@@ -188,5 +215,6 @@ func (f *controllerFactory) NewController(_ *appsv1.Deployment) (*DeploymentCont
 		dLister:          f.dLister,
 		rsLister:         f.rsLister,
 		podLister:        f.podLister,
-	}, nil
+		strategy:         strategy,
+	}
 }

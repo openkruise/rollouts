@@ -41,6 +41,13 @@ const (
 	// RollbackInBatchAnnotation is set to rollout annotations.
 	// RollbackInBatchAnnotation allow use disable quick rollback, and will roll back in batch style.
 	RollbackInBatchAnnotation = "rollouts.kruise.io/rollback-in-batch"
+
+	// DeploymentRolloutStyleAnnotation define the rolling behavior for Deployment.
+	// must be "partition" or "canary":
+	// * "partition" means rolling Deployment in batches just like CloneSet, and will NOT create any extra Deployment;
+	// * "canary" means rolling in canary way, and will create a canary Deployment.
+	// Defaults to canary
+	DeploymentRolloutStyleAnnotation = "rollouts.kruise.io/deployment-rolling-style"
 )
 
 // RolloutSpec defines the desired state of Rollout

@@ -22,20 +22,24 @@ package deployment
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
 )
 
 const (
@@ -64,6 +68,9 @@ type DeploymentController struct {
 	rsLister appslisters.ReplicaSetLister
 	// podLister can list/get pods from the shared informer's store
 	podLister corelisters.PodLister
+
+	// we will use this strategy to replace spec.strategy of deployment
+	strategy rolloutsv1alpha1.DeploymentStrategy
 }
 
 // getReplicaSetsForDeployment uses ControllerRefManager to reconcile
@@ -81,27 +88,12 @@ func (dc *DeploymentController) getReplicaSetsForDeployment(ctx context.Context,
 
 // syncDeployment will sync the deployment with the given key.
 // This function is not meant to be invoked concurrently with the same key.
-func (dc *DeploymentController) syncDeployment(ctx context.Context, key string) error {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		klog.ErrorS(err, "Failed to split meta namespace cache key", "cacheKey", key)
-		return err
-	}
-
+func (dc *DeploymentController) syncDeployment(ctx context.Context, deployment *apps.Deployment) (err error) {
 	startTime := time.Now()
-	klog.V(4).InfoS("Started syncing deployment", "deployment", klog.KRef(namespace, name), "startTime", startTime)
+	klog.V(4).InfoS("Started syncing deployment", "deployment", klog.KObj(deployment), "startTime", startTime)
 	defer func() {
-		klog.V(4).InfoS("Finished syncing deployment", "deployment", klog.KRef(namespace, name), "duration", time.Since(startTime))
+		klog.V(4).InfoS("Finished syncing deployment", "deployment", klog.KObj(deployment), "duration", time.Since(startTime))
 	}()
-
-	deployment, err := dc.dLister.Deployments(namespace).Get(name)
-	if errors.IsNotFound(err) {
-		klog.V(2).InfoS("Deployment has been deleted", "deployment", klog.KRef(namespace, name))
-		return nil
-	}
-	if err != nil {
-		return err
-	}
 
 	// Deep-copy otherwise we are mutating our cache.
 	// TODO: Deep-copy only when needed.
@@ -114,39 +106,81 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, key string) 
 			d.Status.ObservedGeneration = d.Generation
 			dc.client.AppsV1().Deployments(d.Namespace).UpdateStatus(ctx, d, metav1.UpdateOptions{})
 		}
-		return nil
+		return
 	}
 
 	// List ReplicaSets owned by this Deployment, while reconciling ControllerRef
 	// through adoption/orphaning.
 	rsList, err := dc.getReplicaSetsForDeployment(ctx, d)
 	if err != nil {
-		return err
+		return
 	}
 
 	if d.DeletionTimestamp != nil {
 		return dc.syncStatusOnly(ctx, d, rsList)
 	}
 
+	defer func() {
+		err = dc.updateExtraStatus(deployment, rsList)
+	}()
+
 	// Update deployment conditions with an Unknown condition when pausing/resuming
 	// a deployment. In this way, we can be sure that we won't timeout when a user
 	// resumes a Deployment with a set progressDeadlineSeconds.
 	if err = dc.checkPausedConditions(ctx, d); err != nil {
-		return err
+		return
 	}
 
 	if d.Spec.Paused {
-		return dc.sync(ctx, d, rsList)
+		err = dc.sync(ctx, d, rsList)
+		return
 	}
 
 	scalingEvent, err := dc.isScalingEvent(ctx, d, rsList)
 	if err != nil {
-		return err
+		return
 	}
 
 	if scalingEvent {
-		return dc.sync(ctx, d, rsList)
+		err = dc.sync(ctx, d, rsList)
+		return
 	}
 
-	return dc.rolloutRolling(ctx, d, rsList)
+	err = dc.rolloutRolling(ctx, d, rsList)
+	return
+}
+
+// updateExtraStatus will update extra status for advancedStatus
+func (dc *DeploymentController) updateExtraStatus(deployment *apps.Deployment, rsList []*apps.ReplicaSet) error {
+	newRS, _, err := dc.getAllReplicaSetsAndSyncRevision(context.TODO(), deployment, rsList, false)
+	if err != nil {
+		return err
+	}
+
+	updatedReadyReplicas := int32(0)
+	if newRS != nil {
+		updatedReadyReplicas = newRS.Status.ReadyReplicas
+	}
+
+	extraStatus := &rolloutsv1alpha1.DeploymentExtraStatus{
+		ObservedGeneration:      deployment.Generation,
+		UpdatedReadyReplicas:    updatedReadyReplicas,
+		ExpectedUpdatedReplicas: deploymentutil.NewRSReplicasLimit(dc.strategy.Partition, deployment),
+	}
+
+	extraStatusByte, err := json.Marshal(extraStatus)
+	if err != nil {
+		klog.Errorf("Failed to marshal extra status for Deployment %v, err: %v", klog.KObj(deployment), err)
+		return nil // no need to retry
+	}
+
+	extraStatusAnno := string(extraStatusByte)
+	if deployment.Annotations[rolloutsv1alpha1.DeploymentExtraStatusAnnotation] == extraStatusAnno {
+		return nil // no need to update
+	}
+
+	extraStatusAnno = strings.Replace(extraStatusAnno, `"`, `\"`, -1)
+	body := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`, rolloutsv1alpha1.DeploymentExtraStatusAnnotation, extraStatusAnno))
+	_, err = dc.client.AppsV1().Deployments(deployment.Namespace).Patch(context.TODO(), deployment.Name, types.MergePatchType, body, metav1.PatchOptions{})
+	return err
 }

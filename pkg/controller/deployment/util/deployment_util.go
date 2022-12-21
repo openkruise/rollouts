@@ -34,6 +34,8 @@ import (
 	intstrutil "k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
+
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 const (
@@ -894,3 +896,25 @@ func (o ReplicaSetsBySizeNewer) Less(i, j int) bool {
 	--------------------------------- END ---------------------------------------
 	**** Copied from "k8s.io/kubernetes/pkg/controller/controller_utils.go" ****
 */
+
+// IsUnderRolloutControl return true if this deployment should be controlled by our controller.
+func IsUnderRolloutControl(deployment *apps.Deployment) bool {
+	if deployment.Annotations[util.BatchReleaseControlAnnotation] == "" {
+		return false
+	}
+	if deployment.Spec.Strategy.Type != apps.RecreateDeploymentStrategyType {
+		return false
+	}
+	return deployment.Spec.Paused
+}
+
+// NewRSReplicasLimit return a limited replicas of new RS calculated via partition.
+func NewRSReplicasLimit(partition intstrutil.IntOrString, deployment *apps.Deployment) int32 {
+	replicas := int(*deployment.Spec.Replicas)
+	replicaLimit, _ := intstrutil.GetScaledValueFromIntOrPercent(&partition, replicas, true)
+	replicaLimit = integer.IntMax(integer.IntMin(replicaLimit, replicas), 0)
+	if replicas > 1 && partition.Type == intstrutil.String && partition.String() != "100%" {
+		replicaLimit = integer.IntMin(replicaLimit, replicas-1)
+	}
+	return int32(replicaLimit)
+}
