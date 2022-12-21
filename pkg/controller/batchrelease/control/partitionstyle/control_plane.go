@@ -160,13 +160,13 @@ func (rc *realBatchControlPlane) SyncWorkloadInformation() (control.WorkloadEven
 
 	workloadInfo := controller.GetInfo()
 	if !workloadInfo.IsStable() {
-		klog.Info("Workload(%v) still reconciling, waiting for it to complete, generation: %v, observed: %v",
+		klog.Infof("Workload(%v) still reconciling, waiting for it to complete, generation: %v, observed: %v",
 			workloadInfo.LogKey, workloadInfo.Generation, workloadInfo.Status.ObservedGeneration)
 		return control.WorkloadStillReconciling, workloadInfo, nil
 	}
 
 	if workloadInfo.IsPromoted() {
-		klog.Info("Workload(%v) has been promoted, no need to rollout again actually, replicas: %v, updated: %v",
+		klog.Infof("Workload(%v) has been promoted, no need to rollout again actually, replicas: %v, updated: %v",
 			workloadInfo.LogKey, workloadInfo.Replicas, workloadInfo.Status.UpdatedReadyReplicas)
 		return control.WorkloadNormalState, workloadInfo, nil
 	}

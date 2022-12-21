@@ -211,9 +211,7 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 
 	for i := range steps {
 		s := &steps[i]
-		if isTraffic && s.Weight == nil && len(s.Matches) == 0 {
-			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `weight or matches cannot be empty for traffic routing`)}
-		} else if s.Weight == nil && s.Replicas == nil {
+		if s.Weight == nil && s.Replicas == nil {
 			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `weight and replicas cannot be empty at the same time`)}
 		}
 		if s.Replicas != nil {

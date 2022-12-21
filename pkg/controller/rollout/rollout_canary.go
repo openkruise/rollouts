@@ -66,7 +66,20 @@ func (m *canaryReleaseManager) runCanary(c *util.RolloutContext) error {
 	if canaryStatus.PodTemplateHash == "" {
 		canaryStatus.PodTemplateHash = c.Workload.PodTemplateHash
 	}
-
+	// When the first batch is trafficRouting rolling and the next steps are rolling release,
+	// We need to clean up the canary-related resources first and then rollout the rest of the batch.
+	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
+	if currentStep.Weight == nil && len(currentStep.Matches) == 0 {
+		done, err := m.trafficRoutingManager.FinalisingTrafficRouting(c, false)
+		if err != nil {
+			return err
+		} else if !done {
+			klog.Infof("rollout(%s/%s) cleaning up canary-related resources", c.Rollout.Namespace, c.Rollout.Name)
+			expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
+			c.RecheckTime = &expectedTime
+			return nil
+		}
+	}
 	switch canaryStatus.CurrentStepState {
 	case v1alpha1.CanaryStepStateUpgrade:
 		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1alpha1.CanaryStepStateUpgrade)
