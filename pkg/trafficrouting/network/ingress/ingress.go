@@ -17,7 +17,7 @@ limitations under the License.
 package ingress
 
 import (
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -26,6 +26,6 @@ type Config struct {
 	RolloutNs     string
 	CanaryService string
 	StableService string
-	TrafficConf   *rolloutv1alpha1.IngressTrafficRouting
+	TrafficConf   *v1alpha1.IngressTrafficRouting
 	OwnerRef      metav1.OwnerReference
 }

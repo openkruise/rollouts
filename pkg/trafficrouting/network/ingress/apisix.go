@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"reflect"
 
-	v1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	a6v2 "github.com/openkruise/rollouts/pkg/apis/apisix/v2"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	"github.com/openkruise/rollouts/pkg/util"

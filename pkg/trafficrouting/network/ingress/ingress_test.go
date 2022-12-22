@@ -17,7 +17,7 @@ limitations under the License.
 package ingress
 
 import (
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	a6v2 "github.com/openkruise/rollouts/pkg/apis/apisix/v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -31,11 +31,11 @@ var (
 func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = rolloutsv1alpha1.AddToScheme(scheme)
+	_ = v1alpha1.AddToScheme(scheme)
 
 	apisixScheme = runtime.NewScheme()
 	_ = a6v2.AddToScheme(apisixScheme)
 	_ = clientgoscheme.AddToScheme(apisixScheme)
-	_ = rolloutsv1alpha1.AddToScheme(apisixScheme)
+	_ = v1alpha1.AddToScheme(apisixScheme)
 
 }
