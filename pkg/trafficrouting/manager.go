@@ -223,14 +223,28 @@ func (m *Manager) FinalisingTrafficRouting(c *util.RolloutContext, onlyRestoreSt
 func newNetworkProvider(c client.Client, rollout *v1alpha1.Rollout, newStatus *v1alpha1.RolloutStatus, sService, cService string) (network.NetworkProvider, error) {
 	trafficRouting := rollout.Spec.Strategy.Canary.TrafficRoutings[0]
 	if trafficRouting.Ingress != nil {
-		return ingress.NewIngressTrafficRouting(c, ingress.Config{
-			RolloutName:   rollout.Name,
-			RolloutNs:     rollout.Namespace,
-			CanaryService: cService,
-			StableService: sService,
-			TrafficConf:   trafficRouting.Ingress,
-			OwnerRef:      *metav1.NewControllerRef(rollout, rolloutControllerKind),
-		})
+		switch trafficRouting.Ingress.ClassType {
+		case "apisix":
+			return ingress.NewApisixIngressTrafficRouting(c, ingress.Config{
+				RolloutName:   rollout.Name,
+				RolloutNs:     rollout.Namespace,
+				CanaryService: cService,
+				StableService: sService,
+				TrafficConf:   trafficRouting.Ingress,
+				OwnerRef:      *metav1.NewControllerRef(rollout, rolloutControllerKind),
+			})
+		case "nginx":
+		case "alb":
+		default:
+			return ingress.NewNginxIngressTrafficRouting(c, ingress.Config{
+				RolloutName:   rollout.Name,
+				RolloutNs:     rollout.Namespace,
+				CanaryService: cService,
+				StableService: sService,
+				TrafficConf:   trafficRouting.Ingress,
+				OwnerRef:      *metav1.NewControllerRef(rollout, rolloutControllerKind),
+			})
+		}
 	}
 	if trafficRouting.Gateway != nil {
 		return gateway.NewGatewayTrafficRouting(c, gateway.Config{

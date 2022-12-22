@@ -14,18 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package ingress
+// +k8s:deepcopy-gen=package
 
-import (
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-type Config struct {
-	RolloutName   string
-	RolloutNs     string
-	CanaryService string
-	StableService string
-	TrafficConf   *rolloutv1alpha1.IngressTrafficRouting
-	OwnerRef      metav1.OwnerReference
-}
+// Package v2 is the v2 version of the API.
+// +groupName=apisix.apache.org
+package v2
