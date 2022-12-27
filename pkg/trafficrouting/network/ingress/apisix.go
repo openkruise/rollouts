@@ -88,7 +88,7 @@ func (r *apisixIngressController) Initialize(ctx context.Context) error {
 }
 
 func (r *apisixIngressController) EnsureRoutes(ctx context.Context, weight *int32, matches []v1alpha1.HttpRouteMatch) (bool, error) {
-	if *weight == 0 {
+	if *weight < 0 || *weight > 100 {
 		return true, fmt.Errorf("rollout(%s/%s) update failed: no valid weights", r.conf.RolloutNs, r.conf.RolloutName)
 	}
 
@@ -138,7 +138,7 @@ func (r *apisixIngressController) Finalise(ctx context.Context) error {
 		klog.Errorf("rollout(%s/%s) get apisix route(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, r.conf.TrafficConf.Name, err.Error())
 		return err
 	}
-	if errors.IsNotFound(err) {
+	if errors.IsNotFound(err) || !apisixRoute.DeletionTimestamp.IsZero() {
 		return nil
 	}
 
@@ -263,9 +263,10 @@ func (r *apisixIngressController) buildCanaryApisixRoute(ar *a6v2.ApisixRoute) (
 func (r *apisixIngressController) buildCanaryApisixUpstream(au *a6v2.ApisixUpstream) (*a6v2.ApisixUpstream, error) {
 	desiredApisixUpstream := &a6v2.ApisixUpstream{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        au.Name,
-			Namespace:   au.Namespace,
-			Annotations: au.Annotations,
+			Name:            au.Name,
+			Namespace:       au.Namespace,
+			Annotations:     au.Annotations,
+			OwnerReferences: []metav1.OwnerReference{r.conf.OwnerRef},
 		},
 		Spec: au.Spec.DeepCopy(),
 	}

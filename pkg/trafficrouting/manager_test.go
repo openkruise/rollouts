@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	a6v2 "github.com/openkruise/rollouts/pkg/apis/apisix/v2"
+
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -173,6 +175,125 @@ var (
 		},
 	}
 
+	demoApisixRoute = &a6v2.ApisixRoute{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apiextensions.k8s.io/v1",
+			Kind:       "ApisixRoute",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "echoserver",
+		},
+		Spec: a6v2.ApisixRouteSpec{
+			HTTP: []a6v2.ApisixRouteHTTP{
+				{
+					Name: "echo",
+					Match: a6v2.ApisixRouteHTTPMatch{
+						Paths: []string{
+							"/apis/echo",
+						},
+						Hosts: []string{
+							"echoserver.example.com",
+						},
+					},
+					Backends: []a6v2.ApisixRouteHTTPBackend{
+						{
+							ServiceName: "echoserver",
+							ServicePort: intstr.IntOrString{Type: 0, IntVal: 80},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	demoApisixUpstream = &a6v2.ApisixUpstream{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apiextensions.k8s.io/v1",
+			Kind:       "ApisixUpstream",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "echoserver",
+		},
+		Spec: &a6v2.ApisixUpstreamSpec{
+			ApisixUpstreamConfig: a6v2.ApisixUpstreamConfig{
+				LoadBalancer: &a6v2.LoadBalancer{
+					Type: "roundrobin",
+				},
+			},
+		},
+	}
+
+	demoRolloutApisix = &v1alpha1.Rollout{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "rollout-demo",
+			Labels: map[string]string{},
+			Annotations: map[string]string{
+				util.RolloutHashAnnotation: "rollout-hash-v1",
+			},
+		},
+		Spec: v1alpha1.RolloutSpec{
+			ObjectRef: v1alpha1.ObjectRef{
+				WorkloadRef: &v1alpha1.WorkloadRef{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+					Name:       "echoserver",
+				},
+			},
+			Strategy: v1alpha1.RolloutStrategy{
+				Canary: &v1alpha1.CanaryStrategy{
+					Steps: []v1alpha1.CanaryStep{
+						{
+							Weight:   utilpointer.Int32(5),
+							Replicas: &intstr.IntOrString{IntVal: 1},
+						},
+						{
+							Weight:   utilpointer.Int32(20),
+							Replicas: &intstr.IntOrString{IntVal: 2},
+						},
+						{
+							Weight:   utilpointer.Int32(60),
+							Replicas: &intstr.IntOrString{IntVal: 6},
+						},
+						{
+							Weight:   utilpointer.Int32(100),
+							Replicas: &intstr.IntOrString{IntVal: 10},
+						},
+					},
+					TrafficRoutings: []*v1alpha1.TrafficRouting{
+						{
+							Service: "echoserver",
+							Ingress: &v1alpha1.IngressTrafficRouting{
+								Name:      "echoserver",
+								ClassType: "apisix",
+							},
+						},
+					},
+				},
+			},
+		},
+		Status: v1alpha1.RolloutStatus{
+			Phase: v1alpha1.RolloutPhaseProgressing,
+			CanaryStatus: &v1alpha1.CanaryStatus{
+				ObservedWorkloadGeneration: 1,
+				RolloutHash:                "rollout-hash-v1",
+				ObservedRolloutID:          "rollout-id-1",
+				StableRevision:             "podtemplatehash-v1",
+				CanaryRevision:             "revision-v2",
+				CurrentStepIndex:           1,
+				CurrentStepState:           v1alpha1.CanaryStepStateTrafficRouting,
+				PodTemplateHash:            "podtemplatehash-v2",
+				LastUpdateTime:             &metav1.Time{Time: time.Now()},
+			},
+			Conditions: []v1alpha1.RolloutCondition{
+				{
+					Type:   v1alpha1.RolloutConditionProgressing,
+					Reason: v1alpha1.ProgressingReasonInRolling,
+					Status: corev1.ConditionFalse,
+				},
+			},
+		},
+	}
+
 	demoConf = corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      configuration.RolloutConfigurationName,
@@ -221,6 +342,7 @@ func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = kruisev1aplphal.AddToScheme(scheme)
 	_ = v1alpha1.AddToScheme(scheme)
+	_ = a6v2.AddToScheme(scheme)
 }
 
 func TestDoTrafficRouting(t *testing.T) {
@@ -413,6 +535,92 @@ func TestDoTrafficRouting(t *testing.T) {
 				checkObjEqual(client, t, obj)
 			}
 			for _, obj := range ig {
+				checkObjEqual(client, t, obj)
+			}
+		})
+	}
+}
+
+func TestDoTrafficRoutingWithApisix(t *testing.T) {
+	cases := []struct {
+		name       string
+		getObj     func() ([]*corev1.Service, *a6v2.ApisixRoute, []*a6v2.ApisixUpstream)
+		getRollout func() (*v1alpha1.Rollout, *util.Workload)
+		expectObj  func() ([]*corev1.Service, *a6v2.ApisixRoute, []*a6v2.ApisixUpstream)
+		expectDone bool
+	}{
+		{
+			name: "DoTrafficRoutingWithApisix test1",
+			getObj: func() ([]*corev1.Service, *a6v2.ApisixRoute, []*a6v2.ApisixUpstream) {
+				return []*corev1.Service{demoService.DeepCopy()},
+					demoApisixRoute.DeepCopy(),
+					[]*a6v2.ApisixUpstream{demoApisixUpstream.DeepCopy()}
+			},
+			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+				obj := demoRolloutApisix.DeepCopy()
+				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+			},
+			expectObj: func() ([]*corev1.Service, *a6v2.ApisixRoute, []*a6v2.ApisixUpstream) {
+				s1 := demoService.DeepCopy()
+				s1.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v1"
+				s2 := demoService.DeepCopy()
+				s2.Name = "echoserver-canary"
+				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
+
+				ar := demoApisixRoute.DeepCopy()
+				primaryBackend := ar.Spec.HTTP[0].Backends[0]
+				primaryBackend.Weight = utilpointer.Int(100)
+				ar.Spec.HTTP[0].Backends[0] = primaryBackend
+
+				backend := primaryBackend.DeepCopy()
+				backend.ServiceName = "echoserver-canary"
+				backend.Weight = utilpointer.Int(0)
+
+				ar.Spec.HTTP[0].Backends = append(ar.Spec.HTTP[0].Backends, *backend)
+
+				au1 := demoApisixUpstream.DeepCopy()
+				au2 := demoApisixUpstream.DeepCopy()
+				au2.Name = "echoserver-canary"
+
+				return []*corev1.Service{s1, s2}, ar, []*a6v2.ApisixUpstream{au1, au2}
+			},
+			expectDone: false,
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			ss, ar, au := cs.getObj()
+			client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ar, au[0], ss[0]).Build()
+			if len(ss) == 2 {
+				_ = client.Create(context.TODO(), ss[1])
+			}
+			if len(au) == 2 {
+				_ = client.Create(context.TODO(), au[1])
+			}
+			c := &util.RolloutContext{}
+			c.Rollout, c.Workload = cs.getRollout()
+			c.NewStatus = c.Rollout.Status.DeepCopy()
+			manager := NewTrafficRoutingManager(client)
+			err := manager.InitializeTrafficRouting(c)
+			if err != nil {
+				t.Fatalf("InitializeTrafficRouting failed: %s", err)
+			}
+			done, err := manager.DoTrafficRouting(c)
+			if err != nil {
+				t.Fatalf("DoTrafficRouting failed: %s", err)
+			}
+			if cs.expectDone != done {
+				t.Fatalf("DoTrafficRouting expect(%v), but get(%v)", cs.expectDone, done)
+			}
+			ss, ar, au = cs.expectObj()
+			for _, obj := range ss {
+				checkObjEqual(client, t, obj)
+			}
+
+			checkObjEqual(client, t, ar)
+
+			for _, obj := range au {
 				checkObjEqual(client, t, obj)
 			}
 		})
@@ -643,6 +851,93 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 	}
 }
 
+func TestFinalisingTrafficRoutingWithApisix(t *testing.T) {
+	cases := []struct {
+		name                     string
+		getObj                   func() ([]*corev1.Service, *a6v2.ApisixRoute, []*a6v2.ApisixUpstream)
+		getRollout               func() (*v1alpha1.Rollout, *util.Workload)
+		onlyRestoreStableService bool
+		expectObj                func() ([]*corev1.Service, *a6v2.ApisixRoute, []*a6v2.ApisixUpstream)
+		expectDone               bool
+	}{
+		{
+			name: "FinalisingTrafficRoutingWithApisix` test1",
+			getObj: func() ([]*corev1.Service, *a6v2.ApisixRoute, []*a6v2.ApisixUpstream) {
+				s1 := demoService.DeepCopy()
+				s2 := demoService.DeepCopy()
+				s2.Name = "echoserver-canary"
+				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
+
+				ar := demoApisixRoute.DeepCopy()
+				primaryBackend := ar.Spec.HTTP[0].Backends[0]
+				primaryBackend.Weight = utilpointer.Int(100)
+				ar.Spec.HTTP[0].Backends[0] = primaryBackend
+				backend := primaryBackend.DeepCopy()
+				backend.ServiceName = "echoserver-canary"
+				backend.Weight = utilpointer.Int(0)
+				ar.Spec.HTTP[0].Backends = append(ar.Spec.HTTP[0].Backends, *backend)
+
+				au1 := demoApisixUpstream.DeepCopy()
+				au2 := demoApisixUpstream.DeepCopy()
+				au2.Name = "echoserver-canary"
+
+				return []*corev1.Service{s1, s2}, ar, []*a6v2.ApisixUpstream{au1, au2}
+			},
+			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+				obj := demoRolloutApisix.DeepCopy()
+				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-3 * time.Second)}
+				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+			},
+			onlyRestoreStableService: false,
+			expectObj: func() ([]*corev1.Service, *a6v2.ApisixRoute, []*a6v2.ApisixUpstream) {
+				s1 := demoService.DeepCopy()
+				ar := demoApisixRoute.DeepCopy()
+				ar.Spec.HTTP[0].Backends[0].Weight = utilpointer.Int(100)
+				au1 := demoApisixUpstream.DeepCopy()
+
+				return []*corev1.Service{s1}, ar, []*a6v2.ApisixUpstream{au1}
+			},
+			expectDone: true,
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			ss, ar, au := cs.getObj()
+			client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ar, au[0], ss[0]).Build()
+			if len(ss) == 2 {
+				_ = client.Create(context.TODO(), ss[1])
+			}
+			if len(au) == 2 {
+				_ = client.Create(context.TODO(), au[1])
+			}
+			c := &util.RolloutContext{}
+			c.Rollout, c.Workload = cs.getRollout()
+			c.NewStatus = c.Rollout.Status.DeepCopy()
+			manager := NewTrafficRoutingManager(client)
+			done, err := manager.FinalisingTrafficRouting(c, cs.onlyRestoreStableService)
+			if err != nil {
+				t.Fatalf("FinalisingTrafficRouting failed: %s", err)
+			}
+			if cs.expectDone != done {
+				t.Fatalf("FinalisingTrafficRouting expect(%v), but get(%v)", cs.expectDone, done)
+			}
+			ss, ar, au = cs.expectObj()
+			for _, obj := range ss {
+				checkObjEqual(client, t, obj)
+			}
+
+			checkObjEqual(client, t, ar)
+
+			for _, obj := range au {
+				checkObjEqual(client, t, obj)
+			}
+		})
+	}
+}
+
 func checkObjEqual(c client.WithWatch, t *testing.T, expect client.Object) {
 	gvk := expect.GetObjectKind().GroupVersionKind()
 	obj := getEmptyObject(gvk)
@@ -663,6 +958,18 @@ func checkObjEqual(c client.WithWatch, t *testing.T, expect client.Object) {
 		if !reflect.DeepEqual(s1.Spec, s2.Spec) || !reflect.DeepEqual(s1.Annotations, s2.Annotations) {
 			t.Fatalf("expect(%s), but get object(%s)", util.DumpJSON(s2), util.DumpJSON(s1))
 		}
+	case "ApisixRoute":
+		s1 := obj.(*a6v2.ApisixRoute)
+		s2 := expect.(*a6v2.ApisixRoute)
+		if !reflect.DeepEqual(s1.Spec, s2.Spec) || !reflect.DeepEqual(s1.Annotations, s2.Annotations) {
+			t.Fatalf("expect(%s), but get object(%s)", util.DumpJSON(s2), util.DumpJSON(s1))
+		}
+	case "ApisixUpstream":
+		s1 := obj.(*a6v2.ApisixUpstream)
+		s2 := expect.(*a6v2.ApisixUpstream)
+		if !reflect.DeepEqual(s1.Spec, s2.Spec) || !reflect.DeepEqual(s1.Annotations, s2.Annotations) {
+			t.Fatalf("expect(%s), but get object(%s)", util.DumpJSON(s2), util.DumpJSON(s1))
+		}
 	}
 }
 
@@ -672,6 +979,10 @@ func getEmptyObject(gvk schema.GroupVersionKind) client.Object {
 		return &corev1.Service{}
 	case "Ingress":
 		return &netv1.Ingress{}
+	case "ApisixRoute":
+		return &a6v2.ApisixRoute{}
+	case "ApisixUpstream":
+		return &a6v2.ApisixUpstream{}
 	}
 	return nil
 }
