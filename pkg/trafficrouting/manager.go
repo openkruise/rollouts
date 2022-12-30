@@ -19,6 +19,7 @@ package trafficrouting
 import (
 	"context"
 	"fmt"
+	"github.com/openkruise/rollouts/pkg/trafficrouting/network/custom"
 	"time"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
@@ -240,6 +241,15 @@ func newNetworkProvider(c client.Client, rollout *v1alpha1.Rollout, newStatus *v
 			StableService: sService,
 			TrafficConf:   trafficRouting.Gateway,
 		})
+	}
+	if len(trafficRouting.NetworkRefs) != 0 {
+		return custom.NewCustomController(c, custom.Config{
+			RolloutName:   rollout.Name,
+			RolloutNs:     rollout.Namespace,
+			CanaryService: cService,
+			StableService: sService,
+			TrafficConf:   trafficRouting.NetworkRefs,
+		}, "")
 	}
 	return nil, fmt.Errorf("TrafficRouting current only support Ingress or Gateway API")
 }

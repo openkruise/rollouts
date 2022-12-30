@@ -171,6 +171,17 @@ type TrafficRouting struct {
 	// Gateway holds Gateway specific configuration to route traffic
 	// Gateway configuration only supports >= v0.4.0 (v1alpha2).
 	Gateway *GatewayTrafficRouting `json:"gateway,omitempty"`
+	// NetworkRefs indicates custom crd resources, for example: Istio VirtualService, Apisix ApisixRoute
+	NetworkRefs []NetworkTrafficRouting `json:"networkRefs,omitempty"`
+}
+
+type NetworkTrafficRouting struct {
+	// API Version of the referent
+	APIVersion string `json:"apiVersion"`
+	// Kind of the referent
+	Kind string `json:"kind"`
+	// Name of the referent
+	Name string `json:"name"`
 }
 
 // IngressTrafficRouting configuration for ingress controller to control traffic routing
