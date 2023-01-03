@@ -81,6 +81,10 @@ func (m *Manager) DoTrafficRouting(c *util.RolloutContext) (bool, error) {
 		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
 	}
 	canaryStatus := c.NewStatus.CanaryStatus
+	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
+	if currentStep.Weight == nil && len(currentStep.Matches) == 0 {
+		return true, nil
+	}
 	if canaryStatus.StableRevision == "" || canaryStatus.PodTemplateHash == "" {
 		klog.Warningf("rollout(%s/%s) stableRevision or podTemplateHash can not be empty, and wait a moment", c.Rollout.Namespace, c.Rollout.Name)
 		return false, nil
@@ -171,6 +175,28 @@ func (m *Manager) FinalisingTrafficRouting(c *util.RolloutContext, onlyRestoreSt
 	if trafficRouting.GracePeriodSeconds <= 0 {
 		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
 	}
+
+	cServiceName := fmt.Sprintf("%s-canary", trafficRouting.Service)
+	trController, err := newNetworkProvider(m.Client, c.Rollout, c.NewStatus, trafficRouting.Service, cServiceName)
+	if err != nil {
+		klog.Errorf("rollout(%s/%s) newTrafficRoutingController failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
+		return false, err
+	}
+
+	cService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: c.Rollout.Namespace, Name: cServiceName}}
+	// if canary svc has been already cleaned up, just return
+	if err = m.Get(context.TODO(), client.ObjectKeyFromObject(cService), cService); err != nil {
+		if !errors.IsNotFound(err) {
+			klog.Errorf("rollout(%s/%s) get canary service(%s) failed: %s", c.Rollout.Namespace, c.Rollout.Name, cServiceName, err.Error())
+			return false, err
+		}
+		// In rollout failure case, no canary-service will be created, this step ensures that the canary-ingress can be deleted in a time.
+		if err = trController.Finalise(context.TODO()); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
 	if c.NewStatus.CanaryStatus == nil {
 		c.NewStatus.CanaryStatus = &v1alpha1.CanaryStatus{}
 	}
@@ -183,12 +209,6 @@ func (m *Manager) FinalisingTrafficRouting(c *util.RolloutContext, onlyRestoreSt
 		return true, nil
 	}
 
-	cServiceName := fmt.Sprintf("%s-canary", trafficRouting.Service)
-	trController, err := newNetworkProvider(m.Client, c.Rollout, c.NewStatus, trafficRouting.Service, cServiceName)
-	if err != nil {
-		klog.Errorf("rollout(%s/%s) newTrafficRoutingController failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
-		return false, err
-	}
 	// First route 100% traffic to stable service
 	verify, err = trController.EnsureRoutes(context.TODO(), utilpointer.Int32(0), nil)
 	if err != nil {
@@ -210,7 +230,6 @@ func (m *Manager) FinalisingTrafficRouting(c *util.RolloutContext, onlyRestoreSt
 		return false, err
 	}
 	// remove canary service
-	cService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: c.Rollout.Namespace, Name: cServiceName}}
 	err = m.Delete(context.TODO(), cService)
 	if err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("rollout(%s/%s) remove canary service(%s) failed: %s", c.Rollout.Namespace, c.Rollout.Name, cService.Name, err.Error())
