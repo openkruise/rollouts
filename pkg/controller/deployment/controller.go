@@ -22,14 +22,15 @@ import (
 	"encoding/json"
 	"flag"
 	"reflect"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	appslisters "k8s.io/client-go/listers/apps/v1"
-	corelisters "k8s.io/client-go/listers/core/v1"
 	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -51,8 +52,12 @@ import (
 )
 
 func init() {
-	flag.IntVar(&concurrentReconciles, "deployment-workers", concurrentReconciles, "Max concurrent workers for StatefulSet controller.")
+	flag.IntVar(&concurrentReconciles, "deployment-workers", concurrentReconciles, "Max concurrent workers for advanced deployment controller.")
 }
+
+const (
+	DefaultRetryDuration = 2 * time.Second
+)
 
 var (
 	concurrentReconciles = 3
@@ -75,10 +80,6 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 	cacher := mgr.GetCache()
-	podInformer, err := cacher.GetInformerForKind(context.TODO(), v1.SchemeGroupVersion.WithKind("Pod"))
-	if err != nil {
-		return nil, err
-	}
 	dInformer, err := cacher.GetInformerForKind(context.TODO(), appsv1.SchemeGroupVersion.WithKind("Deployment"))
 	if err != nil {
 		return nil, err
@@ -91,7 +92,6 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 	// Lister
 	dLister := appslisters.NewDeploymentLister(dInformer.(toolscache.SharedIndexInformer).GetIndexer())
 	rsLister := appslisters.NewReplicaSetLister(rsInformer.(toolscache.SharedIndexInformer).GetIndexer())
-	podLister := corelisters.NewPodLister(podInformer.(toolscache.SharedIndexInformer).GetIndexer())
 
 	// Client & Recorder
 	genericClient := clientutil.GetGenericClientWithName("advanced-deployment-controller")
@@ -107,7 +107,6 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 		eventRecorder:    recorder,
 		dLister:          dLister,
 		rsLister:         rsLister,
-		podLister:        podLister,
 	}
 	return &ReconcileDeployment{Client: mgr.GetClient(), controllerFactory: factory}, nil
 }
@@ -179,8 +178,22 @@ func (r *ReconcileDeployment) Reconcile(_ context.Context, request reconcile.Req
 		return reconcile.Result{}, nil
 	}
 
+	errList := field.ErrorList{}
 	err = dc.syncDeployment(context.Background(), deployment)
-	return ctrl.Result{}, err
+	if err != nil {
+		errList = append(errList, field.InternalError(field.NewPath("syncDeployment"), err))
+	}
+	err = dc.patchExtraStatus(deployment)
+	if err != nil {
+		errList = append(errList, field.InternalError(field.NewPath("patchExtraStatus"), err))
+	}
+	err = deploymentutil.DeploymentRolloutSatisfied(deployment, dc.strategy.Partition)
+	if err != nil {
+		klog.V(3).Infof("Deployment %v is still rolling: %v", klog.KObj(deployment), err)
+		return reconcile.Result{RequeueAfter: DefaultRetryDuration}, errList.ToAggregate()
+	}
+
+	return ctrl.Result{}, errList.ToAggregate()
 }
 
 type controllerFactory DeploymentController
@@ -201,7 +214,7 @@ func (f *controllerFactory) NewController(deployment *appsv1.Deployment) *Deploy
 	}
 
 	// We do NOT process such deployment with canary rolling style
-	if strategy.RollingStyle == rolloutsv1alpha1.CanaryRollingStyleType {
+	if strategy.RollingStyle == rolloutsv1alpha1.CanaryRollingStyle {
 		return nil
 	}
 
@@ -214,7 +227,6 @@ func (f *controllerFactory) NewController(deployment *appsv1.Deployment) *Deploy
 		eventRecorder:    f.eventRecorder,
 		dLister:          f.dLister,
 		rsLister:         f.rsLister,
-		podLister:        f.podLister,
 		strategy:         strategy,
 	}
 }

@@ -22,6 +22,7 @@ import (
 	"sort"
 
 	apps "k8s.io/api/apps/v1"
+	intstrutil "k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
 
@@ -56,12 +57,6 @@ func (dc *DeploymentController) rolloutRolling(ctx context.Context, d *apps.Depl
 		return dc.syncRolloutStatus(ctx, allRSs, newRS, d)
 	}
 
-	if deploymentutil.DeploymentComplete(d, &d.Status) {
-		if err := dc.cleanupDeployment(ctx, oldRSs, d); err != nil {
-			return err
-		}
-	}
-
 	// Sync deployment status
 	return dc.syncRolloutStatus(ctx, allRSs, newRS, d)
 }
@@ -76,7 +71,7 @@ func (dc *DeploymentController) reconcileNewReplicaSet(ctx context.Context, allR
 		scaled, _, err := dc.scaleReplicaSetAndRecordEvent(ctx, newRS, *(deployment.Spec.Replicas), deployment)
 		return scaled, err
 	}
-	newReplicasCount, err := deploymentutil.NewRSNewReplicas(deployment, allRSs, newRS)
+	newReplicasCount, err := deploymentutil.NewRSNewReplicas(deployment, allRSs, newRS, &dc.strategy)
 	if err != nil {
 		return false, err
 	}
@@ -93,7 +88,14 @@ func (dc *DeploymentController) reconcileOldReplicaSets(ctx context.Context, all
 
 	allPodsCount := deploymentutil.GetReplicaCountForReplicaSets(allRSs)
 	klog.V(4).Infof("New replica set %s/%s has %d available pods.", newRS.Namespace, newRS.Name, newRS.Status.AvailableReplicas)
-	maxUnavailable := deploymentutil.MaxUnavailable(*deployment)
+	maxUnavailable := deploymentutil.MaxUnavailable(deployment, &dc.strategy)
+
+	// Old RSes should obey the limitation of partition.
+	ScaleDownOldLimit := ScaleDownLimitForOld(oldRSs, newRS, deployment, dc.strategy.Partition)
+	if ScaleDownOldLimit <= 0 {
+		// Old replica sets do not satisfied as partition expectation, scale up.
+		return dc.scaleUpOldReplicaSets(ctx, oldRSs, -ScaleDownOldLimit, deployment)
+	}
 
 	// Check if we can scale down. We can scale down in the following 2 cases:
 	// * Some old replica sets have unhealthy replicas, we could safely scale down those unhealthy replicas since that won't further
@@ -128,6 +130,8 @@ func (dc *DeploymentController) reconcileOldReplicaSets(ctx context.Context, all
 	minAvailable := *(deployment.Spec.Replicas) - maxUnavailable
 	newRSUnavailablePodCount := *(newRS.Spec.Replicas) - newRS.Status.AvailableReplicas
 	maxScaledDown := allPodsCount - minAvailable - newRSUnavailablePodCount
+	// But, do not exceed the number of the desired partition.
+	maxScaledDown = integer.Int32Min(maxScaledDown, ScaleDownOldLimit)
 	if maxScaledDown <= 0 {
 		return false, nil
 	}
@@ -191,7 +195,7 @@ func (dc *DeploymentController) cleanupUnhealthyReplicas(ctx context.Context, ol
 // scaleDownOldReplicaSetsForRollingUpdate scales down old replica sets when deployment strategy is "RollingUpdate".
 // Need check maxUnavailable to ensure availability
 func (dc *DeploymentController) scaleDownOldReplicaSetsForRollingUpdate(ctx context.Context, allRSs []*apps.ReplicaSet, oldRSs []*apps.ReplicaSet, deployment *apps.Deployment) (int32, error) {
-	maxUnavailable := deploymentutil.MaxUnavailable(*deployment)
+	maxUnavailable := deploymentutil.MaxUnavailable(deployment, &dc.strategy)
 
 	// Check if we can scale down.
 	minAvailable := *(deployment.Spec.Replicas) - maxUnavailable
@@ -203,10 +207,15 @@ func (dc *DeploymentController) scaleDownOldReplicaSetsForRollingUpdate(ctx cont
 	}
 	klog.V(4).Infof("Found %d available pods in deployment %s, scaling down old RSes", availablePodCount, deployment.Name)
 
-	sort.Sort(deploymentutil.ReplicaSetsByCreationTimestamp(oldRSs))
+	// We expected scaled down the middle revision firstly.
+	sort.Sort(deploymentutil.ReplicaSetsBySmallerRevision(oldRSs))
 
 	totalScaledDown := int32(0)
 	totalScaleDownCount := availablePodCount - minAvailable
+	newRS := deploymentutil.FindNewReplicaSet(deployment, allRSs)
+	// Old RSes should obey the limitation of partition.
+	ScaleDownOldLimit := ScaleDownLimitForOld(oldRSs, newRS, deployment, dc.strategy.Partition)
+	totalScaleDownCount = integer.Int32Min(totalScaleDownCount, ScaleDownOldLimit)
 	for _, targetRS := range oldRSs {
 		if totalScaledDown >= totalScaleDownCount {
 			// No further scaling required.
@@ -231,4 +240,40 @@ func (dc *DeploymentController) scaleDownOldReplicaSetsForRollingUpdate(ctx cont
 	}
 
 	return totalScaledDown, nil
+}
+
+// scaleUpOldReplicaSets is different from native deployment: consider partition limitation.
+func (dc *DeploymentController) scaleUpOldReplicaSets(ctx context.Context, oldRSs []*apps.ReplicaSet, scaledUpCount int32, deployment *apps.Deployment) (bool, error) {
+	if scaledUpCount <= 0 || len(oldRSs) == 0 {
+		return false, nil
+	}
+	// Scale up the biggest one or older.
+	sort.Sort(deploymentutil.ReplicaSetsBySizeOlder(oldRSs))
+	newScale := (*oldRSs[0].Spec.Replicas) + scaledUpCount
+	scaled, _, err := dc.scaleReplicaSetAndRecordEvent(ctx, oldRSs[0], newScale, deployment)
+	return scaled, err
+}
+
+// ScaleDownLimitForOld return the limitation of old replica sets under the partition settings.
+func ScaleDownLimitForOld(oldRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, deployment *apps.Deployment, partition intstrutil.IntOrString) int32 {
+	newRSUpdateLimit := deploymentutil.NewRSReplicasLimit(partition, deployment)
+	// Expected replicas of the new replica set under the partition settings.
+	newRSDesiredCount := integer.Int32Max(newRSUpdateLimit, *newRS.Spec.Replicas)
+	// Expected total replicas for old replica sets.
+	oldRSDesiredCount := *(deployment.Spec.Replicas) - newRSDesiredCount
+	// Actual total replicas for old replica sets.
+	oldPodsCount := deploymentutil.GetReplicaCountForReplicaSets(oldRSs)
+	// oldRSDesiredDiff is the gap between the reality and the desired.
+	scaleDownOldLimit := oldPodsCount - oldRSDesiredCount
+
+	klog.V(4).InfoS("Calculate scale down limit for ",
+		"Deployment", klog.KObj(deployment),
+		// About the new replica set
+		"Replicas(New)", *(newRS.Spec.Replicas), "DesiredReplicas(New)", newRSDesiredCount,
+		// About the old replica sets
+		"ReplicaS(Old)", oldPodsCount, "DesiredReplicas(Old)", oldRSDesiredCount, "ScaleDownLimit(Old)", scaleDownOldLimit,
+		// About the deployment
+		"Replicas(Deployment)", *(deployment.Spec.Replicas), "Partition(Deployment)", newRSUpdateLimit)
+
+	return scaleDownOldLimit
 }

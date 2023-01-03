@@ -33,6 +33,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/integer"
 	"k8s.io/utils/pointer"
+
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 )
 
 func newDControllerRef(d *apps.Deployment) *metav1.OwnerReference {
@@ -481,9 +483,19 @@ func newString(s string) *string {
 }
 
 func TestNewRSNewReplicas(t *testing.T) {
+	newDeployment := generateDeployment("nginx")
+	newRC := generateRS(newDeployment)
+	rss := make([]*apps.ReplicaSet, 10)
+	for i := range rss {
+		rs := generateRS(newDeployment)
+		rs.Spec.Replicas = pointer.Int32(int32(i))
+		rss[i] = &rs
+	}
+
 	tests := []struct {
 		Name          string
-		strategyType  apps.DeploymentStrategyType
+		oldRSs        []*apps.ReplicaSet
+		partition     intstr.IntOrString
 		depReplicas   int32
 		newRSReplicas int32
 		maxSurge      int
@@ -491,41 +503,61 @@ func TestNewRSNewReplicas(t *testing.T) {
 	}{
 		{
 			"can not scale up - to newRSReplicas",
-			apps.RollingUpdateDeploymentStrategyType,
+			[]*apps.ReplicaSet{rss[5]},
+			intstr.FromInt(1),
 			1, 5, 1, 5,
 		},
 		{
 			"scale up - to depReplicas",
-			apps.RollingUpdateDeploymentStrategyType,
+			[]*apps.ReplicaSet{rss[0]},
+			intstr.FromString("100%"),
 			6, 2, 10, 6,
 		},
 		{
-			"recreate - to depReplicas",
-			apps.RecreateDeploymentStrategyType,
-			3, 1, 1, 3,
+			"scale up - to int-type partition",
+			[]*apps.ReplicaSet{rss[8]},
+			intstr.FromInt(4),
+			10, 2, 10, 4,
+		},
+		{
+			"scala up without old - to depReplicas",
+			[]*apps.ReplicaSet{},
+			intstr.FromInt(2),
+			10, 2, 10, 10,
+		},
+		{
+			"cannot scale due to partition - to newRSReplica",
+			[]*apps.ReplicaSet{rss[8]},
+			intstr.FromInt(2),
+			10, 2, 10, 2,
+		},
+		{
+			"cannot scale because new replicas grater than partition - to newRSReplica",
+			[]*apps.ReplicaSet{rss[5]},
+			intstr.FromInt(2),
+			10, 5, 10, 5,
 		},
 	}
-	newDeployment := generateDeployment("nginx")
-	newRC := generateRS(newDeployment)
-	rs5 := generateRS(newDeployment)
-	*(rs5.Spec.Replicas) = 5
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			*(newDeployment.Spec.Replicas) = test.depReplicas
-			newDeployment.Spec.Strategy = apps.DeploymentStrategy{Type: test.strategyType}
-			newDeployment.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{
-				MaxUnavailable: func(i int) *intstr.IntOrString {
-					x := intstr.FromInt(i)
-					return &x
-				}(1),
-				MaxSurge: func(i int) *intstr.IntOrString {
-					x := intstr.FromInt(i)
-					return &x
-				}(test.maxSurge),
+			strategy := &rolloutsv1alpha1.DeploymentStrategy{
+				RollingUpdate: &apps.RollingUpdateDeployment{
+					MaxUnavailable: func(i int) *intstr.IntOrString {
+						x := intstr.FromInt(i)
+						return &x
+					}(1),
+					MaxSurge: func(i int) *intstr.IntOrString {
+						x := intstr.FromInt(i)
+						return &x
+					}(test.maxSurge),
+				},
+				Partition: test.partition,
 			}
 			*(newRC.Spec.Replicas) = test.newRSReplicas
-			rs, err := NewRSNewReplicas(&newDeployment, []*apps.ReplicaSet{&rs5}, &newRC)
+			allRSs := append(test.oldRSs, &newRC)
+			rs, err := NewRSNewReplicas(&newDeployment, allRSs, &newRC, strategy)
 			if err != nil {
 				t.Errorf("In test case %s, got unexpected error %v", test.Name, err)
 			}
@@ -1023,7 +1055,10 @@ func TestMaxUnavailable(t *testing.T) {
 	for _, test := range tests {
 		t.Log(test.name)
 		t.Run(test.name, func(t *testing.T) {
-			maxUnavailable := MaxUnavailable(test.deployment)
+			strategy := rolloutsv1alpha1.DeploymentStrategy{
+				RollingUpdate: test.deployment.Spec.Strategy.RollingUpdate,
+			}
+			maxUnavailable := MaxUnavailable(&test.deployment, &strategy)
 			if test.expected != maxUnavailable {
 				t.Fatalf("expected:%v, got:%v", test.expected, maxUnavailable)
 			}
@@ -1045,7 +1080,10 @@ func TestAnnotationUtils(t *testing.T) {
 		for i := 10; i < 20; i++ {
 
 			nextRevision := fmt.Sprintf("%d", i+1)
-			SetNewReplicaSetAnnotations(&tDeployment, &tRS, nextRevision, true, 5)
+			strategy := rolloutsv1alpha1.DeploymentStrategy{
+				RollingUpdate: tDeployment.Spec.Strategy.RollingUpdate,
+			}
+			SetNewReplicaSetAnnotations(&tDeployment, &tRS, &strategy, nextRevision, true, 5)
 			//Now the ReplicaSets Revision Annotation should be i+1
 
 			if i >= 12 {
@@ -1194,5 +1232,73 @@ func TestNewRSReplicasLimit(t *testing.T) {
 				t.Errorf("case[2]: Expected %v, Got: %v, replicas %d, partition %d%%", expected, result, replicas, partitionPercent)
 			}
 		}
+	}
+}
+
+func TestDeploymentRolloutSatisfied(t *testing.T) {
+	tPartition := intstr.FromInt(3)
+	tDeployment := apps.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Generation: 2},
+		Spec:       apps.DeploymentSpec{Replicas: pointer.Int32(10)},
+		Status:     apps.DeploymentStatus{Replicas: 10, UpdatedReplicas: 3, ObservedGeneration: 2},
+	}
+	tests := map[string]struct {
+		deployment func() *apps.Deployment
+		partition  intstr.IntOrString
+		expect     bool
+	}{
+		"generation unsatisfied": {
+			deployment: func() *apps.Deployment {
+				d := tDeployment.DeepCopy()
+				d.Status.ObservedGeneration = 1
+				return d
+			},
+			partition: tPartition,
+			expect:    false,
+		},
+		"status.replicas greater than replicas": {
+			deployment: func() *apps.Deployment {
+				d := tDeployment.DeepCopy()
+				d.Status.Replicas = 11
+				return d
+			},
+			partition: tPartition,
+			expect:    false,
+		},
+		"status.replicas less than replicas": {
+			deployment: func() *apps.Deployment {
+				d := tDeployment.DeepCopy()
+				d.Status.Replicas = 9
+				return d
+			},
+			partition: tPartition,
+			expect:    false,
+		},
+		"partition greater than new replica set": {
+			deployment: func() *apps.Deployment {
+				d := tDeployment.DeepCopy()
+				d.Status.UpdatedReplicas = 2
+				return d
+			},
+			partition: tPartition,
+			expect:    false,
+		},
+		"partition less than new replicas set": {
+			deployment: func() *apps.Deployment {
+				d := tDeployment.DeepCopy()
+				d.Status.UpdatedReplicas = 5
+				return d
+			},
+			partition: tPartition,
+			expect:    true,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := DeploymentRolloutSatisfied(test.deployment(), test.partition)
+			if (test.expect && err != nil) || (!test.expect && err == nil) {
+				t.Fatalf("expect error %v, but got %v", test.expect, err)
+			}
+		})
 	}
 }

@@ -34,7 +34,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	appslisters "k8s.io/client-go/listers/apps/v1"
-	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
@@ -66,8 +65,6 @@ type DeploymentController struct {
 	dLister appslisters.DeploymentLister
 	// rsLister can list/get replica sets from the shared informer's store
 	rsLister appslisters.ReplicaSetLister
-	// podLister can list/get pods from the shared informer's store
-	podLister corelisters.PodLister
 
 	// we will use this strategy to replace spec.strategy of deployment
 	strategy rolloutsv1alpha1.DeploymentStrategy
@@ -88,7 +85,7 @@ func (dc *DeploymentController) getReplicaSetsForDeployment(ctx context.Context,
 
 // syncDeployment will sync the deployment with the given key.
 // This function is not meant to be invoked concurrently with the same key.
-func (dc *DeploymentController) syncDeployment(ctx context.Context, deployment *apps.Deployment) (err error) {
+func (dc *DeploymentController) syncDeployment(ctx context.Context, deployment *apps.Deployment) error {
 	startTime := time.Now()
 	klog.V(4).InfoS("Started syncing deployment", "deployment", klog.KObj(deployment), "startTime", startTime)
 	defer func() {
@@ -106,64 +103,50 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, deployment *
 			d.Status.ObservedGeneration = d.Generation
 			dc.client.AppsV1().Deployments(d.Namespace).UpdateStatus(ctx, d, metav1.UpdateOptions{})
 		}
-		return
+		return nil
 	}
 
 	// List ReplicaSets owned by this Deployment, while reconciling ControllerRef
 	// through adoption/orphaning.
 	rsList, err := dc.getReplicaSetsForDeployment(ctx, d)
 	if err != nil {
-		return
+		return err
 	}
 
 	if d.DeletionTimestamp != nil {
 		return dc.syncStatusOnly(ctx, d, rsList)
 	}
 
-	defer func() {
-		err = dc.updateExtraStatus(deployment, rsList)
-	}()
-
-	// Update deployment conditions with an Unknown condition when pausing/resuming
-	// a deployment. In this way, we can be sure that we won't timeout when a user
-	// resumes a Deployment with a set progressDeadlineSeconds.
-	if err = dc.checkPausedConditions(ctx, d); err != nil {
-		return
-	}
-
-	if d.Spec.Paused {
-		err = dc.sync(ctx, d, rsList)
-		return
+	if dc.strategy.Paused {
+		return dc.sync(ctx, d, rsList)
 	}
 
 	scalingEvent, err := dc.isScalingEvent(ctx, d, rsList)
 	if err != nil {
-		return
+		return err
 	}
 
 	if scalingEvent {
-		err = dc.sync(ctx, d, rsList)
-		return
+		return dc.sync(ctx, d, rsList)
 	}
 
-	err = dc.rolloutRolling(ctx, d, rsList)
-	return
+	return dc.rolloutRolling(ctx, d, rsList)
 }
 
-// updateExtraStatus will update extra status for advancedStatus
-func (dc *DeploymentController) updateExtraStatus(deployment *apps.Deployment, rsList []*apps.ReplicaSet) error {
-	newRS, _, err := dc.getAllReplicaSetsAndSyncRevision(context.TODO(), deployment, rsList, false)
+// patchExtraStatus will update extra status for advancedStatus
+func (dc *DeploymentController) patchExtraStatus(deployment *apps.Deployment) error {
+	rsList, err := dc.getReplicaSetsForDeployment(context.TODO(), deployment)
 	if err != nil {
 		return err
 	}
 
 	updatedReadyReplicas := int32(0)
+	newRS := deploymentutil.FindNewReplicaSet(deployment, rsList)
 	if newRS != nil {
 		updatedReadyReplicas = newRS.Status.ReadyReplicas
 	}
 
 	extraStatus := &rolloutsv1alpha1.DeploymentExtraStatus{
-		ObservedGeneration:      deployment.Generation,
 		UpdatedReadyReplicas:    updatedReadyReplicas,
 		ExpectedUpdatedReplicas: deploymentutil.NewRSReplicasLimit(dc.strategy.Partition, deployment),
 	}
@@ -179,8 +162,11 @@ func (dc *DeploymentController) updateExtraStatus(deployment *apps.Deployment, r
 		return nil // no need to update
 	}
 
-	extraStatusAnno = strings.Replace(extraStatusAnno, `"`, `\"`, -1)
-	body := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`, rolloutsv1alpha1.DeploymentExtraStatusAnnotation, extraStatusAnno))
-	_, err = dc.client.AppsV1().Deployments(deployment.Namespace).Patch(context.TODO(), deployment.Name, types.MergePatchType, body, metav1.PatchOptions{})
+	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`,
+		rolloutsv1alpha1.DeploymentExtraStatusAnnotation,
+		strings.Replace(extraStatusAnno, `"`, `\"`, -1))
+
+	_, err = dc.client.AppsV1().Deployments(deployment.Namespace).
+		Patch(context.TODO(), deployment.Name, types.MergePatchType, []byte(body), metav1.PatchOptions{})
 	return err
 }

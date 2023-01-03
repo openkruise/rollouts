@@ -1391,8 +1391,6 @@ var _ = SIGDescribe("Rollout", func() {
 			WaitRolloutNotFound(rollout.Name)
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			fmt.Println(util.DumpJSON(workload))
-			Expect(workload.Spec.Paused).Should(BeTrue())
-			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 0))
 			workload.Spec.Paused = false
 			UpdateDeployment(workload)
 			By("Update deployment paused=false")

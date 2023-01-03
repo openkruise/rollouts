@@ -35,7 +35,7 @@ import (
 // for example a resync of the deployment after it was scaled up. In those cases,
 // we shouldn't try to estimate any progress.
 func (dc *DeploymentController) syncRolloutStatus(ctx context.Context, allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, d *apps.Deployment) error {
-	newStatus := calculateStatus(allRSs, newRS, d)
+	newStatus := calculateStatus(allRSs, newRS, d, &dc.strategy)
 
 	// If there is no progressDeadlineSeconds set, remove any Progressing condition.
 	if !util.HasProgressDeadline(d) {
