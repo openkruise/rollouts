@@ -23,6 +23,7 @@ import (
 	kruisev1aplphal1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruisev1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	a6v2 "github.com/openkruise/rollouts/pkg/apis/apisix/v2"
 	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
 	"github.com/openkruise/rollouts/pkg/controller/rollout"
 	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
@@ -57,6 +58,7 @@ func init() {
 	utilruntime.Must(rolloutsv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1alpha2.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
+	utilruntime.Must(a6v2.AddToScheme(scheme))
 }
 
 func main() {
