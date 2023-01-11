@@ -24,6 +24,7 @@ import (
 	kruisev1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
+	"github.com/openkruise/rollouts/pkg/controller/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/rollout"
 	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
@@ -114,6 +115,10 @@ func main() {
 
 	if err = rollouthistory.Add(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "rollouthistory")
+		os.Exit(1)
+	}
+	if err = deployment.Add(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "advanceddeployment")
 		os.Exit(1)
 	}
 

@@ -31,16 +31,14 @@ type DeploymentStrategy struct {
 type RollingStyleType string
 
 const (
-	// PartitionRollingStyleType means rolling in batches just like CloneSet, and will NOT create any extra Deployment;
-	PartitionRollingStyleType RollingStyleType = "Partition"
-	// CanaryRollingStyleType means rolling in canary way, and will create a canary Deployment.
-	CanaryRollingStyleType RollingStyleType = "Canary"
+	// PartitionRollingStyle means rolling in batches just like CloneSet, and will NOT create any extra Deployment;
+	PartitionRollingStyle RollingStyleType = "Partition"
+	// CanaryRollingStyle means rolling in canary way, and will create a canary Deployment.
+	CanaryRollingStyle RollingStyleType = "Canary"
 )
 
 // DeploymentExtraStatus is extra status field for Advanced Deployment
 type DeploymentExtraStatus struct {
-	// ObservedGeneration record the generation of deployment this status observed.
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// UpdatedReadyReplicas the number of pods that has been updated and ready.
 	UpdatedReadyReplicas int32 `json:"updatedReadyReplicas,omitempty"`
 	// ExpectedUpdatedReplicas is an absolute number calculated based on Partition
@@ -52,7 +50,7 @@ type DeploymentExtraStatus struct {
 }
 
 func SetDefaultDeploymentStrategy(strategy *DeploymentStrategy) {
-	if strategy.RollingStyle == CanaryRollingStyleType {
+	if strategy.RollingStyle == CanaryRollingStyle {
 		return
 	}
 	if strategy.RollingUpdate == nil {

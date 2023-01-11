@@ -28,7 +28,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/integer"
 
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
 	"github.com/openkruise/rollouts/pkg/util"
 	labelsutil "github.com/openkruise/rollouts/pkg/util/labels"
@@ -60,40 +62,6 @@ func (dc *DeploymentController) sync(ctx context.Context, d *apps.Deployment, rs
 
 	allRSs := append(oldRSs, newRS)
 	return dc.syncDeploymentStatus(ctx, allRSs, newRS, d)
-}
-
-// checkPausedConditions checks if the given deployment is paused or not and adds an appropriate condition.
-// These conditions are needed so that we won't accidentally report lack of progress for resumed deployments
-// that were paused for longer than progressDeadlineSeconds.
-func (dc *DeploymentController) checkPausedConditions(ctx context.Context, d *apps.Deployment) error {
-	if !deploymentutil.HasProgressDeadline(d) {
-		return nil
-	}
-	cond := deploymentutil.GetDeploymentCondition(d.Status, apps.DeploymentProgressing)
-	if cond != nil && cond.Reason == deploymentutil.TimedOutReason {
-		// If we have reported lack of progress, do not overwrite it with a paused condition.
-		return nil
-	}
-	pausedCondExists := cond != nil && cond.Reason == deploymentutil.PausedDeployReason
-
-	needsUpdate := false
-	if d.Spec.Paused && !pausedCondExists {
-		condition := deploymentutil.NewDeploymentCondition(apps.DeploymentProgressing, v1.ConditionUnknown, deploymentutil.PausedDeployReason, "Deployment is paused")
-		deploymentutil.SetDeploymentCondition(&d.Status, *condition)
-		needsUpdate = true
-	} else if !d.Spec.Paused && pausedCondExists {
-		condition := deploymentutil.NewDeploymentCondition(apps.DeploymentProgressing, v1.ConditionUnknown, deploymentutil.ResumedDeployReason, "Deployment is resumed")
-		deploymentutil.SetDeploymentCondition(&d.Status, *condition)
-		needsUpdate = true
-	}
-
-	if !needsUpdate {
-		return nil
-	}
-
-	var err error
-	_, err = dc.client.AppsV1().Deployments(d.Namespace).UpdateStatus(ctx, d, metav1.UpdateOptions{})
-	return err
 }
 
 // getAllReplicaSetsAndSyncRevision returns all the replica sets for the provided deployment (new and all old), with new RS's and deployment's revision updated.
@@ -145,7 +113,7 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 		rsCopy := existingNewRS.DeepCopy()
 
 		// Set existing new replica set's annotation
-		annotationsUpdated := deploymentutil.SetNewReplicaSetAnnotations(d, rsCopy, newRevision, true, maxRevHistoryLengthInChars)
+		annotationsUpdated := deploymentutil.SetNewReplicaSetAnnotations(d, rsCopy, &dc.strategy, newRevision, true, maxRevHistoryLengthInChars)
 		minReadySecondsNeedsUpdate := rsCopy.Spec.MinReadySeconds != d.Spec.MinReadySeconds
 		if annotationsUpdated || minReadySecondsNeedsUpdate {
 			rsCopy.Spec.MinReadySeconds = d.Spec.MinReadySeconds
@@ -202,14 +170,19 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 		},
 	}
 	allRSs := append(oldRSs, &newRS)
-	newReplicasCount, err := deploymentutil.NewRSNewReplicas(d, allRSs, &newRS)
+	newReplicasCount, err := deploymentutil.NewRSNewReplicas(d, allRSs, &newRS, &dc.strategy)
 	if err != nil {
 		return nil, err
 	}
 
-	*(newRS.Spec.Replicas) = newReplicasCount
+	// We ensure that newReplicasLowerBound is greater than 0 unless deployment is 0,
+	// this is because if we set new replicas as 0, the native deployment controller
+	// will flight with ours.
+	newReplicasLowerBound := deploymentutil.NewRSReplicasLowerBound(d, &dc.strategy)
+
+	*(newRS.Spec.Replicas) = integer.Int32Max(newReplicasCount, newReplicasLowerBound)
 	// Set new replica set's annotation
-	deploymentutil.SetNewReplicaSetAnnotations(d, &newRS, newRevision, false, maxRevHistoryLengthInChars)
+	deploymentutil.SetNewReplicaSetAnnotations(d, &newRS, &dc.strategy, newRevision, false, maxRevHistoryLengthInChars)
 	// Create the new ReplicaSet. If it already exists, then we need to check for possible
 	// hash collisions. If there is any other error, we need to report it in the status of
 	// the Deployment.
@@ -320,7 +293,7 @@ func (dc *DeploymentController) scale(ctx context.Context, deployment *apps.Depl
 
 		allowedSize := int32(0)
 		if *(deployment.Spec.Replicas) > 0 {
-			allowedSize = *(deployment.Spec.Replicas) + deploymentutil.MaxSurge(*deployment)
+			allowedSize = *(deployment.Spec.Replicas)
 		}
 
 		// Number of additional replicas that can be either added or removed from the total
@@ -355,7 +328,7 @@ func (dc *DeploymentController) scale(ctx context.Context, deployment *apps.Depl
 			// Estimate proportions if we have replicas to add, otherwise simply populate
 			// nameToSize with the current sizes for each replica set.
 			if deploymentReplicasToAdd != 0 {
-				proportion := deploymentutil.GetProportion(rs, *deployment, deploymentReplicasToAdd, deploymentReplicasAdded)
+				proportion := deploymentutil.GetProportion(rs, *deployment, &dc.strategy, deploymentReplicasToAdd, deploymentReplicasAdded)
 
 				nameToSize[rs.Name] = *(rs.Spec.Replicas) + proportion
 				deploymentReplicasAdded += proportion
@@ -406,7 +379,7 @@ func (dc *DeploymentController) scaleReplicaSet(ctx context.Context, rs *apps.Re
 
 	sizeNeedsUpdate := *(rs.Spec.Replicas) != newScale
 
-	annotationsNeedUpdate := deploymentutil.ReplicasAnnotationsNeedUpdate(rs, *(deployment.Spec.Replicas), *(deployment.Spec.Replicas)+deploymentutil.MaxSurge(*deployment))
+	annotationsNeedUpdate := deploymentutil.ReplicasAnnotationsNeedUpdate(rs, *(deployment.Spec.Replicas), *(deployment.Spec.Replicas)+deploymentutil.MaxSurge(deployment, &dc.strategy))
 
 	scaled := false
 	var err error
@@ -414,7 +387,7 @@ func (dc *DeploymentController) scaleReplicaSet(ctx context.Context, rs *apps.Re
 		oldScale := *(rs.Spec.Replicas)
 		rsCopy := rs.DeepCopy()
 		*(rsCopy.Spec.Replicas) = newScale
-		deploymentutil.SetReplicasAnnotations(rsCopy, *(deployment.Spec.Replicas), *(deployment.Spec.Replicas)+deploymentutil.MaxSurge(*deployment))
+		deploymentutil.SetReplicasAnnotations(rsCopy, *(deployment.Spec.Replicas), *(deployment.Spec.Replicas)+deploymentutil.MaxSurge(deployment, &dc.strategy))
 		rs, err = dc.client.AppsV1().ReplicaSets(rsCopy.Namespace).Update(ctx, rsCopy, metav1.UpdateOptions{})
 		if err == nil && sizeNeedsUpdate {
 			scaled = true
@@ -465,7 +438,7 @@ func (dc *DeploymentController) cleanupDeployment(ctx context.Context, oldRSs []
 
 // syncDeploymentStatus checks if the status is up-to-date and sync it if necessary
 func (dc *DeploymentController) syncDeploymentStatus(ctx context.Context, allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, d *apps.Deployment) error {
-	newStatus := calculateStatus(allRSs, newRS, d)
+	newStatus := calculateStatus(allRSs, newRS, d, &dc.strategy)
 
 	if reflect.DeepEqual(d.Status, newStatus) {
 		return nil
@@ -478,7 +451,7 @@ func (dc *DeploymentController) syncDeploymentStatus(ctx context.Context, allRSs
 }
 
 // calculateStatus calculates the latest status for the provided deployment by looking into the provided replica sets.
-func calculateStatus(allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, deployment *apps.Deployment) apps.DeploymentStatus {
+func calculateStatus(allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, deployment *apps.Deployment, strategy *rolloutsv1alpha1.DeploymentStrategy) apps.DeploymentStatus {
 	availableReplicas := deploymentutil.GetAvailableReplicaCountForReplicaSets(allRSs)
 	totalReplicas := deploymentutil.GetReplicaCountForReplicaSets(allRSs)
 	unavailableReplicas := totalReplicas - availableReplicas
@@ -505,7 +478,7 @@ func calculateStatus(allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, deployme
 		status.Conditions = append(status.Conditions, conditions[i])
 	}
 
-	if availableReplicas >= *(deployment.Spec.Replicas)-deploymentutil.MaxUnavailable(*deployment) {
+	if availableReplicas >= *(deployment.Spec.Replicas)-deploymentutil.MaxUnavailable(deployment, strategy) {
 		minAvailability := deploymentutil.NewDeploymentCondition(apps.DeploymentAvailable, v1.ConditionTrue, deploymentutil.MinimumReplicasAvailable, "Deployment has minimum availability.")
 		deploymentutil.SetDeploymentCondition(&status, *minAvailability)
 	} else {

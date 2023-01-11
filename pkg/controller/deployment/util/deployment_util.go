@@ -35,6 +35,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
 
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 )
 
@@ -200,7 +201,7 @@ func Revision(obj runtime.Object) (int64, error) {
 
 // SetNewReplicaSetAnnotations sets new replica set's annotations appropriately by updating its revision and
 // copying required deployment annotations to it; it returns true if replica set's annotation is changed.
-func SetNewReplicaSetAnnotations(deployment *apps.Deployment, newRS *apps.ReplicaSet, newRevision string, exists bool, revHistoryLimitInChars int) bool {
+func SetNewReplicaSetAnnotations(deployment *apps.Deployment, newRS *apps.ReplicaSet, strategy *rolloutsv1alpha1.DeploymentStrategy, newRevision string, exists bool, revHistoryLimitInChars int) bool {
 	// First, copy deployment's annotations (except for apply and revision annotations)
 	annotationChanged := copyDeploymentAnnotationsToReplicaSet(deployment, newRS)
 	// Then, update replica set's revision annotation
@@ -256,7 +257,7 @@ func SetNewReplicaSetAnnotations(deployment *apps.Deployment, newRS *apps.Replic
 		}
 	}
 	// If the new replica set is about to be created, we need to add replica annotations to it.
-	if !exists && SetReplicasAnnotations(newRS, *(deployment.Spec.Replicas), *(deployment.Spec.Replicas)+MaxSurge(*deployment)) {
+	if !exists && SetReplicasAnnotations(newRS, *(deployment.Spec.Replicas), *(deployment.Spec.Replicas)+MaxSurge(deployment, strategy)) {
 		annotationChanged = true
 	}
 	return annotationChanged
@@ -382,12 +383,12 @@ func ReplicasAnnotationsNeedUpdate(rs *apps.ReplicaSet, desiredReplicas, maxRepl
 }
 
 // MaxUnavailable returns the maximum unavailable pods a rolling deployment can take.
-func MaxUnavailable(deployment apps.Deployment) int32 {
-	if !IsRollingUpdate(&deployment) || *(deployment.Spec.Replicas) == 0 {
+func MaxUnavailable(deployment *apps.Deployment, strategy *rolloutsv1alpha1.DeploymentStrategy) int32 {
+	if strategy == nil || strategy.RollingUpdate == nil || *(deployment.Spec.Replicas) == 0 {
 		return int32(0)
 	}
 	// Error caught by validation
-	_, maxUnavailable, _ := ResolveFenceposts(deployment.Spec.Strategy.RollingUpdate.MaxSurge, deployment.Spec.Strategy.RollingUpdate.MaxUnavailable, *(deployment.Spec.Replicas))
+	_, maxUnavailable, _ := ResolveFenceposts(strategy.RollingUpdate.MaxSurge, strategy.RollingUpdate.MaxUnavailable, *(deployment.Spec.Replicas))
 	if maxUnavailable > *deployment.Spec.Replicas {
 		return *deployment.Spec.Replicas
 	}
@@ -395,32 +396,32 @@ func MaxUnavailable(deployment apps.Deployment) int32 {
 }
 
 // MinAvailable returns the minimum available pods of a given deployment
-func MinAvailable(deployment *apps.Deployment) int32 {
-	if !IsRollingUpdate(deployment) {
+func MinAvailable(deployment *apps.Deployment, strategy *rolloutsv1alpha1.DeploymentStrategy) int32 {
+	if strategy == nil || strategy.RollingUpdate == nil {
 		return int32(0)
 	}
-	return *(deployment.Spec.Replicas) - MaxUnavailable(*deployment)
+	return *(deployment.Spec.Replicas) - MaxUnavailable(deployment, strategy)
 }
 
 // MaxSurge returns the maximum surge pods a rolling deployment can take.
-func MaxSurge(deployment apps.Deployment) int32 {
-	if !IsRollingUpdate(&deployment) {
+func MaxSurge(deployment *apps.Deployment, strategy *rolloutsv1alpha1.DeploymentStrategy) int32 {
+	if strategy == nil || strategy.RollingUpdate == nil {
 		return int32(0)
 	}
 	// Error caught by validation
-	maxSurge, _, _ := ResolveFenceposts(deployment.Spec.Strategy.RollingUpdate.MaxSurge, deployment.Spec.Strategy.RollingUpdate.MaxUnavailable, *(deployment.Spec.Replicas))
+	maxSurge, _, _ := ResolveFenceposts(strategy.RollingUpdate.MaxSurge, strategy.RollingUpdate.MaxUnavailable, *(deployment.Spec.Replicas))
 	return maxSurge
 }
 
 // GetProportion will estimate the proportion for the provided replica set using 1. the current size
 // of the parent deployment, 2. the replica count that needs be added on the replica sets of the
 // deployment, and 3. the total replicas added in the replica sets of the deployment so far.
-func GetProportion(rs *apps.ReplicaSet, d apps.Deployment, deploymentReplicasToAdd, deploymentReplicasAdded int32) int32 {
+func GetProportion(rs *apps.ReplicaSet, d apps.Deployment, strategy *rolloutsv1alpha1.DeploymentStrategy, deploymentReplicasToAdd, deploymentReplicasAdded int32) int32 {
 	if rs == nil || *(rs.Spec.Replicas) == 0 || deploymentReplicasToAdd == 0 || deploymentReplicasToAdd == deploymentReplicasAdded {
 		return int32(0)
 	}
 
-	rsFraction := getReplicaSetFraction(*rs, d)
+	rsFraction := getReplicaSetFraction(*rs, d, strategy)
 	allowed := deploymentReplicasToAdd - deploymentReplicasAdded
 
 	if deploymentReplicasToAdd > 0 {
@@ -437,13 +438,13 @@ func GetProportion(rs *apps.ReplicaSet, d apps.Deployment, deploymentReplicasToA
 
 // getReplicaSetFraction estimates the fraction of replicas a replica set can have in
 // 1. a scaling event during a rollout or 2. when scaling a paused deployment.
-func getReplicaSetFraction(rs apps.ReplicaSet, d apps.Deployment) int32 {
+func getReplicaSetFraction(rs apps.ReplicaSet, d apps.Deployment, strategy *rolloutsv1alpha1.DeploymentStrategy) int32 {
 	// If we are scaling down to zero then the fraction of this replica set is its whole size (negative)
 	if *(d.Spec.Replicas) == int32(0) {
 		return -*(rs.Spec.Replicas)
 	}
 
-	deploymentReplicas := *(d.Spec.Replicas) + MaxSurge(d)
+	deploymentReplicas := *(d.Spec.Replicas) + MaxSurge(&d, strategy)
 	annotatedReplicas, ok := getMaxReplicasAnnotation(&rs)
 	if !ok {
 		// If we cannot find the annotation then fallback to the current deployment size. Note that this
@@ -622,8 +623,8 @@ func GetAvailableReplicaCountForReplicaSets(replicaSets []*apps.ReplicaSet) int3
 }
 
 // IsRollingUpdate returns true if the strategy type is a rolling update.
-func IsRollingUpdate(deployment *apps.Deployment) bool {
-	return deployment.Spec.Strategy.Type == apps.RollingUpdateDeploymentStrategyType
+func IsRollingUpdate(_ *apps.Deployment) bool {
+	return true
 }
 
 // DeploymentComplete considers a deployment to be complete once all of its desired replicas
@@ -704,17 +705,19 @@ func DeploymentTimedOut(deployment *apps.Deployment, newStatus *apps.DeploymentS
 // When one of the followings is true, we're rolling out the deployment; otherwise, we're scaling it.
 // 1) The new RS is saturated: newRS's replicas == deployment's replicas
 // 2) Max number of pods allowed is reached: deployment's replicas + maxSurge == all RSs' replicas
-func NewRSNewReplicas(deployment *apps.Deployment, allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet) (int32, error) {
-	switch deployment.Spec.Strategy.Type {
-	case apps.RollingUpdateDeploymentStrategyType:
-		// Check if we can scale up.
-		maxSurge, err := intstrutil.GetScaledValueFromIntOrPercent(deployment.Spec.Strategy.RollingUpdate.MaxSurge, int(*(deployment.Spec.Replicas)), true)
-		if err != nil {
-			return 0, err
+func NewRSNewReplicas(deployment *apps.Deployment, allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, strategy *rolloutsv1alpha1.DeploymentStrategy) (int32, error) {
+	// Find the total number of pods
+	currentPodCount := GetReplicaCountForReplicaSets(allRSs)
+	switch {
+	case currentPodCount > *newRS.Spec.Replicas:
+		// Do not scale down due to partition settings.
+		scaleUpLimit := NewRSReplicasLimit(strategy.Partition, deployment)
+		if *newRS.Spec.Replicas >= scaleUpLimit {
+			// Cannot scale up.
+			return *(newRS.Spec.Replicas), nil
 		}
-		// Find the total number of pods
-		currentPodCount := GetReplicaCountForReplicaSets(allRSs)
-		maxTotalPods := *(deployment.Spec.Replicas) + int32(maxSurge)
+		// Do not scale up due to exceeded current replicas.
+		maxTotalPods := *(deployment.Spec.Replicas) + MaxSurge(deployment, strategy)
 		if currentPodCount >= maxTotalPods {
 			// Cannot scale up.
 			return *(newRS.Spec.Replicas), nil
@@ -723,11 +726,11 @@ func NewRSNewReplicas(deployment *apps.Deployment, allRSs []*apps.ReplicaSet, ne
 		scaleUpCount := maxTotalPods - currentPodCount
 		// Do not exceed the number of desired replicas.
 		scaleUpCount = int32(integer.IntMin(int(scaleUpCount), int(*(deployment.Spec.Replicas)-*(newRS.Spec.Replicas))))
-		return *(newRS.Spec.Replicas) + scaleUpCount, nil
-	case apps.RecreateDeploymentStrategyType:
-		return *(deployment.Spec.Replicas), nil
+		// Do not exceed the number of partition replicas.
+		return integer.Int32Min(*(newRS.Spec.Replicas)+scaleUpCount, scaleUpLimit), nil
 	default:
-		return 0, fmt.Errorf("deployment type %v isn't supported", deployment.Spec.Strategy.Type)
+		// If there is ONLY ONE active replica set, just be in line with deployment replicas.
+		return *(deployment.Spec.Replicas), nil
 	}
 }
 
@@ -812,6 +815,21 @@ func (o ReplicaSetsByRevision) Less(i, j int) bool {
 	**** Copied from "k8s.io/kubernetes/pkg/controller/controller_utils.go" ****
 	-------------------------------- BEGIN --------------------------------------
 */
+
+// ReplicaSetsBySmallerRevision sorts a list of ReplicaSet by revision in desc, using their creation timestamp or name as a tie breaker.
+// By using the creation timestamp, this sorts from old to new replica sets.
+type ReplicaSetsBySmallerRevision []*apps.ReplicaSet
+
+func (o ReplicaSetsBySmallerRevision) Len() int      { return len(o) }
+func (o ReplicaSetsBySmallerRevision) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
+func (o ReplicaSetsBySmallerRevision) Less(i, j int) bool {
+	revision1, err1 := Revision(o[i])
+	revision2, err2 := Revision(o[j])
+	if err1 != nil || err2 != nil || revision1 == revision2 {
+		return ReplicaSetsByCreationTimestamp(o).Less(i, j)
+	}
+	return revision1 > revision2
+}
 
 // FilterActiveReplicaSets returns replica sets that have (or at least ought to have) pods.
 func FilterActiveReplicaSets(replicaSets []*apps.ReplicaSet) []*apps.ReplicaSet {
@@ -917,4 +935,33 @@ func NewRSReplicasLimit(partition intstrutil.IntOrString, deployment *apps.Deplo
 		replicaLimit = integer.IntMin(replicaLimit, replicas-1)
 	}
 	return int32(replicaLimit)
+}
+
+// DeploymentRolloutSatisfied return nil if deployment has satisfied partition and replicas,
+// or will return an error.
+func DeploymentRolloutSatisfied(deployment *apps.Deployment, partition intstrutil.IntOrString) error {
+	if deployment.Status.ObservedGeneration < deployment.Generation {
+		return fmt.Errorf("deployment %v observed generation %d less than generation %d",
+			klog.KObj(deployment), deployment.Status.ObservedGeneration, deployment.Generation)
+	}
+	if deployment.Status.Replicas != *(deployment.Spec.Replicas) {
+		return fmt.Errorf("deployment %v status replicas %d not equals to replicas %d",
+			klog.KObj(deployment), deployment.Status.Replicas, *deployment.Spec.Replicas)
+	}
+	newRSReplicasLimit := NewRSReplicasLimit(partition, deployment)
+	if deployment.Status.UpdatedReplicas < newRSReplicasLimit {
+		return fmt.Errorf("deployment %v updated replicas %d less than partition %d",
+			klog.KObj(deployment), deployment.Status.UpdatedReplicas, newRSReplicasLimit)
+	}
+	return nil
+}
+
+// NewRSReplicasLowerBound ensure that newReplicasLowerBound is greater than 0 when create newRS
+// unless deployment is 0 or MaxSurge > 0, this is because if we set new replicas as 0, the native
+// deployment controller will flight with ours.
+func NewRSReplicasLowerBound(deployment *apps.Deployment, strategy *rolloutsv1alpha1.DeploymentStrategy) int32 {
+	if MaxSurge(deployment, strategy) > 0 {
+		return int32(0)
+	}
+	return integer.Int32Min(int32(1), *deployment.Spec.Replicas)
 }
