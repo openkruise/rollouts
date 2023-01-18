@@ -40,8 +40,9 @@ var (
 			Kind:       "Rollout",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "rollout-demo",
-			Namespace: "namespace-unit-test",
+			Name:        "rollout-demo",
+			Namespace:   "namespace-unit-test",
+			Annotations: map[string]string{},
 		},
 		Spec: appsv1alpha1.RolloutSpec{
 			ObjectRef: appsv1alpha1.ObjectRef{
@@ -238,6 +239,52 @@ func TestRolloutValidateCreate(t *testing.T) {
 				return []client.Object{object}
 			},
 		},
+		{
+			Name:    "Canary rolling style",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Annotations = map[string]string{
+					appsv1alpha1.RolloutStyleAnnotation: "Canary",
+				}
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "Partition rolling style",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Annotations = map[string]string{
+					appsv1alpha1.RolloutStyleAnnotation: "Partition",
+				}
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "Wrong rolling style",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Annotations = map[string]string{
+					appsv1alpha1.RolloutStyleAnnotation: "Other",
+				}
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "Miss matched rolling style",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Annotations = map[string]string{
+					appsv1alpha1.RolloutStyleAnnotation: "Canary",
+				}
+				object.Spec.ObjectRef.WorkloadRef.APIVersion = "apps.kruise.io/v1alpha1"
+				object.Spec.ObjectRef.WorkloadRef.Kind = "CloneSet"
+				return []client.Object{object}
+			},
+		},
 		//{
 		//	Name:    "The last Steps.Weight is not 100",
 		//	Succeed: false,
@@ -363,6 +410,22 @@ func TestRolloutValidateUpdate(t *testing.T) {
 				object := rollout.DeepCopy()
 				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
 				object.Spec.Strategy.Canary.Steps[0].Weight = utilpointer.Int32Ptr(5)
+				return object
+			},
+		},
+		{
+			Name:    "Rollout is progressing, and rolling style changed",
+			Succeed: false,
+			GetOldObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Annotations[appsv1alpha1.RolloutStyleAnnotation] = "Partition"
+				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				return object
+			},
+			GetNewObject: func() client.Object {
+				object := rollout.DeepCopy()
+				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				object.Annotations[appsv1alpha1.RolloutStyleAnnotation] = "Canary"
 				return object
 			},
 		},

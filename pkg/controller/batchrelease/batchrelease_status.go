@@ -49,7 +49,7 @@ func (r *Executor) syncStatusBeforeExecuting(release *v1alpha1.BatchRelease, new
 	//  (3). Plan is changed during rollout
 	//  (4). Plan status is unexpected/unhealthy
 	case isPlanCompleted(release):
-		message = "release plan has been terminated, will do nothing"
+		message = "release plan has been completed, will do nothing"
 		needStopThisRound = true
 
 	case isPlanFinalizing(release):

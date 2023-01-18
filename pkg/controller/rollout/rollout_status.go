@@ -53,7 +53,7 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 		newStatus.Phase = v1alpha1.RolloutPhaseInitial
 	}
 	// get ref workload
-	workload, err := r.finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
+	workload, err := r.finder.GetWorkloadForRef(rollout)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return false, nil, err
@@ -182,7 +182,7 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *v1alpha1.Rollou
 	if cond.Reason == v1alpha1.TerminatingReasonCompleted {
 		return nil, nil
 	}
-	workload, err := r.finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
+	workload, err := r.finder.GetWorkloadForRef(rollout)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return nil, err

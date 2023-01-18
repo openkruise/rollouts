@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -99,6 +100,9 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 		if !reflect.DeepEqual(oldObj.Spec.Strategy.Canary.TrafficRoutings, newObj.Spec.Strategy.Canary.TrafficRoutings) {
 			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary.TrafficRoutings"), "Rollout 'Strategy.Canary.TrafficRoutings' field is immutable")}
 		}
+		if !strings.EqualFold(oldObj.Annotations[appsv1alpha1.RolloutStyleAnnotation], newObj.Annotations[appsv1alpha1.RolloutStyleAnnotation]) {
+			return field.ErrorList{field.Forbidden(field.NewPath("Metadata.Annotation"), "Rollout 'Rolling-Style' annotation is immutable")}
+		}
 	}
 
 	/*if newObj.Status.CanaryStatus != nil && newObj.Status.CanaryStatus.CurrentStepState == appsv1alpha1.CanaryStepStateReady {
@@ -140,8 +144,28 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1alph
 
 func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
 	errList := validateRolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
+	errList = append(errList, validateRolloutRollingStyle(rollout, field.NewPath("RollingStyle"))...)
 	errList = append(errList, validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
 	return errList
+}
+
+func validateRolloutRollingStyle(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
+	switch strings.ToLower(rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation]) {
+	case "", strings.ToLower(string(appsv1alpha1.CanaryRollingStyle)), strings.ToLower(string(appsv1alpha1.PartitionRollingStyle)):
+	default:
+		return field.ErrorList{field.Invalid(fldPath, rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation],
+			"Rolling style must be 'Canary', 'Partition' or empty")}
+	}
+
+	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
+	if workloadRef == nil || workloadRef.Kind == util.ControllerKindDep.Kind {
+		return nil // Deployment support all rolling styles, no need to validate.
+	}
+	if strings.EqualFold(rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation], string(appsv1alpha1.CanaryRollingStyle)) {
+		return field.ErrorList{field.Invalid(fldPath, rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation],
+			"Only Deployment support canary rolling style")}
+	}
+	return nil
 }
 
 func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *field.Path) field.ErrorList {

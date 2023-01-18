@@ -25,7 +25,6 @@ import (
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -53,23 +52,13 @@ func (rc *realStableController) Initialize(release *v1alpha1.BatchRelease) error
 	owner := control.BuildReleaseControlInfo(release)
 
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`, util.BatchReleaseControlAnnotation, owner)
-	if err := rc.stableClient.Patch(context.TODO(), d, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
-		return err
-	}
-	klog.Infof("Successfully claim Deployment %v", klog.KObj(rc.stableObject))
-	return nil
+	return rc.stableClient.Patch(context.TODO(), d, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
 }
 
-func (rc *realStableController) Finalize(release *v1alpha1.BatchRelease) (err error) {
+func (rc *realStableController) Finalize(release *v1alpha1.BatchRelease) error {
 	if rc.stableObject == nil {
 		return nil // no need to process deleted object
 	}
-
-	defer func() {
-		if err == nil {
-			klog.Infof("Successfully finalize Deployment %v", klog.KObj(rc.stableObject))
-		}
-	}()
 
 	// if batchPartition == nil, workload should be promoted;
 	pause := release.Spec.ReleasePlan.BatchPartition != nil
@@ -77,13 +66,13 @@ func (rc *realStableController) Finalize(release *v1alpha1.BatchRelease) (err er
 		util.BatchReleaseControlAnnotation, pause)
 
 	d := util.GetEmptyObjectWithKey(rc.stableObject)
-	if err = rc.stableClient.Patch(context.TODO(), d, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
-		return
+	if err := rc.stableClient.Patch(context.TODO(), d, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+		return err
 	}
 	if control.ShouldWaitResume(release) {
-		err = waitAllUpdatedAndReady(d.(*apps.Deployment))
+		return waitAllUpdatedAndReady(d.(*apps.Deployment))
 	}
-	return
+	return nil
 }
 
 func waitAllUpdatedAndReady(deployment *apps.Deployment) error {

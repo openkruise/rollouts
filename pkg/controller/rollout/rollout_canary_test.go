@@ -233,7 +233,7 @@ func TestRunCanary(t *testing.T) {
 				trafficRoutingManager: r.trafficRoutingManager,
 				recorder:              r.Recorder,
 			}
-			workload, _ := r.finder.GetWorkloadForRef("", rollout.Spec.ObjectRef.WorkloadRef)
+			workload, _ := r.finder.GetWorkloadForRef(rollout)
 			c := &util.RolloutContext{
 				Rollout:   rollout,
 				NewStatus: rollout.Status.DeepCopy(),
@@ -253,7 +253,8 @@ func TestRunCanary(t *testing.T) {
 			cond := util.GetRolloutCondition(*cStatus, v1alpha1.RolloutConditionProgressing)
 			cond.Message = ""
 			util.SetRolloutCondition(cStatus, *cond)
-			if !reflect.DeepEqual(cs.expectStatus(), cStatus) {
+			expectStatus := cs.expectStatus()
+			if !reflect.DeepEqual(expectStatus, cStatus) {
 				t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(cs.expectStatus()), util.DumpJSON(cStatus))
 			}
 		})

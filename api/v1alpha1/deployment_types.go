@@ -13,6 +13,14 @@ const (
 	// DeploymentExtraStatusAnnotation is annotation for deployment,
 	// which is extra status field of Advanced Deployment.
 	DeploymentExtraStatusAnnotation = "rollouts.kruise.io/deployment-extra-status"
+
+	// DeploymentStableRevisionLabel is label for deployment,
+	// which record the stable revision during the current rolling process.
+	DeploymentStableRevisionLabel = "rollouts.kruise.io/stable-revision"
+
+	// AdvancedDeploymentControlLabel is label for deployment,
+	// which labels whether the deployment is controlled by advanced-deployment-controller.
+	AdvancedDeploymentControlLabel = "rollouts.kruise.io/controlled-by-advanced-deployment-controller"
 )
 
 // DeploymentStrategy is strategy field for Advanced Deployment

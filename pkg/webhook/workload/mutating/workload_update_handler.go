@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
-	"reflect"
+	"strings"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -205,13 +205,39 @@ func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstruct
 func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (bool, error) {
 	// in rollout progressing
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
-		if !newObj.Spec.Paused || !reflect.DeepEqual(newObj.Spec.Strategy, oldObj.Spec.Strategy) {
+		modified := false
+		if !newObj.Spec.Paused {
+			modified = true
 			newObj.Spec.Paused = true
-			newObj.Spec.Strategy = oldObj.Spec.Strategy
-			klog.Warningf("deployment(%s/%s) is in rollout progressing, and do not modify strategy", newObj.Namespace, newObj.Name)
-			return true, nil
 		}
-		return false, nil
+		strategy := util.GetDeploymentStrategy(newObj)
+		switch strings.ToLower(string(strategy.RollingStyle)) {
+		case strings.ToLower(string(appsv1alpha1.PartitionRollingStyle)):
+			// Make sure it is always Recreate to disable native controller
+			if newObj.Spec.Strategy.Type == apps.RollingUpdateDeploymentStrategyType {
+				modified = true
+				newObj.Spec.Strategy.Type = apps.RecreateDeploymentStrategyType
+			}
+			if newObj.Spec.Strategy.RollingUpdate != nil {
+				modified = true
+				// Allow to modify RollingUpdate config during rolling
+				strategy.RollingUpdate = newObj.Spec.Strategy.RollingUpdate
+				newObj.Spec.Strategy.RollingUpdate = nil
+			}
+			if isEffectiveDeploymentRevisionChange(oldObj, newObj) {
+				modified = true
+				strategy.Paused = true
+			}
+			setDeploymentStrategyAnnotation(strategy, newObj)
+		default:
+			// Do not allow to modify strategy as Recreate during rolling
+			if newObj.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
+				modified = true
+				newObj.Spec.Strategy = oldObj.Spec.Strategy
+				klog.Warningf("")
+			}
+		}
+		return modified, nil
 	}
 
 	// indicate whether the workload can enter the rollout process
@@ -219,10 +245,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
 		return false, nil
 	}
-	if newObj.Annotations[appsv1alpha1.RolloutIDLabel] != "" &&
-		oldObj.Annotations[appsv1alpha1.RolloutIDLabel] == newObj.Annotations[appsv1alpha1.RolloutIDLabel] {
-		return false, nil
-	} else if newObj.Annotations[appsv1alpha1.RolloutIDLabel] == "" && util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
+	if !isEffectiveDeploymentRevisionChange(oldObj, newObj) {
 		return false, nil
 	}
 
@@ -232,14 +255,28 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
 		return false, nil
 	}
+	rss, err := h.Finder.GetReplicaSetsForDeployment(newObj)
+	if err != nil || len(rss) == 0 {
+		klog.Warningf("Cannot find any activate replicaset for deployment %s/%s, no need to rolling", newObj.Namespace, newObj.Name)
+		return false, nil
+	}
 	// if traffic routing, workload must only be one version of Pods
 	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
-		if rss, err := h.Finder.GetReplicaSetsForDeployment(newObj); err != nil {
-			return false, nil
-		} else if len(rss) != 1 {
+		if len(rss) != 1 {
 			klog.Warningf("Because deployment(%s/%s) have multiple versions of Pods, so can not enter rollout progressing", newObj.Namespace, newObj.Name)
 			return false, nil
 		}
+	}
+
+	// label the stable version replicaset
+	_, stableRS := util.FindCanaryAndStableReplicaSet(rss, newObj)
+	if stableRS == nil {
+		klog.Warningf("Cannot find any stable replicaset for deployment %s/%s", newObj.Namespace, newObj.Name)
+	} else {
+		if newObj.Labels == nil {
+			newObj.Labels = map[string]string{}
+		}
+		newObj.Labels[appsv1alpha1.DeploymentStableRevisionLabel] = stableRS.Labels[apps.DefaultDeploymentUniqueLabelKey]
 	}
 
 	// need set workload paused = true
@@ -331,4 +368,20 @@ var _ admission.DecoderInjector = &WorkloadHandler{}
 func (h *WorkloadHandler) InjectDecoder(d *admission.Decoder) error {
 	h.Decoder = d
 	return nil
+}
+
+func isEffectiveDeploymentRevisionChange(oldObj, newObj *apps.Deployment) bool {
+	if newObj.Annotations[appsv1alpha1.RolloutIDLabel] != "" &&
+		oldObj.Annotations[appsv1alpha1.RolloutIDLabel] == newObj.Annotations[appsv1alpha1.RolloutIDLabel] {
+		return false
+	} else if newObj.Annotations[appsv1alpha1.RolloutIDLabel] == "" &&
+		util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
+		return false
+	}
+	return true
+}
+
+func setDeploymentStrategyAnnotation(strategy appsv1alpha1.DeploymentStrategy, d *apps.Deployment) {
+	strategyAnno, _ := json.Marshal(&strategy)
+	d.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = string(strategyAnno)
 }

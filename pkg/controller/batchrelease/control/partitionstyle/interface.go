@@ -25,10 +25,10 @@ import (
 
 type Interface interface {
 	// BuildController will get workload object and parse workload info,
-	// and return a controller for workload
+	// and return a initialized controller for workload.
 	BuildController() (Interface, error)
-	// GetInfo return workload information
-	GetInfo() *util.WorkloadInfo
+	// GetWorkloadInfo return workload information.
+	GetWorkloadInfo() *util.WorkloadInfo
 	// ListOwnedPods fetch the pods owned by the workload.
 	// Note that we should list pod only if we really need it.
 	ListOwnedPods() ([]*corev1.Pod, error)
@@ -36,7 +36,7 @@ type Interface interface {
 	// according to release plan and current status of workload.
 	CalculateBatchContext(release *v1alpha1.BatchRelease) (*batchcontext.BatchContext, error)
 
-	// Initialize do something before rolling out, for example
+	// Initialize do something before rolling out, for example:
 	// - claim the workload is under our control;
 	// - other things related with specific type of workload, such as 100% partition settings.
 	Initialize(release *v1alpha1.BatchRelease) error
