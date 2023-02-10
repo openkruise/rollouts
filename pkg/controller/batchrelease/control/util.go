@@ -101,6 +101,14 @@ func GenerateNotFoundError(name, resource string) error {
 	return errors.NewNotFound(schema.GroupResource{Group: "apps", Resource: resource}, name)
 }
 
+// ShouldWaitResume return true if FinalizingPolicy is "waitResume".
 func ShouldWaitResume(release *v1alpha1.BatchRelease) bool {
 	return release.Spec.ReleasePlan.FinalizingPolicy == v1alpha1.WaitResumeFinalizingPolicyType
+}
+
+// IsCurrentMoreThanOrEqualToDesired return true if current >= desired
+func IsCurrentMoreThanOrEqualToDesired(current, desired intstr.IntOrString) bool {
+	currentNum, _ := intstr.GetScaledValueFromIntOrPercent(&current, 10000000, true)
+	desiredNum, _ := intstr.GetScaledValueFromIntOrPercent(&desired, 10000000, true)
+	return currentNum >= desiredNum
 }

@@ -1,6 +1,5 @@
 /*
 Copyright 2019 The Kruise Authors.
-Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,9 +23,11 @@ import (
 	"reflect"
 	"time"
 
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -47,8 +48,11 @@ import (
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
 	"github.com/openkruise/rollouts/pkg/feature"
+	"github.com/openkruise/rollouts/pkg/util"
 	clientutil "github.com/openkruise/rollouts/pkg/util/client"
 	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
+	"github.com/openkruise/rollouts/pkg/util/patch"
+	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
 
 func init() {
@@ -129,8 +133,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	// Watch for changes to ReplicaSet
 	if err = c.Watch(&source.Kind{Type: &appsv1.ReplicaSet{}}, &handler.EnqueueRequestForOwner{
-		IsController: true, OwnerType: &appsv1.ReplicaSet{}}, predicate.Funcs{}); err != nil {
+		IsController: true, OwnerType: &appsv1.Deployment{}}, predicate.Funcs{}); err != nil {
+		return err
+	}
+
+	// Watch for changes to MutatingWebhookConfigurations of kruise-rollout operator
+	if err = c.Watch(&source.Kind{Type: &admissionregistrationv1.MutatingWebhookConfiguration{}}, &MutatingWebhookEventHandler{mgr.GetCache()}); err != nil {
 		return err
 	}
 
@@ -178,6 +188,16 @@ func (r *ReconcileDeployment) Reconcile(_ context.Context, request reconcile.Req
 		return reconcile.Result{}, nil
 	}
 
+	// If MutatingWebhookConfiguration is deleted, the Deployment may be set paused=false,
+	// which will increase the risk of release. To prevent such a risk, in such a case, we
+	// will update the Deployment strategy type field to RollingUpdate.
+	invalid, err := r.mutatingProtectionInvalid(deployment)
+	if err != nil {
+		return reconcile.Result{}, err
+	} else if invalid {
+		return reconcile.Result{}, nil
+	}
+
 	errList := field.ErrorList{}
 	err = dc.syncDeployment(context.Background(), deployment)
 	if err != nil {
@@ -187,13 +207,38 @@ func (r *ReconcileDeployment) Reconcile(_ context.Context, request reconcile.Req
 	if err != nil {
 		errList = append(errList, field.InternalError(field.NewPath("patchExtraStatus"), err))
 	}
+	if len(errList) > 0 {
+		return ctrl.Result{}, errList.ToAggregate()
+	}
 	err = deploymentutil.DeploymentRolloutSatisfied(deployment, dc.strategy.Partition)
 	if err != nil {
 		klog.V(3).Infof("Deployment %v is still rolling: %v", klog.KObj(deployment), err)
-		return reconcile.Result{RequeueAfter: DefaultRetryDuration}, errList.ToAggregate()
+		return reconcile.Result{RequeueAfter: DefaultRetryDuration}, nil
 	}
+	return reconcile.Result{}, nil
+}
 
-	return ctrl.Result{}, errList.ToAggregate()
+// mutatingProtectionInvalid check if mutating webhook configuration not exists, if not exists,
+// we should update deployment strategy type tpo 'RollingUpdate' to avoid release risk.
+func (r *ReconcileDeployment) mutatingProtectionInvalid(deployment *appsv1.Deployment) (bool, error) {
+	configKey := types.NamespacedName{Name: configuration.MutatingWebhookConfigurationName}
+	mutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{}
+	err := r.Get(context.TODO(), configKey, mutatingWebhookConfiguration)
+	if client.IgnoreNotFound(err) != nil {
+		return false, err
+	}
+	if errors.IsNotFound(err) || !mutatingWebhookConfiguration.DeletionTimestamp.IsZero() {
+		if deployment.Spec.Strategy.Type == appsv1.RollingUpdateDeploymentStrategyType {
+			return true, nil
+		}
+		strategy := util.GetDeploymentStrategy(deployment)
+		d := deployment.DeepCopy()
+		patchData := patch.NewDeploymentPatch()
+		patchData.UpdateStrategy(appsv1.DeploymentStrategy{Type: appsv1.RollingUpdateDeploymentStrategyType, RollingUpdate: strategy.RollingUpdate})
+		klog.Warningf("Kruise-Rollout mutating webhook configuration is deleted, update Deployment %v strategy to 'RollingUpdate'", klog.KObj(deployment))
+		return true, r.Patch(context.TODO(), d, patchData)
+	}
+	return false, nil
 }
 
 type controllerFactory DeploymentController

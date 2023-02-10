@@ -32,18 +32,18 @@ import (
 )
 
 const (
-	mutatingWebhookConfigurationName   = "kruise-rollout-mutating-webhook-configuration"
-	validatingWebhookConfigurationName = "kruise-rollout-validating-webhook-configuration"
+	MutatingWebhookConfigurationName   = "kruise-rollout-mutating-webhook-configuration"
+	ValidatingWebhookConfigurationName = "kruise-rollout-validating-webhook-configuration"
 )
 
 func Ensure(kubeClient clientset.Interface, handlers map[string]admission.Handler, caBundle []byte) error {
-	mutatingConfig, err := kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfigurationName, metav1.GetOptions{})
+	mutatingConfig, err := kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), MutatingWebhookConfigurationName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("not found MutatingWebhookConfiguration %s", mutatingWebhookConfigurationName)
+		return fmt.Errorf("not found MutatingWebhookConfiguration %s", MutatingWebhookConfigurationName)
 	}
-	validatingConfig, err := kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(context.TODO(), validatingWebhookConfigurationName, metav1.GetOptions{})
+	validatingConfig, err := kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(context.TODO(), ValidatingWebhookConfigurationName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("not found ValidatingWebhookConfiguration %s", validatingWebhookConfigurationName)
+		return fmt.Errorf("not found ValidatingWebhookConfiguration %s", ValidatingWebhookConfigurationName)
 	}
 	oldMutatingConfig := mutatingConfig.DeepCopy()
 	oldValidatingConfig := validatingConfig.DeepCopy()
@@ -105,13 +105,13 @@ func Ensure(kubeClient clientset.Interface, handlers map[string]admission.Handle
 
 	if !reflect.DeepEqual(mutatingConfig, oldMutatingConfig) {
 		if _, err := kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.TODO(), mutatingConfig, metav1.UpdateOptions{}); err != nil {
-			return fmt.Errorf("failed to update %s: %v", mutatingWebhookConfigurationName, err)
+			return fmt.Errorf("failed to update %s: %v", MutatingWebhookConfigurationName, err)
 		}
 	}
 
 	if !reflect.DeepEqual(validatingConfig, oldValidatingConfig) {
 		if _, err := kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations().Update(context.TODO(), validatingConfig, metav1.UpdateOptions{}); err != nil {
-			return fmt.Errorf("failed to update %s: %v", validatingWebhookConfigurationName, err)
+			return fmt.Errorf("failed to update %s: %v", ValidatingWebhookConfigurationName, err)
 		}
 	}
 

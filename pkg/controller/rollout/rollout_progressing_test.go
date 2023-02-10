@@ -815,7 +815,7 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				recorder:              reconciler.Recorder,
 			}
 			rollout := cs.getRollout()
-			workload, err := reconciler.finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
+			workload, err := reconciler.finder.GetWorkloadForRef(rollout)
 			if err != nil {
 				t.Fatalf(err.Error())
 			}

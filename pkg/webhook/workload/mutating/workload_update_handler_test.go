@@ -105,6 +105,7 @@ var (
 					"app": "echoserver",
 				},
 			},
+			Replicas: pointer.Int32(5),
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
@@ -490,6 +491,7 @@ func TestHandlerDeployment(t *testing.T) {
 			} else if !cs.isError && err != nil {
 				t.Fatalf(err.Error())
 			}
+			delete(newObj.Labels, appsv1alpha1.DeploymentStableRevisionLabel)
 			if !reflect.DeepEqual(newObj, cs.expectObj()) {
 				by, _ := json.Marshal(newObj)
 				t.Fatalf("handlerDeployment failed, and new(%s)", string(by))

@@ -167,3 +167,50 @@ func TestIsControlledByBatchRelease(t *testing.T) {
 		})
 	}
 }
+
+func TestIsCurrentMoreThanOrEqualToDesired(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	cases := map[string]struct {
+		current intstr.IntOrString
+		desired intstr.IntOrString
+		result  bool
+	}{
+		"current=2,desired=1": {
+			current: intstr.FromInt(2),
+			desired: intstr.FromInt(1),
+			result:  true,
+		},
+		"current=2,desired=2": {
+			current: intstr.FromInt(2),
+			desired: intstr.FromInt(2),
+			result:  true,
+		},
+		"current=2,desired=3": {
+			current: intstr.FromInt(2),
+			desired: intstr.FromInt(3),
+			result:  false,
+		},
+		"current=80%,desired=79%": {
+			current: intstr.FromString("80%"),
+			desired: intstr.FromString("79%"),
+			result:  true,
+		},
+		"current=80%,desired=80%": {
+			current: intstr.FromString("80%"),
+			desired: intstr.FromString("80%"),
+			result:  true,
+		},
+		"current=90%,desired=91%": {
+			current: intstr.FromString("90%"),
+			desired: intstr.FromString("91%"),
+			result:  false,
+		},
+	}
+	for name, cs := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := IsCurrentMoreThanOrEqualToDesired(cs.current, cs.desired)
+			Expect(got == cs.result).Should(BeTrue())
+		})
+	}
+}

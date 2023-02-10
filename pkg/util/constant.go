@@ -37,6 +37,8 @@ const (
 	KruiseRolloutFinalizer = "rollouts.kruise.io/rollout"
 	// WorkloadTypeLabel is a label to identify workload type
 	WorkloadTypeLabel = "rollouts.kruise.io/workload-type"
+	// DeploymentRevisionAnnotation is the revision annotation of a deployment's replica sets which records its rollout sequence
+	DeploymentRevisionAnnotation = "deployment.kubernetes.io/revision"
 )
 
 // For Pods

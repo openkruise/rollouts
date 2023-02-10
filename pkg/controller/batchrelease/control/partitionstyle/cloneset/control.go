@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -50,7 +49,7 @@ func NewController(cli client.Client, key types.NamespacedName, _ schema.GroupVe
 	}
 }
 
-func (rc *realController) GetInfo() *util.WorkloadInfo {
+func (rc *realController) GetWorkloadInfo() *util.WorkloadInfo {
 	return rc.WorkloadInfo
 }
 
@@ -85,11 +84,7 @@ func (rc *realController) Initialize(release *v1alpha1.BatchRelease) error {
 	owner := control.BuildReleaseControlInfo(release)
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}},"spec":{"updateStrategy":{"paused":%v,"partition":"%s"}}}`,
 		util.BatchReleaseControlAnnotation, owner, false, "100%")
-	if err := rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
-		return err
-	}
-	klog.Infof("Successfully initialized CloneSet %v", klog.KObj(clone))
-	return nil
+	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
 func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
@@ -112,11 +107,7 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	}
 
 	clone := util.GetEmptyObjectWithKey(rc.object)
-	if err := rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
-		return err
-	}
-	klog.Infof("Successfully submit partition %v for CloneSet %v", ctx.DesiredPartition, klog.KObj(clone))
-	return nil
+	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
 func (rc *realController) Finalize(release *v1alpha1.BatchRelease) error {
@@ -133,11 +124,7 @@ func (rc *realController) Finalize(release *v1alpha1.BatchRelease) error {
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}%s}`, util.BatchReleaseControlAnnotation, specBody)
 
 	clone := util.GetEmptyObjectWithKey(rc.object)
-	if err := rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
-		return err
-	}
-	klog.Infof("Successfully finalize StatefulSet %v", klog.KObj(rc.object))
-	return nil
+	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
 func (rc *realController) CalculateBatchContext(release *v1alpha1.BatchRelease) (*batchcontext.BatchContext, error) {

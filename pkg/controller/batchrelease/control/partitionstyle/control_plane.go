@@ -70,7 +70,7 @@ func (rc *realBatchControlPlane) Initialize() error {
 	}
 
 	// record revision and replicas
-	workloadInfo := controller.GetInfo()
+	workloadInfo := controller.GetWorkloadInfo()
 	rc.newStatus.StableRevision = workloadInfo.Status.StableRevision
 	rc.newStatus.UpdateRevision = workloadInfo.Status.UpdateRevision
 	rc.newStatus.ObservedWorkloadReplicas = workloadInfo.Replicas
@@ -89,7 +89,7 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 		return err
 	}
 
-	if controller.GetInfo().Replicas == 0 {
+	if controller.GetWorkloadInfo().Replicas == 0 {
 		return nil
 	}
 
@@ -102,7 +102,8 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 	if err != nil {
 		return err
 	}
-	klog.Infof("BatchRelease %v upgrade batch: %s", klog.KObj(rc.release), batchContext.Log())
+	klog.Infof("BatchRelease %v calculated context when upgrade batch: %s",
+		klog.KObj(rc.release), batchContext.Log())
 
 	err = controller.UpgradeBatch(batchContext)
 	if err != nil {
@@ -118,7 +119,7 @@ func (rc *realBatchControlPlane) CheckBatchReady() error {
 		return err
 	}
 
-	if controller.GetInfo().Replicas == 0 {
+	if controller.GetWorkloadInfo().Replicas == 0 {
 		return nil
 	}
 
@@ -129,7 +130,8 @@ func (rc *realBatchControlPlane) CheckBatchReady() error {
 		return err
 	}
 
-	klog.Infof("BatchRelease %v check batch: %s", klog.KObj(rc.release), batchContext.Log())
+	klog.Infof("BatchRelease %v calculated context when check batch ready: %s",
+		klog.KObj(rc.release), batchContext.Log())
 
 	return batchContext.IsBatchReady()
 }
@@ -158,7 +160,7 @@ func (rc *realBatchControlPlane) SyncWorkloadInformation() (control.WorkloadEven
 		return control.WorkloadUnknownState, nil, err
 	}
 
-	workloadInfo := controller.GetInfo()
+	workloadInfo := controller.GetWorkloadInfo()
 	if !workloadInfo.IsStable() {
 		klog.Infof("Workload(%v) still reconciling, waiting for it to complete, generation: %v, observed: %v",
 			workloadInfo.LogKey, workloadInfo.Generation, workloadInfo.Status.ObservedGeneration)

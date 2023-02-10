@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cloneset
+package deployment
 
 import (
 	"context"
@@ -27,7 +27,6 @@ import (
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -43,18 +42,19 @@ import (
 var (
 	scheme = runtime.NewScheme()
 
-	cloneKey = types.NamespacedName{
+	deploymentKey = types.NamespacedName{
+		Name:      "deployment",
 		Namespace: "default",
-		Name:      "cloneset",
 	}
-	cloneDemo = &kruiseappsv1alpha1.CloneSet{
+
+	deploymentDemo = &apps.Deployment{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps.kruise.io/v1alpha1",
-			Kind:       "CloneSet",
+			APIVersion: "apps/v1",
+			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:       cloneKey.Name,
-			Namespace:  cloneKey.Namespace,
+			Name:       deploymentKey.Name,
+			Namespace:  deploymentKey.Namespace,
 			Generation: 1,
 			Labels: map[string]string{
 				"app": "busybox",
@@ -63,17 +63,20 @@ var (
 				"type": "unit-test",
 			},
 		},
-		Spec: kruiseappsv1alpha1.CloneSetSpec{
+		Spec: apps.DeploymentSpec{
+			Paused: true,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": "busybox",
 				},
 			},
 			Replicas: pointer.Int32(10),
-			UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
-				Paused:         true,
-				Partition:      &intstr.IntOrString{Type: intstr.String, StrVal: "100%"},
-				MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+			Strategy: apps.DeploymentStrategy{
+				Type: apps.RollingUpdateDeploymentStrategyType,
+				RollingUpdate: &apps.RollingUpdateDeployment{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+					MaxSurge:       &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
+				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -91,16 +94,13 @@ var (
 				},
 			},
 		},
-		Status: kruiseappsv1alpha1.CloneSetStatus{
-			Replicas:             10,
-			UpdatedReplicas:      0,
-			ReadyReplicas:        10,
-			AvailableReplicas:    10,
-			UpdatedReadyReplicas: 0,
-			UpdateRevision:       "version-2",
-			CurrentRevision:      "version-1",
-			ObservedGeneration:   1,
-			CollisionCount:       pointer.Int32Ptr(1),
+		Status: apps.DeploymentStatus{
+			Replicas:           10,
+			UpdatedReplicas:    10,
+			ReadyReplicas:      10,
+			AvailableReplicas:  10,
+			CollisionCount:     pointer.Int32Ptr(1),
+			ObservedGeneration: 1,
 		},
 	}
 
@@ -111,11 +111,12 @@ var (
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "release",
-			Namespace: cloneKey.Namespace,
+			Namespace: deploymentKey.Namespace,
 			UID:       uuid.NewUUID(),
 		},
 		Spec: v1alpha1.BatchReleaseSpec{
 			ReleasePlan: v1alpha1.ReleasePlan{
+				FinalizingPolicy: v1alpha1.WaitResumeFinalizingPolicyType,
 				Batches: []v1alpha1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
@@ -130,15 +131,15 @@ var (
 			},
 			TargetRef: v1alpha1.ObjectRef{
 				WorkloadRef: &v1alpha1.WorkloadRef{
-					APIVersion: cloneDemo.APIVersion,
-					Kind:       cloneDemo.Kind,
-					Name:       cloneDemo.Name,
+					APIVersion: deploymentDemo.APIVersion,
+					Kind:       deploymentDemo.Kind,
+					Name:       deploymentDemo.Name,
 				},
 			},
 		},
 		Status: v1alpha1.BatchReleaseStatus{
 			CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
-				CurrentBatch: 0,
+				CurrentBatch: 1,
 			},
 		},
 	}
@@ -155,32 +156,45 @@ func TestCalculateBatchContext(t *testing.T) {
 
 	percent := intstr.FromString("20%")
 	cases := map[string]struct {
-		workload func() *kruiseappsv1alpha1.CloneSet
+		workload func() *apps.Deployment
 		release  func() *v1alpha1.BatchRelease
 		result   *batchcontext.BatchContext
 	}{
-		"without NoNeedUpdate": {
-			workload: func() *kruiseappsv1alpha1.CloneSet {
-				return &kruiseappsv1alpha1.CloneSet{
-					Spec: kruiseappsv1alpha1.CloneSetSpec{
-						Replicas: pointer.Int32Ptr(10),
-						UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
-							Partition: func() *intstr.IntOrString { p := intstr.FromString("100%"); return &p }(),
+		"noraml case": {
+			workload: func() *apps.Deployment {
+				deployment := &apps.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{
+							v1alpha1.DeploymentStrategyAnnotation: util.DumpJSON(&v1alpha1.DeploymentStrategy{
+								RollingStyle:  v1alpha1.PartitionRollingStyle,
+								RollingUpdate: &apps.RollingUpdateDeployment{MaxUnavailable: &percent, MaxSurge: &percent},
+								Partition:     percent,
+								Paused:        false,
+							}),
+							v1alpha1.DeploymentExtraStatusAnnotation: util.DumpJSON(&v1alpha1.DeploymentExtraStatus{
+								UpdatedReadyReplicas:    1,
+								ExpectedUpdatedReplicas: 2,
+							}),
 						},
 					},
-					Status: kruiseappsv1alpha1.CloneSetStatus{
-						Replicas:             10,
-						UpdatedReplicas:      5,
-						UpdatedReadyReplicas: 5,
-						AvailableReplicas:    10,
+					Spec: apps.DeploymentSpec{
+						Replicas: pointer.Int32Ptr(10),
+					},
+					Status: apps.DeploymentStatus{
+						Replicas:          10,
+						UpdatedReplicas:   2,
+						AvailableReplicas: 9,
+						ReadyReplicas:     9,
 					},
 				}
+				return deployment
 			},
 			release: func() *v1alpha1.BatchRelease {
 				r := &v1alpha1.BatchRelease{
 					Spec: v1alpha1.BatchReleaseSpec{
 						ReleasePlan: v1alpha1.ReleasePlan{
 							FailureThreshold: &percent,
+							FinalizingPolicy: v1alpha1.WaitResumeFinalizingPolicyType,
 							Batches: []v1alpha1.ReleaseBatch{
 								{
 									CanaryReplicas: percent,
@@ -192,85 +206,98 @@ func TestCalculateBatchContext(t *testing.T) {
 						CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
 							CurrentBatch: 0,
 						},
+						UpdateRevision: "version-2",
 					},
 				}
 				return r
 			},
 			result: &batchcontext.BatchContext{
-				FailureThreshold:       &percent,
-				CurrentBatch:           0,
+				CurrentBatch:     0,
+				UpdateRevision:   "version-2",
+				DesiredPartition: percent,
+				FailureThreshold: &percent,
+
 				Replicas:               10,
-				UpdatedReplicas:        5,
-				UpdatedReadyReplicas:   5,
+				UpdatedReplicas:        2,
+				UpdatedReadyReplicas:   1,
 				PlannedUpdatedReplicas: 2,
 				DesiredUpdatedReplicas: 2,
-				CurrentPartition:       intstr.FromString("100%"),
-				DesiredPartition:       intstr.FromString("80%"),
 			},
 		},
-		"with NoNeedUpdate": {
-			workload: func() *kruiseappsv1alpha1.CloneSet {
-				return &kruiseappsv1alpha1.CloneSet{
-					Spec: kruiseappsv1alpha1.CloneSetSpec{
-						Replicas: pointer.Int32Ptr(20),
-						UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
-							Partition: func() *intstr.IntOrString { p := intstr.FromString("100%"); return &p }(),
+		"partition=90%, replicas=5": {
+			workload: func() *apps.Deployment {
+				deployment := &apps.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{
+							v1alpha1.DeploymentStrategyAnnotation: util.DumpJSON(&v1alpha1.DeploymentStrategy{
+								RollingStyle:  v1alpha1.PartitionRollingStyle,
+								RollingUpdate: &apps.RollingUpdateDeployment{MaxUnavailable: &percent, MaxSurge: &percent},
+								Partition:     intstr.FromString("20%"),
+								Paused:        false,
+							}),
+							v1alpha1.DeploymentExtraStatusAnnotation: util.DumpJSON(&v1alpha1.DeploymentExtraStatus{
+								UpdatedReadyReplicas:    4,
+								ExpectedUpdatedReplicas: 4,
+							}),
 						},
 					},
-					Status: kruiseappsv1alpha1.CloneSetStatus{
-						Replicas:             20,
-						UpdatedReplicas:      10,
-						UpdatedReadyReplicas: 10,
-						AvailableReplicas:    20,
-						ReadyReplicas:        20,
+					Spec: apps.DeploymentSpec{
+						Replicas: pointer.Int32Ptr(5),
+					},
+					Status: apps.DeploymentStatus{
+						Replicas:          5,
+						UpdatedReplicas:   4,
+						AvailableReplicas: 5,
+						ReadyReplicas:     5,
 					},
 				}
+				return deployment
 			},
 			release: func() *v1alpha1.BatchRelease {
 				r := &v1alpha1.BatchRelease{
 					Spec: v1alpha1.BatchReleaseSpec{
 						ReleasePlan: v1alpha1.ReleasePlan{
 							FailureThreshold: &percent,
+							FinalizingPolicy: v1alpha1.WaitResumeFinalizingPolicyType,
 							Batches: []v1alpha1.ReleaseBatch{
 								{
-									CanaryReplicas: percent,
+									CanaryReplicas: intstr.FromString("90%"),
 								},
 							},
 						},
 					},
 					Status: v1alpha1.BatchReleaseStatus{
 						CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
-							CurrentBatch:         0,
-							NoNeedUpdateReplicas: pointer.Int32(10),
+							CurrentBatch: 0,
 						},
-						UpdateRevision: "update-version",
+						UpdateRevision: "version-2",
 					},
 				}
 				return r
 			},
 			result: &batchcontext.BatchContext{
-				CurrentBatch:           0,
-				UpdateRevision:         "update-version",
-				Replicas:               20,
-				UpdatedReplicas:        10,
-				UpdatedReadyReplicas:   10,
-				NoNeedUpdatedReplicas:  pointer.Int32Ptr(10),
+				CurrentBatch:     0,
+				UpdateRevision:   "version-2",
+				DesiredPartition: intstr.FromString("90%"),
+				FailureThreshold: &percent,
+
+				Replicas:               5,
+				UpdatedReplicas:        4,
+				UpdatedReadyReplicas:   4,
 				PlannedUpdatedReplicas: 4,
-				DesiredUpdatedReplicas: 12,
-				CurrentPartition:       intstr.FromString("100%"),
-				DesiredPartition:       intstr.FromString("40%"),
-				FailureThreshold:       &percent,
-				FilterFunc:             labelpatch.FilterPodsForUnorderedUpdate,
+				DesiredUpdatedReplicas: 4,
 			},
 		},
 	}
 
 	for name, cs := range cases {
 		t.Run(name, func(t *testing.T) {
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cs.workload()).Build()
 			control := realController{
-				object:       cs.workload(),
-				WorkloadInfo: util.ParseWorkload(cs.workload()),
+				client: cli,
 			}
+			_, err := control.BuildController()
+			Expect(err).NotTo(HaveOccurred())
 			got, err := control.CalculateBatchContext(cs.release())
 			fmt.Println(got)
 			Expect(err).NotTo(HaveOccurred())
@@ -283,55 +310,61 @@ func TestRealController(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	release := releaseDemo.DeepCopy()
-	clone := cloneDemo.DeepCopy()
+	clone := deploymentDemo.DeepCopy()
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release, clone).Build()
-	c := NewController(cli, cloneKey, clone.GroupVersionKind()).(*realController)
+	c := NewController(cli, deploymentKey, clone.GroupVersionKind()).(*realController)
 	controller, err := c.BuildController()
 	Expect(err).NotTo(HaveOccurred())
 
 	err = controller.Initialize(release)
 	Expect(err).NotTo(HaveOccurred())
-	fetch := &kruiseappsv1alpha1.CloneSet{}
-	Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())
-	Expect(fetch.Spec.UpdateStrategy.Paused).Should(BeFalse())
+	fetch := &apps.Deployment{}
+	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())
+	Expect(fetch.Spec.Paused).Should(BeTrue())
+	Expect(fetch.Spec.Strategy.Type).Should(Equal(apps.RecreateDeploymentStrategyType))
 	Expect(fetch.Annotations[util.BatchReleaseControlAnnotation]).Should(Equal(getControlInfo(release)))
+	strategy := util.GetDeploymentStrategy(fetch)
+	Expect(strategy.Paused).Should(BeFalse())
 	c.object = fetch // mock
 
 	for {
 		batchContext, err := controller.CalculateBatchContext(release)
 		Expect(err).NotTo(HaveOccurred())
 		err = controller.UpgradeBatch(batchContext)
-		fetch = &kruiseappsv1alpha1.CloneSet{}
+		fetch := &apps.Deployment{}
 		// mock
-		Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())
+		Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())
 		c.object = fetch
 		if err == nil {
 			break
 		}
 	}
-	fetch = &kruiseappsv1alpha1.CloneSet{}
-	Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())
-	Expect(fetch.Spec.UpdateStrategy.Partition.StrVal).Should(Equal("90%"))
+	fetch = &apps.Deployment{}
+	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())
+	strategy = util.GetDeploymentStrategy(fetch)
+	Expect(strategy.Partition.StrVal).Should(Equal("50%"))
 
+	release.Spec.ReleasePlan.BatchPartition = nil
 	err = controller.Finalize(release)
 	Expect(err).NotTo(HaveOccurred())
-	fetch = &kruiseappsv1alpha1.CloneSet{}
-	Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())
+	fetch = &apps.Deployment{}
+	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())
 	Expect(fetch.Annotations[util.BatchReleaseControlAnnotation]).Should(Equal(""))
+	Expect(fetch.Annotations[v1alpha1.DeploymentStrategyAnnotation]).Should(Equal(""))
+	Expect(fetch.Annotations[v1alpha1.DeploymentExtraStatusAnnotation]).Should(Equal(""))
+	Expect(fetch.Spec.Paused).Should(BeFalse())
+	Expect(fetch.Spec.Strategy.Type).Should(Equal(apps.RollingUpdateDeploymentStrategyType))
 
-	stableInfo := controller.GetWorkloadInfo()
-	Expect(stableInfo).ShouldNot(BeNil())
-	checkWorkloadInfo(stableInfo, clone)
+	workloadInfo := controller.GetWorkloadInfo()
+	Expect(workloadInfo).ShouldNot(BeNil())
+	checkWorkloadInfo(workloadInfo, clone)
 }
 
-func checkWorkloadInfo(stableInfo *util.WorkloadInfo, clone *kruiseappsv1alpha1.CloneSet) {
+func checkWorkloadInfo(stableInfo *util.WorkloadInfo, clone *apps.Deployment) {
 	Expect(stableInfo.Replicas).Should(Equal(*clone.Spec.Replicas))
 	Expect(stableInfo.Status.Replicas).Should(Equal(clone.Status.Replicas))
 	Expect(stableInfo.Status.ReadyReplicas).Should(Equal(clone.Status.ReadyReplicas))
 	Expect(stableInfo.Status.UpdatedReplicas).Should(Equal(clone.Status.UpdatedReplicas))
-	Expect(stableInfo.Status.UpdatedReadyReplicas).Should(Equal(clone.Status.UpdatedReadyReplicas))
-	Expect(stableInfo.Status.UpdateRevision).Should(Equal(clone.Status.UpdateRevision))
-	Expect(stableInfo.Status.StableRevision).Should(Equal(clone.Status.CurrentRevision))
 	Expect(stableInfo.Status.AvailableReplicas).Should(Equal(clone.Status.AvailableReplicas))
 	Expect(stableInfo.Status.ObservedGeneration).Should(Equal(clone.Status.ObservedGeneration))
 }

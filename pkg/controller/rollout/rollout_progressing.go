@@ -35,7 +35,7 @@ var defaultGracePeriodSeconds int32 = 3
 func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1alpha1.Rollout, newStatus *v1alpha1.RolloutStatus) (*time.Time, error) {
 	cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 	klog.Infof("reconcile rollout(%s/%s) progressing action...", rollout.Namespace, rollout.Name)
-	workload, err := r.finder.GetWorkloadForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef)
+	workload, err := r.finder.GetWorkloadForRef(rollout)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return nil, err

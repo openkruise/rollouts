@@ -362,11 +362,15 @@ func createBatchRelease(rollout *v1alpha1.Rollout, rolloutID string, batch int32
 			},
 		},
 	}
+	annotations := map[string]string{}
 	if isRollback {
-		if br.Annotations == nil {
-			br.Annotations = map[string]string{}
-		}
-		br.Annotations[v1alpha1.RollbackInBatchAnnotation] = "true"
+		annotations[v1alpha1.RollbackInBatchAnnotation] = rollout.Annotations[v1alpha1.RollbackInBatchAnnotation]
+	}
+	if style, ok := rollout.Annotations[v1alpha1.RolloutStyleAnnotation]; ok {
+		annotations[v1alpha1.RolloutStyleAnnotation] = style
+	}
+	if len(annotations) > 0 {
+		br.Annotations = annotations
 	}
 	return br
 }

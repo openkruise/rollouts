@@ -19,15 +19,17 @@ package batchrelease
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle/deployment"
+	canarydeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/cloneset"
+	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/statefulset"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
@@ -100,6 +102,8 @@ func (r *Executor) executeBatchReleasePlan(release *v1alpha1.BatchRelease, newSt
 		case err == nil:
 			newStatus.Phase = v1alpha1.RolloutPhaseProgressing
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
+		default:
+			klog.Warningf("Failed to initialize %v, err %v", klog.KObj(release), err)
 		}
 
 	case v1alpha1.RolloutPhaseProgressing:
@@ -111,6 +115,8 @@ func (r *Executor) executeBatchReleasePlan(release *v1alpha1.BatchRelease, newSt
 		switch {
 		case err == nil:
 			newStatus.Phase = v1alpha1.RolloutPhaseCompleted
+		default:
+			klog.Warningf("Failed to finalize %v, err %v", klog.KObj(release), err)
 		}
 
 	case v1alpha1.RolloutPhaseCompleted:
@@ -140,6 +146,8 @@ func (r *Executor) progressBatches(release *v1alpha1.BatchRelease, newStatus *v1
 		case err == nil:
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
 			newStatus.CanaryStatus.CurrentBatchState = v1alpha1.VerifyingBatchState
+		default:
+			klog.Warningf("Failed to upgrade %v, err %v", klog.KObj(release), err)
 		}
 
 	case v1alpha1.VerifyingBatchState:
@@ -149,6 +157,7 @@ func (r *Executor) progressBatches(release *v1alpha1.BatchRelease, newStatus *v1
 		case err != nil:
 			// should go to upgrade state to do again to avoid dead wait.
 			newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+			klog.Warningf("%v current batch is not ready, err %v", klog.KObj(release), err)
 		default:
 			now := metav1.Now()
 			newStatus.CanaryStatus.BatchReadyTime = &now
@@ -164,6 +173,7 @@ func (r *Executor) progressBatches(release *v1alpha1.BatchRelease, newStatus *v1
 			// if the batch ready condition changed due to some reasons, just recalculate the current batch.
 			newStatus.CanaryStatus.BatchReadyTime = nil
 			newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+			klog.Warningf("%v current batch is not ready, err %v", klog.KObj(release), err)
 		case !isPartitioned(release):
 			r.moveToNextBatch(release, newStatus)
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
@@ -195,19 +205,24 @@ func (r *Executor) getReleaseController(release *v1alpha1.BatchRelease, newStatu
 	switch targetRef.APIVersion {
 	case appsv1alpha1.GroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
-			klog.InfoS("Using CloneSet batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+			klog.InfoS("Using CloneSet partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
 			return partitionstyle.NewControlPlane(cloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
 
 	case apps.SchemeGroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
-			klog.InfoS("Using Deployment batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return canarystyle.NewControlPlane(deployment.NewController, r.client, r.recorder, release, newStatus, targetKey), nil
+			if strings.EqualFold(release.Annotations[v1alpha1.RolloutStyleAnnotation], string(v1alpha1.PartitionRollingStyle)) {
+				klog.InfoS("Using Deployment partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+				return partitionstyle.NewControlPlane(partitiondeployment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+			} else {
+				klog.InfoS("Using Deployment canary-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+				return canarystyle.NewControlPlane(canarydeployment.NewController, r.client, r.recorder, release, newStatus, targetKey), nil
+			}
 		}
 	}
 
 	// try to use StatefulSet-like rollout controller by default
-	klog.InfoS("Using StatefulSet-like batch release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+	klog.InfoS("Using StatefulSet-Like partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
 	return partitionstyle.NewControlPlane(statefulset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 }
 

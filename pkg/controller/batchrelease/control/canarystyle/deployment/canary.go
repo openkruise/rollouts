@@ -84,11 +84,7 @@ func (r *realCanaryController) UpgradeBatch(ctx *batchcontext.BatchContext) erro
 	}
 
 	body := fmt.Sprintf(`{"spec":{"replicas":%d}}`, desired)
-	if err := r.canaryClient.Patch(context.TODO(), deployment, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
-		return err
-	}
-	klog.Infof("Successfully submit rolling replicas %d to Deployment %v", desired, klog.KObj(deployment))
-	return nil
+	return r.canaryClient.Patch(context.TODO(), deployment, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
 }
 
 func (r *realCanaryController) Create(release *v1alpha1.BatchRelease) error {

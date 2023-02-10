@@ -83,18 +83,46 @@ func NewControllerFinder(c client.Client) *ControllerFinder {
 // +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=replicasets/status,verbs=get;update;patch
 
-func (r *ControllerFinder) GetWorkloadForRef(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
-	for _, finder := range r.finders() {
-		scale, err := finder(namespace, ref)
-		if scale != nil || err != nil {
-			return scale, err
+func (r *ControllerFinder) GetWorkloadForRef(rollout *rolloutv1alpha1.Rollout) (*Workload, error) {
+	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
+	if workloadRef == nil {
+		return nil, nil
+	}
+
+	switch strings.ToLower(rollout.Annotations[rolloutv1alpha1.RolloutStyleAnnotation]) {
+	case strings.ToLower(string(rolloutv1alpha1.PartitionRollingStyle)):
+		for _, finder := range r.partitionStyleFinders() {
+			workload, err := finder(rollout.Namespace, workloadRef)
+			if workload != nil || err != nil {
+				return workload, err
+			}
+		}
+	case strings.ToLower(string(rolloutv1alpha1.CanaryRollingStyle)):
+		for _, finder := range r.canaryStyleFinders() {
+			workload, err := finder(rollout.Namespace, workloadRef)
+			if workload != nil || err != nil {
+				return workload, err
+			}
+		}
+	default:
+		for _, finder := range append(r.canaryStyleFinders(), r.partitionStyleFinders()...) {
+			workload, err := finder(rollout.Namespace, workloadRef)
+			if workload != nil || err != nil {
+				return workload, err
+			}
 		}
 	}
+
+	klog.Errorf("Failed to get workload for rollout %v due to no correct finders", klog.KObj(rollout))
 	return nil, nil
 }
 
-func (r *ControllerFinder) finders() []ControllerFinderFunc {
-	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getDeployment, r.getStatefulSetLikeWorkload}
+func (r *ControllerFinder) canaryStyleFinders() []ControllerFinderFunc {
+	return []ControllerFinderFunc{r.getDeployment}
+}
+
+func (r *ControllerFinder) partitionStyleFinders() []ControllerFinderFunc {
+	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment, r.getStatefulSetLikeWorkload}
 }
 
 var (
@@ -148,6 +176,59 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 	return workload, nil
 }
 
+// getPartitionStyleDeployment returns the Advanced Deployment referenced by the provided controllerRef.
+func (r *ControllerFinder) getAdvancedDeployment(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
+	// This error is irreversible, so there is no need to return error
+	ok, _ := verifyGroupKind(ref, ControllerKindDep.Kind, []string{ControllerKindDep.Group})
+	if !ok {
+		return nil, nil
+	}
+	deployment := &apps.Deployment{}
+	err := r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: ref.Name}, deployment)
+	if err != nil {
+		// when error is NotFound, it is ok here.
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if deployment.Generation != deployment.Status.ObservedGeneration {
+		return &Workload{IsStatusConsistent: false}, nil
+	}
+
+	stableRevision := deployment.Labels[rolloutv1alpha1.DeploymentStableRevisionLabel]
+
+	workload := &Workload{
+		RevisionLabelKey:   apps.DefaultDeploymentUniqueLabelKey,
+		StableRevision:     stableRevision,
+		CanaryRevision:     ComputeHash(&deployment.Spec.Template, nil),
+		ObjectMeta:         deployment.ObjectMeta,
+		Replicas:           *deployment.Spec.Replicas,
+		IsStatusConsistent: true,
+	}
+
+	// not in rollout progressing
+	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
+		return workload, nil
+	}
+	// set pod template hash for canary
+	rss, err := r.GetReplicaSetsForDeployment(deployment)
+	if err != nil {
+		return &Workload{IsStatusConsistent: false}, err
+	}
+	newRS, _ := FindCanaryAndStableReplicaSet(rss, deployment)
+	if newRS != nil {
+		workload.PodTemplateHash = newRS.Labels[apps.DefaultDeploymentUniqueLabelKey]
+	}
+	// in rolling back
+	if workload.StableRevision != "" && workload.StableRevision == workload.PodTemplateHash {
+		workload.IsInRollback = true
+	}
+	// in rollout progressing
+	workload.InRolloutProgressing = true
+	return workload, nil
+}
+
 // getDeployment returns the k8s native deployment referenced by the provided controllerRef.
 func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
 	// This error is irreversible, so there is no need to return error
@@ -188,9 +269,6 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 	}
 	// in rollout progressing
 	workload.InRolloutProgressing = true
-	// workload is continuous release, indicates rollback(v1 -> v2 -> v1)
-	// delete auto-generated labels
-	delete(stableRs.Spec.Template.Labels, apps.DefaultDeploymentUniqueLabelKey)
 	if EqualIgnoreHash(&stableRs.Spec.Template, &stable.Spec.Template) {
 		workload.IsInRollback = true
 		return workload, nil
@@ -274,7 +352,7 @@ func (r *ControllerFinder) getLatestCanaryDeployment(stable *apps.Deployment) (*
 	return nil, nil
 }
 
-func (r *ControllerFinder) GetReplicaSetsForDeployment(obj *apps.Deployment) ([]apps.ReplicaSet, error) {
+func (r *ControllerFinder) GetReplicaSetsForDeployment(obj *apps.Deployment) ([]*apps.ReplicaSet, error) {
 	// List ReplicaSets owned by this Deployment
 	rsList := &apps.ReplicaSetList{}
 	selector, err := metav1.LabelSelectorAsSelector(obj.Spec.Selector)
@@ -288,7 +366,7 @@ func (r *ControllerFinder) GetReplicaSetsForDeployment(obj *apps.Deployment) ([]
 		return nil, err
 	}
 
-	rss := make([]apps.ReplicaSet, 0)
+	var rss []*apps.ReplicaSet
 	for i := range rsList.Items {
 		rs := rsList.Items[i]
 		if !rs.DeletionTimestamp.IsZero() || (rs.Spec.Replicas != nil && *rs.Spec.Replicas == 0) {
@@ -296,7 +374,7 @@ func (r *ControllerFinder) GetReplicaSetsForDeployment(obj *apps.Deployment) ([]
 		}
 		if ref := metav1.GetControllerOf(&rs); ref != nil {
 			if ref.UID == obj.UID {
-				rss = append(rss, rs)
+				rss = append(rss, &rs)
 			}
 		}
 	}
@@ -315,7 +393,7 @@ func (r *ControllerFinder) getDeploymentStableRs(obj *apps.Deployment) (*apps.Re
 	sort.Slice(rss, func(i, j int) bool {
 		return rss[i].CreationTimestamp.Before(&rss[j].CreationTimestamp)
 	})
-	return &rss[0], nil
+	return rss[0], nil
 }
 
 func verifyGroupKind(ref *rolloutv1alpha1.WorkloadRef, expectedKind string, expectedGroups []string) (bool, error) {

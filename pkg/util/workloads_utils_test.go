@@ -19,6 +19,7 @@ package util
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -26,8 +27,10 @@ import (
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -217,6 +220,118 @@ func TestGetOwnerWorkload(t *testing.T) {
 				Expect(reflect.DeepEqual(father, got)).Should(BeTrue())
 			} else {
 				Expect(reflect.DeepEqual(father, got)).Should(BeFalse())
+			}
+		})
+	}
+}
+
+func TestFilterCanaryAndStableReplicaSet(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	const notExists = "not-exists"
+	createTimestamps := []time.Time{
+		time.Now().Add(0 * time.Second),
+		time.Now().Add(1 * time.Second),
+		time.Now().Add(2 * time.Second),
+		time.Now().Add(3 * time.Second),
+		time.Now().Add(4 * time.Second),
+		time.Now().Add(5 * time.Second),
+	}
+	templateFactory := func(order int64) corev1.PodTemplateSpec {
+		return corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{Generation: order},
+		}
+	}
+	makeRS := func(name, revision string, createTime time.Time, templateOrder int64, replicas int32) *appsv1.ReplicaSet {
+		return &appsv1.ReplicaSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              name,
+				CreationTimestamp: metav1.Time{Time: createTime},
+				Annotations:       map[string]string{DeploymentRevisionAnnotation: revision},
+			},
+			Spec: appsv1.ReplicaSetSpec{
+				Replicas: pointer.Int32(replicas),
+				Template: templateFactory(templateOrder),
+			},
+		}
+	}
+	makeD := func(name, revision string, templateOrder int64) *appsv1.Deployment {
+		return &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        name,
+				Annotations: map[string]string{DeploymentRevisionAnnotation: revision},
+			},
+			Spec: appsv1.DeploymentSpec{Template: templateFactory(templateOrder)},
+		}
+	}
+
+	cases := map[string]struct {
+		parameters func() ([]*appsv1.ReplicaSet, *appsv1.Deployment)
+		stableName string
+		canaryName string
+	}{
+		"no canary": {
+			parameters: func() ([]*appsv1.ReplicaSet, *appsv1.Deployment) {
+				rss := []*appsv1.ReplicaSet{
+					makeRS("r0", "1", createTimestamps[1], 1, 1),
+					makeRS("r1", "0", createTimestamps[0], 0, 0),
+				}
+				return rss, makeD("d", "0", 2)
+			},
+			stableName: "r0",
+			canaryName: notExists,
+		},
+		"no stable": {
+			parameters: func() ([]*appsv1.ReplicaSet, *appsv1.Deployment) {
+				rss := []*appsv1.ReplicaSet{
+					makeRS("r0", "0", createTimestamps[0], 0, 1),
+				}
+				return rss, makeD("d", "0", 0)
+			},
+			stableName: notExists,
+			canaryName: "r0",
+		},
+		"1 active oldRS": {
+			parameters: func() ([]*appsv1.ReplicaSet, *appsv1.Deployment) {
+				rss := []*appsv1.ReplicaSet{
+					makeRS("r0", "2", createTimestamps[0], 0, 1),
+					makeRS("r1", "3", createTimestamps[1], 1, 1),
+					makeRS("r1", "1", createTimestamps[3], 3, 0),
+					makeRS("r1", "0", createTimestamps[4], 4, 0),
+				}
+				return rss, makeD("d", "0", 1)
+			},
+			stableName: "r0",
+			canaryName: "r1",
+		},
+		"many active oldRS": {
+			parameters: func() ([]*appsv1.ReplicaSet, *appsv1.Deployment) {
+				rss := []*appsv1.ReplicaSet{
+					makeRS("r0", "0", createTimestamps[3], 0, 1),
+					makeRS("r3", "2", createTimestamps[1], 3, 1),
+					makeRS("r2", "3", createTimestamps[0], 2, 1),
+					makeRS("r1", "1", createTimestamps[2], 1, 1),
+				}
+				return rss, makeD("d", "4", 3)
+			},
+			stableName: "r0",
+			canaryName: "r3",
+		},
+	}
+
+	for name, cs := range cases {
+		t.Run(name, func(t *testing.T) {
+			rss, d := cs.parameters()
+			canary, stable := FindCanaryAndStableReplicaSet(rss, d)
+			if canary != nil {
+				Expect(canary.Name).Should(Equal(cs.canaryName))
+			} else {
+				Expect(cs.canaryName).Should(Equal(notExists))
+			}
+			if stable != nil {
+				Expect(stable.Name).Should(Equal(cs.stableName))
+			} else {
+				Expect(cs.stableName).Should(Equal(notExists))
 			}
 		})
 	}

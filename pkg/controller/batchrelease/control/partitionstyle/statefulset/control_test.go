@@ -612,7 +612,7 @@ func TestRealController(t *testing.T) {
 	Expect(cli.Get(context.TODO(), stsKey, fetch)).NotTo(HaveOccurred())
 	Expect(fetch.Annotations[util.BatchReleaseControlAnnotation]).Should(Equal(""))
 
-	stableInfo := controller.GetInfo()
+	stableInfo := controller.GetWorkloadInfo()
 	Expect(stableInfo).ShouldNot(BeNil())
 	checkWorkloadInfo(stableInfo, sts)
 }
