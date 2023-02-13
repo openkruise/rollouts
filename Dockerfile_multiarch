@@ -1,5 +1,7 @@
 # Build the manager binary
-FROM --platform=$BUILDPLATFORM golang:1.16 as builder
+ARG BASE_IMAGE=alpine
+ARG BASE_IMAGE_VERION=3.17
+FROM --platform=$BUILDPLATFORM golang:1.18-alpine3.17 as builder
 
 WORKDIR /workspace
 
@@ -13,14 +15,20 @@ COPY api/ api/
 COPY pkg/ pkg/
 
 # Build
-ARG TARGETOS TARGETARCH
-RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
+ARG TARGETOS
+ARG TARGETARCH
+RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 GO111MODULE=on go build -a -o manager main.go
 
-# Use distroless as minimal base image to package the manager binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot
+ARG BASE_IMAGE
+ARG BASE_IMAGE_VERION
+FROM ${BASE_IMAGE}:${BASE_IMAGE_VERION}
+
+RUN apk add --no-cache ca-certificates=~20220614-r4 bash=~5.2.15-r0 expat=~2.5.0-r0 \
+    && rm -rf /var/cache/apk/*
+
 WORKDIR /
 COPY --from=builder /workspace/manager .
-USER 65532:65532
+COPY lua_configuration /lua_configuration
+USER 1000
 
 ENTRYPOINT ["/manager"]
