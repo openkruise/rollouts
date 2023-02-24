@@ -9,6 +9,7 @@ annotations["alb.ingress.kubernetes.io/canary-by-header"] = nil
 annotations["alb.ingress.kubernetes.io/canary-by-header-pattern"] = nil
 annotations["alb.ingress.kubernetes.io/canary-by-header-value"] = nil
 annotations["alb.ingress.kubernetes.io/canary-weight"] = nil
+annotations["alb.ingress.kubernetes.io/order"] = "1"
 if ( obj.weight ~= "-1" )
 then
     annotations["alb.ingress.kubernetes.io/canary-weight"] = obj.weight
