@@ -72,11 +72,11 @@ func initReg() RegistryList {
 		DockerGluster:           "docker.io/gluster",
 		E2eRegistry:             "gcr.io/kubernetes-e2e-test-images",
 		E2eVolumeRegistry:       "gcr.io/kubernetes-e2e-test-images/volume",
-		PromoterE2eRegistry:     "k8s.gcr.io/e2e-test-images",
-		BuildImageRegistry:      "k8s.gcr.io/build-image",
+		PromoterE2eRegistry:     "registry.k8s.io/e2e-test-images",
+		BuildImageRegistry:      "registry.k8s.io/build-image",
 		InvalidRegistry:         "invalid.com/invalid",
-		GcRegistry:              "k8s.gcr.io",
-		SigStorageRegistry:      "k8s.gcr.io/sig-storage",
+		GcRegistry:              "registry.k8s.io",
+		SigStorageRegistry:      "registry.k8s.io/sig-storage",
 		GcrReleaseRegistry:      "gcr.io/gke-release",
 		PrivateRegistry:         "gcr.io/k8s-authenticated-test",
 		SampleRegistry:          "gcr.io/google-samples",
@@ -297,9 +297,9 @@ func ReplaceRegistryInImageURL(imageURL string) (string, error) {
 		registryAndUser = e2eRegistry
 	case "gcr.io/kubernetes-e2e-test-images/volume":
 		registryAndUser = e2eVolumeRegistry
-	case "k8s.gcr.io":
+	case "registry.k8s.io":
 		registryAndUser = gcRegistry
-	case "k8s.gcr.io/sig-storage":
+	case "registry.k8s.io/sig-storage":
 		registryAndUser = sigStorageRegistry
 	case "gcr.io/k8s-authenticated-test":
 		registryAndUser = PrivateRegistry
