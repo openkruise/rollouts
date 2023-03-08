@@ -2,31 +2,25 @@
 [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 
 ## Introduction
-Kruise Rollouts is **a Bypass component which provides advanced deployment capabilities such as canary, traffic routing, and progressive delivery features, for a series of Kubernetes workloads, such as Deployment and CloneSet.**
+Kruise Rollouts is a **Bypass** component that offers **Advanced Progressive Delivery Features**. Its support for canary, multi-batch, and A/B testing delivery modes can be helpful in achieving smooth and controlled rollouts of changes to your application, while its compatibility with Gateway API and various Ingress implementations makes it easier to integrate with your existing infrastructure. Overall, Kruise Rollouts is a valuable tool for Kubernetes users looking to optimize their deployment processes!
+
+<div style="text-align:center"><img src="docs/images/rollout_intro.png" /></div>
 
 ## Why Kruise Rollouts?
 - **Functionality**：
-    - Support multi-batch delivery for Deployment/CloneSet.
-    - Support Nginx/ALB/Istio traffic routing control during rollout.
+  - Supports canary and multi-batch delivery for various workloads, such as Deployment, CloneSet, and StatefulSet.
+  - Supports Fine-grained traffic orchestration of application with Kubernetes Ingress and [Gateway API](https://gateway-api.sigs.k8s.io/).
 
 - **Flexibility**:
-    - Support scaling up/down to workloads during rollout.
-    - Can be applied to newly-created or existing workload objects directly;
-    - Can be ridden out of at any time when you needn't it without consideration of unavailable workloads and traffic problems.
-    - Can cooperate with other native/third-part Kubernetes controllers/operators, such as HPA and WorkloadSpread.
-
-- **Non-Invasion**:
-    - Does not invade native workload controllers.
-    - Does not replace user-defined workload and traffic configurations.
-
+  - Handles both incremental and existing workloads with ease.
+  - Be compatible with workload-referencing components like HPA, allowing for easy deployment and management of workloads.
+  - Supports plug-and-play and hot-swapping, with immediate effect upon application, and the flexibility to be easily deleted at any stage, including during the rollout process.
+  
 - **Extensibility**:
-    - Easily extend to other traffic routing types, or workload types via plugin codes.
-
-- **Easy-integration**:
-    - Easily integrate with classic or GitOps-style Kubernetes-based PaaS.
+  - Extend to other workloads and traffic types easily with pluggable lua scripts.
 
 ## Quick Start
-- [Getting Started](docs/getting_started/introduction.md)
+- See [Getting Started](https://openkruise.io/rollouts/introduction/) documents in OpenKruise official website.
 
 ## Community
 Active communication channels:
