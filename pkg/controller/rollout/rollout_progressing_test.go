@@ -40,9 +40,41 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 		name         string
 		getObj       func() ([]*apps.Deployment, []*apps.ReplicaSet)
 		getNetwork   func() ([]*corev1.Service, []*netv1.Ingress)
-		getRollout   func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease)
+		getRollout   func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting)
 		expectStatus func() *v1alpha1.RolloutStatus
+		expectTr     func() *v1alpha1.TrafficRouting
 	}{
+		{
+			name: "ReconcileRolloutProgressing init trafficRouting",
+			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
+				dep1 := deploymentDemo.DeepCopy()
+				rs1 := rsDemo.DeepCopy()
+				return []*apps.Deployment{dep1}, []*apps.ReplicaSet{rs1}
+			},
+			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
+				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
+			},
+			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+				obj := rolloutDemo.DeepCopy()
+				obj.Annotations[v1alpha1.TrafficRoutingAnnotation] = "tr-demo"
+				return obj, nil, demoTR.DeepCopy()
+			},
+			expectStatus: func() *v1alpha1.RolloutStatus {
+				s := rolloutDemo.Status.DeepCopy()
+				s.CanaryStatus.ObservedWorkloadGeneration = 2
+				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
+				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
+				s.CanaryStatus.CanaryRevision = "56855c89f9"
+				s.CanaryStatus.CurrentStepIndex = 1
+				s.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
+				return s
+			},
+			expectTr: func() *v1alpha1.TrafficRouting {
+				tr := demoTR.DeepCopy()
+				tr.Finalizers = []string{util.ProgressingRolloutFinalizer(rolloutDemo.Name)}
+				return tr
+			},
+		},
 		{
 			name: "ReconcileRolloutProgressing init -> rolling",
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
@@ -53,9 +85,11 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease) {
+			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
-				return obj, nil
+				tr := demoTR.DeepCopy()
+				tr.Finalizers = []string{util.ProgressingRolloutFinalizer(rolloutDemo.Name)}
+				return obj, nil, tr
 			},
 			expectStatus: func() *v1alpha1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
@@ -98,7 +132,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease) {
+			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -109,7 +143,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
-				return obj, nil
+				return obj, nil, nil
 			},
 			expectStatus: func() *v1alpha1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
@@ -153,7 +187,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease) {
+			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -165,7 +199,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
-				return obj, nil
+				return obj, nil, nil
 			},
 			expectStatus: func() *v1alpha1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
@@ -201,8 +235,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease) {
+			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
+				obj.Annotations[v1alpha1.TrafficRoutingAnnotation] = "tr-demo"
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
@@ -220,7 +255,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 						CanaryReplicas: intstr.FromInt(1),
 					},
 				}
-				return obj, br
+				tr := demoTR.DeepCopy()
+				tr.Finalizers = []string{util.ProgressingRolloutFinalizer(rolloutDemo.Name)}
+				return obj, br, tr
 			},
 			expectStatus: func() *v1alpha1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
@@ -236,6 +273,10 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(s, *cond)
 				return s
+			},
+			expectTr: func() *v1alpha1.TrafficRouting {
+				tr := demoTR.DeepCopy()
+				return tr
 			},
 		},
 		{
@@ -256,7 +297,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease) {
+			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -276,7 +317,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 					},
 				}
 				br.Status.Phase = v1alpha1.RolloutPhaseCompleted
-				return obj, br
+				return obj, br, nil
 			},
 			expectStatus: func() *v1alpha1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
@@ -312,7 +353,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease) {
+			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -325,7 +366,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(&obj.Status, *cond)
-				return obj, nil
+				return obj, nil, nil
 			},
 			expectStatus: func() *v1alpha1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
@@ -348,7 +389,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 		},
 		{
-			name: "ReconcileRolloutProgressing rolling -> rollback",
+			name: "ReconcileRolloutProgressing rolling -> rollback1",
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				dep1.Spec.Template.Spec.Containers[0].Image = "echoserver:v1"
@@ -375,7 +416,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease) {
+			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -387,7 +428,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
-				return obj, nil
+				return obj, nil, nil
 			},
 			expectStatus: func() *v1alpha1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
@@ -405,7 +446,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 		},
 		{
-			name: "ReconcileRolloutProgressing rolling -> rollback",
+			name: "ReconcileRolloutProgressing rolling -> rollback2",
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				dep1.Spec.Template.Spec.Containers[0].Image = "echoserver:v1"
@@ -432,7 +473,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease) {
+			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -444,7 +485,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
-				return obj, nil
+				return obj, nil, nil
 			},
 			expectStatus: func() *v1alpha1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
@@ -489,7 +530,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease) {
+			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -503,7 +544,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
-				return obj, nil
+				return obj, nil, nil
 			},
 			expectStatus: func() *v1alpha1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
@@ -519,7 +560,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			deps, rss := cs.getObj()
-			rollout, br := cs.getRollout()
+			rollout, br, tr := cs.getRollout()
 			fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rollout, demoConf.DeepCopy()).Build()
 			for _, rs := range rss {
 				_ = fc.Create(context.TODO(), rs)
@@ -529,6 +570,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			}
 			if br != nil {
 				_ = fc.Create(context.TODO(), br)
+			}
+			if tr != nil {
+				_ = fc.Create(context.TODO(), tr)
 			}
 			ss, in := cs.getNetwork()
 			for _, obj := range ss {
@@ -556,6 +600,17 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			}
 			_ = r.updateRolloutStatusInternal(rollout, *newStatus)
 			checkRolloutEqual(fc, t, client.ObjectKey{Name: rollout.Name}, cs.expectStatus())
+			if cs.expectTr != nil {
+				expectTr := cs.expectTr()
+				obj := &v1alpha1.TrafficRouting{}
+				err = fc.Get(context.TODO(), client.ObjectKey{Name: expectTr.Name}, obj)
+				if err != nil {
+					t.Fatalf("get object failed: %s", err.Error())
+				}
+				if !reflect.DeepEqual(obj.Finalizers, expectTr.Finalizers) {
+					t.Fatalf("expect(%s), but get(%s)", expectTr.Finalizers, obj.Finalizers)
+				}
+			}
 		})
 	}
 }
@@ -604,13 +659,19 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(20),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(20),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(50),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(50),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(100),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(100),
+						},
 					},
 				}
 				return obj
@@ -643,13 +704,19 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(20),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(20),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(40),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(40),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(100),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(100),
+						},
 					},
 				}
 				return obj
@@ -682,13 +749,19 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(40),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(40),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(60),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(60),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(100),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(100),
+						},
 					},
 				}
 				return obj
@@ -721,13 +794,19 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(10),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(10),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(30),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(30),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(100),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(100),
+						},
 					},
 				}
 				return obj
@@ -760,14 +839,18 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(2),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(2),
+						},
 						Replicas: &intstr.IntOrString{
 							Type:   intstr.String,
 							StrVal: "10%",
 						},
 					},
 					{
-						Weight: utilpointer.Int32(3),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(3),
+						},
 						Replicas: &intstr.IntOrString{
 							Type:   intstr.String,
 							StrVal: "10%",
@@ -819,7 +902,7 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 			if err != nil {
 				t.Fatalf(err.Error())
 			}
-			c := &util.RolloutContext{Rollout: rollout, Workload: workload}
+			c := &RolloutContext{Rollout: rollout, Workload: workload}
 			newStepIndex, err := reconciler.recalculateCanaryStep(c)
 			if err != nil {
 				t.Fatalf(err.Error())

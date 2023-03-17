@@ -111,13 +111,20 @@ spec:
                           description: CanaryStep defines a step of a canary workload.
                           properties:
                             matches:
-                              description: Matches define conditions used for matching
-                                the incoming HTTP requests to canary service. Each
-                                match is independent, i.e. this rule will be matched
-                                if **any** one of the matches is satisfied. If Gateway
-                                API, current only support one match. And cannot support
-                                both weight and matches, if both are configured, then
-                                matches takes precedence.
+                              description: "Set overwrites the request with the given
+                                header (name, value) before the action. \n Input:
+                                \  GET /foo HTTP/1.1   my-header: foo \n requestHeaderModifier:
+                                \  set:   - name: \"my-header\"     value: \"bar\"
+                                \n Output:   GET /foo HTTP/1.1   my-header: bar \n
+                                RequestHeaderModifier *gatewayv1alpha2.HTTPRequestHeaderFilter
+                                `json:\"requestHeaderModifier,omitempty\"` Matches
+                                define conditions used for matching the incoming HTTP
+                                requests to canary service. Each match is independent,
+                                i.e. this rule will be matched if **any** one of the
+                                matches is satisfied. If Gateway API, current only
+                                support one match. And cannot support both weight
+                                and matches, if both are configured, then matches
+                                takes precedence."
                               items:
                                 properties:
                                   headers:
@@ -209,9 +216,9 @@ spec:
                       trafficRoutings:
                         description: TrafficRoutings hosts all the supported service
                           meshes supported to enable more fine-grained traffic routing
-                          todo current only support one TrafficRouting
+                          and current only support one TrafficRouting
                         items:
-                          description: TrafficRouting hosts all the different configuration
+                          description: TrafficRoutingRef hosts all the different configuration
                             for supported service meshes to enable more fine-grained
                             traffic routing
                           properties:

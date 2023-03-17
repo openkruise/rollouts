@@ -50,8 +50,9 @@ type ingressController struct {
 }
 
 type Config struct {
-	RolloutName   string
-	RolloutNs     string
+	// only for log info
+	Key           string
+	Namespace     string
 	CanaryService string
 	StableService string
 	TrafficConf   *rolloutv1alpha1.IngressTrafficRouting
@@ -73,50 +74,51 @@ func NewIngressTrafficRouting(client client.Client, conf Config) (network.Networ
 	return r, nil
 }
 
-// Initialize verify the existence of the ingress resource and generate the canary ingress
+// Initialize only determine if the network resources(ingress & gateway api) exist.
+// If error is nil, then the network resources exist.
 func (r *ingressController) Initialize(ctx context.Context) error {
 	ingress := &netv1.Ingress{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.conf.TrafficConf.Name}, ingress)
-	if err != nil {
-		return err
-	}
-	canaryIngress := &netv1.Ingress{}
-	err = r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.canaryIngressName}, canaryIngress)
-	if err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("rollout(%s/%s) get canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, r.canaryIngressName, err.Error())
-		return err
-	} else if err == nil {
-		return nil
-	}
-
-	// build and create canary ingress
-	canaryIngress = r.buildCanaryIngress(ingress)
-	canaryIngress.Annotations, err = r.executeLuaForCanary(canaryIngress.Annotations, utilpointer.Int32(0), nil)
-	if err != nil {
-		klog.Errorf("rollout(%s/%s) execute lua failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
-		return err
-	}
-	if err = r.Create(ctx, canaryIngress); err != nil {
-		klog.Errorf("rollout(%s/%s) create canary ingress failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
-		return err
-	}
-	klog.Infof("rollout(%s/%s) create canary ingress(%s) success", r.conf.RolloutNs, r.conf.RolloutName, util.DumpJSON(canaryIngress))
-	return nil
+	return r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: r.conf.TrafficConf.Name}, ingress)
 }
 
-func (r *ingressController) EnsureRoutes(ctx context.Context, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch) (bool, error) {
+func (r *ingressController) EnsureRoutes(ctx context.Context, strategy *rolloutv1alpha1.TrafficRoutingStrategy) (bool, error) {
+	weight := strategy.Weight
+	matches := strategy.Matches
+	// headerModifier := strategy.RequestHeaderModifier
+
 	canaryIngress := &netv1.Ingress{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: defaultCanaryIngressName(r.conf.TrafficConf.Name)}, canaryIngress)
-	if err != nil {
-		if weight != nil && *weight == 0 && errors.IsNotFound(err) {
+	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: defaultCanaryIngressName(r.conf.TrafficConf.Name)}, canaryIngress)
+	if errors.IsNotFound(err) {
+		// finalizer scenario, canary ingress maybe not found
+		if weight != nil && *weight == 0 {
 			return true, nil
 		}
-		klog.Errorf("rollout(%s/%s) get canary ingress failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
+		// create canary ingress
+		ingress := &netv1.Ingress{}
+		err = r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: r.conf.TrafficConf.Name}, ingress)
+		if err != nil {
+			return false, err
+		}
+		// build and create canary ingress
+		canaryIngress = r.buildCanaryIngress(ingress)
+		canaryIngress.Annotations, err = r.executeLuaForCanary(canaryIngress.Annotations, utilpointer.Int32(0), nil)
+		if err != nil {
+			klog.Errorf("%s execute lua failed: %s", r.conf.Key, err.Error())
+			return false, err
+		}
+		if err = r.Create(ctx, canaryIngress); err != nil {
+			klog.Errorf("%s create canary ingress failed: %s", r.conf.Key, err.Error())
+			return false, err
+		}
+		klog.Infof("%s create canary ingress(%s) success", r.conf.Key, util.DumpJSON(canaryIngress))
+		return false, nil
+	} else if err != nil {
+		klog.Errorf("%s get canary ingress failed: %s", r.conf.Key, err.Error())
 		return false, err
 	}
 	newAnnotations, err := r.executeLuaForCanary(canaryIngress.Annotations, weight, matches)
 	if err != nil {
-		klog.Errorf("rollout(%s/%s) execute lua failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
+		klog.Errorf("%s execute lua failed: %s", r.conf.Key, err.Error())
 		return false, err
 	}
 	if reflect.DeepEqual(canaryIngress.Annotations, newAnnotations) {
@@ -126,23 +128,23 @@ func (r *ingressController) EnsureRoutes(ctx context.Context, weight *int32, mat
 	byte2, _ := json.Marshal(metav1.ObjectMeta{Annotations: newAnnotations})
 	patch, err := jsonpatch.CreateMergePatch(byte1, byte2)
 	if err != nil {
-		klog.Errorf("rollout(%s/%s) create merge patch failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
+		klog.Errorf("%s create merge patch failed: %s", r.conf.Key, err.Error())
 		return false, err
 	}
 	body := fmt.Sprintf(`{"metadata":%s}`, string(patch))
 	if err = r.Patch(ctx, canaryIngress, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
-		klog.Errorf("rollout(%s/%s) set canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
+		klog.Errorf("%s set canary ingress(%s) failed: %s", r.conf.Key, canaryIngress.Name, err.Error())
 		return false, err
 	}
-	klog.Infof("rollout(%s/%s) set canary ingress(%s) annotations(%s) success", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, util.DumpJSON(newAnnotations))
+	klog.Infof("%s set canary ingress(%s) annotations(%s) success", r.conf.Key, canaryIngress.Name, util.DumpJSON(newAnnotations))
 	return false, nil
 }
 
 func (r *ingressController) Finalise(ctx context.Context) error {
 	canaryIngress := &netv1.Ingress{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: r.canaryIngressName}, canaryIngress)
+	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: r.canaryIngressName}, canaryIngress)
 	if err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("rollout(%s/%s) get canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, r.canaryIngressName, err.Error())
+		klog.Errorf("%s get canary ingress(%s) failed: %s", r.conf.Key, r.canaryIngressName, err.Error())
 		return err
 	}
 	if errors.IsNotFound(err) || !canaryIngress.DeletionTimestamp.IsZero() {
@@ -150,10 +152,10 @@ func (r *ingressController) Finalise(ctx context.Context) error {
 	}
 	// immediate delete canary ingress
 	if err = r.Delete(ctx, canaryIngress); err != nil {
-		klog.Errorf("rollout(%s/%s) remove canary ingress(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name, err.Error())
+		klog.Errorf("%s remove canary ingress(%s) failed: %s", r.conf.Key, canaryIngress.Name, err.Error())
 		return err
 	}
-	klog.Infof("rollout(%s/%s) remove canary ingress(%s) success", r.conf.RolloutNs, r.conf.RolloutName, canaryIngress.Name)
+	klog.Infof("%s remove canary ingress(%s) success", r.conf.Key, canaryIngress.Name)
 	return nil
 }
 
@@ -215,6 +217,7 @@ func defaultCanaryIngressName(name string) string {
 }
 
 func (r *ingressController) executeLuaForCanary(annotations map[string]string, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch) (map[string]string, error) {
+
 	if weight == nil {
 		// the lua script does not have a pointer type,
 		// so we need to pass weight=-1 to indicate the case where weight is nil.
@@ -225,12 +228,14 @@ func (r *ingressController) executeLuaForCanary(annotations map[string]string, w
 		Weight        string
 		Matches       []rolloutv1alpha1.HttpRouteMatch
 		CanaryService string
+		//todo, RequestHeaderModifier *gatewayv1alpha2.HTTPRequestHeaderFilter
 	}
 	data := &LuaData{
 		Annotations:   annotations,
 		Weight:        fmt.Sprintf("%d", *weight),
 		Matches:       matches,
 		CanaryService: r.conf.CanaryService,
+		// RequestHeaderModifier: headerModifier,
 	}
 	unObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(data)
 	if err != nil {

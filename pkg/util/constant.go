@@ -16,6 +16,12 @@ limitations under the License.
 
 package util
 
+import (
+	"fmt"
+
+	"github.com/openkruise/rollouts/api/v1alpha1"
+)
+
 // For Rollout and BatchRelease
 const (
 	// BatchReleaseControlAnnotation is controller info about batchRelease when rollout
@@ -41,6 +47,10 @@ const (
 	DeploymentRevisionAnnotation = "deployment.kubernetes.io/revision"
 )
 
+const (
+	TrafficRoutingFinalizer = "rollouts.kruise.io/trafficrouting"
+)
+
 // For Pods
 const (
 	// NoNeedUpdatePodLabel will be patched to pod when rollback in batches if the pods no need to rollback
@@ -57,6 +67,7 @@ const (
 	CloneSetType    WorkloadType = "cloneset"
 	DeploymentType  WorkloadType = "deployment"
 	StatefulSetType WorkloadType = "statefulset"
+	DaemonSetType   WorkloadType = "daemonset"
 
 	AddFinalizerOpType    FinalizerOpType = "Add"
 	RemoveFinalizerOpType FinalizerOpType = "Remove"
@@ -65,3 +76,7 @@ const (
 type WorkloadType string
 
 type FinalizerOpType string
+
+func ProgressingRolloutFinalizer(name string) string {
+	return fmt.Sprintf("%s/%s", v1alpha1.ProgressingRolloutFinalizerPrefix, name)
+}

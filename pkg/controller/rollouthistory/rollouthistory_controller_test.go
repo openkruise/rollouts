@@ -137,23 +137,29 @@ var (
 				Canary: &rolloutv1alpha1.CanaryStrategy{
 					Steps: []rolloutv1alpha1.CanaryStep{
 						{
-							Weight: utilpointer.Int32(5),
+							TrafficRoutingStrategy: rolloutv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(5),
+							},
 							Pause: rolloutv1alpha1.RolloutPause{
 								Duration: utilpointer.Int32(0),
 							},
 						},
 						{
-							Weight: utilpointer.Int32(40),
-							Pause:  rolloutv1alpha1.RolloutPause{},
+							TrafficRoutingStrategy: rolloutv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(40),
+							},
+							Pause: rolloutv1alpha1.RolloutPause{},
 						},
 						{
-							Weight: utilpointer.Int32(100),
+							TrafficRoutingStrategy: rolloutv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(100),
+							},
 							Pause: rolloutv1alpha1.RolloutPause{
 								Duration: utilpointer.Int32(0),
 							},
 						},
 					},
-					TrafficRoutings: []*rolloutv1alpha1.TrafficRouting{
+					TrafficRoutings: []rolloutv1alpha1.TrafficRoutingRef{
 						{
 							Service: "service-demo",
 							Ingress: &rolloutv1alpha1.IngressTrafficRouting{

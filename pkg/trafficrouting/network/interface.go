@@ -24,8 +24,8 @@ import (
 
 // NetworkProvider common function across all TrafficRouting implementation
 type NetworkProvider interface {
-	// Initialize determine if the network resources(ingress & gateway api) exist.
-	// If it is Ingress, init method will create the canary ingress resources, and set weight=0.
+	// Initialize only determine if the network resources(ingress & gateway api) exist.
+	// If error is nil, then the network resources exist.
 	Initialize(ctx context.Context) error
 	// EnsureRoutes check and set canary weight and matches.
 	// weight indicates percentage of traffic to canary service, and range of values[0,100]
@@ -33,7 +33,7 @@ type NetworkProvider interface {
 	// 1. check if canary has been set desired weight.
 	// 2. If not, set canary desired weight
 	// When the first set weight is returned false, mainly to give the provider some time to process, only when again ensure, will return true
-	EnsureRoutes(ctx context.Context, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch) (bool, error)
+	EnsureRoutes(ctx context.Context, strategy *rolloutv1alpha1.TrafficRoutingStrategy) (bool, error)
 	// Finalise will do some cleanup work after the canary rollout complete, such as delete canary ingress.
 	// Finalise is called with a 3-second delay after completing the canary.
 	Finalise(ctx context.Context) error

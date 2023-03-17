@@ -81,13 +81,13 @@ jobs:
           done
           set +e
           PODS=$(kubectl get pod -n kruise-rollout | grep '1/1' | wc -l)
-          kubectl get node -o yaml
-          kubectl get all -n kruise-rollout -o yaml
           set -e
           if [ "$PODS" -eq "1" ]; then
             echo "Wait for kruise-rollout ready successfully"
           else
             echo "Timeout to wait for kruise-rollout ready"
+            kubectl get pod -n kruise-rollout --no-headers | awk '{print $1}' | xargs kubectl logs -p -n kruise-rollout
+            kubectl get pod -n kruise-rollout --no-headers | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
             exit 1
           fi
       - name: Run E2E Tests For Deployment Controller
