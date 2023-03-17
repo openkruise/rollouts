@@ -25,6 +25,7 @@ import (
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/util/retry"
@@ -65,6 +66,32 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 		}
 		klog.Infof("rollout(%s/%s) workload not found, and reset status be Initial", rollout.Namespace, rollout.Name)
 		return false, newStatus, nil
+	}
+	klog.V(5).Infof("rollout(%s/%s) workload(%s)", rollout.Namespace, rollout.Name, util.DumpJSON(workload))
+	// Patch objectSelector in workload labels[rollouts.kruise.io/workload-type],
+	// then rollout only webhook the workload which contains labels[rollouts.kruise.io/workload-type].
+	var workloadType util.WorkloadType
+	switch workload.Kind {
+	case util.ControllerKruiseKindCS.Kind:
+		workloadType = util.CloneSetType
+	case util.ControllerKindDep.Kind:
+		workloadType = util.DeploymentType
+	case util.ControllerKindSts.Kind:
+		workloadType = util.StatefulSetType
+	case util.ControllerKruiseKindDS.Kind:
+		workloadType = util.DaemonSetType
+	}
+	if workload.Annotations[util.WorkloadTypeLabel] == "" && workloadType != "" {
+		workloadGVK := schema.FromAPIVersionAndKind(workload.APIVersion, workload.Kind)
+		obj := util.GetEmptyWorkloadObject(workloadGVK)
+		obj.SetNamespace(workload.Namespace)
+		obj.SetName(workload.Name)
+		body := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s"}}}`, util.WorkloadTypeLabel, workloadType)
+		if err = r.Patch(context.TODO(), obj, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
+			klog.Errorf("rollout(%s/%s) patch workload(%s) failed: %s", rollout.Namespace, rollout.Name, workload.Name, err.Error())
+			return false, nil, err
+		}
+		klog.Infof("rollout(%s/%s) patch workload(%s) labels[%s] success", rollout.Namespace, rollout.Name, workload.Name, util.WorkloadTypeLabel)
 	}
 	// workload status generation is not equal to workload.generation
 	if !workload.IsStatusConsistent {
@@ -187,7 +214,7 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *v1alpha1.Rollou
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return nil, err
 	}
-	c := &util.RolloutContext{Rollout: rollout, NewStatus: newStatus, Workload: workload}
+	c := &RolloutContext{Rollout: rollout, NewStatus: newStatus, Workload: workload}
 	done, err := r.doFinalising(c)
 	if err != nil {
 		return nil, err

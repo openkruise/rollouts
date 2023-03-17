@@ -67,11 +67,15 @@ func (h *RolloutCreateUpdateHandler) Handle(ctx context.Context, req admission.R
 		if err := h.Decoder.Decode(req, obj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
+		errList := h.validateRollout(obj)
+		if len(errList) != 0 {
+			return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+		}
 		oldObj := &appsv1alpha1.Rollout{}
 		if err := h.Decoder.DecodeRaw(req.AdmissionRequest.OldObject, oldObj); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		errList := h.validateRolloutUpdate(oldObj, obj)
+		errList = h.validateRolloutUpdate(oldObj, obj)
 		if len(errList) != 0 {
 			return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
 		}
@@ -199,11 +203,7 @@ func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldP
 	return errList
 }
 
-func validateRolloutSpecCanaryTraffic(traffic *appsv1alpha1.TrafficRouting, fldPath *field.Path) field.ErrorList {
-	if traffic == nil {
-		return field.ErrorList{field.Invalid(fldPath, nil, "Canary.TrafficRoutings cannot be empty")}
-	}
-
+func validateRolloutSpecCanaryTraffic(traffic appsv1alpha1.TrafficRoutingRef, fldPath *field.Path) field.ErrorList {
 	errList := field.ErrorList{}
 	if len(traffic.Service) == 0 {
 		errList = append(errList, field.Invalid(fldPath.Child("Service"), traffic.Service, "TrafficRouting.Service cannot be empty"))

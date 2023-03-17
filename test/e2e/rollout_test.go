@@ -415,19 +415,29 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
 				},
 				{
-					Weight: utilpointer.Int32(40),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
 				},
 				{
-					Weight: utilpointer.Int32(60),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
 				},
 				{
-					Weight: utilpointer.Int32(80),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(80),
+					},
 				},
 				{
-					Weight: utilpointer.Int32(90),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(90),
+					},
 				},
 			}
 			CreateObject(rollout)
@@ -561,13 +571,17 @@ var _ = SIGDescribe("Rollout", func() {
 			replicas := intstr.FromInt(2)
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight:   utilpointer.Int32(20),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
 					Replicas: &replicas,
 					Pause:    v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 			}
 			CreateObject(rollout)
@@ -996,23 +1010,31 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(40),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(100),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(0),
 					},
@@ -1129,23 +1151,31 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(40),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(100),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(0),
 					},
@@ -1258,31 +1288,41 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(40),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(60),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(80),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(80),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(100),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(0),
 					},
@@ -1389,19 +1429,25 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(60),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(100),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
@@ -1485,19 +1531,25 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(60),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(100),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
@@ -1631,15 +1683,21 @@ var _ = SIGDescribe("Rollout", func() {
 			// update rollout step configuration
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(10),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(10),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(30),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(30),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(100),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
@@ -1732,21 +1790,23 @@ var _ = SIGDescribe("Rollout", func() {
 			replica2 := intstr.FromInt(2)
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Matches: []v1alpha1.HttpRouteMatch{
-						{
-							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
-								{
-									Type:  &headerType,
-									Name:  "user_id",
-									Value: "123456",
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Matches: []v1alpha1.HttpRouteMatch{
+							{
+								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+									{
+										Type:  &headerType,
+										Name:  "user_id",
+										Value: "123456",
+									},
 								},
 							},
-						},
-						{
-							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
-								{
-									Name:  "canary-by-cookie",
-									Value: "demo",
+							{
+								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+									{
+										Name:  "canary-by-cookie",
+										Value: "demo",
+									},
 								},
 							},
 						},
@@ -1755,7 +1815,9 @@ var _ = SIGDescribe("Rollout", func() {
 					Replicas: &replica1,
 				},
 				{
-					Weight:   utilpointer.Int32(30),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(30),
+					},
 					Replicas: &replica2,
 					Pause:    v1alpha1.RolloutPause{},
 				},
@@ -1894,20 +1956,22 @@ var _ = SIGDescribe("Rollout", func() {
 			replica2 := intstr.FromInt(2)
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Matches: []v1alpha1.HttpRouteMatch{
-						{
-							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
-								{
-									Name:  "Cookie",
-									Value: "demo1=value1;demo2=value2",
-								},
-								{
-									Name:  "SourceIp",
-									Value: "192.168.0.0/16;172.16.0.0/16",
-								},
-								{
-									Name:  "headername",
-									Value: "headervalue1;headervalue2",
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Matches: []v1alpha1.HttpRouteMatch{
+							{
+								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+									{
+										Name:  "Cookie",
+										Value: "demo1=value1;demo2=value2",
+									},
+									{
+										Name:  "SourceIp",
+										Value: "192.168.0.0/16;172.16.0.0/16",
+									},
+									{
+										Name:  "headername",
+										Value: "headervalue1;headervalue2",
+									},
 								},
 							},
 						},
@@ -1916,7 +1980,9 @@ var _ = SIGDescribe("Rollout", func() {
 					Replicas: &replica1,
 				},
 				{
-					Weight:   utilpointer.Int32(30),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(30),
+					},
 					Replicas: &replica2,
 					Pause:    v1alpha1.RolloutPause{},
 				},
@@ -2062,20 +2128,22 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Matches: []v1alpha1.HttpRouteMatch{
-						{
-							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
-								{
-									Name:  "Cookie",
-									Value: "demo1=value1;demo2=value2",
-								},
-								{
-									Name:  "SourceIp",
-									Value: "192.168.0.0/16;172.16.0.0/16",
-								},
-								{
-									Name:  "headername",
-									Value: "headervalue1;headervalue2",
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Matches: []v1alpha1.HttpRouteMatch{
+							{
+								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+									{
+										Name:  "Cookie",
+										Value: "demo1=value1;demo2=value2",
+									},
+									{
+										Name:  "SourceIp",
+										Value: "192.168.0.0/16;172.16.0.0/16",
+									},
+									{
+										Name:  "headername",
+										Value: "headervalue1;headervalue2",
+									},
 								},
 							},
 						},
@@ -2220,19 +2288,29 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/gateway/rollout-test.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
 				},
 				{
-					Weight: utilpointer.Int32(40),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
 				},
 				{
-					Weight: utilpointer.Int32(60),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
 				},
 				{
-					Weight: utilpointer.Int32(80),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(80),
+					},
 				},
 				{
-					Weight: utilpointer.Int32(90),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(90),
+					},
 				},
 			}
 			CreateObject(rollout)
@@ -2378,12 +2456,16 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 			}
 			rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{
@@ -2873,7 +2955,7 @@ var _ = SIGDescribe("Rollout", func() {
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
 
-		It("V1->V2: Percentage, 20%,40%,60%,80%,100%, no traffic, Succeeded", func() {
+		It("CloneSet V1->V2: Percentage, 20%,40%,60%,80%,100%, no traffic, Succeeded", func() {
 			By("Creating Rollout...")
 			rollout := &v1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -2987,12 +3069,16 @@ var _ = SIGDescribe("Rollout", func() {
 				Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 				rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(20),
-						Pause:  v1alpha1.RolloutPause{},
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(20),
+						},
+						Pause: v1alpha1.RolloutPause{},
 					},
 					{
-						Weight: utilpointer.Int32(60),
-						Pause:  v1alpha1.RolloutPause{},
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(60),
+						},
+						Pause: v1alpha1.RolloutPause{},
 					},
 				}
 				rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{
@@ -3493,12 +3579,16 @@ var _ = SIGDescribe("Rollout", func() {
 				Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 				rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(20),
-						Pause:  v1alpha1.RolloutPause{},
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(20),
+						},
+						Pause: v1alpha1.RolloutPause{},
 					},
 					{
-						Weight: utilpointer.Int32(60),
-						Pause:  v1alpha1.RolloutPause{},
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(60),
+						},
+						Pause: v1alpha1.RolloutPause{},
 					},
 				}
 				rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{
@@ -4069,23 +4159,31 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(40),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
 				},
 				{
-					Weight: utilpointer.Int32(100),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
@@ -4165,23 +4263,33 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(40),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(80),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(80),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(100),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(0),
 					},
@@ -4271,23 +4379,33 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(40),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(80),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(80),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(100),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(0),
 					},
@@ -4361,23 +4479,33 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(40),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(80),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(80),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(100),
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
 					Pause: v1alpha1.RolloutPause{
 						Duration: utilpointer.Int32(0),
 					},
@@ -4451,20 +4579,28 @@ var _ = SIGDescribe("Rollout", func() {
 				FailureThreshold: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 				Steps: []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(10),
-						Pause:  v1alpha1.RolloutPause{},
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(10),
+						},
+						Pause: v1alpha1.RolloutPause{},
 					},
 					{
-						Weight: utilpointer.Int32(30),
-						Pause:  v1alpha1.RolloutPause{},
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(30),
+						},
+						Pause: v1alpha1.RolloutPause{},
 					},
 					{
-						Weight: utilpointer.Int32(60),
-						Pause:  v1alpha1.RolloutPause{},
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(60),
+						},
+						Pause: v1alpha1.RolloutPause{},
 					},
 					{
-						Weight: utilpointer.Int32(100),
-						Pause:  v1alpha1.RolloutPause{},
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(100),
+						},
+						Pause: v1alpha1.RolloutPause{},
 					},
 				},
 			}
@@ -4524,12 +4660,16 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 			}
 			rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{
@@ -4682,16 +4822,22 @@ var _ = SIGDescribe("Rollout", func() {
 			rollout.Spec.Strategy.Canary.TrafficRoutings = nil
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(100),
-					Pause:  v1alpha1.RolloutPause{Duration: utilpointer.Int32(0)},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
+					Pause: v1alpha1.RolloutPause{Duration: utilpointer.Int32(0)},
 				},
 			}
 			rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{
@@ -4788,16 +4934,22 @@ var _ = SIGDescribe("Rollout", func() {
 			rollout.Spec.Strategy.Canary.TrafficRoutings = nil
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(100),
-					Pause:  v1alpha1.RolloutPause{Duration: utilpointer.Int32(0)},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
+					Pause: v1alpha1.RolloutPause{Duration: utilpointer.Int32(0)},
 				},
 			}
 			rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{
@@ -4871,16 +5023,22 @@ var _ = SIGDescribe("Rollout", func() {
 			rollout.Spec.Strategy.Canary.TrafficRoutings = nil
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(100),
-					Pause:  v1alpha1.RolloutPause{Duration: utilpointer.Int32(0)},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
+					Pause: v1alpha1.RolloutPause{Duration: utilpointer.Int32(0)},
 				},
 			}
 			rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{
@@ -4942,16 +5100,22 @@ var _ = SIGDescribe("Rollout", func() {
 			rollout.Spec.Strategy.Canary.TrafficRoutings = nil
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Weight: utilpointer.Int32(20),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(60),
-					Pause:  v1alpha1.RolloutPause{},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{},
 				},
 				{
-					Weight: utilpointer.Int32(100),
-					Pause:  v1alpha1.RolloutPause{Duration: utilpointer.Int32(0)},
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
+					Pause: v1alpha1.RolloutPause{Duration: utilpointer.Int32(0)},
 				},
 			}
 			rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{

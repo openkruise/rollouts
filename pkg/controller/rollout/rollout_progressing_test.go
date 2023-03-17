@@ -348,7 +348,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 		},
 		{
-			name: "ReconcileRolloutProgressing rolling -> rollback",
+			name: "ReconcileRolloutProgressing rolling -> rollback1",
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				dep1.Spec.Template.Spec.Containers[0].Image = "echoserver:v1"
@@ -405,7 +405,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 		},
 		{
-			name: "ReconcileRolloutProgressing rolling -> rollback",
+			name: "ReconcileRolloutProgressing rolling -> rollback2",
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				dep1.Spec.Template.Spec.Containers[0].Image = "echoserver:v1"
@@ -604,13 +604,19 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(20),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(20),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(50),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(50),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(100),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(100),
+						},
 					},
 				}
 				return obj
@@ -643,13 +649,19 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(20),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(20),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(40),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(40),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(100),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(100),
+						},
 					},
 				}
 				return obj
@@ -682,13 +694,19 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(40),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(40),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(60),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(60),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(100),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(100),
+						},
 					},
 				}
 				return obj
@@ -721,13 +739,19 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(10),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(10),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(30),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(30),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(100),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(100),
+						},
 					},
 				}
 				return obj
@@ -760,14 +784,18 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(2),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(2),
+						},
 						Replicas: &intstr.IntOrString{
 							Type:   intstr.String,
 							StrVal: "10%",
 						},
 					},
 					{
-						Weight: utilpointer.Int32(3),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(3),
+						},
 						Replicas: &intstr.IntOrString{
 							Type:   intstr.String,
 							StrVal: "10%",
@@ -819,7 +847,7 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 			if err != nil {
 				t.Fatalf(err.Error())
 			}
-			c := &util.RolloutContext{Rollout: rollout, Workload: workload}
+			c := &RolloutContext{Rollout: rollout, Workload: workload}
 			newStepIndex, err := reconciler.recalculateCanaryStep(c)
 			if err != nil {
 				t.Fatalf(err.Error())

@@ -37,6 +37,7 @@ import (
 // Workload is used to return (controller, scale, selector) fields from the
 // controller finder functions.
 type Workload struct {
+	metav1.TypeMeta
 	metav1.ObjectMeta
 
 	// replicas
@@ -49,6 +50,8 @@ type Workload struct {
 	PodTemplateHash string
 	// Revision hash key
 	RevisionLabelKey string
+	// label selector
+	Selector *metav1.LabelSelector
 
 	// Is it in rollback phase
 	IsInRollback bool
@@ -159,6 +162,7 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 		StableRevision:     cloneSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
 		CanaryRevision:     cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
 		ObjectMeta:         cloneSet.ObjectMeta,
+		TypeMeta:           cloneSet.TypeMeta,
 		Replicas:           *cloneSet.Spec.Replicas,
 		PodTemplateHash:    cloneSet.Status.UpdateRevision[strings.LastIndex(cloneSet.Status.UpdateRevision, "-")+1:],
 		IsStatusConsistent: true,
@@ -200,6 +204,7 @@ func (r *ControllerFinder) getKruiseDaemonSet(namespace string, ref *rolloutv1al
 		//StableRevision:     daemonSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
 		CanaryRevision:     daemonSet.Status.DaemonSetHash[strings.LastIndex(daemonSet.Status.DaemonSetHash, "-")+1:],
 		ObjectMeta:         daemonSet.ObjectMeta,
+		TypeMeta:           daemonSet.TypeMeta,
 		Replicas:           daemonSet.Status.DesiredNumberScheduled,
 		PodTemplateHash:    daemonSet.Status.DaemonSetHash[strings.LastIndex(daemonSet.Status.DaemonSetHash, "-")+1:],
 		IsStatusConsistent: true,
@@ -246,6 +251,7 @@ func (r *ControllerFinder) getAdvancedDeployment(namespace string, ref *rolloutv
 		StableRevision:     stableRevision,
 		CanaryRevision:     ComputeHash(&deployment.Spec.Template, nil),
 		ObjectMeta:         deployment.ObjectMeta,
+		TypeMeta:           deployment.TypeMeta,
 		Replicas:           *deployment.Spec.Replicas,
 		IsStatusConsistent: true,
 	}
@@ -299,11 +305,13 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 
 	workload := &Workload{
 		ObjectMeta:         stable.ObjectMeta,
+		TypeMeta:           stable.TypeMeta,
 		Replicas:           *stable.Spec.Replicas,
 		IsStatusConsistent: true,
 		StableRevision:     stableRs.Labels[apps.DefaultDeploymentUniqueLabelKey],
 		CanaryRevision:     ComputeHash(&stable.Spec.Template, nil),
 		RevisionLabelKey:   apps.DefaultDeploymentUniqueLabelKey,
+		Selector:           stable.Spec.Selector,
 	}
 
 	// not in rollout progressing
@@ -357,6 +365,7 @@ func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rol
 		StableRevision:     workloadInfo.Status.StableRevision,
 		CanaryRevision:     workloadInfo.Status.UpdateRevision,
 		ObjectMeta:         workloadInfo.ObjectMeta,
+		TypeMeta:           workloadInfo.TypeMeta,
 		Replicas:           workloadInfo.Replicas,
 		PodTemplateHash:    workloadInfo.Status.UpdateRevision,
 		IsStatusConsistent: true,

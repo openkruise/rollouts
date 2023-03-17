@@ -132,6 +132,16 @@ func (r *realCanaryController) create(release *v1alpha1.BatchRelease, template *
 
 	// spec
 	canary.Spec = *template.Spec.DeepCopy()
+	// patch canary pod metadata
+	if release.Spec.ReleasePlan.PatchPodTemplateMetadata != nil {
+		patch := release.Spec.ReleasePlan.PatchPodTemplateMetadata
+		for k, v := range patch.Labels {
+			canary.Spec.Template.Labels[k] = v
+		}
+		for k, v := range patch.Annotations {
+			canary.Spec.Template.Annotations[k] = v
+		}
+	}
 	canary.Spec.Replicas = pointer.Int32Ptr(0)
 	canary.Spec.Paused = false
 
@@ -168,7 +178,7 @@ func (r *realCanaryController) listDeployment(release *v1alpha1.BatchRelease, op
 }
 
 // return the latest deployment with the newer creation time
-func filterCanaryDeployment(ds []*apps.Deployment, template *corev1.PodTemplateSpec) *apps.Deployment {
+func filterCanaryDeployment(release *v1alpha1.BatchRelease, ds []*apps.Deployment, template *corev1.PodTemplateSpec) *apps.Deployment {
 	if len(ds) == 0 {
 		return nil
 	}
@@ -179,7 +189,18 @@ func filterCanaryDeployment(ds []*apps.Deployment, template *corev1.PodTemplateS
 		return ds[0]
 	}
 	for _, d := range ds {
-		if util.EqualIgnoreHash(template, &d.Spec.Template) {
+		dClone := d.DeepCopy()
+		// remove the canary pod metadata
+		if release.Spec.ReleasePlan.PatchPodTemplateMetadata != nil {
+			patch := release.Spec.ReleasePlan.PatchPodTemplateMetadata
+			for k := range patch.Labels {
+				delete(dClone.Spec.Template.Labels, k)
+			}
+			for k := range patch.Annotations {
+				delete(dClone.Spec.Template.Annotations, k)
+			}
+		}
+		if util.EqualIgnoreHash(template, &dClone.Spec.Template) {
 			return d
 		}
 	}

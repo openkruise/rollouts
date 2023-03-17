@@ -316,7 +316,7 @@ func getCanaryDeployment(release *v1alpha1.BatchRelease, stable *apps.Deployment
 	if len(ds) == 0 {
 		return nil
 	}
-	return filterCanaryDeployment(ds, &stable.Spec.Template)
+	return filterCanaryDeployment(release, ds, &stable.Spec.Template)
 }
 
 func checkWorkloadInfo(stableInfo *util.WorkloadInfo, deployment *apps.Deployment) {

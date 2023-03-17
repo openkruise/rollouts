@@ -340,3 +340,29 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - trafficroutings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - trafficroutings/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - trafficroutings/status
+  verbs:
+  - get
+  - patch
+  - update

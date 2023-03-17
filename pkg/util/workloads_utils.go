@@ -71,6 +71,7 @@ type WorkloadStatus struct {
 }
 
 type WorkloadInfo struct {
+	metav1.TypeMeta
 	metav1.ObjectMeta
 	LogKey   string
 	Replicas int32

@@ -29,8 +29,9 @@ import (
 )
 
 type Config struct {
-	RolloutName   string
-	RolloutNs     string
+	// only for log info
+	Key           string
+	Namespace     string
 	CanaryService string
 	StableService string
 	TrafficConf   *rolloutv1alpha1.GatewayTrafficRouting
@@ -52,17 +53,20 @@ func NewGatewayTrafficRouting(client client.Client, conf Config) (network.Networ
 
 func (r *gatewayController) Initialize(ctx context.Context) error {
 	route := &gatewayv1alpha2.HTTPRoute{}
-	return r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: *r.conf.TrafficConf.HTTPRouteName}, route)
+	return r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: *r.conf.TrafficConf.HTTPRouteName}, route)
 }
 
-func (r *gatewayController) EnsureRoutes(ctx context.Context, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch) (bool, error) {
+func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *rolloutv1alpha1.TrafficRoutingStrategy) (bool, error) {
+	weight := strategy.Weight
+	matches := strategy.Matches
+	headerModifier := strategy.RequestHeaderModifier
 	var httpRoute gatewayv1alpha2.HTTPRoute
-	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: *r.conf.TrafficConf.HTTPRouteName}, &httpRoute)
+	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: *r.conf.TrafficConf.HTTPRouteName}, &httpRoute)
 	if err != nil {
 		return false, err
 	}
 	// desired route
-	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, weight, matches)
+	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, weight, matches, headerModifier)
 	if reflect.DeepEqual(httpRoute.Spec.Rules, desiredRule) {
 		return true, nil
 	}
@@ -76,25 +80,25 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, weight *int32, mat
 		routeClone.Spec.Rules = desiredRule
 		return r.Client.Update(context.TODO(), routeClone)
 	}); err != nil {
-		klog.Errorf("update rollout(%s/%s) httpRoute(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, httpRoute.Name, err.Error())
+		klog.Errorf("update %s httpRoute(%s) failed: %s", r.conf.Key, httpRoute.Name, err.Error())
 		return false, err
 	}
-	klog.Infof("rollout(%s/%s) set HTTPRoute(name:%s weight:%d) success", r.conf.RolloutNs, r.conf.RolloutName, *r.conf.TrafficConf.HTTPRouteName, *weight)
+	klog.Infof("%s set HTTPRoute(name:%s weight:%d) success", r.conf.Key, *r.conf.TrafficConf.HTTPRouteName, *weight)
 	return false, nil
 }
 
 func (r *gatewayController) Finalise(ctx context.Context) error {
 	httpRoute := &gatewayv1alpha2.HTTPRoute{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: *r.conf.TrafficConf.HTTPRouteName}, httpRoute)
+	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: *r.conf.TrafficConf.HTTPRouteName}, httpRoute)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
-		klog.Errorf("rollout(%s/%s) get HTTPRoute failed: %s", r.conf.RolloutNs, r.conf.RolloutName, err.Error())
+		klog.Errorf("%s get HTTPRoute failed: %s", r.conf.Key, err.Error())
 		return err
 	}
 	// desired rule
-	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, utilpointer.Int32(-1), nil)
+	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, utilpointer.Int32(-1), nil, nil)
 	if reflect.DeepEqual(httpRoute.Spec.Rules, desiredRule) {
 		return nil
 	}
@@ -107,14 +111,15 @@ func (r *gatewayController) Finalise(ctx context.Context) error {
 		routeClone.Spec.Rules = desiredRule
 		return r.Client.Update(context.TODO(), routeClone)
 	}); err != nil {
-		klog.Errorf("update rollout(%s/%s) httpRoute(%s) failed: %s", r.conf.RolloutNs, r.conf.RolloutName, httpRoute.Name, err.Error())
+		klog.Errorf("update %s httpRoute(%s) failed: %s", r.conf.Key, httpRoute.Name, err.Error())
 		return err
 	}
-	klog.Infof("rollout(%s/%s) TrafficRouting Finalise success", r.conf.RolloutNs, r.conf.RolloutName)
+	klog.Infof("%s TrafficRouting Finalise success", r.conf.Key)
 	return nil
 }
 
-func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch) []gatewayv1alpha2.HTTPRouteRule {
+func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch,
+	rh *gatewayv1alpha2.HTTPRequestHeaderFilter) []gatewayv1alpha2.HTTPRouteRule {
 	var desired []gatewayv1alpha2.HTTPRouteRule
 	// Only when finalize method parameter weight=-1,
 	// then we need to remove the canary route policy and restore to the original configuration

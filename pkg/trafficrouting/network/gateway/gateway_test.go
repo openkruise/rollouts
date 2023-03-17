@@ -443,7 +443,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 	}
 
 	conf := Config{
-		RolloutName:   "rollout-demo",
+		Key:           "rollout-demo",
 		CanaryService: "store-svc-canary",
 		StableService: "store-svc",
 	}
@@ -452,7 +452,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 		t.Run(cs.name, func(t *testing.T) {
 			controller := &gatewayController{conf: conf}
 			weight, matches := cs.getRoutes()
-			current := controller.buildDesiredHTTPRoute(cs.getRouteRules(), weight, matches)
+			current := controller.buildDesiredHTTPRoute(cs.getRouteRules(), weight, matches, nil)
 			desired := cs.desiredRules()
 			if !reflect.DeepEqual(current, desired) {
 				t.Fatalf("expect: %v, but get %v", util.DumpJSON(desired), util.DumpJSON(current))

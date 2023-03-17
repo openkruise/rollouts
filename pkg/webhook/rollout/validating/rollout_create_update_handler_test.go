@@ -56,30 +56,42 @@ var (
 				Canary: &appsv1alpha1.CanaryStrategy{
 					Steps: []appsv1alpha1.CanaryStep{
 						{
-							Weight:   utilpointer.Int32Ptr(10),
+							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(10),
+							},
 							Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: int32(1)},
 							Pause:    appsv1alpha1.RolloutPause{},
 						},
 						{
-							Weight:   utilpointer.Int32Ptr(10),
+							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(10),
+							},
 							Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: int32(3)},
 							Pause:    appsv1alpha1.RolloutPause{Duration: utilpointer.Int32(1 * 24 * 60 * 60)},
 						},
 						{
-							Weight: utilpointer.Int32Ptr(30),
-							Pause:  appsv1alpha1.RolloutPause{Duration: utilpointer.Int32(7 * 24 * 60 * 60)},
+							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(30),
+							},
+							Pause: appsv1alpha1.RolloutPause{Duration: utilpointer.Int32(7 * 24 * 60 * 60)},
 						},
 						{
-							Weight: utilpointer.Int32Ptr(100),
+							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(100),
+							},
 						},
 						{
-							Weight: utilpointer.Int32Ptr(101),
+							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(101),
+							},
 						},
 						{
-							Weight: utilpointer.Int32Ptr(200),
+							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(200),
+							},
 						},
 					},
-					TrafficRoutings: []*appsv1alpha1.TrafficRouting{
+					TrafficRoutings: []appsv1alpha1.TrafficRoutingRef{
 						{
 							Service: "service-demo",
 							Ingress: &appsv1alpha1.IngressTrafficRouting{

@@ -51,6 +51,12 @@ const (
 	// Defaults to "canary" to Deployment.
 	// Defaults to "partition" to the others.
 	RolloutStyleAnnotation = "rollouts.kruise.io/rolling-style"
+
+	// TrafficRoutingAnnotation is the TrafficRouting Name, and it is the Rollout's TrafficRouting.
+	// The Rollout release will trigger the TrafficRouting release. For example:
+	// A microservice consists of three applications, and the invocation relationship is as follows: a -> b -> c,
+	// and application(a, b, c)'s gateway is trafficRouting. Any application(a, b or b) release will trigger TrafficRouting release.
+	TrafficRoutingAnnotation = "rollouts.kruise.io/trafficrouting"
 )
 
 // RolloutSpec defines the desired state of Rollout
@@ -78,12 +84,12 @@ type ObjectRef struct {
 	//RevisionRef *ControllerRevisionRef `json:"revisionRef,omitempty"`
 }
 
-type ObjectRefType string
+/*type ObjectRefType string
 
 const (
 	WorkloadRefType = "workloadRef"
 	RevisionRefType = "revisionRef"
-)
+)*/
 
 // WorkloadRef holds a references to the Kubernetes object
 type WorkloadRef struct {
@@ -106,12 +112,12 @@ type RolloutStrategy struct {
 	// BlueGreen *BlueGreenStrategy `json:"blueGreen,omitempty"`
 }
 
-type RolloutStrategyType string
+/*type RolloutStrategyType string
 
 const (
 	RolloutStrategyCanary    RolloutStrategyType = "canary"
 	RolloutStrategyBlueGreen RolloutStrategyType = "blueGreen"
-)
+)*/
 
 // CanaryStrategy defines parameters for a Replica Based Canary
 type CanaryStrategy struct {
@@ -119,33 +125,36 @@ type CanaryStrategy struct {
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
 	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
-	// todo current only support one TrafficRouting
-	TrafficRoutings []*TrafficRouting `json:"trafficRoutings,omitempty"`
+	// and current only support one TrafficRouting
+	TrafficRoutings []TrafficRoutingRef `json:"trafficRoutings,omitempty"`
 	// FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
 	// Only when FailureThreshold are satisfied, Rollout can enter ready state.
 	// If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
 	// FailureThreshold.
 	// Defaults to nil.
 	FailureThreshold *intstr.IntOrString `json:"failureThreshold,omitempty"`
-	// MetricsAnalysis *MetricsAnalysisBackground `json:"metricsAnalysis,omitempty"`
+	// PatchPodTemplateMetadata indicates patch configuration(e.g. labels, annotations) to the canary deployment podTemplateSpec.metadata
+	// only support for canary deployment
+	// +optional
+	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
+}
+
+type PatchPodTemplateMetadata struct {
+	// annotations
+	Annotations map[string]string `json:"annotations,omitempty"`
+	// labels
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // CanaryStep defines a step of a canary workload.
 type CanaryStep struct {
-	// Weight indicate how many percentage of traffic the canary pods should receive
-	// +optional
-	Weight *int32 `json:"weight,omitempty"`
+	TrafficRoutingStrategy `json:",inline"`
 	// Replicas is the number of expected canary pods in this batch
 	// it can be an absolute number (ex: 5) or a percentage of total pods.
 	Replicas *intstr.IntOrString `json:"replicas,omitempty"`
 	// Pause defines a pause stage for a rollout, manual or auto
 	// +optional
 	Pause RolloutPause `json:"pause,omitempty"`
-	// Matches define conditions used for matching the incoming HTTP requests to canary service.
-	// Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
-	// If Gateway API, current only support one match.
-	// And cannot support both weight and matches, if both are configured, then matches takes precedence.
-	Matches []HttpRouteMatch `json:"matches,omitempty"`
 }
 
 type HttpRouteMatch struct {
@@ -161,37 +170,6 @@ type RolloutPause struct {
 	// Duration the amount of time to wait before moving to the next step.
 	// +optional
 	Duration *int32 `json:"duration,omitempty"`
-}
-
-// TrafficRouting hosts all the different configuration for supported service meshes to enable more fine-grained traffic routing
-type TrafficRouting struct {
-	// Service holds the name of a service which selects pods with stable version and don't select any pods with canary version.
-	Service string `json:"service"`
-	// Optional duration in seconds the traffic provider(e.g. nginx ingress controller) consumes the service, ingress configuration changes gracefully.
-	GracePeriodSeconds int32 `json:"gracePeriodSeconds,omitempty"`
-	// Ingress holds Ingress specific configuration to route traffic, e.g. Nginx, Alb.
-	Ingress *IngressTrafficRouting `json:"ingress,omitempty"`
-	// Gateway holds Gateway specific configuration to route traffic
-	// Gateway configuration only supports >= v0.4.0 (v1alpha2).
-	Gateway *GatewayTrafficRouting `json:"gateway,omitempty"`
-}
-
-// IngressTrafficRouting configuration for ingress controller to control traffic routing
-type IngressTrafficRouting struct {
-	// ClassType refers to the type of `Ingress`.
-	// current support nginx, aliyun-alb. default is nginx.
-	// +optional
-	ClassType string `json:"classType,omitempty"`
-	// Name refers to the name of an `Ingress` resource in the same namespace as the `Rollout`
-	Name string `json:"name"`
-}
-
-// GatewayTrafficRouting configuration for gateway api
-type GatewayTrafficRouting struct {
-	// HTTPRouteName refers to the name of an `HTTPRoute` resource in the same namespace as the `Rollout`
-	HTTPRouteName *string `json:"httpRouteName,omitempty"`
-	// TCPRouteName *string `json:"tcpRouteName,omitempty"`
-	// UDPRouteName *string `json:"udpRouteName,omitempty"`
 }
 
 // RolloutStatus defines the observed state of Rollout

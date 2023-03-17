@@ -18,6 +18,7 @@ package rollout
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -233,13 +234,17 @@ func TestRunCanary(t *testing.T) {
 				trafficRoutingManager: r.trafficRoutingManager,
 				recorder:              r.Recorder,
 			}
-			workload, _ := r.finder.GetWorkloadForRef(rollout)
-			c := &util.RolloutContext{
+			workload, err := r.finder.GetWorkloadForRef(rollout)
+			if err != nil {
+				t.Fatalf("GetWorkloadForRef failed: %s", err.Error())
+			}
+			c := &RolloutContext{
 				Rollout:   rollout,
 				NewStatus: rollout.Status.DeepCopy(),
 				Workload:  workload,
 			}
-			err := r.canaryManager.runCanary(c)
+			fmt.Println(util.DumpJSON(c))
+			err = r.canaryManager.runCanary(c)
 			if err != nil {
 				t.Fatalf("reconcileRolloutProgressing failed: %s", err.Error())
 			}
@@ -310,7 +315,7 @@ func TestRunCanaryPaused(t *testing.T) {
 				trafficRoutingManager: r.trafficRoutingManager,
 				recorder:              r.Recorder,
 			}
-			c := &util.RolloutContext{
+			c := &RolloutContext{
 				Rollout:   rollout,
 				NewStatus: rollout.Status.DeepCopy(),
 			}

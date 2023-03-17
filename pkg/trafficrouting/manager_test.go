@@ -123,23 +123,31 @@ var (
 				Canary: &v1alpha1.CanaryStrategy{
 					Steps: []v1alpha1.CanaryStep{
 						{
-							Weight:   utilpointer.Int32(5),
+							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(5),
+							},
 							Replicas: &intstr.IntOrString{IntVal: 1},
 						},
 						{
-							Weight:   utilpointer.Int32(20),
+							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(20),
+							},
 							Replicas: &intstr.IntOrString{IntVal: 2},
 						},
 						{
-							Weight:   utilpointer.Int32(60),
+							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(60),
+							},
 							Replicas: &intstr.IntOrString{IntVal: 6},
 						},
 						{
-							Weight:   utilpointer.Int32(100),
+							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(100),
+							},
 							Replicas: &intstr.IntOrString{IntVal: 10},
 						},
 					},
-					TrafficRoutings: []*v1alpha1.TrafficRouting{
+					TrafficRoutings: []v1alpha1.TrafficRoutingRef{
 						{
 							Service: "echoserver",
 							Ingress: &v1alpha1.IngressTrafficRouting{
@@ -393,9 +401,20 @@ func TestDoTrafficRouting(t *testing.T) {
 			if len(ig) == 2 {
 				_ = client.Create(context.TODO(), ig[1])
 			}
-			c := &util.RolloutContext{}
-			c.Rollout, c.Workload = cs.getRollout()
-			c.NewStatus = c.Rollout.Status.DeepCopy()
+			rollout, workload := cs.getRollout()
+			newStatus := rollout.Status.DeepCopy()
+			currentStep := rollout.Spec.Strategy.Canary.Steps[newStatus.CanaryStatus.CurrentStepIndex-1]
+			c := &TrafficRoutingContext{
+				Key:              fmt.Sprintf("Rollout(%s/%s)", rollout.Namespace, rollout.Name),
+				Namespace:        rollout.Namespace,
+				ObjectRef:        rollout.Spec.Strategy.Canary.TrafficRoutings,
+				Strategy:         currentStep.TrafficRoutingStrategy,
+				OwnerRef:         *metav1.NewControllerRef(rollout, v1alpha1.SchemeGroupVersion.WithKind("Rollout")),
+				RevisionLabelKey: workload.RevisionLabelKey,
+				StableRevision:   newStatus.CanaryStatus.StableRevision,
+				CanaryRevision:   newStatus.CanaryStatus.PodTemplateHash,
+				LastUpdateTime:   newStatus.CanaryStatus.LastUpdateTime,
+			}
 			manager := NewTrafficRoutingManager(client)
 			err := manager.InitializeTrafficRouting(c)
 			if err != nil {
@@ -621,9 +640,20 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 			if len(ig) == 2 {
 				_ = client.Create(context.TODO(), ig[1])
 			}
-			c := &util.RolloutContext{}
-			c.Rollout, c.Workload = cs.getRollout()
-			c.NewStatus = c.Rollout.Status.DeepCopy()
+			rollout, workload := cs.getRollout()
+			newStatus := rollout.Status.DeepCopy()
+			currentStep := rollout.Spec.Strategy.Canary.Steps[newStatus.CanaryStatus.CurrentStepIndex-1]
+			c := &TrafficRoutingContext{
+				Key:              fmt.Sprintf("Rollout(%s/%s)", rollout.Namespace, rollout.Name),
+				Namespace:        rollout.Namespace,
+				ObjectRef:        rollout.Spec.Strategy.Canary.TrafficRoutings,
+				Strategy:         currentStep.TrafficRoutingStrategy,
+				OwnerRef:         *metav1.NewControllerRef(rollout, v1alpha1.SchemeGroupVersion.WithKind("Rollout")),
+				RevisionLabelKey: workload.RevisionLabelKey,
+				StableRevision:   newStatus.CanaryStatus.StableRevision,
+				CanaryRevision:   newStatus.CanaryStatus.PodTemplateHash,
+				LastUpdateTime:   newStatus.CanaryStatus.LastUpdateTime,
+			}
 			manager := NewTrafficRoutingManager(client)
 			done, err := manager.FinalisingTrafficRouting(c, cs.onlyRestoreStableService)
 			if err != nil {
