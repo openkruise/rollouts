@@ -34,7 +34,21 @@ Then spins up a MiniKube cluster:
 minikube start
 ```
 
-### Second Step: Deploy your kruise Rollout with a deployment
+### Second Step (Optional): Install Kruise
+If you want to use Workload such as CloneSet, Advanced StatefulSet and Advanced DaemonSet, you have to [install Kruise](https://openkruise.io/docs/installation):
+
+```bash
+# Firstly add openkruise charts repository if you haven't do this.
+$ helm repo add openkruise https://openkruise.github.io/charts/
+
+# [Optional]
+$ helm repo update
+
+# Install the latest version.
+$ helm install kruise openkruise/kruise --version 1.3.0
+```
+
+### Third Step: Deploy your kruise Rollout with a deployment
 #### 1. Generate code and manifests in your branch
 Make your own code changes and validate the build by running `make build` in rollouts directory.
 #### 2. Deploy customized controller manager
