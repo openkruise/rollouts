@@ -22,6 +22,9 @@ Kruise Rollouts is a **Bypass** component that offers **Advanced Progressive Del
 ## Quick Start
 - See [Getting Started](https://openkruise.io/rollouts/introduction/) documents in OpenKruise official website.
 
+## Contributing
+You are warmly welcome to hack on Kruise Rollout. We have prepared a detailed guide [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Community
 Active communication channels:
 
