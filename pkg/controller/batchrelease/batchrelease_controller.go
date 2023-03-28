@@ -58,6 +58,7 @@ func init() {
 	watchedWorkload = sync.Map{}
 	watchedWorkload.LoadOrStore(util.ControllerKindDep.String(), struct{}{})
 	watchedWorkload.LoadOrStore(util.ControllerKindSts.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerKruiseKindDS.String(), struct{}{})
 	watchedWorkload.LoadOrStore(util.ControllerKruiseKindCS.String(), struct{}{})
 	watchedWorkload.LoadOrStore(util.ControllerKruiseKindSts.String(), struct{}{})
 	watchedWorkload.LoadOrStore(util.ControllerKruiseOldKindSts.String(), struct{}{})
@@ -145,6 +146,8 @@ type BatchReleaseReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=statefulsets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps.kruise.io,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps.kruise.io,resources=statefulsets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=apps.kruise.io,resources=daemonsets,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=apps.kruise.io,resources=daemonsets/status,verbs=get;update;patch
 
 // Reconcile reads that state of the cluster for a Rollout object and makes changes based on the state read
 // and what is in the Rollout.Spec

@@ -54,6 +54,7 @@ func init() {
 	watchedWorkload.LoadOrStore(util.ControllerKruiseKindCS.String(), struct{}{})
 	watchedWorkload.LoadOrStore(util.ControllerKruiseKindSts.String(), struct{}{})
 	watchedWorkload.LoadOrStore(util.ControllerKruiseOldKindSts.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerKruiseKindDS.String(), struct{}{})
 }
 
 // RolloutReconciler reconciles a Rollout object
@@ -80,6 +81,8 @@ type RolloutReconciler struct {
 //+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps.kruise.io,resources=daemonsets,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=apps.kruise.io,resources=daemonsets/status,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

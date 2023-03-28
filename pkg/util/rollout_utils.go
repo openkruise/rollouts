@@ -79,6 +79,13 @@ func AddWorkloadWatcher(c controller.Controller, handler handler.EventHandler) e
 			return err
 		}
 	}
+	// Watch changes to DaemonSet if it has the CRD
+	if DiscoverGVK(ControllerKruiseKindDS) {
+		err := c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.DaemonSet{}}, handler)
+		if err != nil {
+			return err
+		}
+	}
 	// Watch changes to Advanced StatefulSet if it has the CRD
 	if DiscoverGVK(ControllerKruiseKindSts) {
 		err := c.Watch(&source.Kind{Type: &kruiseappsv1beta1.StatefulSet{}}, handler)

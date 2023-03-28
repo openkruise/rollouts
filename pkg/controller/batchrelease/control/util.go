@@ -74,7 +74,7 @@ func BuildReleaseControlInfo(release *v1alpha1.BatchRelease) string {
 // For examples:
 // * Given stableReplicas 1,  allReplicas 3,   return "33%";
 // * Given stableReplicas 98, allReplicas 99,  return "97%";
-// * Given stableReplicas 1,  allReplicas 101, return "1";
+// * Given stableReplicas 1,  allReplicas 101, return "1%";
 func ParseIntegerAsPercentageIfPossible(stableReplicas, allReplicas int32, canaryReplicas *intstr.IntOrString) intstr.IntOrString {
 	if stableReplicas >= allReplicas {
 		return intstr.FromString("100%")

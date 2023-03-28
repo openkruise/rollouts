@@ -35,9 +35,9 @@ import (
 //   - batch 0: 20%
 //   - batch 1: 50%
 //   - batch 2: 100%
-//   Currently, if we decide to roll back to version 1, if you use this function, can help you just rollback
-//   the pods that are really need to be rolled back according to release plan, but patch batch label according
-//   original release plan, and will patch the pods that are really rolled back in priority.
+//     Currently, if we decide to roll back to version 1, if you use this function, can help you just rollback
+//     the pods that are really need to be rolled back according to release plan, but patch batch label according
+//     original release plan, and will patch the pods that are really rolled back in priority.
 //   - in batch 0: really roll back (20 - 10) * 20% = 2 pods, but 20 * 20% = 4 pod will be patched batch label;
 //   - in batch 0: really roll back (20 - 10) * 50% = 5 pods, but 20 * 50% = 10 pod will be patched batch label;
 //   - in batch 0: really roll back (20 - 10) * 100% = 10 pods, but 20 * 100% = 20 pod will be patched batch label;
@@ -88,9 +88,9 @@ func FilterPodsForUnorderedUpdate(pods []*corev1.Pod, ctx *batchcontext.BatchCon
 //   - batch 0: 20%
 //   - batch 1: 50%
 //   - batch 2: 100%
-//   Currently, if we decide to roll back to version 1, if you use this function, can help you just rollback
-//   the pods that are really need to be rolled back according to release plan, but patch batch label according
-//   original release plan, and will patch the pods that are really rolled back in priority.
+//     Currently, if we decide to roll back to version 1, if you use this function, can help you just rollback
+//     the pods that are really need to be rolled back according to release plan, but patch batch label according
+//     original release plan, and will patch the pods that are really rolled back in priority.
 //   - in batch 0: really roll back (20 - 10) * 20% = 2 pods, but 20 * 20% = 4 pod will be patched batch label;
 //   - in batch 0: really roll back (20 - 10) * 50% = 5 pods, but 20 * 50% = 10 pod will be patched batch label;
 //   - in batch 0: really roll back (20 - 10) * 100% = 10 pods, but 20 * 100% = 20 pod will be patched batch label;

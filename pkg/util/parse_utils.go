@@ -221,6 +221,17 @@ func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 			StableRevision:     o.Status.CurrentRevision,
 		}
 
+	case *appsv1alpha1.DaemonSet:
+		return &WorkloadStatus{
+			Replicas:           o.Status.DesiredNumberScheduled,
+			ReadyReplicas:      o.Status.NumberReady,
+			AvailableReplicas:  o.Status.NumberAvailable,
+			UpdatedReplicas:    o.Status.UpdatedNumberScheduled,
+			ObservedGeneration: o.Status.ObservedGeneration,
+			UpdateRevision:     o.Status.DaemonSetHash,
+			//StableRevision:       o.Status.CurrentRevision,
+		}
+
 	case *unstructured.Unstructured:
 		return &WorkloadStatus{
 			ObservedGeneration:   int64(parseStatusIntFromUnstructured(o, "observedGeneration")),
@@ -250,6 +261,9 @@ func GetReplicas(object client.Object) int32 {
 		replicas = *o.Spec.Replicas
 	case *appsv1beta1.StatefulSet:
 		replicas = *o.Spec.Replicas
+	// DesiredNumberScheduled type is int
+	case *appsv1alpha1.DaemonSet:
+		replicas = o.Status.DesiredNumberScheduled
 	case *unstructured.Unstructured:
 		replicas = parseReplicasFromUnstructured(o)
 	default:
@@ -269,6 +283,8 @@ func GetTemplate(object client.Object) *corev1.PodTemplateSpec {
 		return &o.Spec.Template
 	case *appsv1beta1.StatefulSet:
 		return &o.Spec.Template
+	case *appsv1alpha1.StatefulSet:
+		return &o.Spec.Template
 	case *unstructured.Unstructured:
 		return parseTemplateFromUnstructured(o)
 	default:
@@ -287,6 +303,8 @@ func getSelector(object client.Object) (labels.Selector, error) {
 		return metav1.LabelSelectorAsSelector(o.Spec.Selector)
 	case *appsv1beta1.StatefulSet:
 		return metav1.LabelSelectorAsSelector(o.Spec.Selector)
+	case *appsv1alpha1.DaemonSet:
+		return metav1.LabelSelectorAsSelector(o.Spec.Selector)
 	case *unstructured.Unstructured:
 		return parseSelectorFromUnstructured(o)
 	default:
@@ -304,6 +322,8 @@ func GetMetadata(object client.Object) *metav1.ObjectMeta {
 	case *apps.StatefulSet:
 		return &o.ObjectMeta
 	case *appsv1beta1.StatefulSet:
+		return &o.ObjectMeta
+	case *appsv1alpha1.DaemonSet:
 		return &o.ObjectMeta
 	case *unstructured.Unstructured:
 		return parseMetadataFromUnstructured(o)

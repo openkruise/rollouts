@@ -167,7 +167,7 @@ func (r *realCanaryController) listDeployment(release *v1alpha1.BatchRelease, op
 	return ds, nil
 }
 
-//  return the latest deployment with the newer creation time
+// return the latest deployment with the newer creation time
 func filterCanaryDeployment(ds []*apps.Deployment, template *corev1.PodTemplateSpec) *apps.Deployment {
 	if len(ds) == 0 {
 		return nil

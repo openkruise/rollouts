@@ -122,7 +122,7 @@ func (r *ControllerFinder) canaryStyleFinders() []ControllerFinderFunc {
 }
 
 func (r *ControllerFinder) partitionStyleFinders() []ControllerFinderFunc {
-	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment, r.getStatefulSetLikeWorkload}
+	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment, r.getStatefulSetLikeWorkload, r.getKruiseDaemonSet}
 }
 
 var (
@@ -130,6 +130,7 @@ var (
 	ControllerKindDep          = apps.SchemeGroupVersion.WithKind("Deployment")
 	ControllerKindSts          = apps.SchemeGroupVersion.WithKind("StatefulSet")
 	ControllerKruiseKindCS     = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
+	ControllerKruiseKindDS     = appsv1alpha1.SchemeGroupVersion.WithKind("DaemonSet")
 	ControllerKruiseKindSts    = appsv1beta1.SchemeGroupVersion.WithKind("StatefulSet")
 	ControllerKruiseOldKindSts = appsv1alpha1.SchemeGroupVersion.WithKind("StatefulSet")
 )
@@ -173,6 +174,48 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 	if cloneSet.Status.CurrentRevision == cloneSet.Status.UpdateRevision && cloneSet.Status.UpdatedReplicas != cloneSet.Status.Replicas {
 		workload.IsInRollback = true
 	}
+	return workload, nil
+}
+
+func (r *ControllerFinder) getKruiseDaemonSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
+	// This error is irreversible, so there is no need to return error
+	ok, _ := verifyGroupKind(ref, ControllerKruiseKindDS.Kind, []string{ControllerKruiseKindDS.Group})
+	if !ok {
+		return nil, nil
+	}
+	daemonSet := &appsv1alpha1.DaemonSet{}
+	err := r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: ref.Name}, daemonSet)
+	if err != nil {
+		// when error is NotFound, it is ok here.
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if daemonSet.Generation != daemonSet.Status.ObservedGeneration {
+		return &Workload{IsStatusConsistent: false}, nil
+	}
+	workload := &Workload{
+		RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey,
+		//StableRevision:     daemonSet.Status.CurrentRevision[strings.LastIndex(cloneSet.Status.CurrentRevision, "-")+1:],
+		CanaryRevision:     daemonSet.Status.DaemonSetHash[strings.LastIndex(daemonSet.Status.DaemonSetHash, "-")+1:],
+		ObjectMeta:         daemonSet.ObjectMeta,
+		Replicas:           daemonSet.Status.DesiredNumberScheduled,
+		PodTemplateHash:    daemonSet.Status.DaemonSetHash[strings.LastIndex(daemonSet.Status.DaemonSetHash, "-")+1:],
+		IsStatusConsistent: true,
+	}
+
+	// not in rollout progressing
+	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
+		return workload, nil
+	}
+	// in rollout progressing
+	workload.InRolloutProgressing = true
+	// Is it in rollback phase
+	// has no currentRevision
+	// if daemonSet.Status.CurrentRevision == cloneSet.Status.UpdateRevision && cloneSet.Status.UpdatedReplicas != cloneSet.Status.Replicas {
+	// 	workload.IsInRollback = true
+	// }
 	return workload, nil
 }
 
