@@ -74,31 +74,6 @@ func (rc *realController) Initialize(release *v1alpha1.BatchRelease) error {
 		return nil
 	}
 
-	// // Set strategy to deployment annotations
-	// strategy := util.GetDeploymentStrategy(rc.object)
-	// rollingUpdate := strategy.RollingUpdate
-	// if rc.object.Spec.Strategy.RollingUpdate != nil {
-	// 	rollingUpdate = rc.object.Spec.Strategy.RollingUpdate
-	// }
-	// strategy = v1alpha1.DeploymentStrategy{
-	// 	Paused:        false,
-	// 	Partition:     intstr.FromInt(0),
-	// 	RollingStyle:  v1alpha1.PartitionRollingStyle,
-	// 	RollingUpdate: rollingUpdate,
-	// }
-
-	// d := rc.object.DeepCopy()
-	// patchData := patch.NewDeploymentPatch()
-	// patchData.InsertLabel(v1alpha1.AdvancedDeploymentControlLabel, "true")
-	// patchData.InsertAnnotation(v1alpha1.DeploymentStrategyAnnotation, util.DumpJSON(&strategy))
-	// patchData.InsertAnnotation(util.BatchReleaseControlAnnotation, util.DumpJSON(metav1.NewControllerRef(
-	// 	release, release.GetObjectKind().GroupVersionKind())))
-
-	// // Disable the native deployment controller
-	// patchData.UpdatePaused(true)
-	// patchData.UpdateStrategy(apps.DeploymentStrategy{Type: apps.RecreateDeploymentStrategyType})
-	// return rc.client.Patch(context.TODO(), d, patchData)
-
 	daemon := util.GetEmptyObjectWithKey(rc.object)
 	owner := control.BuildReleaseControlInfo(release)
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}},"spec":{"updateStrategy":{"paused":%v,"partition":"%s"}}}`,

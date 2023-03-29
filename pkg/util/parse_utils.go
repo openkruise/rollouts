@@ -221,6 +221,17 @@ func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 			StableRevision:     o.Status.CurrentRevision,
 		}
 
+	case *appsv1alpha1.DaemonSet:
+		return &WorkloadStatus{
+			Replicas:           o.Status.DesiredNumberScheduled,
+			ReadyReplicas:      o.Status.NumberReady,
+			AvailableReplicas:  o.Status.NumberAvailable,
+			UpdatedReplicas:    o.Status.UpdatedNumberScheduled,
+			ObservedGeneration: o.Status.ObservedGeneration,
+			UpdateRevision:     o.Status.DaemonSetHash,
+			//StableRevision:       o.Status.CurrentRevision,
+		}
+
 	case *unstructured.Unstructured:
 		return &WorkloadStatus{
 			ObservedGeneration:   int64(parseStatusIntFromUnstructured(o, "observedGeneration")),
@@ -250,6 +261,9 @@ func GetReplicas(object client.Object) int32 {
 		replicas = *o.Spec.Replicas
 	case *appsv1beta1.StatefulSet:
 		replicas = *o.Spec.Replicas
+	// DesiredNumberScheduled type is int
+	case *appsv1alpha1.DaemonSet:
+		replicas = o.Status.DesiredNumberScheduled
 	case *unstructured.Unstructured:
 		replicas = parseReplicasFromUnstructured(o)
 	default:
@@ -304,6 +318,8 @@ func GetMetadata(object client.Object) *metav1.ObjectMeta {
 	case *apps.StatefulSet:
 		return &o.ObjectMeta
 	case *appsv1beta1.StatefulSet:
+		return &o.ObjectMeta
+	case *appsv1alpha1.DaemonSet:
 		return &o.ObjectMeta
 	case *unstructured.Unstructured:
 		return parseMetadataFromUnstructured(o)
