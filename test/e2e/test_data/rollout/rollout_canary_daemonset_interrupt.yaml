@@ -1,0 +1,22 @@
+apiVersion: rollouts.kruise.io/v1alpha1
+kind: Rollout
+metadata:
+  name: rollouts-test
+  # The rollout resource needs to be in the same namespace as the corresponding workload
+  namespace: kube-system
+  # This annotation can help us upgrade the Deployment using partition, just like StatefulSet/CloneSet.
+  annotations:
+    rollouts.kruise.io/rolling-style: partition
+spec:
+  objectRef:
+    # rollout of published workloads, currently only supports Deployment, CloneSet, StatefulSet, Advanced StatefulSet
+    workloadRef:
+      apiVersion: apps.kruise.io/v1alpha1
+      kind: DaemonSet
+      name: fluentd-elasticsearch
+  strategy:
+    canary:
+      steps:
+      - replicas: 1
+      - replicas: 2
+      - replicas: 100%

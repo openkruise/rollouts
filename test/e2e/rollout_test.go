@@ -121,6 +121,24 @@ var _ = SIGDescribe("Rollout", func() {
 		return clone
 	}
 
+	UpdateDaemonSet := func(object *appsv1alpha1.DaemonSet) *appsv1alpha1.DaemonSet {
+		var daemon *appsv1alpha1.DaemonSet
+		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			daemon = &appsv1alpha1.DaemonSet{}
+			err := GetObject(object.Name, daemon)
+			if err != nil {
+				return err
+			}
+			// daemon.Spec.Replicas = utilpointer.Int32(*object.Spec.Replicas)
+			daemon.Spec.Template = *object.Spec.Template.DeepCopy()
+			daemon.Labels = mergeMap(daemon.Labels, object.Labels)
+			daemon.Annotations = mergeMap(daemon.Annotations, object.Annotations)
+			return k8sClient.Update(context.TODO(), daemon)
+		})).NotTo(HaveOccurred())
+
+		return daemon
+	}
+
 	UpdateNativeStatefulSet := func(object *apps.StatefulSet) *apps.StatefulSet {
 		var clone *apps.StatefulSet
 		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -221,6 +239,14 @@ var _ = SIGDescribe("Rollout", func() {
 			return set.Status.ObservedGeneration == set.Generation && *set.Spec.Replicas == set.Status.UpdatedReplicas &&
 				*set.Spec.Replicas == set.Status.ReadyReplicas && *set.Spec.Replicas == set.Status.Replicas
 		}, 20*time.Minute, 3*time.Second).Should(BeTrue())
+	}
+
+	WaitDaemonSetAllPodsReady := func(daemonset *appsv1alpha1.DaemonSet) {
+		Eventually(func() bool {
+			daemon := &appsv1alpha1.DaemonSet{}
+			Expect(GetObject(daemonset.Name, daemon)).NotTo(HaveOccurred())
+			return daemon.Status.ObservedGeneration == daemon.Generation && daemon.Status.DesiredNumberScheduled == daemon.Status.UpdatedNumberScheduled && daemon.Status.DesiredNumberScheduled == daemon.Status.NumberReady
+		}, 5*time.Minute, time.Second).Should(BeTrue())
 	}
 
 	WaitDeploymentReplicas := func(deployment *apps.Deployment) {
@@ -4993,6 +5019,312 @@ var _ = SIGDescribe("Rollout", func() {
 			WaitDeploymentAllPodsReady(workload)
 		})
 	})
+
+	KruiseDescribe("DaemonSet canary rollout", func() {
+		It("DaemonSet V1->V2: 1,100% Succeeded", func() {
+			By("Creating Rollout...")
+			rollout := &v1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_daemonset_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				{
+					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32(1)), Type: intstr.Int},
+					Pause:    v1alpha1.RolloutPause{},
+				},
+				{
+					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32Ptr(100)), Type: intstr.Int},
+					Pause:    v1alpha1.RolloutPause{},
+				},
+			}
+			rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "DaemonSet",
+				Name:       "fluentd-elasticsearch",
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			// workload
+			workload := &appsv1alpha1.DaemonSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/daemonset.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitDaemonSetAllPodsReady(workload)
+
+			// check rollout status
+			By("check rollout status & paused success")
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseHealthy))
+
+			// v1 -> v2, start rollout action
+			By("Update daemonset env NODE_NAME from(version1) -> to(version2)")
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDaemonSet(workload)
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", 1))
+			Expect(workload.Status.NumberReady).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			Expect(*workload.Spec.UpdateStrategy.RollingUpdate.Paused).Should(BeFalse())
+			By("check daemonset status & paused success")
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseProgressing))
+			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
+			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(2)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+
+			// resume rollout
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutStatusPhase(rollout.Name, v1alpha1.RolloutPhaseHealthy)
+			WaitDaemonSetAllPodsReady(workload)
+			By("rollout completed, and check")
+
+			// check deployment
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			Expect(workload.Status.NumberReady).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
+			time.Sleep(time.Second * 3)
+
+			// check progressing succeed
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
+			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
+
+		})
+
+		It("V1->V2: Percentage, 1, 2 and continuous release v3", func() {
+			By("Creating Rollout...")
+			rollout := &v1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_daemonset_interrupt.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				{
+					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32(1)), Type: intstr.Int},
+					Pause:    v1alpha1.RolloutPause{},
+				},
+				{
+					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32Ptr(2)), Type: intstr.Int},
+					Pause:    v1alpha1.RolloutPause{},
+				},
+				{
+					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32Ptr(100)), Type: intstr.Int},
+					Pause:    v1alpha1.RolloutPause{},
+				},
+			}
+			rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "DaemonSet",
+				Name:       "fluentd-elasticsearch",
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			// workload
+			workload := &appsv1alpha1.DaemonSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/daemonset.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitDaemonSetAllPodsReady(workload)
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseHealthy))
+			By("check rollout status & paused success")
+
+			// v1 -> v2, start rollout action
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDaemonSet(workload)
+			By("Update daemonSet env NODE_NAME from(version1) -> to(version2)")
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", 1))
+			Expect(workload.Status.NumberReady).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			Expect(*workload.Spec.UpdateStrategy.RollingUpdate.Paused).Should(BeFalse())
+			By("check daemonSet status & paused success")
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseProgressing))
+			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
+			Expect(rollout.Status.CanaryStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(2)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+
+			// v1 -> v2 -> v3, continuous release
+			By("Update daemonSet env NODE_NAME from(version2) -> to(version3)")
+			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version3"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDaemonSet(workload)
+
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", 1))
+			Expect(workload.Status.NumberReady).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			Expect(*workload.Spec.UpdateStrategy.RollingUpdate.Paused).Should(BeFalse())
+			By("check daemonSet status & paused success")
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseProgressing))
+			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(2)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", 2))
+			Expect(workload.Status.NumberReady).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			Expect(*workload.Spec.UpdateStrategy.RollingUpdate.Paused).Should(BeFalse())
+			By("check daemonSet status & paused success")
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseProgressing))
+			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 2))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("resume rollout, and wait next step(3)")
+			WaitRolloutCanaryStepPaused(rollout.Name, 3)
+
+			// resume rollout
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutStatusPhase(rollout.Name, v1alpha1.RolloutPhaseHealthy)
+			WaitDaemonSetAllPodsReady(workload)
+			By("rollout completed, and check")
+
+			// check deployment
+			// daemonset
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			Expect(workload.Status.NumberReady).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version3"))
+				}
+			}
+			time.Sleep(time.Second * 3)
+
+			// check progressing succeed
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
+			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
+		})
+
+		It("V1->V2: 1,100%, but delete rollout crd", func() {
+			// finder := util.NewControllerFinder(k8sClient)
+			By("Creating Rollout...")
+			rollout := &v1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_daemonset_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				{
+					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32(1)), Type: intstr.Int},
+					Pause:    v1alpha1.RolloutPause{},
+				},
+				{
+					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32Ptr(100)), Type: intstr.Int},
+					Pause:    v1alpha1.RolloutPause{},
+				},
+			}
+			rollout.Spec.ObjectRef.WorkloadRef = &v1alpha1.WorkloadRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "DaemonSet",
+				Name:       "fluentd-elasticsearch",
+			}
+			CreateObject(rollout)
+			By("Creating workload and waiting for all pods ready...")
+
+			// workload
+			workload := &appsv1alpha1.DaemonSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/daemonset.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitDaemonSetAllPodsReady(workload)
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseHealthy))
+			By("check rollout status & paused success")
+
+			// v1 -> v2, start rollout action
+			By("Update deployment env NODE_NAME from(version1) -> to(version2)")
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDaemonSet(workload)
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			time.Sleep(time.Second * 3)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", 1))
+			Expect(workload.Status.NumberReady).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			Expect(*workload.Spec.UpdateStrategy.RollingUpdate.Paused).Should(BeFalse())
+			By("check deployment status & paused success")
+
+			// delete rollout
+			Expect(k8sClient.DeleteAllOf(context.TODO(), &v1alpha1.Rollout{}, client.InNamespace(namespace), client.PropagationPolicy(metav1.DeletePropagationForeground))).Should(Succeed())
+			WaitRolloutNotFound(rollout.Name)
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			fmt.Println(util.DumpJSON(workload))
+			workload.Spec.UpdateStrategy.RollingUpdate.Paused = utilpointer.Bool(false)
+			UpdateDaemonSet(workload)
+			By("Update deployment paused=false")
+			WaitDaemonSetAllPodsReady(workload)
+
+			// check deployment
+			// deployment
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(*workload.Spec.UpdateStrategy.RollingUpdate.Paused).Should(BeFalse())
+			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			Expect(workload.Status.NumberReady).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			Expect(workload.Status.CurrentNumberScheduled).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
+		})
+
+	})
+
 })
 
 func mergeEnvVar(original []v1.EnvVar, add v1.EnvVar) []v1.EnvVar {
