@@ -243,8 +243,8 @@ func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *fi
 			if err != nil ||
 				canaryReplicas <= 0 ||
 				(canaryReplicas > 100 && s.Replicas.Type == intstr.String) {
-				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("CanaryReplicas"),
-					s.Replicas, `canaryReplicas must be positive number, or a percentage with "0%" < canaryReplicas <= "100%"`)}
+				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Replicas"),
+					s.Replicas, `replicas must be positive number, or a percentage with "0%" < canaryReplicas <= "100%"`)}
 			}
 		}
 	}
