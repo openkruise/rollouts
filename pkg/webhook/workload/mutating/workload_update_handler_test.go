@@ -158,6 +158,59 @@ var (
 		},
 	}
 
+	daemonSetDemo = &kruisev1aplphal.DaemonSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps.kruise.io/v1alpha1",
+			Kind:       "DaemonSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "echoserver",
+			Labels:      map[string]string{},
+			Annotations: map[string]string{},
+		},
+		Spec: kruisev1aplphal.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "echoserver",
+				},
+			},
+
+			UpdateStrategy: kruisev1aplphal.DaemonSetUpdateStrategy{
+				Type: "RollingUpdate",
+				RollingUpdate: &kruisev1aplphal.RollingUpdateDaemonSet{
+					Paused:         pointer.Bool(true),
+					Partition:      pointer.Int32(10),
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+				},
+			},
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "echoserver",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "echoserver",
+							Image: "echoserver:v1",
+						},
+					},
+				},
+			},
+		},
+		Status: kruisev1aplphal.DaemonSetStatus{
+			CurrentNumberScheduled: 10,
+			NumberMisscheduled:     0,
+			DesiredNumberScheduled: 10,
+			NumberReady:            10,
+			ObservedGeneration:     1,
+			UpdatedNumberScheduled: 10,
+			NumberAvailable:        10,
+			CollisionCount:         pointer.Int32(1),
+		},
+	}
+
 	statefulset = &kruiseappsv1beta1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps.kruise.io/v1beta1",
@@ -559,6 +612,70 @@ func TestHandlerCloneSet(t *testing.T) {
 			if !reflect.DeepEqual(newObj, cs.expectObj()) {
 				by, _ := json.Marshal(newObj)
 				t.Fatalf("handlerCloneSet failed, and new(%s)", string(by))
+			}
+		})
+	}
+}
+
+func TestHandlerDaemonSet(t *testing.T) {
+	cases := []struct {
+		name       string
+		getObjs    func() (*kruisev1aplphal.DaemonSet, *kruisev1aplphal.DaemonSet)
+		expectObj  func() *kruisev1aplphal.DaemonSet
+		getRollout func() *appsv1alpha1.Rollout
+		isError    bool
+	}{
+		{
+			name: "daemonSet image v1->v2, matched rollout",
+			getObjs: func() (*kruisev1aplphal.DaemonSet, *kruisev1aplphal.DaemonSet) {
+				oldObj := daemonSetDemo.DeepCopy()
+				newObj := daemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *kruisev1aplphal.DaemonSet {
+				obj := daemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32(math.MaxInt16)
+				return obj
+			},
+			getRollout: func() *appsv1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{
+					APIVersion: "apps.kruise.io/v1alpha1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+	}
+
+	decoder, _ := admission.NewDecoder(scheme)
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			client := fake.NewClientBuilder().WithScheme(scheme).Build()
+			h := WorkloadHandler{
+				Client:  client,
+				Decoder: decoder,
+				Finder:  util.NewControllerFinder(client),
+			}
+			rollout := cs.getRollout()
+			if err := client.Create(context.TODO(), rollout); err != nil {
+				t.Errorf(err.Error())
+			}
+
+			oldObj, newObj := cs.getObjs()
+			_, err := h.handleDaemonSet(newObj, oldObj)
+			if cs.isError && err == nil {
+				t.Fatal("handlerDaemonSet failed")
+			} else if !cs.isError && err != nil {
+				t.Fatalf(err.Error())
+			}
+			if !reflect.DeepEqual(newObj, cs.expectObj()) {
+				by, _ := json.Marshal(newObj)
+				t.Fatalf("handlerDaemonSet failed, and new(%s)", string(by))
 			}
 		})
 	}

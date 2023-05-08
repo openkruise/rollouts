@@ -131,6 +131,8 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 	switch obj := evt.ObjectNew.(type) {
 	case *kruiseappsv1alpha1.CloneSet:
 		gvk = util.ControllerKruiseKindCS
+	case *kruiseappsv1alpha1.DaemonSet:
+		gvk = util.ControllerKruiseKindDS
 	case *appsv1.Deployment:
 		gvk = util.ControllerKindDep
 	case *appsv1.StatefulSet:
@@ -182,6 +184,8 @@ func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 	switch o := obj.(type) {
 	case *kruiseappsv1alpha1.CloneSet:
 		gvk = util.ControllerKruiseKindCS
+	case *kruiseappsv1alpha1.DaemonSet:
+		gvk = util.ControllerKruiseKindDS
 	case *appsv1.Deployment:
 		gvk = util.ControllerKindDep
 	case *appsv1.StatefulSet:

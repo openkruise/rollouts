@@ -29,6 +29,7 @@ import (
 	canarydeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/cloneset"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/daemonset"
 	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/statefulset"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -207,6 +208,10 @@ func (r *Executor) getReleaseController(release *v1alpha1.BatchRelease, newStatu
 		if targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
 			klog.InfoS("Using CloneSet partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
 			return partitionstyle.NewControlPlane(cloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+		}
+		if targetRef.Kind == reflect.TypeOf(appsv1alpha1.DaemonSet{}).Name() {
+			klog.InfoS("Using DaemonSet partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+			return partitionstyle.NewControlPlane(daemonset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
 
 	case apps.SchemeGroupVersion.String():

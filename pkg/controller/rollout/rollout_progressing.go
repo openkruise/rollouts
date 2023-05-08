@@ -253,9 +253,13 @@ func (r *RolloutReconciler) handleNormalRolling(c *util.RolloutContext) error {
 	return nil
 }
 
-/* **********************************************************************
+/*
+**********************************************************************
+
 	help functions
-*********************************************************************** */
+
+***********************************************************************
+*/
 func isRolloutPaused(rollout *v1alpha1.Rollout) bool {
 	return rollout.Spec.Strategy.Paused
 }
