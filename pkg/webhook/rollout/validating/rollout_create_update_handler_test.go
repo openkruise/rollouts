@@ -72,6 +72,12 @@ var (
 						{
 							Weight: utilpointer.Int32Ptr(100),
 						},
+						{
+							Weight: utilpointer.Int32Ptr(101),
+						},
+						{
+							Weight: utilpointer.Int32Ptr(200),
+						},
 					},
 					TrafficRoutings: []*appsv1alpha1.TrafficRouting{
 						{
