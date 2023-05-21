@@ -5087,7 +5087,7 @@ var _ = SIGDescribe("Rollout", func() {
 			WaitDaemonSetAllPodsReady(workload)
 			By("rollout completed, and check")
 
-			// check deployment
+			// check daemonset
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
 			Expect(workload.Status.NumberReady).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
@@ -5226,7 +5226,7 @@ var _ = SIGDescribe("Rollout", func() {
 			WaitDaemonSetAllPodsReady(workload)
 			By("rollout completed, and check")
 
-			// check deployment
+			// check daemonset
 			// daemonset
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
@@ -5309,8 +5309,8 @@ var _ = SIGDescribe("Rollout", func() {
 			By("Update deployment paused=false")
 			WaitDaemonSetAllPodsReady(workload)
 
-			// check deployment
-			// deployment
+			// check daemonset
+			// daemonset
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(*workload.Spec.UpdateStrategy.RollingUpdate.Paused).Should(BeFalse())
 			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", workload.Status.DesiredNumberScheduled))
