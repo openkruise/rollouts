@@ -1,0 +1,110 @@
+name: E2E-DaemonSet-1.23
+
+on:
+  push:
+    branches:
+      - master
+      - release-*
+  pull_request: {}
+  workflow_dispatch: {}
+
+env:
+  # Common versions
+  GO_VERSION: '1.17'
+  KIND_IMAGE: 'kindest/node:v1.23.3'
+  KIND_CLUSTER_NAME: 'ci-testing'
+
+jobs:
+
+  rollout:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Setup Kind Cluster
+        uses: helm/kind-action@v1.2.0
+        with:
+          node_image: ${{ env.KIND_IMAGE }}
+          cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+          config: ./test/kind-conf.yaml
+      - name: Build image
+        run: |
+          export IMAGE="openkruise/kruise-rollout:e2e-${GITHUB_RUN_ID}"
+          docker build --pull --no-cache . -t $IMAGE
+          kind load docker-image --name=${KIND_CLUSTER_NAME} $IMAGE || { echo >&2 "kind not installed or error loading image: $IMAGE"; exit 1; }
+      - name: Install Kruise
+        run: |
+          set -ex
+          kubectl cluster-info
+          make helm
+          helm repo add openkruise https://openkruise.github.io/charts/
+          helm repo update
+          helm install kruise openkruise/kruise
+          for ((i=1;i<10;i++));
+          do
+            set +e
+            PODS=$(kubectl get pod -n kruise-system | grep '1/1' | grep kruise-controller-manager | wc -l)
+            set -e
+            if [ "$PODS" -eq "2" ]; then
+              break
+            fi
+            sleep 3
+          done
+          set +e
+          PODS=$(kubectl get pod -n kruise-system | grep '1/1' | grep kruise-controller-manager | wc -l)
+          set -e
+          if [ "$PODS" -eq "2" ]; then
+            echo "Wait for kruise-manager ready successfully"
+          else
+            echo "Timeout to wait for kruise-manager ready"
+            exit 1
+          fi
+      - name: Install Kruise Rollout
+        run: |
+          set -ex
+          kubectl cluster-info
+          IMG=openkruise/kruise-rollout:e2e-${GITHUB_RUN_ID} ./scripts/deploy_kind.sh
+          for ((i=1;i<10;i++));
+          do
+            set +e
+            PODS=$(kubectl get pod -n kruise-rollout | grep '1/1' | wc -l)
+            set -e
+            if [ "$PODS" -eq "1" ]; then
+              break
+            fi
+            sleep 3
+          done
+          set +e
+          PODS=$(kubectl get pod -n kruise-rollout | grep '1/1' | wc -l)
+          kubectl get node -o yaml
+          kubectl get all -n kruise-rollout -o yaml
+          set -e
+          if [ "$PODS" -eq "1" ]; then
+            echo "Wait for kruise-rollout ready successfully"
+          else
+            echo "Timeout to wait for kruise-rollout ready"
+            exit 1
+          fi
+      - name: Run E2E Tests
+        run: |
+          export KUBECONFIG=/home/runner/.kube/config
+          make ginkgo
+          set +e
+          ./bin/ginkgo -timeout 60m -v --focus='DaemonSet canary rollout' test/e2e
+          retVal=$?
+          # kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
+          restartCount=$(kubectl get pod -n kruise-rollout --no-headers | awk '{print $4}')
+          if [ "${restartCount}" -eq "0" ];then
+              echo "Kruise-rollout has not restarted"
+          else
+              kubectl get pod -n kruise-rollout --no-headers
+              echo "Kruise-rollout has restarted, abort!!!"
+              kubectl get pod -n kruise-rollout --no-headers| awk '{print $1}' | xargs kubectl logs -p -n kruise-rollout
+              exit 1
+          fi
+          exit $retVal
