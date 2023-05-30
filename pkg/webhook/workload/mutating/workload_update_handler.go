@@ -27,11 +27,18 @@ import (
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
+	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 	admissionv1 "k8s.io/api/admission/v1"
+	v1 "k8s.io/api/admissionregistration/v1"
 	apps "k8s.io/api/apps/v1"
+	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	labels2 "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	admission2 "k8s.io/apiserver/pkg/admission"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,6 +65,15 @@ var _ admission.Handler = &WorkloadHandler{}
 func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
 	// if subResources, then ignore
 	if req.Operation != admissionv1.Update || req.SubResource != "" {
+		return admission.Allowed("")
+	}
+
+	meetingRules, err := h.checkWorkloadRules(ctx, req)
+	if err != nil {
+		return admission.Errored(http.StatusBadRequest, err)
+	}
+
+	if !meetingRules {
 		return admission.Allowed("")
 	}
 
@@ -437,4 +453,53 @@ func isEffectiveDeploymentRevisionChange(oldObj, newObj *apps.Deployment) bool {
 func setDeploymentStrategyAnnotation(strategy appsv1alpha1.DeploymentStrategy, d *apps.Deployment) {
 	strategyAnno, _ := json.Marshal(&strategy)
 	d.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = string(strategyAnno)
+}
+
+func (h *WorkloadHandler) checkWorkloadRules(ctx context.Context, req admission.Request) (bool, error) {
+	webhook := &v1.MutatingWebhookConfiguration{}
+	if err := h.Client.Get(ctx, types.NamespacedName{Name: configuration.MutatingWebhookConfigurationName}, webhook); err != nil {
+		return false, err
+	}
+
+	newObject := unstructured.Unstructured{}
+	if err := h.Decoder.Decode(req, &newObject); err != nil {
+		return false, err
+	}
+
+	labels := newObject.GetLabels()
+
+	attr, err := constructAttr(req)
+	if err != nil {
+		return false, err
+	}
+
+	for _, webhook := range webhook.Webhooks {
+		for _, rule := range webhook.Rules {
+			m := util2.Matcher{Rule: rule, Attr: attr}
+			if m.Matches() {
+				selector, err := v12.LabelSelectorAsSelector(webhook.ObjectSelector)
+				if err != nil {
+					return false, nil
+				}
+				if selector.Matches(labels2.Set(labels)) {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
+func constructAttr(req admission.Request) (admission2.Attributes, error) {
+	obj := unstructured.Unstructured{}
+	if err := json.Unmarshal(req.Object.Raw, &obj); err != nil {
+		return nil, err
+	}
+
+	return admission2.NewAttributesRecord(&obj, nil, obj.GetObjectKind().GroupVersionKind(), obj.GetNamespace(), obj.GetName(),
+		schema.GroupVersionResource{
+			Group:    req.Resource.Group,
+			Version:  req.Resource.Version,
+			Resource: req.Resource.Resource,
+		}, req.SubResource, admission2.Operation(req.Operation), nil, *req.DryRun, nil), nil
 }

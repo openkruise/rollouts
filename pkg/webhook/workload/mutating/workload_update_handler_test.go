@@ -27,6 +27,10 @@ import (
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
+	"github.com/stretchr/testify/assert"
+	addmissionv1 "k8s.io/api/admission/v1"
+	v12 "k8s.io/api/admissionregistration/v1"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -754,5 +758,116 @@ func TestHandleStatefulSet(t *testing.T) {
 				t.Fatalf("handlerCloneSet failed, and new(%s)", string(by))
 			}
 		})
+	}
+}
+
+func TestCheckWorkloadRule(t *testing.T) {
+	ctx := context.Background()
+
+	deploy1 := apps.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "Deployments",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "deploy1",
+			Namespace: "default",
+			Labels: map[string]string{
+				"rollout.kruise.io": "true",
+			},
+		},
+	}
+
+	d1, err := json.Marshal(deploy1)
+	assert.NoError(t, err)
+
+	deploy2 := apps.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "Deployments",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "deploy2",
+			Namespace: "default",
+			Labels: map[string]string{
+				"rollout.kruise.io": "false",
+			},
+		},
+	}
+
+	d2, err := json.Marshal(deploy2)
+	assert.NoError(t, err)
+
+	decoder, _ := admission.NewDecoder(scheme)
+	client := fake.NewClientBuilder().WithScheme(scheme).Build()
+	h := WorkloadHandler{
+		Client:  client,
+		Decoder: decoder,
+		Finder:  util.NewControllerFinder(client),
+	}
+	webhook := v12.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: configuration.MutatingWebhookConfigurationName,
+		},
+		Webhooks: []v12.MutatingWebhook{
+			{
+				Rules: []v12.RuleWithOperations{
+					{
+						Rule: v12.Rule{
+							APIGroups:   []string{"apps"},
+							APIVersions: []string{"v1"},
+							Resources:   []string{"deployments"},
+						},
+						Operations: []v12.OperationType{v12.Update},
+					},
+				},
+				ObjectSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"rollout.kruise.io": "true",
+					},
+				},
+			},
+		},
+	}
+	if err := client.Create(context.TODO(), &webhook); err != nil {
+		t.Errorf(err.Error())
+	}
+	resource := metav1.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
+	testCases := []struct {
+		req admission.Request
+		res bool
+	}{
+		{
+			req: admission.Request{
+				AdmissionRequest: addmissionv1.AdmissionRequest{
+					Name:      deploy1.Name,
+					Namespace: deploy1.Namespace,
+					Resource:  resource,
+					Object:    runtime.RawExtension{Raw: d1},
+					DryRun:    pointer.Bool(false),
+					Operation: addmissionv1.Update,
+				},
+			},
+			res: true,
+		},
+		{
+			req: admission.Request{
+				AdmissionRequest: addmissionv1.AdmissionRequest{
+					Name:      deploy2.Name,
+					Namespace: deploy2.Namespace,
+					Resource:  resource,
+					Object:    runtime.RawExtension{Raw: d2},
+					DryRun:    pointer.Bool(false),
+					Operation: addmissionv1.Update,
+				},
+			},
+			res: false,
+		},
+	}
+
+	for _, s := range testCases {
+		r, err := h.checkWorkloadRules(ctx, s.req)
+		assert.NoError(t, err)
+		assert.Equal(t, s.res, r)
 	}
 }
