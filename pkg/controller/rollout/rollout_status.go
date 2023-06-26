@@ -66,6 +66,8 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 		klog.Infof("rollout(%s/%s) workload not found, and reset status be Initial", rollout.Namespace, rollout.Name)
 		return false, newStatus, nil
 	}
+	klog.V(5).Infof("rollout(%s/%s) workload(%s)", rollout.Namespace, rollout.Name, util.DumpJSON(workload))
+	// todo, patch workload webhook labels
 	// workload status generation is not equal to workload.generation
 	if !workload.IsStatusConsistent {
 		klog.Infof("rollout(%s/%s) workload status is inconsistent, then wait a moment", rollout.Namespace, rollout.Name)
@@ -187,7 +189,7 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *v1alpha1.Rollou
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return nil, err
 	}
-	c := &util.RolloutContext{Rollout: rollout, NewStatus: newStatus, Workload: workload}
+	c := &RolloutContext{Rollout: rollout, NewStatus: newStatus, Workload: workload}
 	done, err := r.doFinalising(c)
 	if err != nil {
 		return nil, err

@@ -27,6 +27,7 @@ import (
 	"github.com/openkruise/rollouts/pkg/controller/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/rollout"
 	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
+	"github.com/openkruise/rollouts/pkg/controller/trafficrouting"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"github.com/openkruise/rollouts/pkg/webhook"
@@ -107,6 +108,15 @@ func main() {
 		Recorder: mgr.GetEventRecorderFor("rollout-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Rollout")
+		os.Exit(1)
+	}
+
+	if err = (&trafficrouting.TrafficRoutingReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("trafficrouting-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "TrafficRouting")
 		os.Exit(1)
 	}
 

@@ -132,6 +132,7 @@ func (r *realCanaryController) create(release *v1alpha1.BatchRelease, template *
 
 	// spec
 	canary.Spec = *template.Spec.DeepCopy()
+	// todo, patch canary pod metadata
 	canary.Spec.Replicas = pointer.Int32Ptr(0)
 	canary.Spec.Paused = false
 
@@ -179,6 +180,7 @@ func filterCanaryDeployment(ds []*apps.Deployment, template *corev1.PodTemplateS
 		return ds[0]
 	}
 	for _, d := range ds {
+		// todo, remove the canary pod metadata
 		if util.EqualIgnoreHash(template, &d.Spec.Template) {
 			return d
 		}

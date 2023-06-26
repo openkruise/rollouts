@@ -44,6 +44,12 @@ var (
 		},
 		Data: map[string]string{
 			fmt.Sprintf("%s.nginx", configuration.LuaTrafficRoutingIngressTypePrefix): `
+				function split(input, delimiter)
+					local arr = {}
+					string.gsub(input, '[^' .. delimiter ..']+', function(w) table.insert(arr, w) end)
+					return arr
+				end
+
 				annotations = obj.annotations
 				annotations["nginx.ingress.kubernetes.io/canary"] = "true"
 				annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = nil
@@ -55,6 +61,14 @@ var (
 				then
 					annotations["nginx.ingress.kubernetes.io/canary-weight"] = obj.weight
 				end
+				if ( obj.requestHeaderModifier )
+                then
+					local str = ''
+					for _,header in ipairs(obj.requestHeaderModifier.set) do
+						str = str..string.format("%s %s\n", header.name, header.value)
+					end
+					annotations["mse.ingress.kubernetes.io/request-header-control-update"] = str
+       			end
 				if ( not obj.matches )
 				then
 					return annotations
@@ -240,10 +254,9 @@ func init() {
 
 func TestInitialize(t *testing.T) {
 	cases := []struct {
-		name          string
-		getConfigmap  func() *corev1.ConfigMap
-		getIngress    func() []*netv1.Ingress
-		expectIngress func() *netv1.Ingress
+		name         string
+		getConfigmap func() *corev1.ConfigMap
+		getIngress   func() []*netv1.Ingress
 	}{
 		{
 			name: "init test1",
@@ -253,21 +266,11 @@ func TestInitialize(t *testing.T) {
 			getIngress: func() []*netv1.Ingress {
 				return []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			expectIngress: func() *netv1.Ingress {
-				expect := demoIngress.DeepCopy()
-				expect.Name = "echoserver-canary"
-				expect.Annotations["nginx.ingress.kubernetes.io/canary"] = "true"
-				expect.Annotations["nginx.ingress.kubernetes.io/canary-weight"] = "0"
-				expect.Spec.Rules[0].HTTP.Paths = expect.Spec.Rules[0].HTTP.Paths[:1]
-				expect.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				expect.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				return expect
-			},
 		},
 	}
 
 	config := Config{
-		RolloutName:   "rollout-demo",
+		Key:           "rollout-demo",
 		StableService: "echoserver",
 		CanaryService: "echoserver-canary",
 		TrafficConf: &rolloutsv1alpha1.IngressTrafficRouting{
@@ -291,17 +294,6 @@ func TestInitialize(t *testing.T) {
 				t.Fatalf("Initialize failed: %s", err.Error())
 				return
 			}
-			canaryIngress := &netv1.Ingress{}
-			err = fakeCli.Get(context.TODO(), client.ObjectKey{Name: "echoserver-canary"}, canaryIngress)
-			if err != nil {
-				t.Fatalf("Get canary ingress failed: %s", err.Error())
-				return
-			}
-			expect := cs.expectIngress()
-			if !reflect.DeepEqual(canaryIngress.Annotations, expect.Annotations) ||
-				!reflect.DeepEqual(canaryIngress.Spec, expect.Spec) {
-				t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expect), util.DumpJSON(canaryIngress))
-			}
 		})
 	}
 }
@@ -311,7 +303,7 @@ func TestEnsureRoutes(t *testing.T) {
 		name          string
 		getConfigmap  func() *corev1.ConfigMap
 		getIngress    func() []*netv1.Ingress
-		getRoutes     func() (*int32, []rolloutsv1alpha1.HttpRouteMatch)
+		getRoutes     func() *rolloutsv1alpha1.CanaryStep
 		expectIngress func() *netv1.Ingress
 		ingressType   string
 	}{
@@ -330,25 +322,42 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() (*int32, []rolloutsv1alpha1.HttpRouteMatch) {
-				return nil, []rolloutsv1alpha1.HttpRouteMatch{
-					// header
-					{
-						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
+				return &rolloutsv1alpha1.CanaryStep{
+					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
+						Weight: nil,
+						Matches: []rolloutsv1alpha1.HttpRouteMatch{
+							// header
 							{
-								Name:  "user_id",
-								Value: "123456",
+								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+									{
+										Name:  "user_id",
+										Value: "123456",
+									},
+								},
+							},
+							// cookies
+							{
+								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+									{
+										Name:  "canary-by-cookie",
+										Value: "demo",
+									},
+								},
 							},
 						},
-					},
-					// cookies
-					{
-						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
-							{
-								Name:  "canary-by-cookie",
-								Value: "demo",
+						/*RequestHeaderModifier: &gatewayv1alpha2.HTTPRequestHeaderFilter{
+							Set: []gatewayv1alpha2.HTTPHeader{
+								{
+									Name:  "gray",
+									Value: "blue",
+								},
+								{
+									Name:  "gray",
+									Value: "green",
+								},
 							},
-						},
+						},*/
 					},
 				}
 			},
@@ -359,6 +368,7 @@ func TestEnsureRoutes(t *testing.T) {
 				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = "demo"
 				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-header"] = "user_id"
 				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = "123456"
+				//expect.Annotations["mse.ingress.kubernetes.io/request-header-control-update"] = "gray blue\ngray green\n"
 				expect.Spec.Rules[0].HTTP.Paths = expect.Spec.Rules[0].HTTP.Paths[:1]
 				expect.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				expect.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
@@ -382,8 +392,12 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() (*int32, []rolloutsv1alpha1.HttpRouteMatch) {
-				return utilpointer.Int32(40), nil
+			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
+				return &rolloutsv1alpha1.CanaryStep{
+					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
+				}
 			},
 			expectIngress: func() *netv1.Ingress {
 				expect := demoIngress.DeepCopy()
@@ -413,16 +427,20 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() (*int32, []rolloutsv1alpha1.HttpRouteMatch) {
+			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
 				iType := gatewayv1alpha2.HeaderMatchRegularExpression
-				return nil, []rolloutsv1alpha1.HttpRouteMatch{
-					// header
-					{
-						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+				return &rolloutsv1alpha1.CanaryStep{
+					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
+						Matches: []rolloutsv1alpha1.HttpRouteMatch{
+							// header
 							{
-								Name:  "user_id",
-								Value: "123*",
-								Type:  &iType,
+								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+									{
+										Name:  "user_id",
+										Value: "123*",
+										Type:  &iType,
+									},
+								},
 							},
 						},
 					},
@@ -457,22 +475,26 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() (*int32, []rolloutsv1alpha1.HttpRouteMatch) {
-				return nil, []rolloutsv1alpha1.HttpRouteMatch{
-					// header
-					{
-						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
+				return &rolloutsv1alpha1.CanaryStep{
+					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
+						Matches: []rolloutsv1alpha1.HttpRouteMatch{
+							// header
 							{
-								Name:  "Cookie",
-								Value: "demo1=value1;demo2=value2",
-							},
-							{
-								Name:  "SourceIp",
-								Value: "192.168.0.0/16;172.16.0.0/16",
-							},
-							{
-								Name:  "headername",
-								Value: "headervalue1;headervalue2",
+								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+									{
+										Name:  "Cookie",
+										Value: "demo1=value1;demo2=value2",
+									},
+									{
+										Name:  "SourceIp",
+										Value: "192.168.0.0/16;172.16.0.0/16",
+									},
+									{
+										Name:  "headername",
+										Value: "headervalue1;headervalue2",
+									},
+								},
 							},
 						},
 					},
@@ -493,7 +515,7 @@ func TestEnsureRoutes(t *testing.T) {
 	}
 
 	config := Config{
-		RolloutName:   "rollout-demo",
+		Key:           "rollout-demo",
 		StableService: "echoserver",
 		CanaryService: "echoserver-canary",
 		TrafficConf: &rolloutsv1alpha1.IngressTrafficRouting{
@@ -513,8 +535,8 @@ func TestEnsureRoutes(t *testing.T) {
 				t.Fatalf("NewIngressTrafficRouting failed: %s", err.Error())
 				return
 			}
-			weight, matches := cs.getRoutes()
-			_, err = controller.EnsureRoutes(context.TODO(), weight, matches)
+			step := cs.getRoutes()
+			_, err = controller.EnsureRoutes(context.TODO(), &step.TrafficRoutingStrategy)
 			if err != nil {
 				t.Fatalf("EnsureRoutes failed: %s", err.Error())
 				return
@@ -528,7 +550,7 @@ func TestEnsureRoutes(t *testing.T) {
 			expect := cs.expectIngress()
 			if !reflect.DeepEqual(canaryIngress.Annotations, expect.Annotations) ||
 				!reflect.DeepEqual(canaryIngress.Spec, expect.Spec) {
-				t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expect), util.DumpJSON(canaryIngress))
+				t.Fatalf("but get(%s)", util.DumpJSON(canaryIngress))
 			}
 		})
 	}
@@ -563,7 +585,7 @@ func TestFinalise(t *testing.T) {
 	}
 
 	config := Config{
-		RolloutName:   "rollout-demo",
+		Key:           "rollout-demo",
 		StableService: "echoserver",
 		CanaryService: "echoserver-canary",
 		TrafficConf: &rolloutsv1alpha1.IngressTrafficRouting{

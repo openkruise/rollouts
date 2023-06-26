@@ -45,7 +45,7 @@ type canaryReleaseManager struct {
 	recorder              record.EventRecorder
 }
 
-func (m *canaryReleaseManager) runCanary(c *util.RolloutContext) error {
+func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 	canaryStatus := c.NewStatus.CanaryStatus
 	if br, err := m.fetchBatchRelease(c.Rollout.Namespace, c.Rollout.Name); err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("rollout(%s/%s) fetch batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
@@ -70,7 +70,9 @@ func (m *canaryReleaseManager) runCanary(c *util.RolloutContext) error {
 	// We need to clean up the canary-related resources first and then rollout the rest of the batch.
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	if currentStep.Weight == nil && len(currentStep.Matches) == 0 {
-		done, err := m.trafficRoutingManager.FinalisingTrafficRouting(c, false)
+		tr := newTrafficRoutingContext(c)
+		done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
+		c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
 		if err != nil {
 			return err
 		} else if !done {
@@ -95,7 +97,9 @@ func (m *canaryReleaseManager) runCanary(c *util.RolloutContext) error {
 
 	case v1alpha1.CanaryStepStateTrafficRouting:
 		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1alpha1.CanaryStepStateTrafficRouting)
-		done, err := m.trafficRoutingManager.DoTrafficRouting(c)
+		tr := newTrafficRoutingContext(c)
+		done, err := m.trafficRoutingManager.DoTrafficRouting(tr)
+		c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
 		if err != nil {
 			return err
 		} else if done {
@@ -142,6 +146,7 @@ func (m *canaryReleaseManager) runCanary(c *util.RolloutContext) error {
 			klog.Infof("rollout(%s/%s) canary run all steps, and completed", c.Rollout.Namespace, c.Rollout.Name)
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			canaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
+			return nil
 		}
 		klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
 			canaryStatus.CurrentStepIndex, v1alpha1.CanaryStepStateReady, canaryStatus.CurrentStepState)
@@ -153,7 +158,7 @@ func (m *canaryReleaseManager) runCanary(c *util.RolloutContext) error {
 	return nil
 }
 
-func (m *canaryReleaseManager) doCanaryUpgrade(c *util.RolloutContext) (bool, error) {
+func (m *canaryReleaseManager) doCanaryUpgrade(c *RolloutContext) (bool, error) {
 	// verify whether batchRelease configuration is the latest
 	steps := len(c.Rollout.Spec.Strategy.Canary.Steps)
 	canaryStatus := c.NewStatus.CanaryStatus
@@ -184,12 +189,12 @@ func (m *canaryReleaseManager) doCanaryUpgrade(c *util.RolloutContext) (bool, er
 	return true, nil
 }
 
-func (m *canaryReleaseManager) doCanaryMetricsAnalysis(c *util.RolloutContext) (bool, error) {
+func (m *canaryReleaseManager) doCanaryMetricsAnalysis(c *RolloutContext) (bool, error) {
 	// todo
 	return true, nil
 }
 
-func (m *canaryReleaseManager) doCanaryPaused(c *util.RolloutContext) (bool, error) {
+func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 	canaryStatus := c.NewStatus.CanaryStatus
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	steps := len(c.Rollout.Spec.Strategy.Canary.Steps)
@@ -223,7 +228,7 @@ func (m *canaryReleaseManager) doCanaryPaused(c *util.RolloutContext) (bool, err
 }
 
 // cleanup after rollout is completed or finished
-func (m *canaryReleaseManager) doCanaryFinalising(c *util.RolloutContext) (bool, error) {
+func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, error) {
 	// when CanaryStatus is nil, which means canary action hasn't started yet, don't need doing cleanup
 	if c.NewStatus.CanaryStatus == nil {
 		return true, nil
@@ -233,8 +238,10 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *util.RolloutContext) (bool,
 	if err != nil {
 		return false, err
 	}
+	tr := newTrafficRoutingContext(c)
 	// 2. remove stable service the pod revision selector, so stable service will be selector all version pods.
-	done, err := m.trafficRoutingManager.FinalisingTrafficRouting(c, true)
+	done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr, true)
+	c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
 	if err != nil || !done {
 		return done, err
 	}
@@ -244,7 +251,8 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *util.RolloutContext) (bool,
 		return done, err
 	}
 	// 4. modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods.
-	done, err = m.trafficRoutingManager.FinalisingTrafficRouting(c, false)
+	done, err = m.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
+	c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
 	if err != nil || !done {
 		return done, err
 	}
@@ -260,7 +268,7 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *util.RolloutContext) (bool,
 	return true, nil
 }
 
-func (m *canaryReleaseManager) removeRolloutProgressingAnnotation(c *util.RolloutContext) error {
+func (m *canaryReleaseManager) removeRolloutProgressingAnnotation(c *RolloutContext) error {
 	if c.Workload == nil {
 		return nil
 	}
@@ -270,10 +278,8 @@ func (m *canaryReleaseManager) removeRolloutProgressingAnnotation(c *util.Rollou
 	workloadRef := c.Rollout.Spec.ObjectRef.WorkloadRef
 	workloadGVK := schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
 	obj := util.GetEmptyWorkloadObject(workloadGVK)
-	if err := m.Get(context.TODO(), types.NamespacedName{Name: c.Workload.Name, Namespace: c.Workload.Namespace}, obj); err != nil {
-		klog.Errorf("getting updated workload(%s.%s) failed: %s", c.Workload.Namespace, c.Workload.Name, err.Error())
-		return err
-	}
+	obj.SetNamespace(c.Workload.Namespace)
+	obj.SetName(c.Workload.Name)
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.InRolloutProgressingAnnotation)
 	if err := m.Patch(context.TODO(), obj, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
 		klog.Errorf("rollout(%s/%s) patch workload(%s) failed: %s", c.Rollout.Namespace, c.Rollout.Name, c.Workload.Name, err.Error())
@@ -359,6 +365,7 @@ func createBatchRelease(rollout *v1alpha1.Rollout, rolloutID string, batch int32
 				RolloutID:        rolloutID,
 				BatchPartition:   utilpointer.Int32Ptr(batch),
 				FailureThreshold: rollout.Spec.Strategy.Canary.FailureThreshold,
+				// PatchPodTemplateMetadata: rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata,
 			},
 		},
 	}
@@ -375,7 +382,7 @@ func createBatchRelease(rollout *v1alpha1.Rollout, rolloutID string, batch int32
 	return br
 }
 
-func (m *canaryReleaseManager) removeBatchRelease(c *util.RolloutContext) (bool, error) {
+func (m *canaryReleaseManager) removeBatchRelease(c *RolloutContext) (bool, error) {
 	batch := &v1alpha1.BatchRelease{}
 	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Rollout.Namespace, Name: c.Rollout.Name}, batch)
 	if err != nil && errors.IsNotFound(err) {
@@ -399,7 +406,7 @@ func (m *canaryReleaseManager) removeBatchRelease(c *util.RolloutContext) (bool,
 	return false, nil
 }
 
-func (m *canaryReleaseManager) finalizingBatchRelease(c *util.RolloutContext) (bool, error) {
+func (m *canaryReleaseManager) finalizingBatchRelease(c *RolloutContext) (bool, error) {
 	br, err := m.fetchBatchRelease(c.Rollout.Namespace, c.Rollout.Name)
 	if err != nil {
 		if errors.IsNotFound(err) {

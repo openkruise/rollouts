@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	utilpointer "k8s.io/utils/pointer"
+	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 var (
@@ -57,23 +58,31 @@ var (
 				Canary: &v1alpha1.CanaryStrategy{
 					Steps: []v1alpha1.CanaryStep{
 						{
-							Weight:   utilpointer.Int32(5),
+							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(5),
+							},
 							Replicas: &intstr.IntOrString{IntVal: 1},
 						},
 						{
-							Weight:   utilpointer.Int32(20),
+							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(20),
+							},
 							Replicas: &intstr.IntOrString{IntVal: 2},
 						},
 						{
-							Weight:   utilpointer.Int32(60),
+							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(60),
+							},
 							Replicas: &intstr.IntOrString{IntVal: 6},
 						},
 						{
-							Weight:   utilpointer.Int32(100),
+							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(100),
+							},
 							Replicas: &intstr.IntOrString{IntVal: 10},
 						},
 					},
-					TrafficRoutings: []*v1alpha1.TrafficRouting{
+					TrafficRoutings: []v1alpha1.TrafficRoutingRef{
 						{
 							Service: "echoserver",
 							Ingress: &v1alpha1.IngressTrafficRouting{
@@ -306,6 +315,36 @@ var (
 				end
 				return annotations
  			`,
+		},
+	}
+
+	demoTR = &v1alpha1.TrafficRouting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "tr-demo",
+			Labels: map[string]string{},
+		},
+		Spec: v1alpha1.TrafficRoutingSpec{
+			ObjectRef: []v1alpha1.TrafficRoutingRef{
+				{
+					Service: "echoserver",
+					Ingress: &v1alpha1.IngressTrafficRouting{
+						Name: "echoserver",
+					},
+				},
+			},
+			Strategy: v1alpha1.TrafficRoutingStrategy{
+				Matches: []v1alpha1.HttpRouteMatch{
+					// header
+					{
+						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+							{
+								Name:  "user_id",
+								Value: "123456",
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 )

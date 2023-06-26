@@ -376,7 +376,7 @@ func TestHandlerDeployment(t *testing.T) {
 			getRollout: func() *appsv1alpha1.Rollout {
 				demo := rolloutDemo.DeepCopy()
 				demo.Spec.Strategy.Canary = &appsv1alpha1.CanaryStrategy{
-					TrafficRoutings: []*appsv1alpha1.TrafficRouting{
+					TrafficRoutings: []appsv1alpha1.TrafficRoutingRef{
 						{
 							Service: "echoserver",
 							Ingress: &appsv1alpha1.IngressTrafficRouting{
@@ -550,8 +550,7 @@ func TestHandlerDeployment(t *testing.T) {
 			}
 			delete(newObj.Labels, appsv1alpha1.DeploymentStableRevisionLabel)
 			if !reflect.DeepEqual(newObj, cs.expectObj()) {
-				by, _ := json.Marshal(newObj)
-				t.Fatalf("handlerDeployment failed, and new(%s)", string(by))
+				t.Fatalf("handlerDeployment failed, and expect(%s) new(%s)", util.DumpJSON(cs.expectObj()), util.DumpJSON(newObj))
 			}
 		})
 	}

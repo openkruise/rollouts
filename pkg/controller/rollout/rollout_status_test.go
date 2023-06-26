@@ -63,10 +63,14 @@ func TestCalculateRolloutHash(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 					{
-						Weight: utilpointer.Int32(50),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(50),
+						},
 					},
 					{
-						Weight: utilpointer.Int32(100),
+						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							Weight: utilpointer.Int32(100),
+						},
 					},
 				}
 				return obj

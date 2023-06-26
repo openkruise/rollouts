@@ -32,7 +32,7 @@ func init() {
 	luaConfigurationList = map[string]string{}
 	_ = filepath.Walk("./lua_configuration", func(path string, f os.FileInfo, err error) error {
 		if err != nil {
-			klog.Errorf("filepath walk ./lua_configuration failed: %s", err.Error())
+			klog.Warningf("filepath walk ./lua_configuration failed: %s", err.Error())
 			return err
 		}
 		if f.IsDir() {

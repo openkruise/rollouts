@@ -42,6 +42,7 @@ func ParseWorkload(object client.Object) *WorkloadInfo {
 	return &WorkloadInfo{
 		LogKey:     fmt.Sprintf("%s (%s)", key, gvk),
 		ObjectMeta: *GetMetadata(object),
+		TypeMeta:   *GetTypeMeta(object),
 		Replicas:   GetReplicas(object),
 		Status:     *ParseWorkloadStatus(object),
 	}
@@ -327,6 +328,27 @@ func GetMetadata(object client.Object) *metav1.ObjectMeta {
 		return &o.ObjectMeta
 	case *unstructured.Unstructured:
 		return parseMetadataFromUnstructured(o)
+	default:
+		panic("unsupported workload type to ParseSelector function")
+	}
+}
+
+// GetTypeMeta can parse the whole TypeMeta field from client workload object
+func GetTypeMeta(object client.Object) *metav1.TypeMeta {
+	switch o := object.(type) {
+	case *apps.Deployment:
+		return &o.TypeMeta
+	case *appsv1alpha1.CloneSet:
+		return &o.TypeMeta
+	case *apps.StatefulSet:
+		return &o.TypeMeta
+	case *appsv1beta1.StatefulSet:
+		return &o.TypeMeta
+	case *appsv1alpha1.DaemonSet:
+		return &o.TypeMeta
+	case *unstructured.Unstructured:
+		gvk := object.GetObjectKind().GroupVersionKind()
+		return &metav1.TypeMeta{APIVersion: gvk.GroupVersion().String(), Kind: gvk.Kind}
 	default:
 		panic("unsupported workload type to ParseSelector function")
 	}
