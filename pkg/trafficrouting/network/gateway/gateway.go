@@ -135,13 +135,13 @@ func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRo
 		// according to the Gateway API definition, weight and headers cannot be supported at the same time.
 		// A/B Testing, according to headers. current only support one match
 	} else if len(matches) > 0 {
-		return r.buildCanaryHeaderHttpRoutes(rules, matches[0].Headers)
+		return r.buildCanaryHeaderHttpRoutes(rules, matches)
 	}
 	// canary release, according to percentage of traffic routing
 	return r.buildCanaryWeightHttpRoutes(rules, weight)
 }
 
-func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.HTTPRouteRule, headers []gatewayv1alpha2.HTTPHeaderMatch) []gatewayv1alpha2.HTTPRouteRule {
+func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.HTTPRouteRule, matchs []rolloutv1alpha1.HttpRouteMatch) []gatewayv1alpha2.HTTPRouteRule {
 	var desired []gatewayv1alpha2.HTTPRouteRule
 	var canarys []gatewayv1alpha2.HTTPRouteRule
 	for i := range rules {
@@ -159,10 +159,15 @@ func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.
 		canaryRef.Name = gatewayv1alpha2.ObjectName(r.conf.CanaryService)
 		canaryRule.BackendRefs = []gatewayv1alpha2.HTTPBackendRef{*canaryRef}
 		// set canary headers in httpRoute
+		var newMatches []gatewayv1alpha2.HTTPRouteMatch
 		for j := range canaryRule.Matches {
-			match := &canaryRule.Matches[j]
-			match.Headers = append(match.Headers, headers...)
+			canaryRuleMatch := &canaryRule.Matches[j]
+			for k := range matchs {
+				canaryRuleMatch.Headers = append(canaryRuleMatch.Headers, matchs[k].Headers...)
+				newMatches = append(newMatches, *canaryRuleMatch)
+			}
 		}
+		canaryRule.Matches = newMatches
 		canarys = append(canarys, *canaryRule)
 	}
 	desired = append(desired, canarys...)

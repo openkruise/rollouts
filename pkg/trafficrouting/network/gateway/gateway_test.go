@@ -155,6 +155,18 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 								Value: "true",
 							},
 						},
+					}, {
+						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+							{
+								Name:  "user_id",
+								Value: "234*",
+								Type:  &iType,
+							},
+							{
+								Name:  "canary",
+								Value: "true",
+							},
+						},
 					},
 				}
 			},
@@ -185,12 +197,48 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 						},
 						{
 							Path: &gatewayv1alpha2.HTTPPathMatch{
+								Value: utilpointer.String("/store"),
+							},
+							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								{
+									Name:  "version",
+									Value: "v2",
+								},
+								{
+									Name:  "user_id",
+									Value: "234*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+						{
+							Path: &gatewayv1alpha2.HTTPPathMatch{
 								Value: utilpointer.String("/v2/store"),
 							},
 							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
 								{
 									Name:  "user_id",
 									Value: "123*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+						{
+							Path: &gatewayv1alpha2.HTTPPathMatch{
+								Value: utilpointer.String("/v2/store"),
+							},
+							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								{
+									Name:  "user_id",
+									Value: "234*",
 									Type:  &iType,
 								},
 								{
@@ -222,6 +270,22 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 								{
 									Name:  "user_id",
 									Value: "123*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+						{
+							Path: &gatewayv1alpha2.HTTPPathMatch{
+								Value: utilpointer.String("/storage"),
+							},
+							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								{
+									Name:  "user_id",
+									Value: "234*",
 									Type:  &iType,
 								},
 								{
