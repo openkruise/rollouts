@@ -72,6 +72,7 @@ type RolloutSpec struct {
 	// RolloutID should be changed before each workload revision publication.
 	// It is to distinguish consecutive multiple workload publications and rollout progress.
 	DeprecatedRolloutID string `json:"rolloutID,omitempty"`
+	Disabled            bool   `json:"disabled"`
 }
 
 type ObjectRef struct {
@@ -257,6 +258,8 @@ const (
 	RolloutPhaseProgressing RolloutPhase = "Progressing"
 	// RolloutPhaseTerminating indicates a rollout is terminated
 	RolloutPhaseTerminating RolloutPhase = "Terminating"
+	// RolloutPhaseDisabled indicates a rollout is disabled
+	RolloutPhaseDisabled RolloutPhase = "Disabled"
 )
 
 // +genclient

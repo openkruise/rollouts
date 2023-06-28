@@ -5485,6 +5485,81 @@ var _ = SIGDescribe("Rollout", func() {
 		})
 
 	})
+
+	KruiseDescribe("Disabled rollout tests", func() {
+		rollout := &v1alpha1.Rollout{}
+		Expect(ReadYamlToObject("./test_data/rollout/rollout_disabled.yaml", rollout)).ToNot(HaveOccurred())
+		It("Conflict checks", func() {
+			By("Create an enabled rollout")
+			rollout1 := rollout.DeepCopy()
+			rollout1.Name = "rollout-demo1"
+			rollout1.Spec.Disabled = false
+			CreateObject(rollout1)
+			time.Sleep(1 * time.Second)
+
+			By("Create another enabled rollout")
+			rollout2 := rollout.DeepCopy()
+			rollout2.Name = "rollout-demo2"
+			rollout2.Spec.Disabled = false
+			rollout2.SetNamespace(namespace)
+			By("Webhook should throw an error")
+			Expect(k8sClient.Create(context.TODO(), rollout2)).Should(HaveOccurred())
+
+			By("Creating a disabled rollout")
+			rollout3 := rollout.DeepCopy()
+			rollout3.Name = "rollout-demo3"
+			rollout3.Spec.Disabled = true
+			CreateObject(rollout3)
+
+			By("Creating another disabled rollout")
+			rollout4 := rollout.DeepCopy()
+			rollout4.Name = "rollout-demo4"
+			rollout4.Spec.Disabled = true
+			CreateObject(rollout4)
+
+			// wait for reconciling
+			time.Sleep(3 * time.Second)
+			Expect(GetObject(rollout1.Name, rollout1)).NotTo(HaveOccurred())
+			Expect(rollout1.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseInitial))
+
+			Expect(GetObject(rollout3.Name, rollout3)).NotTo(HaveOccurred())
+			Expect(rollout3.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseDisabled))
+
+			Expect(GetObject(rollout4.Name, rollout4)).NotTo(HaveOccurred())
+			Expect(rollout4.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseDisabled))
+		})
+
+		It("Disable a rolling rollout", func() {
+			By("Create an enabled rollout")
+			rollout1 := rollout.DeepCopy()
+			rollout1.Spec.Disabled = false
+			deploy := &apps.Deployment{}
+			Expect(ReadYamlToObject("./test_data/rollout/deployment_disabled.yaml", deploy)).ToNot(HaveOccurred())
+
+			CreateObject(rollout1)
+			CreateObject(deploy)
+			WaitDeploymentAllPodsReady(deploy)
+			Expect(GetObject(rollout1.Name, rollout1)).NotTo(HaveOccurred())
+			Expect(rollout1.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseHealthy))
+
+			By("Updating deployment version-1 to version-2")
+			Expect(GetObject(deploy.Name, deploy)).NotTo(HaveOccurred())
+			newEnvs := mergeEnvVar(deploy.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "VERSION", Value: "version-2"})
+			deploy.Spec.Template.Spec.Containers[0].Env = newEnvs
+
+			UpdateDeployment(deploy)
+			WaitRolloutCanaryStepPaused(rollout1.Name, 1)
+
+			By("Disable a rolling rollout")
+			rollout1.Spec.Disabled = true
+			UpdateRollout(rollout1)
+			// wait for reconciling
+			time.Sleep(3 * time.Second)
+			Expect(GetObject(rollout1.Name, rollout1)).NotTo(HaveOccurred())
+			Expect(rollout1.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseDisabled))
+		})
+
+	})
 })
 
 func mergeEnvVar(original []v1.EnvVar, add v1.EnvVar) []v1.EnvVar {

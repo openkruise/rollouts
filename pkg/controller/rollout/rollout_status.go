@@ -24,6 +24,7 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -49,7 +50,16 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 		}
 		return false, newStatus, nil
 	}
-	if newStatus.Phase == "" {
+
+	done, err := r.checkDisabled(rollout, newStatus)
+	if err != nil {
+		return false, newStatus, err
+	}
+	if done {
+		return false, newStatus, nil
+	}
+
+	if newStatus.Phase == "" || newStatus.Phase == v1alpha1.RolloutPhaseDisabled {
 		newStatus.Phase = v1alpha1.RolloutPhaseInitial
 	}
 	// get ref workload
@@ -124,6 +134,74 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 		}
 	}
 	return false, newStatus, nil
+}
+
+// do disabled checks
+func (r *RolloutReconciler) checkDisabled(rollout *v1alpha1.Rollout, newStatus *v1alpha1.RolloutStatus) (bool, error) {
+	phase := newStatus.Phase
+	// if rollout is disabled
+	if rollout.Spec.Disabled {
+		*newStatus = v1alpha1.RolloutStatus{
+			ObservedGeneration: rollout.Generation,
+			Phase:              v1alpha1.RolloutPhaseDisabled,
+			Message:            "Rollout is disabled",
+		}
+		// if rollout in progressing, indicates a working rollout is disabled, then the rollout should be terminated
+		if phase == v1alpha1.RolloutPhaseProgressing {
+			rollout.Status.Phase = v1alpha1.RolloutPhaseFinalizing
+			rollout.Status.Message = "Disabling rollout, release resources"
+			util.RemoveRolloutCondition(&rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := util.NewRolloutCondition(v1alpha1.RolloutConditionProgressing, corev1.ConditionTrue, v1alpha1.ProgressingReasonFinalising, "Rollout is in terminating")
+			util.SetRolloutCondition(&rollout.Status, *cond)
+		}
+		return true, nil
+	}
+
+	// check if a rollout conflicts
+	if !rollout.Spec.Disabled {
+		// other circumstances indicate the rollout is working and terminating, thus conflict check is not needed
+		if phase == "" || phase == v1alpha1.RolloutPhaseDisabled {
+			conflict, err := r.checkConflict(rollout)
+			if err != nil || conflict {
+				*newStatus = v1alpha1.RolloutStatus{
+					ObservedGeneration: rollout.Generation,
+					Message:            "Rollout conflicts",
+				}
+				return true, err
+			}
+		}
+	}
+	return false, nil
+}
+
+// check if an enabled rollout conflicts with other enabled rollout
+func (r *RolloutReconciler) checkConflict(rollout *v1alpha1.Rollout) (bool, error) {
+	// if rollout is terminating then the conflict check is not necessary
+	if rollout.Status.Phase == v1alpha1.RolloutPhaseTerminating {
+		return false, nil
+	}
+	rolloutList := &v1alpha1.RolloutList{}
+	err := r.List(context.TODO(), rolloutList, client.InNamespace(rollout.Namespace), utilclient.DisableDeepCopy)
+	if err != nil {
+		return false, err
+	}
+	// check if conflict with other rollouts
+	for i := range rolloutList.Items {
+		ri := &rolloutList.Items[i]
+		if ri.Name == rollout.Name || ri.Status.Phase == v1alpha1.RolloutPhaseDisabled || ri.Status.Phase == "" {
+			continue
+		}
+		if func(a, b *v1alpha1.WorkloadRef) bool {
+			if a == nil || b == nil {
+				return false
+			}
+			return reflect.DeepEqual(a, b)
+		}(ri.Spec.ObjectRef.WorkloadRef, rollout.Spec.ObjectRef.WorkloadRef) {
+			klog.Errorf("rollout %s conflict with rollout %s", rollout.Name, ri.Name)
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // rolloutHash mainly records the step batch information, when the user step changes,

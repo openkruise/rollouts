@@ -333,8 +333,12 @@ func TestRolloutValidateCreate(t *testing.T) {
 				object3 := rollout.DeepCopy()
 				object3.Name = "object-3"
 				object3.Spec.ObjectRef.WorkloadRef.Kind = "another"
+
+				object4 := rollout.DeepCopy()
+				object4.Name = "object-4"
+				object4.Spec.Disabled = true
 				return []client.Object{
-					object, object1, object2, object3,
+					object, object1, object2, object3, object4,
 				}
 			},
 		},

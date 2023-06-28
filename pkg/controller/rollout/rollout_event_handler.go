@@ -92,7 +92,7 @@ func (w *enqueueRequestForWorkload) getRolloutForWorkload(key types.NamespacedNa
 			continue
 		}
 
-		if targetRef.Kind == gvk.Kind && targetGV.Group == gvk.Group && targetRef.Name == key.Name {
+		if targetRef.Kind == gvk.Kind && targetGV.Group == gvk.Group && targetRef.Name == key.Name && rollout.Status.Phase != rolloutv1alpha1.RolloutPhaseDisabled {
 			return &rollout, nil
 		}
 	}
