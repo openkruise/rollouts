@@ -57,6 +57,8 @@ spec:
             description: RolloutSpec defines the desired state of Rollout
             properties:
               disabled:
+                description: if a rollout disabled, then the rollout would not watch
+                  changes of workload
                 type: boolean
               objectRef:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster

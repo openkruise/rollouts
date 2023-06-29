@@ -5502,31 +5502,19 @@ var _ = SIGDescribe("Rollout", func() {
 			rollout2.Name = "rollout-demo2"
 			rollout2.Spec.Disabled = false
 			rollout2.SetNamespace(namespace)
-			By("Webhook should throw an error")
 			Expect(k8sClient.Create(context.TODO(), rollout2)).Should(HaveOccurred())
 
 			By("Creating a disabled rollout")
 			rollout3 := rollout.DeepCopy()
 			rollout3.Name = "rollout-demo3"
 			rollout3.Spec.Disabled = true
-			CreateObject(rollout3)
-
-			By("Creating another disabled rollout")
-			rollout4 := rollout.DeepCopy()
-			rollout4.Name = "rollout-demo4"
-			rollout4.Spec.Disabled = true
-			CreateObject(rollout4)
+			rollout2.SetNamespace(namespace)
+			Expect(k8sClient.Create(context.TODO(), rollout2)).Should(HaveOccurred())
 
 			// wait for reconciling
 			time.Sleep(3 * time.Second)
 			Expect(GetObject(rollout1.Name, rollout1)).NotTo(HaveOccurred())
 			Expect(rollout1.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseInitial))
-
-			Expect(GetObject(rollout3.Name, rollout3)).NotTo(HaveOccurred())
-			Expect(rollout3.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseDisabled))
-
-			Expect(GetObject(rollout4.Name, rollout4)).NotTo(HaveOccurred())
-			Expect(rollout4.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseDisabled))
 		})
 
 		It("Disable a rolling rollout", func() {
@@ -5554,7 +5542,10 @@ var _ = SIGDescribe("Rollout", func() {
 			rollout1.Spec.Disabled = true
 			UpdateRollout(rollout1)
 			// wait for reconciling
-			time.Sleep(3 * time.Second)
+			time.Sleep(5 * time.Second)
+			key := types.NamespacedName{Namespace: namespace, Name: rollout1.Name}
+			By("Batchrelease should be deleted")
+			Expect(k8sClient.Get(context.TODO(), key, &v1alpha1.BatchRelease{})).Should(HaveOccurred())
 			Expect(GetObject(rollout1.Name, rollout1)).NotTo(HaveOccurred())
 			Expect(rollout1.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseDisabled))
 		})

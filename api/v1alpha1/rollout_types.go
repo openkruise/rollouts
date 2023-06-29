@@ -72,7 +72,8 @@ type RolloutSpec struct {
 	// RolloutID should be changed before each workload revision publication.
 	// It is to distinguish consecutive multiple workload publications and rollout progress.
 	DeprecatedRolloutID string `json:"rolloutID,omitempty"`
-	Disabled            bool   `json:"disabled"`
+	// if a rollout disabled, then the rollout would not watch changes of workload
+	Disabled bool `json:"disabled"`
 }
 
 type ObjectRef struct {
@@ -197,6 +198,11 @@ const (
 	ProgressingReasonCancelling   = "Cancelling"
 	ProgressingReasonPaused       = "Paused"
 
+	// Disabling condition
+	RolloutConditionDisabling RolloutConditionType = "Disabling"
+	// Disabling reason
+	DisablingReasonFinalising = "InDisabling"
+
 	// RolloutConditionSucceeded indicates whether rollout is succeeded or failed.
 	RolloutConditionSucceeded RolloutConditionType = "Succeeded"
 
@@ -260,6 +266,8 @@ const (
 	RolloutPhaseTerminating RolloutPhase = "Terminating"
 	// RolloutPhaseDisabled indicates a rollout is disabled
 	RolloutPhaseDisabled RolloutPhase = "Disabled"
+	// RolloutPhaseDisabling indicates a rollout is disabling and releasing resources
+	RolloutPhaseDisabling RolloutPhase = "Disabling"
 )
 
 // +genclient

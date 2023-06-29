@@ -455,8 +455,8 @@ func (m *canaryReleaseManager) finalizingBatchRelease(c *RolloutContext) (bool, 
 	}
 	klog.Infof("rollout(%s/%s) patch batchRelease(%s) success", c.Rollout.Namespace, c.Rollout.Name, body)
 
-	// if rollout is disabled, then the batchrelease should be deleted
-	if c.Rollout.Spec.Disabled {
+	// if rollout is disabling, then the batchrelease should be deleted
+	if c.NewStatus.Phase == v1alpha1.RolloutPhaseDisabling {
 		return true, nil
 	}
 	return false, nil

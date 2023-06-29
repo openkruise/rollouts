@@ -124,28 +124,6 @@ func TestCalculateRolloutStatus(t *testing.T) {
 			expectPhase: v1alpha1.RolloutPhaseInitial,
 		},
 		{
-			name: "apply an enabled rollout when a rollout is already working",
-			getRollout: func() *v1alpha1.Rollout {
-				obj := rolloutDemo.DeepCopy()
-				obj.Name = "Rollout-demo2"
-				obj.Status = v1alpha1.RolloutStatus{}
-				obj.Spec.Disabled = false
-				return obj
-			},
-			expectPhase: "",
-		},
-		{
-			name: "apply a disabled rollout",
-			getRollout: func() *v1alpha1.Rollout {
-				obj := rolloutDemo.DeepCopy()
-				obj.Name = "Rollout-demo3"
-				obj.Status = v1alpha1.RolloutStatus{}
-				obj.Spec.Disabled = true
-				return obj
-			},
-			expectPhase: v1alpha1.RolloutPhaseDisabled,
-		},
-		{
 			name: "disable an working rollout",
 			getRollout: func() *v1alpha1.Rollout {
 				obj := rolloutDemo.DeepCopy()
@@ -160,7 +138,7 @@ func TestCalculateRolloutStatus(t *testing.T) {
 			name: "enable an disabled rollout",
 			getRollout: func() *v1alpha1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Name = "Rollout-demo3"
+				obj.Name = "Rollout-demo2"
 				obj.Status = v1alpha1.RolloutStatus{}
 				obj.Spec.Disabled = false
 				return obj

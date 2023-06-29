@@ -146,10 +146,8 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		recheckTime, err = r.reconcileRolloutProgressing(rollout, newStatus)
 	case v1alpha1.RolloutPhaseTerminating:
 		recheckTime, err = r.reconcileRolloutTerminating(rollout, newStatus)
-	}
-	if rollout.Spec.Disabled && rollout.Status.Phase == v1alpha1.RolloutPhaseFinalizing {
-		recheckTime, err = r.reconcileRolloutProgressing(rollout, &rollout.Status)
-		util.RemoveRolloutCondition(&rollout.Status, v1alpha1.ProgressingReasonFinalising)
+	case v1alpha1.RolloutPhaseDisabling:
+		recheckTime, err = r.reconcileRolloutDisabling(rollout, newStatus)
 	}
 	if err != nil {
 		return ctrl.Result{}, err
