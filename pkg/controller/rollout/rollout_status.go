@@ -25,6 +25,7 @@ import (
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/util/retry"
@@ -80,14 +81,12 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 		}
 		return false, newStatus, nil
 	}
-	klog.V(5).Infof("rollout(%s/%s) workload(%s)", rollout.Namespace, rollout.Name, util.DumpJSON(workload))
-	// todo, patch workload webhook labels
+	klog.V(5).Infof("rollout(%s/%s) fetch workload(%s)", rollout.Namespace, rollout.Name, util.DumpJSON(workload))
 	// workload status generation is not equal to workload.generation
 	if !workload.IsStatusConsistent {
 		klog.Infof("rollout(%s/%s) workload status is inconsistent, then wait a moment", rollout.Namespace, rollout.Name)
 		return true, nil, nil
 	}
-
 	// update workload generation to canaryStatus.ObservedWorkloadGeneration
 	// rollout is a target ref bypass, so there needs to be a field to identify the rollout execution process or results,
 	// which version of deployment is targeted, ObservedWorkloadGeneration that is to compare with the workload generation
@@ -247,6 +246,42 @@ func (r *RolloutReconciler) reconcileRolloutDisabling(rollout *v1alpha1.Rollout,
 		klog.Infof("rollout(%s/%s) disabling is incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
 	}
 	return c.RecheckTime, nil
+}
+
+func (r *RolloutReconciler) patchWorkloadRolloutWebhookLabel(rollout *v1alpha1.Rollout) error {
+	// get ref workload
+	workload, err := r.finder.GetWorkloadForRef(rollout)
+	if err != nil {
+		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
+		return err
+	} else if workload == nil {
+		return nil
+	}
+
+	var workloadType util.WorkloadType
+	switch workload.Kind {
+	case util.ControllerKruiseKindCS.Kind:
+		workloadType = util.CloneSetType
+	case util.ControllerKindDep.Kind:
+		workloadType = util.DeploymentType
+	case util.ControllerKindSts.Kind:
+		workloadType = util.StatefulSetType
+	case util.ControllerKruiseKindDS.Kind:
+		workloadType = util.DaemonSetType
+	}
+	if workload.Annotations[util.WorkloadTypeLabel] == "" && workloadType != "" {
+		workloadGVK := schema.FromAPIVersionAndKind(workload.APIVersion, workload.Kind)
+		obj := util.GetEmptyWorkloadObject(workloadGVK)
+		obj.SetNamespace(workload.Namespace)
+		obj.SetName(workload.Name)
+		body := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s"}}}`, util.WorkloadTypeLabel, workloadType)
+		if err := r.Patch(context.TODO(), obj, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
+			klog.Errorf("rollout(%s/%s) patch workload(%s) failed: %s", rollout.Namespace, rollout.Name, workload.Name, err.Error())
+			return err
+		}
+		klog.Infof("rollout(%s/%s) patch workload(%s) labels[%s] success", rollout.Namespace, rollout.Name, workload.Name, util.WorkloadTypeLabel)
+	}
+	return nil
 }
 
 // handle adding and handle finalizer logic, it turns if we should continue to reconcile

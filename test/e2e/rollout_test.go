@@ -245,8 +245,8 @@ var _ = SIGDescribe("Rollout", func() {
 		Eventually(func() bool {
 			daemon := &appsv1alpha1.DaemonSet{}
 			Expect(GetObject(daemonset.Name, daemon)).NotTo(HaveOccurred())
-			klog.Infof("DaemonSet Generation(%d) ObservedGeneration(%d) DesiredNumberScheduled(%d) UpdatedNumberScheduled(%d) NumberReady(%d)",
-				daemon.Generation, daemon.Status.ObservedGeneration, daemon.Status.DesiredNumberScheduled, daemon.Status.UpdatedNumberScheduled, daemon.Status.NumberReady)
+			klog.Infof("DaemonSet updateStrategy(%s) Generation(%d) ObservedGeneration(%d) DesiredNumberScheduled(%d) UpdatedNumberScheduled(%d) NumberReady(%d)",
+				util.DumpJSON(daemon.Spec.UpdateStrategy), daemon.Generation, daemon.Status.ObservedGeneration, daemon.Status.DesiredNumberScheduled, daemon.Status.UpdatedNumberScheduled, daemon.Status.NumberReady)
 			return daemon.Status.ObservedGeneration == daemon.Generation && daemon.Status.DesiredNumberScheduled == daemon.Status.UpdatedNumberScheduled && daemon.Status.DesiredNumberScheduled == daemon.Status.NumberReady
 		}, 5*time.Minute, time.Second).Should(BeTrue())
 	}
@@ -5468,6 +5468,8 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(k8sClient.DeleteAllOf(context.TODO(), &v1alpha1.Rollout{}, client.InNamespace(namespace), client.PropagationPolicy(metav1.DeletePropagationForeground))).Should(Succeed())
 			WaitRolloutNotFound(rollout.Name)
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			workload.Spec.UpdateStrategy.RollingUpdate.Partition = utilpointer.Int32(0)
+			UpdateDaemonSet(workload)
 			WaitDaemonSetAllPodsReady(workload)
 
 			// check daemonset
