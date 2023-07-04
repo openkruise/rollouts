@@ -920,6 +920,11 @@ func (in *TrafficRoutingStrategy) DeepCopyInto(out *TrafficRoutingStrategy) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.RequestHeaderModifier != nil {
+		in, out := &in.RequestHeaderModifier, &out.RequestHeaderModifier
+		*out = new(v1alpha2.HTTPRequestHeaderFilter)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Matches != nil {
 		in, out := &in.Matches, &out.Matches
 		*out = make([]HttpRouteMatch, len(*in))
