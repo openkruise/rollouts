@@ -247,13 +247,17 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 	if err = trController.Finalise(context.TODO()); err != nil {
 		return false, err
 	}
-	// remove canary service
-	err = m.Delete(context.TODO(), cService)
-	if err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("%s remove canary service(%s) failed: %s", c.Key, cService.Name, err.Error())
-		return false, err
+	// end to end deployment, don't remove the canary service;
+	// because canary service is stable service
+	if !c.OnlyTrafficRouting {
+		// remove canary service
+		err = m.Delete(context.TODO(), cService)
+		if err != nil && !errors.IsNotFound(err) {
+			klog.Errorf("%s remove canary service(%s) failed: %s", c.Key, cService.Name, err.Error())
+			return false, err
+		}
+		klog.Infof("%s remove canary service(%s) success", c.Key, cService.Name)
 	}
-	klog.Infof("%s remove canary service(%s) success", c.Key, cService.Name)
 	return true, nil
 }
 

@@ -50,8 +50,6 @@ type Workload struct {
 	PodTemplateHash string
 	// Revision hash key
 	RevisionLabelKey string
-	// label selector
-	Selector *metav1.LabelSelector
 
 	// Is it in rollback phase
 	IsInRollback bool
@@ -311,7 +309,6 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 		StableRevision:     stableRs.Labels[apps.DefaultDeploymentUniqueLabelKey],
 		CanaryRevision:     ComputeHash(&stable.Spec.Template, nil),
 		RevisionLabelKey:   apps.DefaultDeploymentUniqueLabelKey,
-		Selector:           stable.Spec.Selector,
 	}
 
 	// not in rollout progressing

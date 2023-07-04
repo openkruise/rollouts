@@ -15,6 +15,11 @@ if ( obj.weight ~= "-1" )
 then
     annotations["nginx.ingress.kubernetes.io/canary-weight"] = obj.weight
 end
+if ( annotations["mse.ingress.kubernetes.io/service-subset"] )
+then
+    annotations["mse.ingress.kubernetes.io/service-subset"] = "gray"
+end
+
 if ( obj.requestHeaderModifier )
 then
     local str = ''
