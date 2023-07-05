@@ -49,6 +49,18 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 		}
 		return false, newStatus, nil
 	}
+
+	if rollout.Spec.Disabled && newStatus.Phase != v1alpha1.RolloutPhaseDisabled && newStatus.Phase != v1alpha1.RolloutPhaseDisabling {
+		// if rollout in progressing, indicates a working rollout is disabled, then the rollout should be finalized
+		if newStatus.Phase == v1alpha1.RolloutPhaseProgressing {
+			newStatus.Phase = v1alpha1.RolloutPhaseDisabling
+			newStatus.Message = "Disabling rollout, release resources"
+		} else {
+			newStatus.Phase = v1alpha1.RolloutPhaseDisabled
+			newStatus.Message = "Rollout is disabled"
+		}
+	}
+
 	if newStatus.Phase == "" {
 		newStatus.Phase = v1alpha1.RolloutPhaseInitial
 	}
@@ -58,12 +70,14 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return false, nil, err
 	} else if workload == nil {
-		newStatus = &v1alpha1.RolloutStatus{
-			ObservedGeneration: rollout.Generation,
-			Phase:              v1alpha1.RolloutPhaseInitial,
-			Message:            "Workload Not Found",
+		if !rollout.Spec.Disabled {
+			newStatus = &v1alpha1.RolloutStatus{
+				ObservedGeneration: rollout.Generation,
+				Phase:              v1alpha1.RolloutPhaseInitial,
+				Message:            "Workload Not Found",
+			}
+			klog.Infof("rollout(%s/%s) workload not found, and reset status be Initial", rollout.Namespace, rollout.Name)
 		}
-		klog.Infof("rollout(%s/%s) workload not found, and reset status be Initial", rollout.Namespace, rollout.Name)
 		return false, newStatus, nil
 	}
 	klog.V(5).Infof("rollout(%s/%s) workload(%s)", rollout.Namespace, rollout.Name, util.DumpJSON(workload))
@@ -121,6 +135,11 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 				RolloutHash:                rollout.Annotations[util.RolloutHashAnnotation],
 			}
 			newStatus.Message = "workload deployment is completed"
+		}
+	case v1alpha1.RolloutPhaseDisabled:
+		if !rollout.Spec.Disabled {
+			newStatus.Phase = v1alpha1.RolloutPhaseHealthy
+			newStatus.Message = "rollout is healthy"
 		}
 	}
 	return false, newStatus, nil
@@ -203,6 +222,29 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *v1alpha1.Rollou
 		expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
 		c.RecheckTime = &expectedTime
 		klog.Infof("rollout(%s/%s) terminating is incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
+	}
+	return c.RecheckTime, nil
+}
+
+func (r *RolloutReconciler) reconcileRolloutDisabling(rollout *v1alpha1.Rollout, newStatus *v1alpha1.RolloutStatus) (*time.Time, error) {
+	workload, err := r.finder.GetWorkloadForRef(rollout)
+	if err != nil {
+		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
+		return nil, err
+	}
+	c := &RolloutContext{Rollout: rollout, NewStatus: newStatus, Workload: workload}
+	done, err := r.doFinalising(c)
+	if err != nil {
+		return nil, err
+	} else if done {
+		klog.Infof("rollout(%s/%s) is disabled", rollout.Namespace, rollout.Name)
+		newStatus.Phase = v1alpha1.RolloutPhaseDisabled
+		newStatus.Message = "Rollout is disabled"
+	} else {
+		// Incomplete, recheck
+		expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
+		c.RecheckTime = &expectedTime
+		klog.Infof("rollout(%s/%s) disabling is incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
 	}
 	return c.RecheckTime, nil
 }

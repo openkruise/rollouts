@@ -17,6 +17,7 @@ limitations under the License.
 package rollout
 
 import (
+	"context"
 	"testing"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
@@ -103,4 +104,71 @@ func TestCalculateRolloutHash(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCalculateRolloutStatus(t *testing.T) {
+	cases := []struct {
+		name        string
+		getRollout  func() *v1alpha1.Rollout
+		expectPhase v1alpha1.RolloutPhase
+	}{
+		{
+			name: "apply an enabled rollout",
+			getRollout: func() *v1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Name = "Rollout-demo1"
+				obj.Status = v1alpha1.RolloutStatus{}
+				obj.Spec.Disabled = false
+				return obj
+			},
+			expectPhase: v1alpha1.RolloutPhaseInitial,
+		},
+		{
+			name: "disable an working rollout",
+			getRollout: func() *v1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Name = "Rollout-demo1"
+				obj.Status = v1alpha1.RolloutStatus{}
+				obj.Spec.Disabled = true
+				return obj
+			},
+			expectPhase: v1alpha1.RolloutPhaseDisabled,
+		},
+		{
+			name: "enable an disabled rollout",
+			getRollout: func() *v1alpha1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Name = "Rollout-demo2"
+				obj.Status = v1alpha1.RolloutStatus{}
+				obj.Spec.Disabled = false
+				return obj
+			},
+			expectPhase: v1alpha1.RolloutPhaseInitial,
+		},
+	}
+
+	t.Run("RolloutStatus test", func(t *testing.T) {
+		fc := fake.NewClientBuilder().WithScheme(scheme).Build()
+		r := &RolloutReconciler{
+			Client:                fc,
+			Scheme:                scheme,
+			Recorder:              record.NewFakeRecorder(10),
+			finder:                util.NewControllerFinder(fc),
+			trafficRoutingManager: trafficrouting.NewTrafficRoutingManager(fc),
+		}
+		r.canaryManager = &canaryReleaseManager{
+			Client:                fc,
+			trafficRoutingManager: r.trafficRoutingManager,
+			recorder:              r.Recorder,
+		}
+		for _, cs := range cases {
+			rollout := cs.getRollout()
+			fc.Create(context.TODO(), rollout)
+			_, newStatus, _ := r.calculateRolloutStatus(rollout)
+			r.updateRolloutStatusInternal(rollout, *newStatus)
+			if cs.expectPhase != newStatus.Phase {
+				t.Fatalf("expect phase %s, get %s, for rollout %s", cs.expectPhase, newStatus.Phase, rollout.Name)
+			}
+		}
+	})
 }

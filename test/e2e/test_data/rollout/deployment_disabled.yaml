@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workload-demo
+  namespace: default
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: demo
+  template:
+    metadata:
+      labels:
+        app: demo
+    spec:
+      containers:
+      - name: busybox
+        image: busybox:latest
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/sh", "-c", "sleep 100d"]
+        env:
+        - name: VERSION
+          value: "version-1"
