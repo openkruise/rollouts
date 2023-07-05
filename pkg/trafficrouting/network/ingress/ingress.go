@@ -39,6 +39,7 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 type ingressController struct {
@@ -84,7 +85,7 @@ func (r *ingressController) Initialize(ctx context.Context) error {
 func (r *ingressController) EnsureRoutes(ctx context.Context, strategy *rolloutv1alpha1.TrafficRoutingStrategy) (bool, error) {
 	weight := strategy.Weight
 	matches := strategy.Matches
-	// headerModifier := strategy.RequestHeaderModifier
+	headerModifier := strategy.RequestHeaderModifier
 
 	canaryIngress := &netv1.Ingress{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: defaultCanaryIngressName(r.conf.TrafficConf.Name)}, canaryIngress)
@@ -101,7 +102,7 @@ func (r *ingressController) EnsureRoutes(ctx context.Context, strategy *rolloutv
 		}
 		// build and create canary ingress
 		canaryIngress = r.buildCanaryIngress(ingress)
-		canaryIngress.Annotations, err = r.executeLuaForCanary(canaryIngress.Annotations, utilpointer.Int32(0), nil)
+		canaryIngress.Annotations, err = r.executeLuaForCanary(canaryIngress.Annotations, utilpointer.Int32(0), nil, nil)
 		if err != nil {
 			klog.Errorf("%s execute lua failed: %s", r.conf.Key, err.Error())
 			return false, err
@@ -116,7 +117,7 @@ func (r *ingressController) EnsureRoutes(ctx context.Context, strategy *rolloutv
 		klog.Errorf("%s get canary ingress failed: %s", r.conf.Key, err.Error())
 		return false, err
 	}
-	newAnnotations, err := r.executeLuaForCanary(canaryIngress.Annotations, weight, matches)
+	newAnnotations, err := r.executeLuaForCanary(canaryIngress.Annotations, weight, matches, headerModifier)
 	if err != nil {
 		klog.Errorf("%s execute lua failed: %s", r.conf.Key, err.Error())
 		return false, err
@@ -216,7 +217,8 @@ func defaultCanaryIngressName(name string) string {
 	return fmt.Sprintf("%s-canary", name)
 }
 
-func (r *ingressController) executeLuaForCanary(annotations map[string]string, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch) (map[string]string, error) {
+func (r *ingressController) executeLuaForCanary(annotations map[string]string, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch,
+	headerModifier *gatewayv1alpha2.HTTPRequestHeaderFilter) (map[string]string, error) {
 
 	if weight == nil {
 		// the lua script does not have a pointer type,
@@ -224,18 +226,18 @@ func (r *ingressController) executeLuaForCanary(annotations map[string]string, w
 		weight = utilpointer.Int32(-1)
 	}
 	type LuaData struct {
-		Annotations   map[string]string
-		Weight        string
-		Matches       []rolloutv1alpha1.HttpRouteMatch
-		CanaryService string
-		//todo, RequestHeaderModifier *gatewayv1alpha2.HTTPRequestHeaderFilter
+		Annotations           map[string]string
+		Weight                string
+		Matches               []rolloutv1alpha1.HttpRouteMatch
+		CanaryService         string
+		RequestHeaderModifier *gatewayv1alpha2.HTTPRequestHeaderFilter
 	}
 	data := &LuaData{
-		Annotations:   annotations,
-		Weight:        fmt.Sprintf("%d", *weight),
-		Matches:       matches,
-		CanaryService: r.conf.CanaryService,
-		// RequestHeaderModifier: headerModifier,
+		Annotations:           annotations,
+		Weight:                fmt.Sprintf("%d", *weight),
+		Matches:               matches,
+		CanaryService:         r.conf.CanaryService,
+		RequestHeaderModifier: headerModifier,
 	}
 	unObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(data)
 	if err != nil {

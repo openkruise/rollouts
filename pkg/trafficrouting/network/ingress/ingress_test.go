@@ -346,7 +346,7 @@ func TestEnsureRoutes(t *testing.T) {
 								},
 							},
 						},
-						/*RequestHeaderModifier: &gatewayv1alpha2.HTTPRequestHeaderFilter{
+						RequestHeaderModifier: &gatewayv1alpha2.HTTPRequestHeaderFilter{
 							Set: []gatewayv1alpha2.HTTPHeader{
 								{
 									Name:  "gray",
@@ -357,7 +357,7 @@ func TestEnsureRoutes(t *testing.T) {
 									Value: "green",
 								},
 							},
-						},*/
+						},
 					},
 				}
 			},
@@ -368,7 +368,7 @@ func TestEnsureRoutes(t *testing.T) {
 				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = "demo"
 				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-header"] = "user_id"
 				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = "123456"
-				//expect.Annotations["mse.ingress.kubernetes.io/request-header-control-update"] = "gray blue\ngray green\n"
+				expect.Annotations["mse.ingress.kubernetes.io/request-header-control-update"] = "gray blue\ngray green\n"
 				expect.Spec.Rules[0].HTTP.Paths = expect.Spec.Rules[0].HTTP.Paths[:1]
 				expect.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				expect.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
