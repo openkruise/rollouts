@@ -159,6 +159,25 @@ func SafeEncodeString(s string) string {
 	return string(r)
 }
 
+func EqualIgnoreSpecifyMetadata(template1, template2 *v1.PodTemplateSpec, ignoreLabels, ignoreAnno []string) bool {
+	t1Copy := template1.DeepCopy()
+	t2Copy := template2.DeepCopy()
+	if ignoreLabels == nil {
+		ignoreLabels = make([]string, 0)
+	}
+	// default remove the hash label
+	ignoreLabels = append(ignoreLabels, apps.DefaultDeploymentUniqueLabelKey)
+	for _, k := range ignoreLabels {
+		delete(t1Copy.Labels, k)
+		delete(t2Copy.Labels, k)
+	}
+	for _, k := range ignoreAnno {
+		delete(t1Copy.Annotations, k)
+		delete(t2Copy.Annotations, k)
+	}
+	return apiequality.Semantic.DeepEqual(t1Copy, t2Copy)
+}
+
 // EqualIgnoreHash compare template without pod-template-hash label
 func EqualIgnoreHash(template1, template2 *v1.PodTemplateSpec) bool {
 	t1Copy := template1.DeepCopy()

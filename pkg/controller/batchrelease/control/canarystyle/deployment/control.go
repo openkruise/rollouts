@@ -73,7 +73,7 @@ func (rc *realController) BuildCanaryController(release *v1alpha1.BatchRelease) 
 	if client.IgnoreNotFound(err) != nil {
 		return rc, err
 	}
-	rc.canaryObject = filterCanaryDeployment(util.FilterActiveDeployment(ds), template)
+	rc.canaryObject = filterCanaryDeployment(release, util.FilterActiveDeployment(ds), template)
 	if rc.canaryObject == nil {
 		return rc, control.GenerateNotFoundError(fmt.Sprintf("%v-canary", rc.stableKey), "Deployment")
 	}

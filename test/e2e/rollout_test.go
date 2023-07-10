@@ -442,6 +442,10 @@ var _ = SIGDescribe("Rollout", func() {
 					},
 				},
 			}
+			rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata = &v1alpha1.PatchPodTemplateMetadata{
+				Labels:      map[string]string{"pod": "canary"},
+				Annotations: map[string]string{"pod": "canary"},
+			}
 			CreateObject(rollout)
 
 			By("Creating workload and waiting for all pods ready...")
@@ -457,6 +461,10 @@ var _ = SIGDescribe("Rollout", func() {
 			workload := &apps.Deployment{}
 			Expect(ReadYamlToObject("./test_data/rollout/deployment.yaml", workload)).ToNot(HaveOccurred())
 			workload.Spec.Replicas = utilpointer.Int32(3)
+			workload.Spec.Template.Labels["pod"] = "stable"
+			workload.Spec.Template.Annotations = map[string]string{
+				"pod": "stable",
+			}
 			CreateObject(workload)
 			WaitDeploymentAllPodsReady(workload)
 
@@ -484,6 +492,10 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("20"))
+			canaryWorkload, err := GetCanaryDeployment(workload)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(canaryWorkload.Spec.Template.Annotations["pod"]).Should(Equal("canary"))
+			Expect(canaryWorkload.Spec.Template.Labels["pod"]).Should(Equal("canary"))
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)

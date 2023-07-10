@@ -50,6 +50,10 @@ type ReleasePlan struct {
 	// FinalizingPolicy define the behavior of controller when phase enter Finalizing
 	// Defaults to "Immediate"
 	FinalizingPolicy FinalizingPolicyType `json:"finalizingPolicy,omitempty"`
+	// PatchPodTemplateMetadata indicates patch configuration(e.g. labels, annotations) to the canary deployment podTemplateSpec.metadata
+	// only support for canary deployment
+	// +optional
+	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
 }
 
 type FinalizingPolicyType string

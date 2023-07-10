@@ -102,6 +102,22 @@ spec:
                     description: FinalizingPolicy define the behavior of controller
                       when phase enter Finalizing Defaults to "Immediate"
                     type: string
+                  patchPodTemplateMetadata:
+                    description: PatchPodTemplateMetadata indicates patch configuration(e.g.
+                      labels, annotations) to the canary deployment podTemplateSpec.metadata
+                      only support for canary deployment
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: annotations
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: labels
+                        type: object
+                    type: object
                   rolloutID:
                     description: RolloutID indicates an id for each rollout progress
                     type: string

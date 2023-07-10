@@ -109,6 +109,22 @@ spec:
                           is nil, Rollout will use the MaxUnavailable of workload
                           as its FailureThreshold. Defaults to nil.
                         x-kubernetes-int-or-string: true
+                      patchPodTemplateMetadata:
+                        description: PatchPodTemplateMetadata indicates patch configuration(e.g.
+                          labels, annotations) to the canary deployment podTemplateSpec.metadata
+                          only support for canary deployment
+                        properties:
+                          annotations:
+                            additionalProperties:
+                              type: string
+                            description: annotations
+                            type: object
+                          labels:
+                            additionalProperties:
+                              type: string
+                            description: labels
+                            type: object
+                        type: object
                       steps:
                         description: Steps define the order of phases to execute release
                           in batches(20%, 40%, 60%, 80%, 100%)

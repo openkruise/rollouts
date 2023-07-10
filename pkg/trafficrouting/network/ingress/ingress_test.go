@@ -61,6 +61,10 @@ var (
 				then
 					annotations["nginx.ingress.kubernetes.io/canary-weight"] = obj.weight
 				end
+				if ( annotations["mse.ingress.kubernetes.io/service-subset"] )
+				then
+					annotations["mse.ingress.kubernetes.io/service-subset"] = "gray"
+				end
 				if ( obj.requestHeaderModifier )
                 then
 					local str = ''
@@ -317,6 +321,7 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Name = "echoserver-canary"
 				canary.Annotations["nginx.ingress.kubernetes.io/canary"] = "true"
 				canary.Annotations["nginx.ingress.kubernetes.io/canary-weight"] = "0"
+				canary.Annotations["mse.ingress.kubernetes.io/service-subset"] = ""
 				canary.Spec.Rules[0].HTTP.Paths = canary.Spec.Rules[0].HTTP.Paths[:1]
 				canary.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
@@ -369,6 +374,7 @@ func TestEnsureRoutes(t *testing.T) {
 				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-header"] = "user_id"
 				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = "123456"
 				expect.Annotations["mse.ingress.kubernetes.io/request-header-control-update"] = "gray blue\ngray green\n"
+				expect.Annotations["mse.ingress.kubernetes.io/service-subset"] = "gray"
 				expect.Spec.Rules[0].HTTP.Paths = expect.Spec.Rules[0].HTTP.Paths[:1]
 				expect.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				expect.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
