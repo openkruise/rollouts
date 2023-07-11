@@ -8,6 +8,26 @@ webhooks:
       matchExpressions:
         - key: rollouts.kruise.io/workload-type
           operator: Exists
+  - name: mcloneset.kb.io
+    objectSelector:
+      matchExpressions:
+        - key: rollouts.kruise.io/workload-type
+          operator: Exists
+  - name: mdaemonset.kb.io
+    objectSelector:
+      matchExpressions:
+        - key: rollouts.kruise.io/workload-type
+          operator: Exists
+  - name: mstatefulset.kb.io
+    objectSelector:
+      matchExpressions:
+        - key: rollouts.kruise.io/workload-type
+          operator: Exists
+  - name: madvancedstatefulset.kb.io
+    objectSelector:
+      matchExpressions:
+        - key: rollouts.kruise.io/workload-type
+          operator: Exists
   - name: mdeployment.kb.io
     objectSelector:
       matchExpressions:
@@ -15,3 +35,5 @@ webhooks:
           operator: NotIn
           values:
             - controller-manager
+        - key: rollouts.kruise.io/workload-type
+          operator: Exists
