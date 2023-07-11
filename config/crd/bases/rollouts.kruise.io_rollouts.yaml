@@ -259,6 +259,17 @@ spec:
                               required:
                               - name
                               type: object
+                            networkRefs:
+                              items:
+                                properties:
+                                  apiVersion:
+                                    type: string
+                                  kind:
+                                    type: string
+                                  name:
+                                    type: string
+                                type: object
+                              type: array
                             service:
                               description: Service holds the name of a service which
                                 selects pods with stable version and don't select

@@ -1,0 +1,34 @@
+stableService: details
+canaryService: details-canary
+stableWeight: 90
+canaryWeight: 10
+matches:
+- headers:
+  - type: RegularExpression
+    name: end-user
+    value: kuromesi
+spec:
+  hosts:
+  - details
+  http:
+  - route:
+    - destination:
+        host: details
+nSpec:
+  hosts:
+  - details
+  http:
+  - matches:
+    - headers:
+        end-user:
+          regex: kuromesi
+    route:
+    - destination:
+        host: details
+        weight: 90
+    - destination:
+        host: details-canary
+        weight: 10
+  - route:
+    - destination:
+        host: details
