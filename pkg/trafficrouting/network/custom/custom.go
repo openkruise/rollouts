@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -59,7 +58,7 @@ type Config struct {
 	CanaryService string
 	StableService string
 	// network providers need to be created
-	TrafficConf []v1alpha1.NetworkRef
+	TrafficConf []rolloutv1alpha1.NetworkRef
 	OwnerRef    metav1.OwnerReference
 }
 
@@ -238,7 +237,7 @@ func (r *customController) executeLuaForCanary(spec interface{}, strategy *rollo
 	return nil, fmt.Errorf("expect table output from Lua script, not %s", returnValue.Type().String())
 }
 
-func (r *customController) getLuascript(ctx context.Context, ref v1alpha1.NetworkRef) string {
+func (r *customController) getLuascript(ctx context.Context, ref rolloutv1alpha1.NetworkRef) string {
 	// get local lua script
 	// luaScript.Provider: CRDGroupt/Kind
 	group := strings.Split(ref.APIVersion, "/")[0]

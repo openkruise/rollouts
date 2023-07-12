@@ -5551,6 +5551,10 @@ var _ = SIGDescribe("Rollout", func() {
 		})
 
 	})
+
+	KruiseDescribe("Custom network provider tests", func() {
+
+	})
 })
 
 func mergeEnvVar(original []v1.EnvVar, add v1.EnvVar) []v1.EnvVar {

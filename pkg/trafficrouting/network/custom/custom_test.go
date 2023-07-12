@@ -23,7 +23,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -155,7 +154,7 @@ func TestInitialize(t *testing.T) {
 				return Config{
 					StableService: "echoserver",
 					CanaryService: "echoserver-canary",
-					TrafficConf: []v1alpha1.NetworkRef{
+					TrafficConf: []rolloutsv1alpha1.NetworkRef{
 						{
 							APIVersion: "networking.istio.io/v1alpha3",
 							Kind:       "VirtualService",
@@ -346,7 +345,7 @@ func TestEnsureRoutes(t *testing.T) {
 		RolloutName:   "rollout-demo",
 		StableService: "echoserver",
 		CanaryService: "echoserver-canary",
-		TrafficConf: []v1alpha1.NetworkRef{
+		TrafficConf: []rolloutsv1alpha1.NetworkRef{
 			{
 				APIVersion: "networking.istio.io/v1alpha3",
 				Kind:       "VirtualService",
@@ -404,7 +403,7 @@ func TestFinalise(t *testing.T) {
 				return Config{
 					StableService: "echoserver",
 					CanaryService: "echoserver-canary",
-					TrafficConf: []v1alpha1.NetworkRef{
+					TrafficConf: []rolloutsv1alpha1.NetworkRef{
 						{
 							APIVersion: "networking.istio.io/v1alpha3",
 							Kind:       "VirtualService",
