@@ -44,7 +44,7 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 		return k8sClient.Get(context.TODO(), key, object)
 	}
 
-	UpdateDeployment := func(deployment *apps.Deployment, version string) *apps.Deployment {
+	UpdateDeployment := func(deployment *apps.Deployment, version string, images ...string) *apps.Deployment {
 		By(fmt.Sprintf("update deployment %v to version: %v", client.ObjectKeyFromObject(deployment), version))
 		var clone *apps.Deployment
 		Expect(retry.RetryOnConflict(defaultRetry, func() error {
@@ -53,7 +53,11 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 			if err != nil {
 				return err
 			}
-			clone.Spec.Template.Spec.Containers[0].Image = deployment.Spec.Template.Spec.Containers[0].Image
+			if len(images) == 0 {
+				clone.Spec.Template.Spec.Containers[0].Image = deployment.Spec.Template.Spec.Containers[0].Image
+			} else {
+				clone.Spec.Template.Spec.Containers[0].Image = images[0]
+			}
 			clone.Spec.Template.Spec.Containers[0].Env[0].Value = version
 			strategy := unmarshal(clone.Annotations[rolloutsv1alpha1.DeploymentStrategyAnnotation])
 			strategy.Paused = true
@@ -323,6 +327,19 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 			UpdatePartitionWithCheck(deployment, intstr.FromInt(2))
 			UpdatePartitionWithCheck(deployment, intstr.FromInt(3))
 			UpdatePartitionWithCheck(deployment, intstr.FromInt(5))
+		})
+
+		It("scale down old unhealthy first", func() {
+			deployment := &apps.Deployment{}
+			deployment.Namespace = namespace
+			Expect(ReadYamlToObject("./test_data/deployment/deployment.yaml", deployment)).ToNot(HaveOccurred())
+			deployment.Annotations["rollouts.kruise.io/deployment-strategy"] = `{"rollingUpdate":{"maxUnavailable":0,"maxSurge":1}}`
+			CreateObject(deployment)
+			UpdateDeployment(deployment, "version2", "busybox:not-exists")
+			UpdatePartitionWithoutCheck(deployment, intstr.FromInt(1))
+			CheckReplicas(deployment, 6, 5, 1)
+			UpdateDeployment(deployment, "version3", "busybox:1.32")
+			CheckReplicas(deployment, 5, 5, 0)
 		})
 	})
 })
