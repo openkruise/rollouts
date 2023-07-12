@@ -302,6 +302,30 @@ func (dc *DeploymentController) scale(ctx context.Context, deployment *apps.Depl
 		// replica sets.
 		deploymentReplicasToAdd := allowedSize - allRSsReplicas
 
+		// Scale down the unhealthy replicas in old replica sets firstly to avoid some bad cases.
+		// For example:
+		//       _______________________________________________________________________________________
+		//       | ReplicaSet    |       oldRS-1      |   oldRS-2            |          newRS           |
+		//       | --------------| -------------------|----------------------|--------------------------|
+		//       | Replicas      |  4 healthy Pods    |  2 unhealthy Pods    |    4 unhealthy Pods      |
+		//       ---------------------------------------------------------------------------------------
+		// If we want to scale down these replica sets from 10 to 6, we expect to scale down the oldRS-2
+		// from 2 to 0 firstly, then scale down oldRS-1 1 Pod and newRS 1 Pod based on proportion.
+		//
+		// We do not scale down the newRS unhealthy Pods with higher priority, because these new revision
+		// Pods may be just created, not the one with the crash or other problems.
+		var err error
+		var cleanupCount int32
+		if deploymentReplicasToAdd < 0 {
+			oldRSs, cleanupCount, err = dc.cleanupUnhealthyReplicas(ctx, oldRSs, deployment, -deploymentReplicasToAdd)
+			if err != nil {
+				return err
+			}
+			klog.V(4).Infof("Cleaned up unhealthy replicas from old RSes by %d during scaling", cleanupCount)
+			deploymentReplicasToAdd += cleanupCount
+			allRSs = deploymentutil.FilterActiveReplicaSets(append(oldRSs, newRS))
+		}
+
 		// The additional replicas should be distributed proportionally amongst the active
 		// replica sets from the larger to the smaller in size replica set. Scaling direction
 		// drives what happens in case we are trying to scale replica sets of the same size.
