@@ -209,8 +209,8 @@ func validateRolloutSpecCanaryTraffic(traffic appsv1alpha1.TrafficRoutingRef, fl
 		errList = append(errList, field.Invalid(fldPath.Child("Service"), traffic.Service, "TrafficRouting.Service cannot be empty"))
 	}
 
-	if traffic.Gateway == nil && traffic.Ingress == nil {
-		errList = append(errList, field.Invalid(fldPath.Child("TrafficRoutings"), traffic.Ingress, "TrafficRoutings must set the gateway or ingress"))
+	if traffic.Gateway == nil && traffic.Ingress == nil && traffic.NetworkRefs == nil {
+		errList = append(errList, field.Invalid(fldPath.Child("TrafficRoutings"), traffic.Ingress, "TrafficRoutings are not set"))
 	}
 
 	if traffic.Ingress != nil {
@@ -223,6 +223,8 @@ func validateRolloutSpecCanaryTraffic(traffic appsv1alpha1.TrafficRoutingRef, fl
 			errList = append(errList, field.Invalid(fldPath.Child("Gateway"), traffic.Gateway, "TrafficRouting.Gateway must set the name of HTTPRoute or HTTPsRoute"))
 		}
 	}
+
+	// ---networkrefs check---
 
 	return errList
 }

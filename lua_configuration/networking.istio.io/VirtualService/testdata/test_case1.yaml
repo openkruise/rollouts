@@ -1,3 +1,7 @@
+stableService: details
+canaryService: details-canary
+stableWeight: 90
+canaryWeight: 10
 matches:
 spec:
   hosts:
@@ -15,11 +19,7 @@ nSpec:
     - destination:
         host: details
         subset: v1
-        weight: 90
+      weight: 90
     - destination:
         host: details-canary
-        weight: 10
-stableService: details
-canaryService: details-canary
-stableWeight: 90
-canaryWeight: 10
+      weight: 10

@@ -20,15 +20,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/klog/v2"
 
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/configuration"
 	"github.com/openkruise/rollouts/pkg/util/luamanager"
 	lua "github.com/yuin/gopher-lua"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,7 +41,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const OriginSpecConfigurationAnnotation = "rollouts.kruise.io/origin-spec-configuration"
+const (
+	OriginalSpecAnnotation = "rollouts.kruise.io/origin-spec-configuration"
+	LuaConfigMap           = "kruise-rollout-configuration"
+)
 
 type NetworkTrafficRouting struct {
 	// API Version of the referent
@@ -63,16 +70,16 @@ type Config struct {
 	CanaryService string
 	StableService string
 	// network providers need to be created
-	TrafficConf []NetworkTrafficRouting
+	TrafficConf []v1alpha1.NetworkRef
 	OwnerRef    metav1.OwnerReference
 }
 
-func NewCustomController(client client.Client, conf Config, lua map[string]string) (network.NetworkProvider, error) {
+func NewCustomController(client client.Client, conf Config) (network.NetworkProvider, error) {
 	r := &customController{
 		Client:     client,
 		conf:       conf,
 		luaManager: &luamanager.LuaManager{},
-		luaScript:  lua,
+		luaScript:  map[string]string{},
 	}
 	return r, nil
 }
@@ -85,21 +92,15 @@ func (r *customController) Initialize(ctx context.Context) error {
 		if err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: ref.Name}, obj); err != nil {
 			return err
 		}
-		annotations := obj.GetAnnotations()
-		oSpec := annotations[OriginSpecConfigurationAnnotation]
-		cSpec := util.DumpJSON(obj.Object["spec"])
-		if oSpec == cSpec {
-			continue
+
+		// check if lua script exists
+		script := r.getLuascript(ctx, ref)
+		if script == "" {
+			klog.Errorf("failed to get lua script for %s", ref.Kind)
+			return nil
 		}
-		if annotations == nil {
-			annotations = map[string]string{}
-		}
-		// record origin object.spec in annotations[OriginSpecConfigurationAnnotation]
-		annotations[OriginSpecConfigurationAnnotation] = cSpec
-		obj.SetAnnotations(annotations)
-		if err := r.Update(context.TODO(), obj); err != nil {
-			return err
-		}
+		// is it necessary to consider same kind but different apiversion?
+		r.luaScript[ref.Kind] = script
 	}
 	return nil
 }
@@ -114,15 +115,23 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 		if err = r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: ref.Name}, obj); err != nil {
 			return false, err
 		}
-		// origin spec configuration
-		specStr := obj.GetAnnotations()[OriginSpecConfigurationAnnotation]
+		specStr := obj.GetAnnotations()[OriginalSpecAnnotation]
+		if specStr == "" {
+			err = r.storeObject(obj)
+			if err != nil {
+				klog.Errorf("failed to store object: %s/%s", ref.Kind, ref.Name)
+				return false, err
+			}
+			specStr = obj.GetAnnotations()[OriginalSpecAnnotation]
+		}
 		var oSpec interface{}
 		_ = json.Unmarshal([]byte(specStr), &oSpec)
-		nSpec, err := r.executeLuaForCanary(oSpec, strategy, r.luaScript[ref.Lua])
+		nSpec, err := r.executeLuaForCanary(oSpec, strategy, r.luaScript[ref.Kind])
 		if err != nil {
 			return false, err
 		}
-		if reflect.DeepEqual(obj.Object["spec"], nSpec) {
+		// cannot use reflect.DeepEqual since json.Unmarshal convert number to float64
+		if util.DumpJSON(nSpec) == util.DumpJSON(obj.Object["spec"]) {
 			continue
 		}
 		obj.Object["spec"] = nSpec
@@ -145,20 +154,44 @@ func (r *customController) Finalise(ctx context.Context) error {
 			}
 			return err
 		}
-		annotations := obj.GetAnnotations()
-		if annotations[OriginSpecConfigurationAnnotation] == "" {
-			continue
-		}
-		// origin spec configuration
-		specStr := annotations[OriginSpecConfigurationAnnotation]
-		var oSpec interface{}
-		_ = json.Unmarshal([]byte(specStr), &oSpec)
-		obj.Object["spec"] = oSpec
-		delete(annotations, OriginSpecConfigurationAnnotation)
-		obj.SetAnnotations(annotations)
-		if err := r.Update(context.TODO(), obj); err != nil {
+		if err := r.restoreObject(obj); err != nil {
+			klog.Errorf("failed to restore object: %s/%s", ref.Kind, ref.Name)
 			return err
 		}
+	}
+	return nil
+}
+
+// store spec of an object in OriginalSpecAnnotation
+func (r *customController) storeObject(obj *unstructured.Unstructured) error {
+	annotations := obj.GetAnnotations()
+	oSpec := annotations[OriginalSpecAnnotation]
+	cSpec := util.DumpJSON(obj.Object["spec"])
+	if oSpec == cSpec {
+		return nil
+	}
+	annotations[OriginalSpecAnnotation] = cSpec
+	obj.SetAnnotations(annotations)
+	if err := r.Update(context.TODO(), obj); err != nil {
+		return err
+	}
+	return nil
+}
+
+// restore an object from spec stored in OriginalSpecAnnotation
+func (r *customController) restoreObject(obj *unstructured.Unstructured) error {
+	annotations := obj.GetAnnotations()
+	if annotations[OriginalSpecAnnotation] == "" {
+		return nil
+	}
+	specStr := annotations[OriginalSpecAnnotation]
+	var oSpec interface{}
+	_ = json.Unmarshal([]byte(specStr), &oSpec)
+	obj.Object["spec"] = oSpec
+	delete(annotations, OriginalSpecAnnotation)
+	obj.SetAnnotations(annotations)
+	if err := r.Update(context.TODO(), obj); err != nil {
+		return err
 	}
 	return nil
 }
@@ -173,16 +206,16 @@ func (r *customController) executeLuaForCanary(spec interface{}, strategy *rollo
 	}
 	type LuaData struct {
 		Spec          interface{}
-		CanaryWeight  string
-		StableWeight  string
+		CanaryWeight  int32
+		StableWeight  int32
 		Matches       []rolloutv1alpha1.HttpRouteMatch
 		CanaryService string
 		StableService string
 	}
 	data := &LuaData{
 		Spec:          spec,
-		CanaryWeight:  fmt.Sprintf("%d", *weight),
-		StableWeight:  fmt.Sprintf("%d", 100-*weight),
+		CanaryWeight:  *weight,
+		StableWeight:  100 - *weight,
 		Matches:       matches,
 		CanaryService: r.conf.CanaryService,
 		StableService: r.conf.StableService,
@@ -211,4 +244,31 @@ func (r *customController) executeLuaForCanary(spec interface{}, strategy *rollo
 		return obj, nil
 	}
 	return nil, fmt.Errorf("expect table output from Lua script, not %s", returnValue.Type().String())
+}
+
+func (r *customController) getLuascript(ctx context.Context, ref v1alpha1.NetworkRef) string {
+	// get local lua script
+	// luaScript.Provider: CRDGroupt/Kind
+	group := strings.Split(ref.APIVersion, "/")[0]
+	key := fmt.Sprintf("lua_configuration/%s/trafficRouting.lua", fmt.Sprintf("%s/%s", group, ref.Kind))
+	script := util.GetLuaConfigurationContent(key)
+	if script != "" {
+		return script
+	}
+
+	// if lua script is not found locally, then try ConfigMap
+	nameSpace := util.GetRolloutNamespace() // kruise-rollout
+	name := LuaConfigMap
+	configMap := &corev1.ConfigMap{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: nameSpace, Name: name}, configMap)
+	if err != nil {
+		klog.Errorf("failed to get configMap %s/%s", nameSpace, name)
+	} else {
+		// in format like "lua.traffic.routing.ingress.aliyun-alb"
+		key = fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingIngressTypePrefix, ref.Kind, group)
+		if script, ok := configMap.Data[key]; ok {
+			return script
+		}
+	}
+	return ""
 }

@@ -168,8 +168,8 @@ func TestInitialize(t *testing.T) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginSpecConfigurationAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-					"virtual":                         "test",
+					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
 				return u
@@ -236,8 +236,8 @@ func TestEnsureRoutes(t *testing.T) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginSpecConfigurationAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-					"virtual":                         "test",
+					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
 				return u
@@ -246,8 +246,8 @@ func TestEnsureRoutes(t *testing.T) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginSpecConfigurationAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-					"virtual":                         "test",
+					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
 				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"95"},{"destination":{"host":"echoserver-canary","weight":"5"}}]}]}`
@@ -274,8 +274,8 @@ func TestEnsureRoutes(t *testing.T) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginSpecConfigurationAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-					"virtual":                         "test",
+					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
 				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"95"},{"destination":{"host":"echoserver-canary","weight":"5"}}]}]}`
@@ -288,8 +288,8 @@ func TestEnsureRoutes(t *testing.T) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginSpecConfigurationAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-					"virtual":                         "test",
+					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
 				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"95"},{"destination":{"host":"echoserver-canary","weight":"5"}}]}]}`
@@ -316,8 +316,8 @@ func TestEnsureRoutes(t *testing.T) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginSpecConfigurationAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-					"virtual":                         "test",
+					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
 				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"95"},{"destination":{"host":"echoserver-canary","weight":"5"}}]}]}`
@@ -330,8 +330,8 @@ func TestEnsureRoutes(t *testing.T) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginSpecConfigurationAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-					"virtual":                         "test",
+					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
 				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"100"},{"destination":{"host":"echoserver-canary","weight":"0"}}]}]}`
@@ -390,8 +390,8 @@ func TestFinalise(t *testing.T) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginSpecConfigurationAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-					"virtual":                         "test",
+					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
 				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"100"},{"destination":{"host":"echoserver-canary","weight":"0"}}]}]}`

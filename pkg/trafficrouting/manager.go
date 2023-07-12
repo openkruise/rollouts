@@ -23,6 +23,7 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
+	"github.com/openkruise/rollouts/pkg/trafficrouting/network/custom"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/gateway"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/ingress"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -36,7 +37,8 @@ import (
 )
 
 var (
-	defaultGracePeriodSeconds int32 = 3
+	defaultGracePeriodSeconds int32                  = 3
+	controllerMap             map[string]interface{} = make(map[string]interface{})
 )
 
 type TrafficRoutingContext struct {
@@ -82,13 +84,22 @@ func (m *Manager) InitializeTrafficRouting(c *TrafficRoutingContext) error {
 		return err
 	}
 	cService := getCanaryServiceName(sService, c.OnlyTrafficRouting)
-	// new network provider, ingress or gateway
+	// new network provider
+	key := fmt.Sprintf("%s.%s", c.Key, sService)
+	if _, ok := controllerMap[key]; ok {
+		return nil
+	}
 	trController, err := newNetworkProvider(m.Client, c, sService, cService)
 	if err != nil {
 		klog.Errorf("%s newNetworkProvider failed: %s", c.Key, err.Error())
 		return err
 	}
-	return trController.Initialize(context.TODO())
+	err = trController.Initialize(context.TODO())
+	if err != nil {
+		return err
+	}
+	controllerMap[key] = trController
+	return nil
 }
 
 func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
@@ -170,11 +181,16 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 		}
 	}
 
-	// new network provider, ingress or gateway
-	trController, err := newNetworkProvider(m.Client, c, stableService.Name, canaryService.Name)
-	if err != nil {
-		klog.Errorf("%s newNetworkProvider failed: %s", c.Key, err.Error())
-		return false, err
+	// new network provider
+	key := fmt.Sprintf("%s.%s", c.Key, trafficRouting.Service)
+	trController, ok := controllerMap[key].(network.NetworkProvider)
+	if !ok {
+		// in case the rollout controller restart accidentally, create a new trafficRouting controller
+		err := m.InitializeTrafficRouting(c)
+		if err != nil {
+			return false, err
+		}
+		trController, _ = controllerMap[key].(network.NetworkProvider)
 	}
 	verify, err := trController.EnsureRoutes(context.TODO(), &c.Strategy)
 	if err != nil {
@@ -197,15 +213,16 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 	}
 
 	cServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting)
-	trController, err := newNetworkProvider(m.Client, c, trafficRouting.Service, cServiceName)
-	if err != nil {
-		klog.Errorf("%s newTrafficRoutingController failed: %s", c.Key, err.Error())
-		return false, err
+	key := fmt.Sprintf("%s.%s", c.Key, trafficRouting.Service)
+	trController, ok := controllerMap[key].(network.NetworkProvider)
+	if !ok {
+		klog.Errorf("failed to fetch newNetworkProvider: %s", key)
+		return false, nil
 	}
 
 	cService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: c.Namespace, Name: cServiceName}}
 	// if canary svc has been already cleaned up, just return
-	if err = m.Get(context.TODO(), client.ObjectKeyFromObject(cService), cService); err != nil {
+	if err := m.Get(context.TODO(), client.ObjectKeyFromObject(cService), cService); err != nil {
 		if !errors.IsNotFound(err) {
 			klog.Errorf("%s get canary service(%s) failed: %s", c.Key, cServiceName, err.Error())
 			return false, err
@@ -254,11 +271,22 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 		return false, err
 	}
 	klog.Infof("%s remove canary service(%s) success", c.Key, cService.Name)
+	delete(controllerMap, c.Key)
 	return true, nil
 }
 
 func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, cService string) (network.NetworkProvider, error) {
 	trafficRouting := con.ObjectRef[0]
+	if trafficRouting.NetworkRefs != nil {
+		return custom.NewCustomController(c, custom.Config{
+			RolloutName:   con.Key,
+			RolloutNs:     con.Namespace,
+			CanaryService: cService,
+			StableService: sService,
+			TrafficConf:   *trafficRouting.NetworkRefs,
+			OwnerRef:      con.OwnerRef,
+		})
+	}
 	if trafficRouting.Ingress != nil {
 		return ingress.NewIngressTrafficRouting(c, ingress.Config{
 			Key:           con.Key,

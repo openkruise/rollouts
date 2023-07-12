@@ -25,10 +25,10 @@ nSpec:
     route:
     - destination:
         host: details
-        weight: 90
+      weight: 90
     - destination:
         host: details-canary
-        weight: 10
+      weight: 10
   - route:
     - destination:
         host: details

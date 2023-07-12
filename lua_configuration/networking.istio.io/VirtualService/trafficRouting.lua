@@ -1,15 +1,15 @@
 -- obj = {
---     matches = {
---         {
---             headers = {
---                 {
---                     name = "xxx",
---                     value = "xxx",
---                     type = "RegularExpression"
---                 }
---             }
---         }
---     },
+--     -- matches = {
+--     --     {
+--     --         headers = {
+--     --             {
+--     --                 name = "xxx",
+--     --                 value = "xxx",
+--     --                 type = "RegularExpression"
+--     --             }
+--     --         }
+--     --     }
+--     -- },
 --     spec = {
 -- 		hosts = {
 -- 			"reviews",
@@ -28,9 +28,9 @@
 --         }
 --     },
 --     stableService = "reviews",
---     -- canaryService = "canary",
---     -- stableWeight = 90,
---     -- canaryWeight = 10
+--     canaryService = "canary",
+--     stableWeight = 90,
+--     canaryWeight = 10
 -- }
 
 
@@ -59,14 +59,14 @@ if (obj.matches) then
             {
                 destination = {
                     host = obj.stableService,
-                    weight = obj.stableWeight
-                }
+                },
+                weight = obj.stableWeight,
             },
             {
                 destination = {
                     host = obj.canaryService,
-                    weight = obj.canaryWeight
-                }
+                },
+                weight = obj.canaryWeight,
             }
         }
         table.insert(spec.http, 1, route)
@@ -78,14 +78,15 @@ for i, rule in ipairs(obj.spec.http) do
     for _, route in ipairs(rule.route) do
         local destination = route.destination
         if destination.host == obj.stableService then
-            destination.weight = obj.stableWeight
+            route.weight = obj.stableWeight
+            -- destination.weight = obj.stableWeight
             local canary = {
                 destination = {
                     host = obj.canaryService,
-                    weight = obj.canaryWeight
-                }
+                },
+                weight = obj.canaryWeight,
             }
-            table.insert(spec.http[i].route, canary)
+            table.insert(rule.route, canary)
         end
     end
 end
