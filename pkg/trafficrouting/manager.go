@@ -185,7 +185,7 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 	key := fmt.Sprintf("%s.%s", c.Key, trafficRouting.Service)
 	trController, ok := controllerMap[key].(network.NetworkProvider)
 	if !ok {
-		// in case the rollout controller restart accidentally, create a new trafficRouting controller
+		// in case the rollout controller restart unexpectedly, create a new trafficRouting controller
 		err := m.InitializeTrafficRouting(c)
 		if err != nil {
 			return false, err

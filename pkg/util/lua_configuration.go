@@ -35,7 +35,7 @@ func init() {
 			klog.Warningf("filepath walk ./lua_configuration failed: %s", err.Error())
 			return err
 		}
-		if f.IsDir() {
+		if f.IsDir() || filepath.Ext(path) != ".lua" {
 			return nil
 		}
 		var data []byte

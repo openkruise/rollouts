@@ -1,9 +1,8 @@
 annotations = {}
-spec = {}
 -- obj.annotations is ingress annotations, it is recommended not to remove the part of the lua script, it must be kept
-if ( obj.obj.metadata.annotations )
+if ( obj.annotations )
 then
-    annotations = obj.obj.metadata.annotations
+    annotations = obj.annotations
 end
 -- indicates the ingress is nginx canary api
 annotations["nginx.ingress.kubernetes.io/canary"] = "true"
@@ -22,10 +21,7 @@ end
 -- if don't contains headers, immediate return annotations
 if ( not obj.matches )
 then
-    return {
-        spec = spec,
-        annotations = annotations
-    }
+    return annotations
 end
 -- headers & cookie apis
 -- traverse matches
@@ -47,4 +43,4 @@ for _,match in ipairs(obj.matches) do
     end
 end
 -- must be return annotations
-return spec
+return annotations

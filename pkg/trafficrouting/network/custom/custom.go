@@ -46,17 +46,6 @@ const (
 	LuaConfigMap           = "kruise-rollout-configuration"
 )
 
-type NetworkTrafficRouting struct {
-	// API Version of the referent
-	APIVersion string `json:"apiVersion"`
-	// Kind of the referent
-	Kind string `json:"kind"`
-	// Name of the referent
-	Name string `json:"name"`
-	// Name of the lua script
-	Lua string `json:"lua"`
-}
-
 type customController struct {
 	client.Client
 	conf       Config
@@ -92,15 +81,26 @@ func (r *customController) Initialize(ctx context.Context) error {
 		if err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: ref.Name}, obj); err != nil {
 			return err
 		}
-
 		// check if lua script exists
-		script := r.getLuascript(ctx, ref)
-		if script == "" {
-			klog.Errorf("failed to get lua script for %s", ref.Kind)
-			return nil
+		if _, ok := r.luaScript[ref.Kind]; !ok {
+			script := r.getLuascript(ctx, ref)
+			if script == "" {
+				klog.Errorf("failed to get lua script for %s", ref.Kind)
+				return nil
+			}
+			// is it necessary to consider same kind but different apiversion?
+			r.luaScript[ref.Kind] = script
 		}
-		// is it necessary to consider same kind but different apiversion?
-		r.luaScript[ref.Kind] = script
+		annotations := obj.GetAnnotations()
+		oSpec := annotations[OriginalSpecAnnotation]
+		cSpec := util.DumpJSON(obj.Object["spec"])
+		if oSpec == cSpec {
+			continue
+		}
+		if err := r.storeObject(obj); err != nil {
+			klog.Errorf("failed to store object: %s/%s", ref.Kind, ref.Name)
+			return err
+		}
 	}
 	return nil
 }
@@ -116,14 +116,6 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 			return false, err
 		}
 		specStr := obj.GetAnnotations()[OriginalSpecAnnotation]
-		if specStr == "" {
-			err = r.storeObject(obj)
-			if err != nil {
-				klog.Errorf("failed to store object: %s/%s", ref.Kind, ref.Name)
-				return false, err
-			}
-			specStr = obj.GetAnnotations()[OriginalSpecAnnotation]
-		}
 		var oSpec interface{}
 		_ = json.Unmarshal([]byte(specStr), &oSpec)
 		nSpec, err := r.executeLuaForCanary(oSpec, strategy, r.luaScript[ref.Kind])

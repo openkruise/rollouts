@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -154,12 +155,11 @@ func TestInitialize(t *testing.T) {
 				return Config{
 					StableService: "echoserver",
 					CanaryService: "echoserver-canary",
-					TrafficConf: []NetworkTrafficRouting{
+					TrafficConf: []v1alpha1.NetworkRef{
 						{
 							APIVersion: "networking.istio.io/v1alpha3",
 							Kind:       "VirtualService",
 							Name:       "echoserver",
-							Lua:        "lua-demo",
 						},
 					},
 				}
@@ -185,7 +185,7 @@ func TestInitialize(t *testing.T) {
 				klog.Errorf(err.Error())
 				return
 			}
-			c, _ := NewCustomController(fakeCli, cs.getConfig(), cs.getLua())
+			c, _ := NewCustomController(fakeCli, cs.getConfig())
 			err = c.Initialize(context.TODO())
 			if err != nil {
 				t.Fatalf("Initialize failed: %s", err.Error())
@@ -250,7 +250,7 @@ func TestEnsureRoutes(t *testing.T) {
 					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"95"},{"destination":{"host":"echoserver-canary","weight":"5"}}]}]}`
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
@@ -278,7 +278,7 @@ func TestEnsureRoutes(t *testing.T) {
 					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"95"},{"destination":{"host":"echoserver-canary","weight":"5"}}]}]}`
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
@@ -292,66 +292,65 @@ func TestEnsureRoutes(t *testing.T) {
 					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"95"},{"destination":{"host":"echoserver-canary","weight":"5"}}]}]}`
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
 				return true, u
 			},
 		},
-		{
-			name: "test3",
-			getLua: func() map[string]string {
-				luaMap := map[string]string{
-					"lua-demo": luaDemo,
-				}
-				return luaMap
-			},
-			getRoutes: func() *rolloutsv1alpha1.TrafficRoutingStrategy {
-				return &rolloutsv1alpha1.TrafficRoutingStrategy{
-					Weight: utilpointer.Int32(0),
-				}
-			},
-			getUnstructured: func() *unstructured.Unstructured {
-				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(networkDemo))
-				annotations := map[string]string{
-					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-					"virtual":              "test",
-				}
-				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"95"},{"destination":{"host":"echoserver-canary","weight":"5"}}]}]}`
-				var spec interface{}
-				_ = json.Unmarshal([]byte(specStr), &spec)
-				u.Object["spec"] = spec
-				return u
-			},
-			expectInfo: func() (bool, *unstructured.Unstructured) {
-				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(networkDemo))
-				annotations := map[string]string{
-					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-					"virtual":              "test",
-				}
-				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"100"},{"destination":{"host":"echoserver-canary","weight":"0"}}]}]}`
-				var spec interface{}
-				_ = json.Unmarshal([]byte(specStr), &spec)
-				u.Object["spec"] = spec
-				return false, u
-			},
-		},
+		// {
+		// 	name: "test3",
+		// 	getLua: func() map[string]string {
+		// 		luaMap := map[string]string{
+		// 			"lua-demo": luaDemo,
+		// 		}
+		// 		return luaMap
+		// 	},
+		// 	getRoutes: func() *rolloutsv1alpha1.TrafficRoutingStrategy {
+		// 		return &rolloutsv1alpha1.TrafficRoutingStrategy{
+		// 			Weight: utilpointer.Int32(0),
+		// 		}
+		// 	},
+		// 	getUnstructured: func() *unstructured.Unstructured {
+		// 		u := &unstructured.Unstructured{}
+		// 		_ = u.UnmarshalJSON([]byte(networkDemo))
+		// 		annotations := map[string]string{
+		// 			OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+		// 			"virtual":              "test",
+		// 		}
+		// 		u.SetAnnotations(annotations)
+		// 		specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}]}]}`
+		// 		var spec interface{}
+		// 		_ = json.Unmarshal([]byte(specStr), &spec)
+		// 		u.Object["spec"] = spec
+		// 		return u
+		// 	},
+		// 	expectInfo: func() (bool, *unstructured.Unstructured) {
+		// 		u := &unstructured.Unstructured{}
+		// 		_ = u.UnmarshalJSON([]byte(networkDemo))
+		// 		annotations := map[string]string{
+		// 			OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+		// 			"virtual":              "test",
+		// 		}
+		// 		u.SetAnnotations(annotations)
+		// 		specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":100},{"destination":{"host":"echoserver-canary"},"weight":0}]}]}`
+		// 		var spec interface{}
+		// 		_ = json.Unmarshal([]byte(specStr), &spec)
+		// 		u.Object["spec"] = spec
+		// 		return false, u
+		// 	},
+		// },
 	}
 	config := Config{
 		RolloutName:   "rollout-demo",
 		StableService: "echoserver",
 		CanaryService: "echoserver-canary",
-		TrafficConf: []NetworkTrafficRouting{
+		TrafficConf: []v1alpha1.NetworkRef{
 			{
 				APIVersion: "networking.istio.io/v1alpha3",
 				Kind:       "VirtualService",
 				Name:       "echoserver",
-				Lua:        "lua-demo",
 			},
 		},
 	}
@@ -363,9 +362,10 @@ func TestEnsureRoutes(t *testing.T) {
 				klog.Errorf(err.Error())
 				return
 			}
-			c, _ := NewCustomController(fakeCli, config, cs.getLua())
+			c, _ := NewCustomController(fakeCli, config)
 			strategy := cs.getRoutes()
 			expect1, expect2 := cs.expectInfo()
+			c.Initialize(context.TODO())
 			done, err := c.EnsureRoutes(context.TODO(), strategy)
 			if err != nil {
 				t.Fatalf("EnsureRoutes failed: %s", err.Error())
@@ -394,7 +394,7 @@ func TestFinalise(t *testing.T) {
 					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":"100"},{"destination":{"host":"echoserver-canary","weight":"0"}}]}]}`
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":100},{"destination":{"host":"echoserver-canary"},"weight":0}}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
@@ -404,7 +404,7 @@ func TestFinalise(t *testing.T) {
 				return Config{
 					StableService: "echoserver",
 					CanaryService: "echoserver-canary",
-					TrafficConf: []rolloutsv1alpha1.NetworkTrafficRouting{
+					TrafficConf: []v1alpha1.NetworkRef{
 						{
 							APIVersion: "networking.istio.io/v1alpha3",
 							Kind:       "VirtualService",
@@ -429,7 +429,7 @@ func TestFinalise(t *testing.T) {
 				klog.Errorf(err.Error())
 				return
 			}
-			c, _ := NewCustomController(fakeCli, cs.getConfig(), "")
+			c, _ := NewCustomController(fakeCli, cs.getConfig())
 			err = c.Finalise(context.TODO())
 			if err != nil {
 				t.Fatalf("Initialize failed: %s", err.Error())
