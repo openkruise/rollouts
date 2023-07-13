@@ -23,7 +23,9 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/yaml"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
@@ -82,10 +84,10 @@ func (r *customController) Initialize(ctx context.Context) error {
 		}
 		// check if lua script exists
 		if _, ok := r.luaScript[ref.Kind]; !ok {
-			script := r.getLuascript(ctx, ref)
+			script := r.getLuaScript(ctx, ref)
 			if script == "" {
 				klog.Errorf("failed to get lua script for %s", ref.Kind)
-				return nil
+				return errors.NewNotFound(schema.GroupResource{Group: "apps", Resource: "script"}, ref.Kind)
 			}
 			// is it necessary to consider same kind but different apiversion?
 			r.luaScript[ref.Kind] = script
@@ -237,7 +239,7 @@ func (r *customController) executeLuaForCanary(spec interface{}, strategy *rollo
 	return nil, fmt.Errorf("expect table output from Lua script, not %s", returnValue.Type().String())
 }
 
-func (r *customController) getLuascript(ctx context.Context, ref rolloutv1alpha1.NetworkRef) string {
+func (r *customController) getLuaScript(ctx context.Context, ref rolloutv1alpha1.NetworkRef) string {
 	// get local lua script
 	// luaScript.Provider: CRDGroupt/Kind
 	group := strings.Split(ref.APIVersion, "/")[0]
@@ -259,7 +261,29 @@ func (r *customController) getLuascript(ctx context.Context, ref rolloutv1alpha1
 		key = fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingIngressTypePrefix, ref.Kind, group)
 		if script, ok := configMap.Data[key]; ok {
 			return script
+		} else if !ok {
+			klog.Errorf("expected script %s not found in ConfigMap", key)
 		}
 	}
 	return ""
+}
+
+func (r *customController) getCustomLuaData(ctx context.Context, ref *rolloutv1alpha1.NetworkRef) (interface{}, error) {
+	nameSpace := util.GetRolloutNamespace() // kruise-rollout
+	name := LuaConfigMap
+	group := strings.Split(ref.APIVersion, "/")[0]
+	configMap := &corev1.ConfigMap{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: nameSpace, Name: name}, configMap)
+	if err != nil {
+		klog.Errorf("failed to get configMap %s/%s", nameSpace, name)
+	} else {
+		// in format like "lua.traffic.routing.ingress.aliyun-alb"
+		key := fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingIngressTypePrefix, ref.Kind, group)
+		if dataStr, ok := configMap.Data[key]; ok {
+			data := make(map[string]interface{})
+			yaml.Unmarshal([]byte(dataStr), data)
+			return data, nil
+		}
+	}
+	return nil, nil
 }

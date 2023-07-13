@@ -171,36 +171,37 @@ func TestLuaScript(t *testing.T) {
 		dir := filepath.Dir(path)
 		err = filepath.Walk(filepath.Join(dir, "testdata"), func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				fmt.Println("Error:", err)
+				t.Fatalf("failed to walk current path")
 				return nil
 			}
 
 			if !info.IsDir() && filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml" {
+				t.Logf("walking path: %s", path)
 				testCase, err := getLuaTestCase(t, path)
 				if err != nil {
-					t.Fatalf("Error loading lua test cases: %s", err.Error())
+					t.Fatalf("failed to load lua test cases")
 					return err
-				}
-				if err != nil {
-					t.Fatalf("failed to convert to unstructured")
 				}
 				l, err := luaManager.RunLuaScript(testCase, script)
 				if err != nil {
+					t.Fatalf("failed to run lua script")
 					return err
 				}
 				returnValue := l.Get(-1)
 				if returnValue.Type() == lua.LTTable {
 					jsonBytes, err := luajson.Encode(returnValue)
 					if err != nil {
+						t.Fatalf("failed to encode returnValue yo jsonBytes")
 						return err
 					}
 					var nSpec map[string]interface{}
 					err = json.Unmarshal(jsonBytes, &nSpec)
 					if err != nil {
+						t.Fatalf("failed to convert jsonBytes to object")
 						return err
 					}
 					if !reflect.DeepEqual(testCase.Object["nSpec"], nSpec) {
-						t.Fatalf("")
+						t.Fatalf("expect %s, but get %s", testCase.Object["spec"], nSpec)
 					}
 				}
 

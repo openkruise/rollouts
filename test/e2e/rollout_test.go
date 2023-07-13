@@ -19,6 +19,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
@@ -5553,7 +5555,45 @@ var _ = SIGDescribe("Rollout", func() {
 	})
 
 	KruiseDescribe("Custom network provider tests", func() {
+		It("Istio VirtualService test", func() {
+			index1 := &v1.ConfigMap{}
+			index2 := &v1.ConfigMap{}
+			Expect(ReadYamlToObject("./test_data/custom/index1.yaml", index1)).ToNot(HaveOccurred())
+			Expect(ReadYamlToObject("./test_data/custom/index2.yaml", index2)).ToNot(HaveOccurred())
+			CreateObject(index1)
+			CreateObject(index2)
 
+			svc := &v1.Service{}
+			Expect(ReadYamlToObject("./test_data/custom/service.yaml", svc)).ToNot(HaveOccurred())
+			CreateObject(svc)
+
+			app := &apps.Deployment{}
+			Expect(ReadYamlToObject("./test_data/custom/appv1.yaml", app)).ToNot(HaveOccurred())
+			CreateObject(app)
+			WaitDeploymentAllPodsReady(app)
+
+			virtualService := &unstructured.Unstructured{}
+			Expect(ReadYamlToObject("./test_data/custom/virtualService.yaml", virtualService)).ToNot(HaveOccurred())
+			CreateObject(virtualService)
+			expectVirtualService := &unstructured.Unstructured{}
+			Expect(ReadYamlToObject("./test_data/custom/expectVirtualService.yaml", expectVirtualService)).ToNot(HaveOccurred())
+
+			rollout := &v1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/custom/rollout.yaml", rollout)).ToNot(HaveOccurred())
+			CreateObject(rollout)
+
+			vsClone := virtualService.DeepCopy()
+			Expect(GetObject(vsClone.GetName(), vsClone)).ToNot(HaveOccurred())
+			Expect(reflect.DeepEqual(vsClone.Object["spec"], virtualService.Object["spec"])).To(BeTrue())
+
+			By("changing app version from v1 -> v2")
+			Expect(GetObject(app.Name, app)).NotTo(HaveOccurred())
+			app.Spec.Template.Spec.Volumes[0].ConfigMap.Name = "nginx-configMap2"
+			UpdateDeployment(app)
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			Expect(GetObject(vsClone.GetName(), vsClone)).ToNot(HaveOccurred())
+			Expect(reflect.DeepEqual(vsClone.Object["spec"], expectVirtualService.Object["spec"])).To(BeTrue())
+		})
 	})
 })
 

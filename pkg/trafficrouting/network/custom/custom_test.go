@@ -25,6 +25,9 @@ import (
 
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/configuration"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -132,19 +135,13 @@ func init() {
 func TestInitialize(t *testing.T) {
 	cases := []struct {
 		name               string
-		getLua             func() map[string]string
 		getUnstructured    func() *unstructured.Unstructured
 		getConfig          func() Config
+		getConfigMap       func() *corev1.ConfigMap
 		expectUnstructured func() *unstructured.Unstructured
 	}{
 		{
-			name: "test1",
-			getLua: func() map[string]string {
-				luaMap := map[string]string{
-					"lua-demo": luaDemo,
-				}
-				return luaMap
-			},
+			name: "test1, find lua script locally",
 			getUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
@@ -163,9 +160,64 @@ func TestInitialize(t *testing.T) {
 					},
 				}
 			},
+			getConfigMap: func() *corev1.ConfigMap {
+				return &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      LuaConfigMap,
+						Namespace: util.GetRolloutNamespace(),
+					},
+					Data: map[string]string{
+						fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingIngressTypePrefix, "VirtualService", "networking.istio.io"): "ExpectedLuaScript",
+					},
+				}
+			},
 			expectUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
+				annotations := map[string]string{
+					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+					"virtual":              "test",
+				}
+				u.SetAnnotations(annotations)
+				return u
+			},
+		},
+		{
+			name: "test2, find lua script in ConfigMap",
+			getUnstructured: func() *unstructured.Unstructured {
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(networkDemo))
+				u.SetAPIVersion("networking.test.io/v1alpha3")
+				return u
+			},
+			getConfig: func() Config {
+				return Config{
+					StableService: "echoserver",
+					CanaryService: "echoserver-canary",
+					TrafficConf: []rolloutsv1alpha1.NetworkRef{
+						{
+							APIVersion: "networking.test.io/v1alpha3",
+							Kind:       "VirtualService",
+							Name:       "echoserver",
+						},
+					},
+				}
+			},
+			getConfigMap: func() *corev1.ConfigMap {
+				return &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      LuaConfigMap,
+						Namespace: util.GetRolloutNamespace(),
+					},
+					Data: map[string]string{
+						fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingIngressTypePrefix, "VirtualService", "networking.test.io"): "ExpectedLuaScript",
+					},
+				}
+			},
+			expectUnstructured: func() *unstructured.Unstructured {
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(networkDemo))
+				u.SetAPIVersion("networking.test.io/v1alpha3")
 				annotations := map[string]string{
 					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
 					"virtual":              "test",
@@ -183,6 +235,9 @@ func TestInitialize(t *testing.T) {
 			if err != nil {
 				klog.Errorf(err.Error())
 				return
+			}
+			if err := fakeCli.Create(context.TODO(), cs.getConfigMap()); err != nil {
+				klog.Errorf(err.Error())
 			}
 			c, _ := NewCustomController(fakeCli, cs.getConfig())
 			err = c.Initialize(context.TODO())
