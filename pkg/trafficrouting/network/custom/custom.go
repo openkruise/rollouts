@@ -20,10 +20,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
 
@@ -46,6 +46,12 @@ const (
 	OriginalSpecAnnotation = "rollouts.kruise.io/origin-spec-configuration"
 	LuaConfigMap           = "kruise-rollout-configuration"
 )
+
+type Data struct {
+	Spec        interface{}       `json:"spec,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
 
 type customController struct {
 	client.Client
@@ -86,17 +92,10 @@ func (r *customController) Initialize(ctx context.Context) error {
 		if _, ok := r.luaScript[ref.Kind]; !ok {
 			script := r.getLuaScript(ctx, ref)
 			if script == "" {
-				klog.Errorf("failed to get lua script for %s", ref.Kind)
-				return errors.NewNotFound(schema.GroupResource{Group: "apps", Resource: "script"}, ref.Kind)
+				return fmt.Errorf("failed to get lua script for %s", ref.Kind)
 			}
 			// is it necessary to consider same kind but different apiversion?
 			r.luaScript[ref.Kind] = script
-		}
-		annotations := obj.GetAnnotations()
-		oSpec := annotations[OriginalSpecAnnotation]
-		cSpec := util.DumpJSON(obj.Object["spec"])
-		if oSpec == cSpec {
-			continue
 		}
 		if err := r.storeObject(obj); err != nil {
 			klog.Errorf("failed to store object: %s/%s", ref.Kind, ref.Name)
@@ -117,17 +116,15 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 			return false, err
 		}
 		specStr := obj.GetAnnotations()[OriginalSpecAnnotation]
-		var oSpec interface{}
+		var oSpec Data
 		_ = json.Unmarshal([]byte(specStr), &oSpec)
 		nSpec, err := r.executeLuaForCanary(oSpec, strategy, r.luaScript[ref.Kind])
 		if err != nil {
 			return false, err
 		}
-		// cannot use reflect.DeepEqual since json.Unmarshal convert number to float64
-		if util.DumpJSON(nSpec) == util.DumpJSON(obj.Object["spec"]) {
+		if cmpAndSetObject(nSpec, obj) {
 			continue
 		}
-		obj.Object["spec"] = nSpec
 		if err = r.Update(context.TODO(), obj); err != nil {
 			return false, err
 		}
@@ -158,8 +155,15 @@ func (r *customController) Finalise(ctx context.Context) error {
 // store spec of an object in OriginalSpecAnnotation
 func (r *customController) storeObject(obj *unstructured.Unstructured) error {
 	annotations := obj.GetAnnotations()
+	labels := obj.GetLabels()
 	oSpec := annotations[OriginalSpecAnnotation]
-	cSpec := util.DumpJSON(obj.Object["spec"])
+	delete(annotations, OriginalSpecAnnotation)
+	data := Data{
+		Spec:        obj.Object["spec"],
+		Labels:      labels,
+		Annotations: annotations,
+	}
+	cSpec := util.DumpJSON(data)
 	if oSpec == cSpec {
 		return nil
 	}
@@ -175,21 +179,22 @@ func (r *customController) storeObject(obj *unstructured.Unstructured) error {
 func (r *customController) restoreObject(obj *unstructured.Unstructured) error {
 	annotations := obj.GetAnnotations()
 	if annotations[OriginalSpecAnnotation] == "" {
+		klog.Errorf("original spec not found in annotation of %s", obj.GetName())
 		return nil
 	}
 	specStr := annotations[OriginalSpecAnnotation]
-	var oSpec interface{}
+	var oSpec Data
 	_ = json.Unmarshal([]byte(specStr), &oSpec)
-	obj.Object["spec"] = oSpec
-	delete(annotations, OriginalSpecAnnotation)
-	obj.SetAnnotations(annotations)
+	obj.Object["spec"] = oSpec.Spec
+	obj.SetAnnotations(oSpec.Annotations)
+	obj.SetLabels(oSpec.Labels)
 	if err := r.Update(context.TODO(), obj); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *customController) executeLuaForCanary(spec interface{}, strategy *rolloutv1alpha1.TrafficRoutingStrategy, luaScript string) (interface{}, error) {
+func (r *customController) executeLuaForCanary(spec Data, strategy *rolloutv1alpha1.TrafficRoutingStrategy, luaScript string) (Data, error) {
 	weight := strategy.Weight
 	matches := strategy.Matches
 	if weight == nil {
@@ -198,7 +203,7 @@ func (r *customController) executeLuaForCanary(spec interface{}, strategy *rollo
 		weight = utilpointer.Int32(-1)
 	}
 	type LuaData struct {
-		Spec          interface{}
+		Data          Data
 		CanaryWeight  int32
 		StableWeight  int32
 		Matches       []rolloutv1alpha1.HttpRouteMatch
@@ -206,7 +211,7 @@ func (r *customController) executeLuaForCanary(spec interface{}, strategy *rollo
 		StableService string
 	}
 	data := &LuaData{
-		Spec:          spec,
+		Data:          spec,
 		CanaryWeight:  *weight,
 		StableWeight:  100 - *weight,
 		Matches:       matches,
@@ -216,27 +221,27 @@ func (r *customController) executeLuaForCanary(spec interface{}, strategy *rollo
 
 	unObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(data)
 	if err != nil {
-		return nil, err
+		return Data{}, err
 	}
 	u := &unstructured.Unstructured{Object: unObj}
 	l, err := r.luaManager.RunLuaScript(u, luaScript)
 	if err != nil {
-		return nil, err
+		return Data{}, err
 	}
 	returnValue := l.Get(-1)
 	if returnValue.Type() == lua.LTTable {
 		jsonBytes, err := luamanager.Encode(returnValue)
 		if err != nil {
-			return nil, err
+			return Data{}, err
 		}
-		var obj interface{}
+		var obj Data
 		err = json.Unmarshal(jsonBytes, &obj)
 		if err != nil {
-			return nil, err
+			return Data{}, err
 		}
 		return obj, nil
 	}
-	return nil, fmt.Errorf("expect table output from Lua script, not %s", returnValue.Type().String())
+	return Data{}, fmt.Errorf("expect table output from Lua script, not %s", returnValue.Type().String())
 }
 
 func (r *customController) getLuaScript(ctx context.Context, ref rolloutv1alpha1.NetworkRef) string {
@@ -266,6 +271,22 @@ func (r *customController) getLuaScript(ctx context.Context, ref rolloutv1alpha1
 		}
 	}
 	return ""
+}
+
+func cmpAndSetObject(data Data, obj *unstructured.Unstructured) bool {
+	spec := data.Spec
+	annotations := data.Annotations
+	annotations[OriginalSpecAnnotation] = obj.GetAnnotations()[OriginalSpecAnnotation]
+	labels := data.Labels
+	if util.DumpJSON(obj.Object["spec"]) == util.DumpJSON(spec) &&
+		reflect.DeepEqual(obj.GetAnnotations(), annotations) &&
+		reflect.DeepEqual(obj.GetLabels(), labels) {
+		return true
+	}
+	obj.Object["spec"] = spec
+	obj.SetAnnotations(annotations)
+	obj.SetLabels(labels)
+	return false
 }
 
 func (r *customController) getCustomLuaData(ctx context.Context, ref *rolloutv1alpha1.NetworkRef) (interface{}, error) {

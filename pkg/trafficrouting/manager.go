@@ -38,7 +38,7 @@ import (
 
 var (
 	defaultGracePeriodSeconds int32                  = 3
-	controllerMap             map[string]interface{} = make(map[string]interface{})
+	ControllerMap             map[string]interface{} = make(map[string]interface{})
 )
 
 type TrafficRoutingContext struct {
@@ -86,9 +86,9 @@ func (m *Manager) InitializeTrafficRouting(c *TrafficRoutingContext) error {
 	cService := getCanaryServiceName(sService, c.OnlyTrafficRouting)
 	// new network provider
 	key := fmt.Sprintf("%s.%s", c.Key, sService)
-	if _, ok := controllerMap[key]; ok {
-		return nil
-	}
+	// if _, ok := ControllerMap[key]; ok {
+	// 	return nil
+	// }
 	trController, err := newNetworkProvider(m.Client, c, sService, cService)
 	if err != nil {
 		klog.Errorf("%s newNetworkProvider failed: %s", c.Key, err.Error())
@@ -98,7 +98,7 @@ func (m *Manager) InitializeTrafficRouting(c *TrafficRoutingContext) error {
 	if err != nil {
 		return err
 	}
-	controllerMap[key] = trController
+	ControllerMap[key] = trController
 	return nil
 }
 
@@ -183,14 +183,14 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 
 	// new network provider
 	key := fmt.Sprintf("%s.%s", c.Key, trafficRouting.Service)
-	trController, ok := controllerMap[key].(network.NetworkProvider)
+	trController, ok := ControllerMap[key].(network.NetworkProvider)
 	if !ok {
 		// in case the rollout controller restart unexpectedly, create a new trafficRouting controller
 		err := m.InitializeTrafficRouting(c)
 		if err != nil {
 			return false, err
 		}
-		trController, _ = controllerMap[key].(network.NetworkProvider)
+		trController, _ = ControllerMap[key].(network.NetworkProvider)
 	}
 	verify, err := trController.EnsureRoutes(context.TODO(), &c.Strategy)
 	if err != nil {
@@ -214,7 +214,7 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 
 	cServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting)
 	key := fmt.Sprintf("%s.%s", c.Key, trafficRouting.Service)
-	trController, ok := controllerMap[key].(network.NetworkProvider)
+	trController, ok := ControllerMap[key].(network.NetworkProvider)
 	if !ok {
 		klog.Errorf("failed to fetch newNetworkProvider: %s", key)
 		return false, nil
@@ -271,7 +271,7 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 		return false, err
 	}
 	klog.Infof("%s remove canary service(%s) success", c.Key, cService.Name)
-	delete(controllerMap, c.Key)
+	// delete(ControllerMap, key)
 	return true, nil
 }
 
