@@ -264,6 +264,7 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, erro
 	} else if !done {
 		return false, nil
 	}
+	m.trafficRoutingManager.RemoveTrafficRoutingController(tr)
 	klog.Infof("rollout(%s/%s) doCanaryFinalising success", c.Rollout.Namespace, c.Rollout.Name)
 	return true, nil
 }

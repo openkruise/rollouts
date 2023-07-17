@@ -1,11 +1,11 @@
 -- obj = {
 --     matches = {
 --         {
---             headers = {
+--             uri = {
 --                 {
 --                     name = "xxx",
 --                     value = "xxx",
---                     type = "RegularExpression"
+--                     type = "Prefix"
 --                 }
 --             }
 --         }
@@ -133,34 +133,39 @@ end
 -- generate routes with matches
 function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stableWeight, canaryWeight)
     local route = {}
-    route["matches"] = {}
+    route["match"] = {}
     for _, match in ipairs(matches) do
         for key, value in pairs(match) do
             local vsMatch = {}
             vsMatch[key] = {}
             for _, rule in ipairs(value) do
-                if rule["type"] == "RegularExpression"
-                then
+                if rule["type"] == "RegularExpression" then
                     matchType = "regex"
-                else
+                elseif rule["type"] == "Exact" then
                     matchType = "exact"
+                elseif rule["type"] == "Prefix" then
+                    matchType = "prefix"
                 end
-                vsMatch[key][rule["name"]] = {}
-                vsMatch[key][rule["name"]][matchType] = rule["value"]
+                if key == "headers" then
+                    vsMatch[key][rule["name"]] = {}
+                    vsMatch[key][rule["name"]][matchType] = rule.value
+                else
+                    vsMatch[key][matchType] = rule.value
+                end
             end
-            table.insert(route["matches"], vsMatch)
+            table.insert(route["match"], vsMatch)
         end
     end
     local matchedDst = FindMatchedDestination(spec, stableService)
     route["route"] = {
         {
-            destination = matchedDst,
+            destination = DeepCopy(matchedDst),
             weight = stableWeight,
         },
         {
             destination = {
                 host = canaryService,
-                port = matchedDst.port
+                port = DeepCopy(matchedDst.port)
             },
             weight = canaryWeight,
         }

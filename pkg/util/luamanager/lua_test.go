@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"testing"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -157,6 +156,27 @@ type LuaTestCase struct {
 	NSpec         interface{}                      `yaml:"nSpec"`
 }
 
+type LuaData struct {
+	Data          Data
+	CanaryWeight  int32
+	StableWeight  int32
+	Matches       []rolloutv1alpha1.HttpRouteMatch
+	CanaryService string
+	StableService string
+}
+
+type Data struct {
+	Spec        interface{}       `json:"spec,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+type TestCase struct {
+	Rollout  *rolloutv1alpha1.Rollout     `json:"rollout,omitempty"`
+	Original *unstructured.Unstructured   `json:"original,omitempty"`
+	Expected []*unstructured.Unstructured `json:"expected,omitempty"`
+}
+
 // test if the lua script run as expected
 func TestLuaScript(t *testing.T) {
 	luaManager := &LuaManager{}
@@ -182,32 +202,60 @@ func TestLuaScript(t *testing.T) {
 					t.Fatalf("failed to load lua test cases")
 					return err
 				}
-				l, err := luaManager.RunLuaScript(testCase, script)
-				if err != nil {
-					t.Fatalf("failed to run lua script")
-					return err
-				}
-				returnValue := l.Get(-1)
-				if returnValue.Type() == lua.LTTable {
-					jsonBytes, err := luajson.Encode(returnValue)
+				rollout := testCase.Rollout
+				steps := rollout.Spec.Strategy.Canary.Steps
+				for i, step := range steps {
+					data := &LuaData{
+						Data: Data{
+							Labels:      testCase.Original.GetLabels(),
+							Annotations: testCase.Original.GetAnnotations(),
+							Spec:        testCase.Original.Object["spec"],
+						},
+						Matches:       step.TrafficRoutingStrategy.Matches,
+						CanaryWeight:  *step.TrafficRoutingStrategy.Weight,
+						StableWeight:  100 - *step.TrafficRoutingStrategy.Weight,
+						CanaryService: fmt.Sprintf("%s-canary", rollout.Spec.Strategy.Canary.TrafficRoutings[0].Service),
+						StableService: rollout.Spec.Strategy.Canary.TrafficRoutings[0].Service,
+					}
+					unObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(data)
 					if err != nil {
-						t.Fatalf("failed to encode returnValue yo jsonBytes")
 						return err
 					}
-					var nSpec map[string]interface{}
-					err = json.Unmarshal(jsonBytes, &nSpec)
+					u := &unstructured.Unstructured{Object: unObj}
+					l, err := luaManager.RunLuaScript(u, script)
 					if err != nil {
-						t.Fatalf("failed to convert jsonBytes to object")
+						t.Fatalf("failed to run lua script")
 						return err
 					}
-					if !reflect.DeepEqual(testCase.Object["nSpec"], nSpec) {
-						t.Fatalf("expect %s, but get %s", testCase.Object["spec"], nSpec)
+					returnValue := l.Get(-1)
+					if returnValue.Type() == lua.LTTable {
+						jsonBytes, err := luajson.Encode(returnValue)
+						if err != nil {
+							t.Fatalf("failed to encode returnValue yo jsonBytes")
+							return err
+						}
+						var nSpec Data
+						err = json.Unmarshal(jsonBytes, &nSpec)
+						if err != nil {
+							t.Fatalf("failed to convert jsonBytes to object")
+							return err
+						}
+						eSpec := Data{
+							Spec:        testCase.Expected[i].Object["spec"],
+							Annotations: testCase.Expected[i].GetAnnotations(),
+							Labels:      testCase.Expected[i].GetLabels(),
+						}
+						if util.DumpJSON(eSpec) != util.DumpJSON(nSpec) {
+							t.Fatalf("expect %s, but get %s", util.DumpJSON(eSpec), util.DumpJSON(nSpec))
+						}
 					}
 				}
-
 			}
 			return nil
 		})
+		if err != nil {
+			t.Fatalf("Error walking lua_configuration: %s", err.Error())
+		}
 		return nil
 	})
 	if err != nil {
@@ -223,17 +271,17 @@ func readScript(t *testing.T, path string) string {
 	return string(data)
 }
 
-func getLuaTestCase(t *testing.T, path string) (*unstructured.Unstructured, error) {
+func getLuaTestCase(t *testing.T, path string) (*TestCase, error) {
 	yamlFile, err := ioutil.ReadFile(path)
 	if err != nil {
 		t.Fatalf("failed to read file %s", path)
 		return nil, err
 	}
-	luaTestCase := &map[string]interface{}{}
+	luaTestCase := &TestCase{}
 	err = yaml.Unmarshal(yamlFile, luaTestCase)
 	if err != nil {
 		t.Fatalf("test case %s format error", path)
 		return nil, err
 	}
-	return &unstructured.Unstructured{Object: *luaTestCase}, nil
+	return luaTestCase, nil
 }

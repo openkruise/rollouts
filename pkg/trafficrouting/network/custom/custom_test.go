@@ -116,9 +116,6 @@ var (
 											{
 												"destination": {
 													"host": "echoserver",
-													"port": {
-														"number": 80
-													}
 												}
 											}
 										]
@@ -263,7 +260,7 @@ func checkEqual(cli client.Client, t *testing.T, expect *unstructured.Unstructur
 		fmt.Println(util.DumpJSON(obj.GetAnnotations()), util.DumpJSON(expect.GetAnnotations()))
 		t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expect.GetAnnotations()), util.DumpJSON(obj.GetAnnotations()))
 	}
-	if !reflect.DeepEqual(obj.Object["spec"], expect.Object["spec"]) {
+	if util.DumpJSON(expect.Object["spec"]) != util.DumpJSON(obj.Object["spec"]) {
 		t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expect.Object["spec"]), util.DumpJSON(obj.Object["spec"]))
 	}
 }
@@ -303,101 +300,17 @@ func TestEnsureRoutes(t *testing.T) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
+					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver","port":{"number":80}}}]}]},"annotations":{"virtual":"test"}}`,
 					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}}]}]}`
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver","port":{"number":80}},"weight":95},{"destination":{"host":"echoserver-canary","port":{"number":80}},"weight":5}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
 				return false, u
 			},
 		},
-		// {
-		// 	name: "test2",
-		// 	getLua: func() map[string]string {
-		// 		luaMap := map[string]string{
-		// 			"lua-demo": luaDemo,
-		// 		}
-		// 		return luaMap
-		// 	},
-		// 	getRoutes: func() *rolloutsv1alpha1.TrafficRoutingStrategy {
-		// 		return &rolloutsv1alpha1.TrafficRoutingStrategy{
-		// 			Weight: utilpointer.Int32(5),
-		// 		}
-		// 	},
-		// 	getUnstructured: func() *unstructured.Unstructured {
-		// 		u := &unstructured.Unstructured{}
-		// 		_ = u.UnmarshalJSON([]byte(networkDemo))
-		// 		annotations := map[string]string{
-		// 			OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
-		// 			"virtual":              "test",
-		// 		}
-		// 		u.SetAnnotations(annotations)
-		// 		specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}]}]}`
-		// 		var spec interface{}
-		// 		_ = json.Unmarshal([]byte(specStr), &spec)
-		// 		u.Object["spec"] = spec
-		// 		return u
-		// 	},
-		// 	expectInfo: func() (bool, *unstructured.Unstructured) {
-		// 		u := &unstructured.Unstructured{}
-		// 		_ = u.UnmarshalJSON([]byte(networkDemo))
-		// 		annotations := map[string]string{
-		// 			OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
-		// 			"virtual":              "test",
-		// 		}
-		// 		u.SetAnnotations(annotations)
-		// 		specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}]}]}`
-		// 		var spec interface{}
-		// 		_ = json.Unmarshal([]byte(specStr), &spec)
-		// 		u.Object["spec"] = spec
-		// 		return true, u
-		// 	},
-		// },
-		// {
-		// 	name: "test3",
-		// 	getLua: func() map[string]string {
-		// 		luaMap := map[string]string{
-		// 			"lua-demo": luaDemo,
-		// 		}
-		// 		return luaMap
-		// 	},
-		// 	getRoutes: func() *rolloutsv1alpha1.TrafficRoutingStrategy {
-		// 		return &rolloutsv1alpha1.TrafficRoutingStrategy{
-		// 			Weight: utilpointer.Int32(0),
-		// 		}
-		// 	},
-		// 	getUnstructured: func() *unstructured.Unstructured {
-		// 		u := &unstructured.Unstructured{}
-		// 		_ = u.UnmarshalJSON([]byte(networkDemo))
-		// 		annotations := map[string]string{
-		// 			OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-		// 			"virtual":              "test",
-		// 		}
-		// 		u.SetAnnotations(annotations)
-		// 		specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}]}]}`
-		// 		var spec interface{}
-		// 		_ = json.Unmarshal([]byte(specStr), &spec)
-		// 		u.Object["spec"] = spec
-		// 		return u
-		// 	},
-		// 	expectInfo: func() (bool, *unstructured.Unstructured) {
-		// 		u := &unstructured.Unstructured{}
-		// 		_ = u.UnmarshalJSON([]byte(networkDemo))
-		// 		annotations := map[string]string{
-		// 			OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
-		// 			"virtual":              "test",
-		// 		}
-		// 		u.SetAnnotations(annotations)
-		// 		specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":100},{"destination":{"host":"echoserver-canary"},"weight":0}]}]}`
-		// 		var spec interface{}
-		// 		_ = json.Unmarshal([]byte(specStr), &spec)
-		// 		u.Object["spec"] = spec
-		// 		return false, u
-		// 	},
-		// },
 	}
 	config := Config{
 		RolloutName:   "rollout-demo",

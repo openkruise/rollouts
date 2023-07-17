@@ -1,11 +1,11 @@
 -- obj = {
 --     matches = {
 --         {
---             headers = {
+--             uri = {
 --                 {
 --                     name = "xxx",
 --                     value = "xxx",
---                     type = "RegularExpression"
+--                     type = "Prefix"
 --                 }
 --             }
 --         }
@@ -41,37 +41,6 @@
 
 spec = obj.data.spec
 
--- AN VIRUTALSERVICE EMXAPLE
--- apiVersion: networking.istio.io/v1alpha3
--- kind: VirtualService
--- metadata:
---   name: productpage
---   namespace: nsA
--- spec:
---   http:
---   - match:
---      - uri:
---         prefix: "/productpage/v1/"
---     route:
---     - destination:
---         host: productpage-v1.nsA.svc.cluster.local
---   - route:
---     - destination:
---         host: productpage.nsA.svc.cluster.local
-
-function DeepCopy(original)
-    local copy
-    if type(original) == 'table' then
-        copy = {}
-        for key, value in pairs(original) do
-            copy[key] = DeepCopy(value)
-        end
-    else
-        copy = original
-    end
-    return copy
-end
-
 -- find matched route of VirtualService spec with stable svc
 function FindMatchedRules(spec, stableService)
     local matchedRoutes = {}
@@ -101,35 +70,6 @@ function FindMatchedRules(spec, stableService)
     return matchedRoutes
 end
 
-function FindMatchedDestination(spec, stableService)
-    local matchedDst = {}
-    local rules = {}
-    if (spec.http) then
-        for _, http in ipairs(spec.http) do
-            table.insert(rules, http)
-        end
-    end
-    if (spec.tls) then
-        for _, tls in ipairs(spec.tls) do
-            table.insert(rules, tls)
-        end
-    end
-    if (spec.tcp) then
-        for _, tcp in ipairs(spec.tcp) do
-            table.insert(rules, tcp)
-        end
-    end
-    for _, rule in ipairs(rules) do
-        for _, route in ipairs(rule.route) do
-            if route.destination.host == stableService then
-                matchedDst = route.destination
-                return matchedDst
-            end
-        end
-    end
-    return matchedDst
-end
-
 -- generate routes with matches
 function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stableWeight, canaryWeight)
     local route = {}
@@ -139,28 +79,33 @@ function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stab
             local vsMatch = {}
             vsMatch[key] = {}
             for _, rule in ipairs(value) do
-                if rule["type"] == "RegularExpression"
-                then
+                if rule["type"] == "RegularExpression" then
                     matchType = "regex"
-                else
+                elseif rule["type"] == "Exact" then
                     matchType = "exact"
+                elseif rule["type"] == "Prefix" then
+                    matchType = "prefix"
                 end
-                vsMatch[key][rule["name"]] = {}
-                vsMatch[key][rule["name"]][matchType] = rule["value"]
+                if key == "headers" then
+                    vsMatch[key][rule["name"]] = {}
+                    vsMatch[key][rule["name"]][matchType] = rule.value
+                else
+                    vsMatch[key][matchType] = rule.value
+                end
             end
             table.insert(route["match"], vsMatch)
         end
     end
-    local matchedDst = FindMatchedDestination(spec, stableService)
     route["route"] = {
         {
-            destination = DeepCopy(matchedDst),
+            destination = {
+                host = stableService,
+            },
             weight = stableWeight,
         },
         {
             destination = {
                 host = canaryService,
-                port = DeepCopy(matchedDst.port)
             },
             weight = canaryWeight,
         }
@@ -180,9 +125,6 @@ function GenerateRoutes(spec, stableService, canaryService, stableWeight, canary
         }
         for _, route in ipairs(rule.route) do
             -- incase there are multiple versions traffic already
-            if (route.destination.host == stableService) then
-                canary.destination.port = DeepCopy(route.destination.port)
-            end
             if (route.weight) then
                 route.weight = math.floor(route.weight * stableWeight / 100)
             else

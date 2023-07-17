@@ -25,7 +25,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/yaml"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
@@ -94,7 +93,6 @@ func (r *customController) Initialize(ctx context.Context) error {
 			if script == "" {
 				return fmt.Errorf("failed to get lua script for %s", ref.Kind)
 			}
-			// is it necessary to consider same kind but different apiversion?
 			r.luaScript[ref.Kind] = script
 		}
 		if err := r.storeObject(obj); err != nil {
@@ -118,7 +116,15 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 		specStr := obj.GetAnnotations()[OriginalSpecAnnotation]
 		var oSpec Data
 		_ = json.Unmarshal([]byte(specStr), &oSpec)
-		nSpec, err := r.executeLuaForCanary(oSpec, strategy, r.luaScript[ref.Kind])
+		luaScript, ok := r.luaScript[ref.Kind]
+		if !ok {
+			err = r.setLuaScript(ctx)
+			if err != nil {
+				klog.Errorf("failed to get Lua script %s when EnsureRoutes", ref.Kind)
+			}
+			luaScript = r.luaScript[ref.Kind]
+		}
+		nSpec, err := r.executeLuaForCanary(oSpec, strategy, luaScript)
 		if err != nil {
 			return false, err
 		}
@@ -147,6 +153,26 @@ func (r *customController) Finalise(ctx context.Context) error {
 		if err := r.restoreObject(obj); err != nil {
 			klog.Errorf("failed to restore object: %s/%s", ref.Kind, ref.Name)
 			return err
+		}
+	}
+	return nil
+}
+
+func (r *customController) setLuaScript(ctx context.Context) error {
+	for _, ref := range r.conf.TrafficConf {
+		obj := &unstructured.Unstructured{}
+		obj.SetAPIVersion(ref.APIVersion)
+		obj.SetKind(ref.Kind)
+		if err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: ref.Name}, obj); err != nil {
+			return err
+		}
+		// check if lua script exists
+		if _, ok := r.luaScript[ref.Kind]; !ok {
+			script := r.getLuaScript(ctx, ref)
+			if script == "" {
+				return fmt.Errorf("failed to get lua script for %s", ref.Kind)
+			}
+			r.luaScript[ref.Kind] = script
 		}
 	}
 	return nil
@@ -287,24 +313,4 @@ func cmpAndSetObject(data Data, obj *unstructured.Unstructured) bool {
 	obj.SetAnnotations(annotations)
 	obj.SetLabels(labels)
 	return false
-}
-
-func (r *customController) getCustomLuaData(ctx context.Context, ref *rolloutv1alpha1.NetworkRef) (interface{}, error) {
-	nameSpace := util.GetRolloutNamespace() // kruise-rollout
-	name := LuaConfigMap
-	group := strings.Split(ref.APIVersion, "/")[0]
-	configMap := &corev1.ConfigMap{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: nameSpace, Name: name}, configMap)
-	if err != nil {
-		klog.Errorf("failed to get configMap %s/%s", nameSpace, name)
-	} else {
-		// in format like "lua.traffic.routing.ingress.aliyun-alb"
-		key := fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingIngressTypePrefix, ref.Kind, group)
-		if dataStr, ok := configMap.Data[key]; ok {
-			data := make(map[string]interface{})
-			yaml.Unmarshal([]byte(dataStr), data)
-			return data, nil
-		}
-	}
-	return nil, nil
 }

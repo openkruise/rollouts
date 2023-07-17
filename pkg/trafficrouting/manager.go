@@ -86,9 +86,9 @@ func (m *Manager) InitializeTrafficRouting(c *TrafficRoutingContext) error {
 	cService := getCanaryServiceName(sService, c.OnlyTrafficRouting)
 	// new network provider
 	key := fmt.Sprintf("%s.%s", c.Key, sService)
-	// if _, ok := ControllerMap[key]; ok {
-	// 	return nil
-	// }
+	if _, ok := ControllerMap[key]; ok {
+		return nil
+	}
 	trController, err := newNetworkProvider(m.Client, c, sService, cService)
 	if err != nil {
 		klog.Errorf("%s newNetworkProvider failed: %s", c.Key, err.Error())
@@ -204,6 +204,7 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 }
 
 func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestoreStableService bool) (bool, error) {
+	var err error
 	if len(c.ObjectRef) == 0 {
 		return true, nil
 	}
@@ -217,12 +218,17 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 	trController, ok := ControllerMap[key].(network.NetworkProvider)
 	if !ok {
 		klog.Errorf("failed to fetch newNetworkProvider: %s", key)
-		return false, nil
+		// when finalising, InitializeTrafficRouting checks are not necessary
+		trController, err = newNetworkProvider(m.Client, c, trafficRouting.Service, cServiceName)
+		if err != nil {
+			klog.Errorf("%s newTrafficRoutingController failed: %s", c.Key, err.Error())
+			return false, err
+		}
+		ControllerMap[key] = trController
 	}
-
 	cService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: c.Namespace, Name: cServiceName}}
 	// if canary svc has been already cleaned up, just return
-	if err := m.Get(context.TODO(), client.ObjectKeyFromObject(cService), cService); err != nil {
+	if err = m.Get(context.TODO(), client.ObjectKeyFromObject(cService), cService); err != nil {
 		if !errors.IsNotFound(err) {
 			klog.Errorf("%s get canary service(%s) failed: %s", c.Key, cServiceName, err.Error())
 			return false, err
@@ -271,8 +277,19 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 		return false, err
 	}
 	klog.Infof("%s remove canary service(%s) success", c.Key, cService.Name)
-	// delete(ControllerMap, key)
 	return true, nil
+}
+
+// remove controller stored in controllerMap
+func (m *Manager) RemoveTrafficRoutingController(c *TrafficRoutingContext) {
+	trafficRouting := c.ObjectRef[0]
+	key := fmt.Sprintf("%s.%s", c.Key, trafficRouting.Service)
+	_, ok := ControllerMap[key].(network.NetworkProvider)
+	if !ok {
+		klog.Errorf("TrafficRouting controller does not exist: %s", key)
+	} else {
+		delete(ControllerMap, key)
+	}
 }
 
 func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, cService string) (network.NetworkProvider, error) {
