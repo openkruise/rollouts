@@ -131,6 +131,7 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// daemon.Spec.Replicas = utilpointer.Int32(*object.Spec.Replicas)
 			daemon.Spec.Template = *object.Spec.Template.DeepCopy()
+			daemon.Spec.UpdateStrategy = *object.Spec.UpdateStrategy.DeepCopy()
 			daemon.Labels = mergeMap(daemon.Labels, object.Labels)
 			daemon.Annotations = mergeMap(daemon.Annotations, object.Annotations)
 			return k8sClient.Update(context.TODO(), daemon)
