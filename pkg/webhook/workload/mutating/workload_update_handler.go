@@ -99,48 +99,58 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			if err := h.Decoder.Decode(req, newObj); err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
+			newObjClone := newObj.DeepCopy()
 			oldObj := &kruiseappsv1alpha1.CloneSet{}
 			if err := h.Decoder.Decode(
 				admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
 				oldObj); err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
-			changed, err := h.handleCloneSet(newObj, oldObj)
+			changed, err := h.handleCloneSet(newObjClone, oldObj)
 			if err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
 			if !changed {
 				return admission.Allowed("")
 			}
-			marshalled, err := json.Marshal(newObj)
+			marshalled, err := json.Marshal(newObjClone)
 			if err != nil {
 				return admission.Errored(http.StatusInternalServerError, err)
 			}
-			return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
+			original, err := json.Marshal(newObj)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError, err)
+			}
+			return admission.PatchResponseFromRaw(original, marshalled)
 		case util.ControllerKruiseKindDS.Kind:
 			// check daemonset
 			newObj := &kruiseappsv1alpha1.DaemonSet{}
 			if err := h.Decoder.Decode(req, newObj); err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
+			newObjClone := newObj.DeepCopy()
 			oldObj := &kruiseappsv1alpha1.DaemonSet{}
 			if err := h.Decoder.Decode(
 				admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
 				oldObj); err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
-			changed, err := h.handleDaemonSet(newObj, oldObj)
+			changed, err := h.handleDaemonSet(newObjClone, oldObj)
 			if err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
 			if !changed {
 				return admission.Allowed("")
 			}
-			marshalled, err := json.Marshal(newObj)
+			marshalled, err := json.Marshal(newObjClone)
 			if err != nil {
 				return admission.Errored(http.StatusInternalServerError, err)
 			}
-			return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
+			original, err := json.Marshal(newObj)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError, err)
+			}
+			return admission.PatchResponseFromRaw(original, marshalled)
 		}
 
 	// native k8s deloyment
@@ -152,24 +162,29 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			if err := h.Decoder.Decode(req, newObj); err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
+			newObjClone := newObj.DeepCopy()
 			oldObj := &apps.Deployment{}
 			if err := h.Decoder.Decode(
 				admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
 				oldObj); err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
-			changed, err := h.handleDeployment(newObj, oldObj)
+			changed, err := h.handleDeployment(newObjClone, oldObj)
 			if err != nil {
 				return admission.Errored(http.StatusBadRequest, err)
 			}
 			if !changed {
 				return admission.Allowed("")
 			}
-			marshalled, err := json.Marshal(newObj)
+			marshalled, err := json.Marshal(newObjClone)
 			if err != nil {
 				return admission.Errored(http.StatusInternalServerError, err)
 			}
-			return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
+			original, err := json.Marshal(newObj)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError, err)
+			}
+			return admission.PatchResponseFromRaw(original, marshalled)
 		}
 	}
 
