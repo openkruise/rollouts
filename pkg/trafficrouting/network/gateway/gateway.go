@@ -15,6 +15,7 @@ package gateway
 
 import (
 	"context"
+	"github.com/openkruise/rollouts/pkg/util"
 	"reflect"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -83,7 +84,7 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *rolloutv
 		klog.Errorf("update %s httpRoute(%s) failed: %s", r.conf.Key, httpRoute.Name, err.Error())
 		return false, err
 	}
-	klog.Infof("%s set HTTPRoute(name:%s weight:%d) success", r.conf.Key, *r.conf.TrafficConf.HTTPRouteName, *weight)
+	klog.Infof("%s set HTTPRoute(%s) desiredRule(%s) success", r.conf.Key, *r.conf.TrafficConf.HTTPRouteName, util.DumpJSON(desiredRule))
 	return false, nil
 }
 
