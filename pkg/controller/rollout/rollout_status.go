@@ -192,8 +192,8 @@ func (r *RolloutReconciler) updateRolloutStatusInternal(rollout *v1alpha1.Rollou
 		klog.Errorf("update rollout(%s/%s) status failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return err
 	}
-	rollout.Status = newStatus
 	klog.Infof("rollout(%s/%s) status from(%s) -> to(%s) success", rollout.Namespace, rollout.Name, util.DumpJSON(rollout.Status), util.DumpJSON(newStatus))
+	rollout.Status = newStatus
 	return nil
 }
 
