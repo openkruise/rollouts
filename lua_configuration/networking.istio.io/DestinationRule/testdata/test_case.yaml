@@ -1,0 +1,64 @@
+rollout: 
+  apiVersion: rollouts.kruise.io/v1alpha1
+  kind: Rollout
+  metadata:
+    name: rollouts-a
+    annotations:
+      rollouts.kruise.io/rolling-style: canary
+  spec:
+    disabled: false
+    objectRef:
+      workloadRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: demo
+    strategy:
+      canary:
+        steps:
+        - replicas: 1
+          matches:
+          - headers:
+            - type: Exact
+              name: destination
+              value: demo
+        trafficRoutings:
+        - service: mocka
+          createCanaryService: false
+          networkRefs:
+          - apiVersion: networking.istio.io/v1alpha3
+            kind: DestinationRule
+            name: ds-demo
+        patchPodTemplateMetadata:
+          labels:
+            version: canary
+original:
+  apiVersion: networking.istio.io/v1beta1
+  kind: DestinationRule
+  metadata:
+    name: ds-demo
+  spec:
+    host: svc-a
+    trafficPolicy:
+      loadBalancer:
+        simple: ROUND_ROBIN
+    subsets:
+      - labels:
+          version: base
+        name: version-base
+expected:
+  - apiVersion: networking.istio.io/v1beta1
+    kind: DestinationRule
+    metadata:
+      name: ds-demo
+    spec:
+      host: svc-a
+      trafficPolicy:
+        loadBalancer:
+          simple: ROUND_ROBIN
+      subsets:
+        - labels:
+            version: base
+          name: version-base
+        - labels:
+            version: canary
+          name: canary
