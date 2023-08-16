@@ -35,7 +35,12 @@ type TrafficRoutingRef struct {
 	Ingress *IngressTrafficRouting `json:"ingress,omitempty"`
 	// Gateway holds Gateway specific configuration to route traffic
 	// Gateway configuration only supports >= v0.4.0 (v1alpha2).
-	Gateway *GatewayTrafficRouting `json:"gateway,omitempty"`
+	Gateway     *GatewayTrafficRouting `json:"gateway,omitempty"`
+	NetworkRefs *[]NetworkRef          `json:"networkRefs,omitempty"`
+	// +optional
+	//+kubebuilder:default=true
+	// create a new canary service or just use the stable service
+	CreateCanaryService bool `json:"createCanaryService,omitempty"`
 }
 
 // IngressTrafficRouting configuration for ingress controller to control traffic routing
@@ -147,6 +152,12 @@ type TrafficRoutingList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []TrafficRouting `json:"items"`
+}
+
+type NetworkRef struct {
+	APIVersion string `json:"apiVersion,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	Name       string `json:"name,omitempty"`
 }
 
 func init() {
