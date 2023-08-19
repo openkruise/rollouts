@@ -303,6 +303,11 @@ func (m *Manager) createCanaryService(c *TrafficRoutingContext, cService string,
 	canaryService.Spec.IPFamilies = nil
 	canaryService.Spec.LoadBalancerIP = ""
 	canaryService.Spec.Selector[c.RevisionLabelKey] = c.CanaryRevision
+
+	// avoid port conflicts for NodePort-type service
+	for i := range canaryService.Spec.Ports {
+		canaryService.Spec.Ports[i].NodePort = 0
+	}
 	err := m.Create(context.TODO(), canaryService)
 	if err != nil && !errors.IsAlreadyExists(err) {
 		klog.Errorf("%s create canary service(%s) failed: %s", c.Key, cService, err.Error())

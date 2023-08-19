@@ -399,10 +399,6 @@ func TestDoTrafficRouting(t *testing.T) {
 
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
-			if cs.name != "DoTrafficRouting test3" {
-				return
-			}
-			fmt.Println("start DoTrafficRouting test3")
 			ss, ig := cs.getObj()
 			client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ig[0], ss[0], demoConf.DeepCopy()).Build()
 			if len(ss) == 2 {
