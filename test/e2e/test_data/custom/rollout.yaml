@@ -1,0 +1,33 @@
+apiVersion: rollouts.kruise.io/v1alpha1
+kind: Rollout
+metadata:
+  name: rollouts-demo
+  namespace: demo
+  annotations:
+    rollouts.kruise.io/rolling-style: canary
+spec:
+  disabled: false
+  objectRef:
+    workloadRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: nginx-deployment
+  strategy:
+    canary:
+      steps:
+      - weight: 20
+        matches:
+        - headers:
+          - type: Exact
+            name: user-agent
+            value: pc
+          - type: RegularExpression
+            name: name
+            value: ".*demo"
+      - weight: 50
+      trafficRoutings:
+      - service: nginx-service
+        networkRefs:
+        - apiVersion: networking.istio.io/v1alpha3
+          kind: VirtualService
+          name: nginx-vs

@@ -116,7 +116,8 @@ var (
 		Spec: v1alpha1.TrafficRoutingSpec{
 			ObjectRef: []v1alpha1.TrafficRoutingRef{
 				{
-					Service: "echoserver",
+					Service:             "echoserver",
+					CreateCanaryService: false,
 					Ingress: &v1alpha1.IngressTrafficRouting{
 						Name: "echoserver",
 					},
@@ -379,6 +380,7 @@ func TestTrafficRoutingTest(t *testing.T) {
 			for _, obj := range ig {
 				checkObjEqual(client, t, obj)
 			}
+			manager.trafficRoutingManager.RemoveTrafficRoutingController(newTrafficRoutingContext(tr))
 		})
 	}
 }

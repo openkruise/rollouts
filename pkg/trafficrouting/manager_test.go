@@ -666,6 +666,7 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 			}
 			manager := NewTrafficRoutingManager(client)
 			done, err := manager.FinalisingTrafficRouting(c, cs.onlyRestoreStableService)
+			manager.RemoveTrafficRoutingController(c)
 			if err != nil {
 				t.Fatalf("DoTrafficRouting failed: %s", err)
 			}

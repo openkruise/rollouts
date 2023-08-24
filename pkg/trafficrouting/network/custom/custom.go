@@ -188,10 +188,8 @@ func (r *customController) storeObject(obj *unstructured.Unstructured) error {
 	}
 	annotations[OriginalSpecAnnotation] = cSpec
 	obj.SetAnnotations(annotations)
-	if err := r.Update(context.TODO(), obj); err != nil {
-		return err
-	}
-	return nil
+	err := r.Update(context.TODO(), obj)
+	return err
 }
 
 // restore an object from spec stored in OriginalSpecAnnotation
@@ -206,10 +204,8 @@ func (r *customController) restoreObject(obj *unstructured.Unstructured) error {
 	obj.Object["spec"] = oSpec.Spec
 	obj.SetAnnotations(oSpec.Annotations)
 	obj.SetLabels(oSpec.Labels)
-	if err := r.Update(context.TODO(), obj); err != nil {
-		return err
-	}
-	return nil
+	err := r.Update(context.TODO(), obj)
+	return err
 }
 
 func (r *customController) executeLuaForCanary(spec Data, strategy *rolloutv1alpha1.TrafficRoutingStrategy, luaScript string) (Data, error) {

@@ -1,0 +1,27 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: nginx-vs
+  namespace: demo
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - nginx-gateway
+  http:
+  - match:
+    - headers:
+        user-agent:
+          exact: pc
+        name:
+          regex: .*demo
+    route:
+    - destination:
+        host: nginx-service
+      weight: 80
+    - destination:
+        host: nginx-service-canary
+      weight: 20
+  - route:
+    - destination:
+        host: nginx-service

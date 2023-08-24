@@ -341,7 +341,7 @@ spec:
                             traffic routing
                           properties:
                             createCanaryService:
-                              default: false
+                              default: true
                               description: create a new canary service or just use
                                 the stable service
                               type: boolean
