@@ -17,14 +17,14 @@ limitations under the License.
 package util
 
 import (
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // NewRolloutCondition creates a new rollout condition.
-func NewRolloutCondition(condType v1alpha1.RolloutConditionType, status corev1.ConditionStatus, reason, message string) *v1alpha1.RolloutCondition {
-	return &v1alpha1.RolloutCondition{
+func NewRolloutCondition(condType v1beta1.RolloutConditionType, status corev1.ConditionStatus, reason, message string) *v1beta1.RolloutCondition {
+	return &v1beta1.RolloutCondition{
 		Type:               condType,
 		Status:             status,
 		LastUpdateTime:     metav1.Now(),
@@ -35,7 +35,7 @@ func NewRolloutCondition(condType v1alpha1.RolloutConditionType, status corev1.C
 }
 
 // GetRolloutCondition returns the condition with the provided type.
-func GetRolloutCondition(status v1alpha1.RolloutStatus, condType v1alpha1.RolloutConditionType) *v1alpha1.RolloutCondition {
+func GetRolloutCondition(status v1beta1.RolloutStatus, condType v1beta1.RolloutConditionType) *v1beta1.RolloutCondition {
 	for i := range status.Conditions {
 		c := status.Conditions[i]
 		if c.Type == condType {
@@ -48,7 +48,7 @@ func GetRolloutCondition(status v1alpha1.RolloutStatus, condType v1alpha1.Rollou
 // SetRolloutCondition updates the rollout to include the provided condition. If the condition that
 // we are about to add already exists and has the same status and reason, then we are not going to update
 // by returning false. Returns true if the condition was updated
-func SetRolloutCondition(status *v1alpha1.RolloutStatus, condition v1alpha1.RolloutCondition) bool {
+func SetRolloutCondition(status *v1beta1.RolloutStatus, condition v1beta1.RolloutCondition) bool {
 	currentCond := GetRolloutCondition(*status, condition.Type)
 	if currentCond != nil && currentCond.Status == condition.Status && currentCond.Reason == condition.Reason &&
 		currentCond.Message == condition.Message {
@@ -64,8 +64,8 @@ func SetRolloutCondition(status *v1alpha1.RolloutStatus, condition v1alpha1.Roll
 }
 
 // filterOutCondition returns a new slice of rollout conditions without conditions with the provided type.
-func filterOutCondition(conditions []v1alpha1.RolloutCondition, condType v1alpha1.RolloutConditionType) []v1alpha1.RolloutCondition {
-	var newConditions []v1alpha1.RolloutCondition
+func filterOutCondition(conditions []v1beta1.RolloutCondition, condType v1beta1.RolloutConditionType) []v1beta1.RolloutCondition {
+	var newConditions []v1beta1.RolloutCondition
 	for _, c := range conditions {
 		if c.Type == condType {
 			continue
@@ -75,6 +75,6 @@ func filterOutCondition(conditions []v1alpha1.RolloutCondition, condType v1alpha
 	return newConditions
 }
 
-func RemoveRolloutCondition(status *v1alpha1.RolloutStatus, condType v1alpha1.RolloutConditionType) {
+func RemoveRolloutCondition(status *v1beta1.RolloutStatus, condType v1beta1.RolloutConditionType) {
 	status.Conditions = filterOutCondition(status.Conditions, condType)
 }

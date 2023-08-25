@@ -17,7 +17,7 @@ limitations under the License.
 package partitionstyle
 
 import (
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
@@ -34,16 +34,16 @@ type Interface interface {
 	ListOwnedPods() ([]*corev1.Pod, error)
 	// CalculateBatchContext calculate current batch context
 	// according to release plan and current status of workload.
-	CalculateBatchContext(release *v1alpha1.BatchRelease) (*batchcontext.BatchContext, error)
+	CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error)
 
 	// Initialize do something before rolling out, for example:
 	// - claim the workload is under our control;
 	// - other things related with specific type of workload, such as 100% partition settings.
-	Initialize(release *v1alpha1.BatchRelease) error
+	Initialize(release *v1beta1.BatchRelease) error
 	// UpgradeBatch upgrade workload according current batch context.
 	UpgradeBatch(ctx *batchcontext.BatchContext) error
 	// Finalize do something after rolling out, for example:
 	// - free the stable workload from rollout control;
 	// - resume workload if we need.
-	Finalize(release *v1alpha1.BatchRelease) error
+	Finalize(release *v1beta1.BatchRelease) error
 }

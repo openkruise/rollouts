@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"testing"
 
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	lua "github.com/yuin/gopher-lua"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -43,14 +43,14 @@ func TestRunLuaScript(t *testing.T) {
 				type LuaData struct {
 					Annotations map[string]string
 					Weight      string
-					Matches     []rolloutv1alpha1.HttpRouteMatch
+					Matches     []rolloutv1beta1.HttpRouteMatch
 				}
 				data := &LuaData{
 					Annotations: map[string]string{
 						"kubernetes.io/ingress.class": "nginx",
 					},
 					Weight: "0",
-					Matches: []rolloutv1alpha1.HttpRouteMatch{
+					Matches: []rolloutv1beta1.HttpRouteMatch{
 						{
 							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
 								{

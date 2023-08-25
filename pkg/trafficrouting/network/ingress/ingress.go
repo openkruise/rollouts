@@ -23,7 +23,7 @@ import (
 	"reflect"
 
 	jsonpatch "github.com/evanphx/json-patch"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
@@ -56,7 +56,7 @@ type Config struct {
 	Namespace     string
 	CanaryService string
 	StableService string
-	TrafficConf   *rolloutv1alpha1.IngressTrafficRouting
+	TrafficConf   *rolloutv1beta1.IngressTrafficRouting
 	OwnerRef      metav1.OwnerReference
 }
 
@@ -82,7 +82,7 @@ func (r *ingressController) Initialize(ctx context.Context) error {
 	return r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: r.conf.TrafficConf.Name}, ingress)
 }
 
-func (r *ingressController) EnsureRoutes(ctx context.Context, strategy *rolloutv1alpha1.TrafficRoutingStrategy) (bool, error) {
+func (r *ingressController) EnsureRoutes(ctx context.Context, strategy *rolloutv1beta1.TrafficRoutingStrategy) (bool, error) {
 	weight := strategy.Weight
 	matches := strategy.Matches
 	headerModifier := strategy.RequestHeaderModifier
@@ -217,7 +217,7 @@ func defaultCanaryIngressName(name string) string {
 	return fmt.Sprintf("%s-canary", name)
 }
 
-func (r *ingressController) executeLuaForCanary(annotations map[string]string, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch,
+func (r *ingressController) executeLuaForCanary(annotations map[string]string, weight *int32, matches []rolloutv1beta1.HttpRouteMatch,
 	headerModifier *gatewayv1alpha2.HTTPRequestHeaderFilter) (map[string]string, error) {
 
 	if weight == nil {
@@ -228,7 +228,7 @@ func (r *ingressController) executeLuaForCanary(annotations map[string]string, w
 	type LuaData struct {
 		Annotations           map[string]string
 		Weight                string
-		Matches               []rolloutv1alpha1.HttpRouteMatch
+		Matches               []rolloutv1beta1.HttpRouteMatch
 		CanaryService         string
 		RequestHeaderModifier *gatewayv1alpha2.HTTPRequestHeaderFilter
 	}

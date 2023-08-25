@@ -25,7 +25,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
@@ -104,9 +104,9 @@ var (
 		},
 	}
 
-	releaseDemo = &v1alpha1.BatchRelease{
+	releaseDemo = &v1beta1.BatchRelease{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rollouts.kruise.io/v1alpha1",
+			APIVersion: "rollouts.kruise.io/v1beta1",
 			Kind:       "BatchRelease",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -114,10 +114,10 @@ var (
 			Namespace: deploymentKey.Namespace,
 			UID:       uuid.NewUUID(),
 		},
-		Spec: v1alpha1.BatchReleaseSpec{
-			ReleasePlan: v1alpha1.ReleasePlan{
-				FinalizingPolicy: v1alpha1.WaitResumeFinalizingPolicyType,
-				Batches: []v1alpha1.ReleaseBatch{
+		Spec: v1beta1.BatchReleaseSpec{
+			ReleasePlan: v1beta1.ReleasePlan{
+				FinalizingPolicy: v1beta1.WaitResumeFinalizingPolicyType,
+				Batches: []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
 					},
@@ -129,16 +129,16 @@ var (
 					},
 				},
 			},
-			TargetRef: v1alpha1.ObjectRef{
-				WorkloadRef: &v1alpha1.WorkloadRef{
+			TargetRef: v1beta1.ObjectRef{
+				WorkloadRef: &v1beta1.WorkloadRef{
 					APIVersion: deploymentDemo.APIVersion,
 					Kind:       deploymentDemo.Kind,
 					Name:       deploymentDemo.Name,
 				},
 			},
 		},
-		Status: v1alpha1.BatchReleaseStatus{
-			CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
+		Status: v1beta1.BatchReleaseStatus{
+			CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 				CurrentBatch: 1,
 			},
 		},
@@ -147,7 +147,7 @@ var (
 
 func init() {
 	apps.AddToScheme(scheme)
-	v1alpha1.AddToScheme(scheme)
+	v1beta1.AddToScheme(scheme)
 	kruiseappsv1alpha1.AddToScheme(scheme)
 }
 
@@ -157,7 +157,7 @@ func TestCalculateBatchContext(t *testing.T) {
 	percent := intstr.FromString("20%")
 	cases := map[string]struct {
 		workload func() *apps.Deployment
-		release  func() *v1alpha1.BatchRelease
+		release  func() *v1beta1.BatchRelease
 		result   *batchcontext.BatchContext
 	}{
 		"noraml case": {
@@ -165,13 +165,13 @@ func TestCalculateBatchContext(t *testing.T) {
 				deployment := &apps.Deployment{
 					ObjectMeta: metav1.ObjectMeta{
 						Annotations: map[string]string{
-							v1alpha1.DeploymentStrategyAnnotation: util.DumpJSON(&v1alpha1.DeploymentStrategy{
-								RollingStyle:  v1alpha1.PartitionRollingStyle,
+							v1beta1.DeploymentStrategyAnnotation: util.DumpJSON(&v1beta1.DeploymentStrategy{
+								RollingStyle:  v1beta1.PartitionRollingStyle,
 								RollingUpdate: &apps.RollingUpdateDeployment{MaxUnavailable: &percent, MaxSurge: &percent},
 								Partition:     percent,
 								Paused:        false,
 							}),
-							v1alpha1.DeploymentExtraStatusAnnotation: util.DumpJSON(&v1alpha1.DeploymentExtraStatus{
+							v1beta1.DeploymentExtraStatusAnnotation: util.DumpJSON(&v1beta1.DeploymentExtraStatus{
 								UpdatedReadyReplicas:    1,
 								ExpectedUpdatedReplicas: 2,
 							}),
@@ -189,21 +189,21 @@ func TestCalculateBatchContext(t *testing.T) {
 				}
 				return deployment
 			},
-			release: func() *v1alpha1.BatchRelease {
-				r := &v1alpha1.BatchRelease{
-					Spec: v1alpha1.BatchReleaseSpec{
-						ReleasePlan: v1alpha1.ReleasePlan{
+			release: func() *v1beta1.BatchRelease {
+				r := &v1beta1.BatchRelease{
+					Spec: v1beta1.BatchReleaseSpec{
+						ReleasePlan: v1beta1.ReleasePlan{
 							FailureThreshold: &percent,
-							FinalizingPolicy: v1alpha1.WaitResumeFinalizingPolicyType,
-							Batches: []v1alpha1.ReleaseBatch{
+							FinalizingPolicy: v1beta1.WaitResumeFinalizingPolicyType,
+							Batches: []v1beta1.ReleaseBatch{
 								{
 									CanaryReplicas: percent,
 								},
 							},
 						},
 					},
-					Status: v1alpha1.BatchReleaseStatus{
-						CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
+					Status: v1beta1.BatchReleaseStatus{
+						CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 							CurrentBatch: 0,
 						},
 						UpdateRevision: "version-2",
@@ -229,13 +229,13 @@ func TestCalculateBatchContext(t *testing.T) {
 				deployment := &apps.Deployment{
 					ObjectMeta: metav1.ObjectMeta{
 						Annotations: map[string]string{
-							v1alpha1.DeploymentStrategyAnnotation: util.DumpJSON(&v1alpha1.DeploymentStrategy{
-								RollingStyle:  v1alpha1.PartitionRollingStyle,
+							v1beta1.DeploymentStrategyAnnotation: util.DumpJSON(&v1beta1.DeploymentStrategy{
+								RollingStyle:  v1beta1.PartitionRollingStyle,
 								RollingUpdate: &apps.RollingUpdateDeployment{MaxUnavailable: &percent, MaxSurge: &percent},
 								Partition:     intstr.FromString("20%"),
 								Paused:        false,
 							}),
-							v1alpha1.DeploymentExtraStatusAnnotation: util.DumpJSON(&v1alpha1.DeploymentExtraStatus{
+							v1beta1.DeploymentExtraStatusAnnotation: util.DumpJSON(&v1beta1.DeploymentExtraStatus{
 								UpdatedReadyReplicas:    4,
 								ExpectedUpdatedReplicas: 4,
 							}),
@@ -253,21 +253,21 @@ func TestCalculateBatchContext(t *testing.T) {
 				}
 				return deployment
 			},
-			release: func() *v1alpha1.BatchRelease {
-				r := &v1alpha1.BatchRelease{
-					Spec: v1alpha1.BatchReleaseSpec{
-						ReleasePlan: v1alpha1.ReleasePlan{
+			release: func() *v1beta1.BatchRelease {
+				r := &v1beta1.BatchRelease{
+					Spec: v1beta1.BatchReleaseSpec{
+						ReleasePlan: v1beta1.ReleasePlan{
 							FailureThreshold: &percent,
-							FinalizingPolicy: v1alpha1.WaitResumeFinalizingPolicyType,
-							Batches: []v1alpha1.ReleaseBatch{
+							FinalizingPolicy: v1beta1.WaitResumeFinalizingPolicyType,
+							Batches: []v1beta1.ReleaseBatch{
 								{
 									CanaryReplicas: intstr.FromString("90%"),
 								},
 							},
 						},
 					},
-					Status: v1alpha1.BatchReleaseStatus{
-						CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
+					Status: v1beta1.BatchReleaseStatus{
+						CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 							CurrentBatch: 0,
 						},
 						UpdateRevision: "version-2",
@@ -350,8 +350,8 @@ func TestRealController(t *testing.T) {
 	fetch = &apps.Deployment{}
 	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())
 	Expect(fetch.Annotations[util.BatchReleaseControlAnnotation]).Should(Equal(""))
-	Expect(fetch.Annotations[v1alpha1.DeploymentStrategyAnnotation]).Should(Equal(""))
-	Expect(fetch.Annotations[v1alpha1.DeploymentExtraStatusAnnotation]).Should(Equal(""))
+	Expect(fetch.Annotations[v1beta1.DeploymentStrategyAnnotation]).Should(Equal(""))
+	Expect(fetch.Annotations[v1beta1.DeploymentExtraStatusAnnotation]).Should(Equal(""))
 	Expect(fetch.Spec.Paused).Should(BeFalse())
 	Expect(fetch.Spec.Strategy.Type).Should(Equal(apps.RollingUpdateDeploymentStrategyType))
 
@@ -369,7 +369,7 @@ func checkWorkloadInfo(stableInfo *util.WorkloadInfo, clone *apps.Deployment) {
 	Expect(stableInfo.Status.ObservedGeneration).Should(Equal(clone.Status.ObservedGeneration))
 }
 
-func getControlInfo(release *v1alpha1.BatchRelease) string {
+func getControlInfo(release *v1beta1.BatchRelease) string {
 	owner, _ := json.Marshal(metav1.NewControllerRef(release, release.GetObjectKind().GroupVersionKind()))
 	return string(owner)
 }

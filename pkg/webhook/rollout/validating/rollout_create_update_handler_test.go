@@ -21,7 +21,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,9 +34,9 @@ import (
 var (
 	scheme = runtime.NewScheme()
 
-	rollout = appsv1alpha1.Rollout{
+	rollout = appsv1beta1.Rollout{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: appsv1alpha1.SchemeGroupVersion.String(),
+			APIVersion: appsv1beta1.SchemeGroupVersion.String(),
 			Kind:       "Rollout",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -44,57 +44,57 @@ var (
 			Namespace:   "namespace-unit-test",
 			Annotations: map[string]string{},
 		},
-		Spec: appsv1alpha1.RolloutSpec{
-			ObjectRef: appsv1alpha1.ObjectRef{
-				WorkloadRef: &appsv1alpha1.WorkloadRef{
+		Spec: appsv1beta1.RolloutSpec{
+			ObjectRef: appsv1beta1.ObjectRef{
+				WorkloadRef: &appsv1beta1.WorkloadRef{
 					APIVersion: apps.SchemeGroupVersion.String(),
 					Kind:       "Deployment",
 					Name:       "deployment-demo",
 				},
 			},
-			Strategy: appsv1alpha1.RolloutStrategy{
-				Canary: &appsv1alpha1.CanaryStrategy{
-					Steps: []appsv1alpha1.CanaryStep{
+			Strategy: appsv1beta1.RolloutStrategy{
+				Canary: &appsv1beta1.CanaryStrategy{
+					Steps: []appsv1beta1.CanaryStep{
 						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: appsv1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(10),
 							},
 							Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: int32(1)},
-							Pause:    appsv1alpha1.RolloutPause{},
+							Pause:    appsv1beta1.RolloutPause{},
 						},
 						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: appsv1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(10),
 							},
 							Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: int32(3)},
-							Pause:    appsv1alpha1.RolloutPause{Duration: utilpointer.Int32(1 * 24 * 60 * 60)},
+							Pause:    appsv1beta1.RolloutPause{Duration: utilpointer.Int32(1 * 24 * 60 * 60)},
 						},
 						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: appsv1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(30),
 							},
-							Pause: appsv1alpha1.RolloutPause{Duration: utilpointer.Int32(7 * 24 * 60 * 60)},
+							Pause: appsv1beta1.RolloutPause{Duration: utilpointer.Int32(7 * 24 * 60 * 60)},
 						},
 						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: appsv1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(100),
 							},
 						},
 						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: appsv1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(101),
 							},
 						},
 						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: appsv1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(200),
 							},
 						},
 					},
-					TrafficRoutings: []appsv1alpha1.TrafficRoutingRef{
+					TrafficRoutings: []appsv1beta1.TrafficRoutingRef{
 						{
 							Service: "service-demo",
-							Ingress: &appsv1alpha1.IngressTrafficRouting{
+							Ingress: &appsv1beta1.IngressTrafficRouting{
 								ClassType: "nginx",
 								Name:      "ingress-nginx-demo",
 							},
@@ -103,16 +103,16 @@ var (
 				},
 			},
 		},
-		Status: appsv1alpha1.RolloutStatus{
-			CanaryStatus: &appsv1alpha1.CanaryStatus{
-				CurrentStepState: appsv1alpha1.CanaryStepStateCompleted,
+		Status: appsv1beta1.RolloutStatus{
+			CanaryStatus: &appsv1beta1.CanaryStatus{
+				CurrentStepState: appsv1beta1.CanaryStepStateCompleted,
 			},
 		},
 	}
 )
 
 func init() {
-	_ = appsv1alpha1.AddToScheme(scheme)
+	_ = appsv1beta1.AddToScheme(scheme)
 }
 
 func TestRolloutValidateCreate(t *testing.T) {
@@ -177,7 +177,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.Steps = []appsv1alpha1.CanaryStep{}
+				object.Spec.Strategy.Canary.Steps = []appsv1beta1.CanaryStep{}
 				return []client.Object{object}
 			},
 		},
@@ -186,7 +186,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: true,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{
+				object.Spec.ObjectRef.WorkloadRef = &appsv1beta1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "StatefulSet",
 					Name:       "whatever",
@@ -263,7 +263,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
 				object.Annotations = map[string]string{
-					appsv1alpha1.RolloutStyleAnnotation: "Canary",
+					appsv1beta1.RolloutStyleAnnotation: "Canary",
 				}
 				return []client.Object{object}
 			},
@@ -274,7 +274,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
 				object.Annotations = map[string]string{
-					appsv1alpha1.RolloutStyleAnnotation: "Partition",
+					appsv1beta1.RolloutStyleAnnotation: "Partition",
 				}
 				return []client.Object{object}
 			},
@@ -285,7 +285,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
 				object.Annotations = map[string]string{
-					appsv1alpha1.RolloutStyleAnnotation: "Other",
+					appsv1beta1.RolloutStyleAnnotation: "Other",
 				}
 				return []client.Object{object}
 			},
@@ -296,7 +296,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
 				object.Annotations = map[string]string{
-					appsv1alpha1.RolloutStyleAnnotation: "Canary",
+					appsv1beta1.RolloutStyleAnnotation: "Canary",
 				}
 				object.Spec.ObjectRef.WorkloadRef.APIVersion = "apps.kruise.io/v1alpha1"
 				object.Spec.ObjectRef.WorkloadRef.Kind = "CloneSet"
@@ -373,7 +373,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			handler := RolloutCreateUpdateHandler{
 				Client: cli,
 			}
-			errList := handler.validateRollout(objects[0].(*appsv1alpha1.Rollout))
+			errList := handler.validateRollout(objects[0].(*appsv1beta1.Rollout))
 			t.Log(errList)
 			Expect(len(errList) == 0).Should(Equal(cs.Succeed))
 		})
@@ -407,12 +407,12 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: true,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				object.Status.Phase = appsv1beta1.RolloutPhaseProgressing
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				object.Status.Phase = appsv1beta1.RolloutPhaseProgressing
 				object.Status.CanaryStatus.CurrentStepIndex = 1
 				return object
 			},
@@ -422,12 +422,12 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: true,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				object.Status.Phase = appsv1beta1.RolloutPhaseProgressing
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				object.Status.Phase = appsv1beta1.RolloutPhaseProgressing
 				object.Spec.Strategy.Canary.Steps[0].Weight = utilpointer.Int32Ptr(5)
 				return object
 			},
@@ -437,14 +437,14 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: false,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Annotations[appsv1alpha1.RolloutStyleAnnotation] = "Partition"
-				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
+				object.Annotations[appsv1beta1.RolloutStyleAnnotation] = "Partition"
+				object.Status.Phase = appsv1beta1.RolloutPhaseProgressing
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseProgressing
-				object.Annotations[appsv1alpha1.RolloutStyleAnnotation] = "Canary"
+				object.Status.Phase = appsv1beta1.RolloutPhaseProgressing
+				object.Annotations[appsv1beta1.RolloutStyleAnnotation] = "Canary"
 				return object
 			},
 		},
@@ -453,12 +453,12 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: false,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseTerminating
+				object.Status.Phase = appsv1beta1.RolloutPhaseTerminating
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseTerminating
+				object.Status.Phase = appsv1beta1.RolloutPhaseTerminating
 				object.Spec.Strategy.Canary.TrafficRoutings[0].Ingress.ClassType = "alb"
 				return object
 			},
@@ -468,12 +468,12 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: true,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseInitial
+				object.Status.Phase = appsv1beta1.RolloutPhaseInitial
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseInitial
+				object.Status.Phase = appsv1beta1.RolloutPhaseInitial
 				object.Spec.Strategy.Canary.Steps[0].Weight = utilpointer.Int32Ptr(5)
 				return object
 			},
@@ -483,12 +483,12 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: true,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseHealthy
+				object.Status.Phase = appsv1beta1.RolloutPhaseHealthy
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.Phase = appsv1alpha1.RolloutPhaseHealthy
+				object.Status.Phase = appsv1beta1.RolloutPhaseHealthy
 				object.Spec.Strategy.Canary.Steps[0].Weight = utilpointer.Int32Ptr(5)
 				return object
 			},
@@ -498,12 +498,12 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: true,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStatePaused
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStatePaused
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStateCompleted
 				return object
 			},
 		},
@@ -512,12 +512,12 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: true,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStateCompleted
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStateCompleted
 				return object
 			},
 		},
@@ -526,12 +526,12 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: false,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateUpgrade
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStateUpgrade
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStateCompleted
 				return object
 			},
 		},
@@ -540,12 +540,12 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: false,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateTrafficRouting
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStateTrafficRouting
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStateCompleted
 				return object
 			},
 		},
@@ -554,12 +554,12 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: false,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateMetricsAnalysis
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStateMetricsAnalysis
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStateCompleted
 				return object
 			},
 		},
@@ -573,7 +573,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Status.CanaryStatus.CurrentStepState = appsv1alpha1.CanaryStepStateCompleted
+				object.Status.CanaryStatus.CurrentStepState = appsv1beta1.CanaryStepStateCompleted
 				return object
 			},
 		},*/
@@ -587,7 +587,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			handler := RolloutCreateUpdateHandler{
 				Client: cli,
 			}
-			errList := handler.validateRolloutUpdate(oldObject.(*appsv1alpha1.Rollout), newObject.(*appsv1alpha1.Rollout))
+			errList := handler.validateRolloutUpdate(oldObject.(*appsv1beta1.Rollout), newObject.(*appsv1beta1.Rollout))
 			t.Log(errList)
 			Expect(len(errList) == 0).Should(Equal(cs.Succeed))
 		})

@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
 
@@ -53,7 +53,7 @@ func (m MutatingWebhookEventHandler) Delete(evt event.DeleteEvent, q workqueue.R
 
 func (m MutatingWebhookEventHandler) enqueue(q workqueue.RateLimitingInterface) {
 	deploymentLister := appsv1.DeploymentList{}
-	err := m.List(context.TODO(), &deploymentLister, client.MatchingLabels(map[string]string{v1alpha1.AdvancedDeploymentControlLabel: "true"}))
+	err := m.List(context.TODO(), &deploymentLister, client.MatchingLabels(map[string]string{v1beta1.AdvancedDeploymentControlLabel: "true"}))
 	if err != nil {
 		klog.Errorf("Failed to list deployment, error: %v", err)
 	}

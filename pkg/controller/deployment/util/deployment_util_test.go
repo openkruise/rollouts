@@ -34,7 +34,7 @@ import (
 	"k8s.io/utils/integer"
 	"k8s.io/utils/pointer"
 
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 )
 
 func newDControllerRef(d *apps.Deployment) *metav1.OwnerReference {
@@ -542,7 +542,7 @@ func TestNewRSNewReplicas(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			*(newDeployment.Spec.Replicas) = test.depReplicas
-			strategy := &rolloutsv1alpha1.DeploymentStrategy{
+			strategy := &rolloutsv1beta1.DeploymentStrategy{
 				RollingUpdate: &apps.RollingUpdateDeployment{
 					MaxUnavailable: func(i int) *intstr.IntOrString {
 						x := intstr.FromInt(i)
@@ -1055,7 +1055,7 @@ func TestMaxUnavailable(t *testing.T) {
 	for _, test := range tests {
 		t.Log(test.name)
 		t.Run(test.name, func(t *testing.T) {
-			strategy := rolloutsv1alpha1.DeploymentStrategy{
+			strategy := rolloutsv1beta1.DeploymentStrategy{
 				RollingUpdate: test.deployment.Spec.Strategy.RollingUpdate,
 			}
 			maxUnavailable := MaxUnavailable(&test.deployment, &strategy)
@@ -1080,7 +1080,7 @@ func TestAnnotationUtils(t *testing.T) {
 		for i := 10; i < 20; i++ {
 
 			nextRevision := fmt.Sprintf("%d", i+1)
-			strategy := rolloutsv1alpha1.DeploymentStrategy{
+			strategy := rolloutsv1beta1.DeploymentStrategy{
 				RollingUpdate: tDeployment.Spec.Strategy.RollingUpdate,
 			}
 			SetNewReplicaSetAnnotations(&tDeployment, &tRS, &strategy, nextRevision, true, 5)

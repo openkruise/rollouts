@@ -24,7 +24,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -96,10 +96,10 @@ func TestCalculateBatchReplicas(t *testing.T) {
 
 	for name, cs := range cases {
 		t.Run(name, func(t *testing.T) {
-			release := &v1alpha1.BatchRelease{
-				Spec: v1alpha1.BatchReleaseSpec{
-					ReleasePlan: v1alpha1.ReleasePlan{
-						Batches: []v1alpha1.ReleaseBatch{
+			release := &v1beta1.BatchRelease{
+				Spec: v1beta1.BatchReleaseSpec{
+					ReleasePlan: v1beta1.ReleasePlan{
+						Batches: []v1beta1.ReleaseBatch{
 							{
 								CanaryReplicas: cs.batchReplicas,
 							},
@@ -116,9 +116,9 @@ func TestCalculateBatchReplicas(t *testing.T) {
 func TestIsControlledByBatchRelease(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	release := &v1alpha1.BatchRelease{
+	release := &v1beta1.BatchRelease{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rollouts.kruise.io/v1alpha1",
+			APIVersion: "rollouts.kruise.io/v1beta1",
 			Kind:       "BatchRelease",
 		},
 		ObjectMeta: metav1.ObjectMeta{

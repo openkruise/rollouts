@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
@@ -40,9 +40,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 		name         string
 		getObj       func() ([]*apps.Deployment, []*apps.ReplicaSet)
 		getNetwork   func() ([]*corev1.Service, []*netv1.Ingress)
-		getRollout   func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting)
-		expectStatus func() *v1alpha1.RolloutStatus
-		expectTr     func() *v1alpha1.TrafficRouting
+		getRollout   func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting)
+		expectStatus func() *v1beta1.RolloutStatus
+		expectTr     func() *v1beta1.TrafficRouting
 	}{
 		{
 			name: "ReconcileRolloutProgressing init trafficRouting",
@@ -54,22 +54,22 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
-				obj.Annotations[v1alpha1.TrafficRoutingAnnotation] = "tr-demo"
+				obj.Annotations[v1beta1.TrafficRoutingAnnotation] = "tr-demo"
 				return obj, nil, demoTR.DeepCopy()
 			},
-			expectStatus: func() *v1alpha1.RolloutStatus {
+			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				s.CanaryStatus.CanaryRevision = "56855c89f9"
 				s.CanaryStatus.CurrentStepIndex = 1
-				s.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				return s
 			},
-			expectTr: func() *v1alpha1.TrafficRouting {
+			expectTr: func() *v1beta1.TrafficRouting {
 				tr := demoTR.DeepCopy()
 				tr.Finalizers = []string{util.ProgressingRolloutFinalizer(rolloutDemo.Name)}
 				return tr
@@ -85,22 +85,22 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				tr := demoTR.DeepCopy()
 				tr.Finalizers = []string{util.ProgressingRolloutFinalizer(rolloutDemo.Name)}
 				return obj, nil, tr
 			},
-			expectStatus: func() *v1alpha1.RolloutStatus {
+			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				s.CanaryStatus.CanaryRevision = "56855c89f9"
 				s.CanaryStatus.CurrentStepIndex = 1
-				s.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
-				cond := util.GetRolloutCondition(*s, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonInRolling
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
 				return s
 			},
@@ -132,20 +132,20 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
-				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonInRolling
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
 				return obj, nil, nil
 			},
-			expectStatus: func() *v1alpha1.RolloutStatus {
+			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -153,9 +153,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "56855c89f9"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 1
-				s.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
-				cond := util.GetRolloutCondition(*s, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonInRolling
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
 				return s
 			},
@@ -187,7 +187,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -195,13 +195,13 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
-				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonInRolling
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
 				return obj, nil, nil
 			},
-			expectStatus: func() *v1alpha1.RolloutStatus {
+			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -209,9 +209,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "56855c89f9"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
-				s.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
-				cond := util.GetRolloutCondition(*s, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonFinalising
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(s, *cond)
 				return s
@@ -235,22 +235,22 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
-				obj.Annotations[v1alpha1.TrafficRoutingAnnotation] = "tr-demo"
+				obj.Annotations[v1beta1.TrafficRoutingAnnotation] = "tr-demo"
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
-				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonFinalising
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(&obj.Status, *cond)
 				br := batchDemo.DeepCopy()
-				br.Spec.ReleasePlan.Batches = []v1alpha1.ReleaseBatch{
+				br.Spec.ReleasePlan.Batches = []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromInt(1),
 					},
@@ -259,7 +259,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				tr.Finalizers = []string{util.ProgressingRolloutFinalizer(rolloutDemo.Name)}
 				return obj, br, tr
 			},
-			expectStatus: func() *v1alpha1.RolloutStatus {
+			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -267,14 +267,14 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "56855c89f9"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
-				s.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
-				cond := util.GetRolloutCondition(*s, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonFinalising
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(s, *cond)
 				return s
 			},
-			expectTr: func() *v1alpha1.TrafficRouting {
+			expectTr: func() *v1beta1.TrafficRouting {
 				tr := demoTR.DeepCopy()
 				return tr
 			},
@@ -297,7 +297,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -305,21 +305,21 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
-				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonFinalising
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(&obj.Status, *cond)
 				br := batchDemo.DeepCopy()
-				br.Spec.ReleasePlan.Batches = []v1alpha1.ReleaseBatch{
+				br.Spec.ReleasePlan.Batches = []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromInt(1),
 					},
 				}
-				br.Status.Phase = v1alpha1.RolloutPhaseCompleted
+				br.Status.Phase = v1beta1.RolloutPhaseCompleted
 				return obj, br, nil
 			},
-			expectStatus: func() *v1alpha1.RolloutStatus {
+			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -327,9 +327,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "56855c89f9"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
-				s.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
-				cond2 := util.GetRolloutCondition(*s, v1alpha1.RolloutConditionProgressing)
-				cond2.Reason = v1alpha1.ProgressingReasonFinalising
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				cond2 := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond2.Reason = v1beta1.ProgressingReasonFinalising
 				cond2.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(s, *cond2)
 				return s
@@ -353,7 +353,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -361,14 +361,14 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
-				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonFinalising
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(&obj.Status, *cond)
 				return obj, nil, nil
 			},
-			expectStatus: func() *v1alpha1.RolloutStatus {
+			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -376,12 +376,12 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "56855c89f9"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
-				s.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
-				cond2 := util.GetRolloutCondition(*s, v1alpha1.RolloutConditionProgressing)
-				cond2.Reason = v1alpha1.ProgressingReasonCompleted
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				cond2 := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond2.Reason = v1beta1.ProgressingReasonCompleted
 				cond2.Status = corev1.ConditionFalse
 				util.SetRolloutCondition(s, *cond2)
-				cond1 := util.NewRolloutCondition(v1alpha1.RolloutConditionSucceeded, corev1.ConditionTrue, "", "")
+				cond1 := util.NewRolloutCondition(v1beta1.RolloutConditionSucceeded, corev1.ConditionTrue, "", "")
 				cond1.LastUpdateTime = metav1.Time{}
 				cond1.LastTransitionTime = metav1.Time{}
 				util.SetRolloutCondition(s, *cond1)
@@ -416,7 +416,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -424,13 +424,13 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
-				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonInRolling
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
 				return obj, nil, nil
 			},
-			expectStatus: func() *v1alpha1.RolloutStatus {
+			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -438,9 +438,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "5d48f79ff8"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 1
-				s.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
-				cond := util.GetRolloutCondition(*s, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonCancelling
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonCancelling
 				util.SetRolloutCondition(s, *cond)
 				return s
 			},
@@ -473,7 +473,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -481,13 +481,13 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
-				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonInRolling
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
 				return obj, nil, nil
 			},
-			expectStatus: func() *v1alpha1.RolloutStatus {
+			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -495,9 +495,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "5d48f79ff8"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 1
-				s.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
-				cond := util.GetRolloutCondition(*s, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonCancelling
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonCancelling
 				util.SetRolloutCondition(s, *cond)
 				return s
 			},
@@ -530,7 +530,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *v1alpha1.BatchRelease, *v1alpha1.TrafficRouting) {
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1beta1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
@@ -540,17 +540,17 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CanaryReplicas = 5
 				obj.Status.CanaryStatus.CanaryReadyReplicas = 3
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
-				cond := util.GetRolloutCondition(obj.Status, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonInRolling
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
 				return obj, nil, nil
 			},
-			expectStatus: func() *v1alpha1.RolloutStatus {
+			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
 				s.CanaryStatus = nil
-				cond := util.GetRolloutCondition(*s, v1alpha1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonInitializing
+				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1beta1.ProgressingReasonInitializing
 				util.SetRolloutCondition(s, *cond)
 				return s
 			},
@@ -602,7 +602,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			checkRolloutEqual(fc, t, client.ObjectKey{Name: rollout.Name}, cs.expectStatus())
 			if cs.expectTr != nil {
 				expectTr := cs.expectTr()
-				obj := &v1alpha1.TrafficRouting{}
+				obj := &v1beta1.TrafficRouting{}
 				err = fc.Get(context.TODO(), client.ObjectKey{Name: expectTr.Name}, obj)
 				if err != nil {
 					t.Fatalf("get object failed: %s", err.Error())
@@ -615,8 +615,8 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 	}
 }
 
-func checkRolloutEqual(c client.WithWatch, t *testing.T, key client.ObjectKey, expect *v1alpha1.RolloutStatus) {
-	obj := &v1alpha1.Rollout{}
+func checkRolloutEqual(c client.WithWatch, t *testing.T, key client.ObjectKey, expect *v1beta1.RolloutStatus) {
+	obj := &v1beta1.Rollout{}
 	err := c.Get(context.TODO(), key, obj)
 	if err != nil {
 		t.Fatalf("get object failed: %s", err.Error())
@@ -626,12 +626,12 @@ func checkRolloutEqual(c client.WithWatch, t *testing.T, key client.ObjectKey, e
 	if cStatus.CanaryStatus != nil {
 		cStatus.CanaryStatus.LastUpdateTime = nil
 	}
-	cond1 := util.GetRolloutCondition(*cStatus, v1alpha1.RolloutConditionProgressing)
+	cond1 := util.GetRolloutCondition(*cStatus, v1beta1.RolloutConditionProgressing)
 	cond1.Message = ""
 	util.SetRolloutCondition(cStatus, *cond1)
-	cond2 := util.GetRolloutCondition(*cStatus, v1alpha1.RolloutConditionSucceeded)
+	cond2 := util.GetRolloutCondition(*cStatus, v1beta1.RolloutConditionSucceeded)
 	if cond2 != nil {
-		util.RemoveRolloutCondition(cStatus, v1alpha1.RolloutConditionSucceeded)
+		util.RemoveRolloutCondition(cStatus, v1beta1.RolloutConditionSucceeded)
 		cond2.LastUpdateTime = metav1.Time{}
 		cond2.LastTransitionTime = metav1.Time{}
 		util.SetRolloutCondition(cStatus, *cond2)
@@ -645,8 +645,8 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 	cases := []struct {
 		name            string
 		getObj          func() (*apps.Deployment, *apps.ReplicaSet)
-		getRollout      func() *v1alpha1.Rollout
-		getBatchRelease func() *v1alpha1.BatchRelease
+		getRollout      func() *v1beta1.Rollout
+		getBatchRelease func() *v1beta1.BatchRelease
 		expectStepIndex int32
 	}{
 		{
@@ -655,30 +655,30 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := deploymentDemo.DeepCopy()
 				return obj, rsDemo.DeepCopy()
 			},
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(20),
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(50),
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(100),
 						},
 					},
 				}
 				return obj
 			},
-			getBatchRelease: func() *v1alpha1.BatchRelease {
+			getBatchRelease: func() *v1beta1.BatchRelease {
 				obj := batchDemo.DeepCopy()
-				obj.Spec.ReleasePlan.Batches = []v1alpha1.ReleaseBatch{
+				obj.Spec.ReleasePlan.Batches = []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("40%"),
 					},
@@ -700,30 +700,30 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := deploymentDemo.DeepCopy()
 				return obj, rsDemo.DeepCopy()
 			},
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(20),
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(40),
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(100),
 						},
 					},
 				}
 				return obj
 			},
-			getBatchRelease: func() *v1alpha1.BatchRelease {
+			getBatchRelease: func() *v1beta1.BatchRelease {
 				obj := batchDemo.DeepCopy()
-				obj.Spec.ReleasePlan.Batches = []v1alpha1.ReleaseBatch{
+				obj.Spec.ReleasePlan.Batches = []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("40%"),
 					},
@@ -745,30 +745,30 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := deploymentDemo.DeepCopy()
 				return obj, rsDemo.DeepCopy()
 			},
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(40),
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(60),
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(100),
 						},
 					},
 				}
 				return obj
 			},
-			getBatchRelease: func() *v1alpha1.BatchRelease {
+			getBatchRelease: func() *v1beta1.BatchRelease {
 				obj := batchDemo.DeepCopy()
-				obj.Spec.ReleasePlan.Batches = []v1alpha1.ReleaseBatch{
+				obj.Spec.ReleasePlan.Batches = []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("20%"),
 					},
@@ -790,30 +790,30 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := deploymentDemo.DeepCopy()
 				return obj, rsDemo.DeepCopy()
 			},
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(10),
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(30),
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(100),
 						},
 					},
 				}
 				return obj
 			},
-			getBatchRelease: func() *v1alpha1.BatchRelease {
+			getBatchRelease: func() *v1beta1.BatchRelease {
 				obj := batchDemo.DeepCopy()
-				obj.Spec.ReleasePlan.Batches = []v1alpha1.ReleaseBatch{
+				obj.Spec.ReleasePlan.Batches = []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("20%"),
 					},
@@ -835,11 +835,11 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := deploymentDemo.DeepCopy()
 				return obj, rsDemo.DeepCopy()
 			},
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(2),
 						},
 						Replicas: &intstr.IntOrString{
@@ -848,7 +848,7 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(3),
 						},
 						Replicas: &intstr.IntOrString{
@@ -859,9 +859,9 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				}
 				return obj
 			},
-			getBatchRelease: func() *v1alpha1.BatchRelease {
+			getBatchRelease: func() *v1beta1.BatchRelease {
 				obj := batchDemo.DeepCopy()
-				obj.Spec.ReleasePlan.Batches = []v1alpha1.ReleaseBatch{
+				obj.Spec.ReleasePlan.Batches = []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
 					},

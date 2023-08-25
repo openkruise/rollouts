@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
@@ -43,7 +43,7 @@ func (rc *realStableController) GetStableInfo() *util.WorkloadInfo {
 	return rc.stableInfo
 }
 
-func (rc *realStableController) Initialize(release *v1alpha1.BatchRelease) error {
+func (rc *realStableController) Initialize(release *v1beta1.BatchRelease) error {
 	if control.IsControlledByBatchRelease(release, rc.stableObject) {
 		return nil
 	}
@@ -55,7 +55,7 @@ func (rc *realStableController) Initialize(release *v1alpha1.BatchRelease) error
 	return rc.stableClient.Patch(context.TODO(), d, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
 }
 
-func (rc *realStableController) Finalize(release *v1alpha1.BatchRelease) error {
+func (rc *realStableController) Finalize(release *v1beta1.BatchRelease) error {
 	if rc.stableObject == nil {
 		return nil // no need to process deleted object
 	}

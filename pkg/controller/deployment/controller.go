@@ -45,7 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
 	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -251,15 +251,15 @@ func (f *controllerFactory) NewController(deployment *appsv1.Deployment) *Deploy
 		return nil
 	}
 
-	strategy := rolloutsv1alpha1.DeploymentStrategy{}
-	strategyAnno := deployment.Annotations[rolloutsv1alpha1.DeploymentStrategyAnnotation]
+	strategy := rolloutsv1beta1.DeploymentStrategy{}
+	strategyAnno := deployment.Annotations[rolloutsv1beta1.DeploymentStrategyAnnotation]
 	if err := json.Unmarshal([]byte(strategyAnno), &strategy); err != nil {
 		klog.Errorf("Failed to unmarshal strategy for deployment %v: %v", klog.KObj(deployment), strategyAnno)
 		return nil
 	}
 
 	// We do NOT process such deployment with canary rolling style
-	if strategy.RollingStyle == rolloutsv1alpha1.CanaryRollingStyle {
+	if strategy.RollingStyle == rolloutsv1beta1.CanaryRollingStyle {
 		return nil
 	}
 

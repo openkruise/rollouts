@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"reflect"
 
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/feature"
 	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 
@@ -79,11 +79,11 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 	// Watch for changes to rollout
-	if err = c.Watch(&source.Kind{Type: &rolloutv1alpha1.Rollout{}}, &enqueueRequestForRollout{}); err != nil {
+	if err = c.Watch(&source.Kind{Type: &rolloutv1beta1.Rollout{}}, &enqueueRequestForRollout{}); err != nil {
 		return err
 	}
 	// watch for changes to rolloutHistory
-	if err = c.Watch(&source.Kind{Type: &rolloutv1alpha1.RolloutHistory{}}, &enqueueRequestForRolloutHistory{}); err != nil {
+	if err = c.Watch(&source.Kind{Type: &rolloutv1beta1.RolloutHistory{}}, &enqueueRequestForRolloutHistory{}); err != nil {
 		return err
 	}
 	return nil
@@ -111,7 +111,7 @@ type RolloutHistoryReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.10.0/pkg/reconcile
 func (r *RolloutHistoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// get rollout
-	rollout := &rolloutv1alpha1.Rollout{}
+	rollout := &rolloutv1beta1.Rollout{}
 	err := r.Get(ctx, req.NamespacedName, rollout)
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -125,7 +125,7 @@ func (r *RolloutHistoryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, nil
 	}
 	// get RolloutHistory which is not completed and related to the rollout (only one or zero)
-	var rolloutHistory *rolloutv1alpha1.RolloutHistory
+	var rolloutHistory *rolloutv1beta1.RolloutHistory
 	if rolloutHistory, err = r.getRolloutHistoryForRollout(rollout); err != nil {
 		klog.Errorf("get rollout(%s/%s) rolloutHistory(%s=%s) failed: %s", rollout.Namespace, rollout.Name, rolloutIDLabel, rollout.Status.CanaryStatus.ObservedRolloutID, err.Error())
 		return ctrl.Result{}, err
@@ -133,7 +133,7 @@ func (r *RolloutHistoryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// create a rolloutHistory when user does a new rollout
 	if rolloutHistory == nil {
 		// just create rolloutHistory for rollouts which are progressing, otherwise it's possible to create more than one rollouthistory when user does one rollout
-		if rollout.Status.Phase != rolloutv1alpha1.RolloutPhaseProgressing {
+		if rollout.Status.Phase != rolloutv1beta1.RolloutPhaseProgressing {
 			return ctrl.Result{}, nil
 		}
 		if err = r.createRolloutHistoryForProgressingRollout(rollout); err != nil {
@@ -147,7 +147,7 @@ func (r *RolloutHistoryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	klog.Infof("get rollout(%s/%s) rolloutHistory(%s) success", rollout.Namespace, rollout.Name, rolloutHistory.Name)
 
 	// update RolloutHistory which is waiting for rollout completed
-	if rolloutHistory.Status.Phase != rolloutv1alpha1.PhaseCompleted {
+	if rolloutHistory.Status.Phase != rolloutv1beta1.PhaseCompleted {
 		// update RolloutHistory when rollout .status.phase is equl to RolloutPhaseHealthy
 		if err = r.updateRolloutHistoryWhenRolloutIsCompeleted(rollout, rolloutHistory); err != nil {
 			klog.Errorf("update rollout(%s/%s) rolloutHistory(%s=%s) failed: %s", rollout.Namespace, rollout.Name, rolloutIDLabel, rollout.Status.CanaryStatus.ObservedRolloutID, err.Error())
@@ -161,7 +161,7 @@ func (r *RolloutHistoryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 }
 
 // getRolloutHistoryForRollout get rolloutHistory according to rolloutID and rolloutName for this new rollout.
-func (r *RolloutHistoryReconciler) getRolloutHistoryForRollout(rollout *rolloutv1alpha1.Rollout) (*rolloutv1alpha1.RolloutHistory, error) {
+func (r *RolloutHistoryReconciler) getRolloutHistoryForRollout(rollout *rolloutv1beta1.Rollout) (*rolloutv1beta1.RolloutHistory, error) {
 	// get labelSelector including rolloutBathID, rolloutID
 	lableSelectorString := fmt.Sprintf("%v=%v,%v=%v", rolloutIDLabel, rollout.Status.CanaryStatus.ObservedRolloutID, rolloutNameLabel, rollout.Name)
 	labelSelector, err := labels.Parse(lableSelectorString)
@@ -169,7 +169,7 @@ func (r *RolloutHistoryReconciler) getRolloutHistoryForRollout(rollout *rolloutv
 		return nil, err
 	}
 	// get rollouthistories according to labels, in fact there is only one or zero rolloutHistory with the labelSelector
-	rollouthistories := &rolloutv1alpha1.RolloutHistoryList{}
+	rollouthistories := &rolloutv1beta1.RolloutHistoryList{}
 	err = r.List(context.TODO(), rollouthistories, &client.ListOptions{LabelSelector: labelSelector}, client.InNamespace(rollout.Namespace))
 	if err != nil {
 		return nil, err
@@ -183,9 +183,9 @@ func (r *RolloutHistoryReconciler) getRolloutHistoryForRollout(rollout *rolloutv
 }
 
 // createRolloutHistoryForProgressingRollout create a new rolloutHistory, which indicates that user does a new rollout
-func (r *RolloutHistoryReconciler) createRolloutHistoryForProgressingRollout(rollout *rolloutv1alpha1.Rollout) error {
+func (r *RolloutHistoryReconciler) createRolloutHistoryForProgressingRollout(rollout *rolloutv1beta1.Rollout) error {
 	// init the rolloutHistory
-	rolloutHistory := &rolloutv1alpha1.RolloutHistory{
+	rolloutHistory := &rolloutv1beta1.RolloutHistory{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      rollout.Name + "-" + randAllString(6),
 			Namespace: rollout.Namespace,
@@ -200,15 +200,15 @@ func (r *RolloutHistoryReconciler) createRolloutHistoryForProgressingRollout(rol
 }
 
 // getRolloutHistorySpec get RolloutHistorySpec for rolloutHistory according to rollout
-func (r *RolloutHistoryReconciler) getRolloutHistorySpec(rollout *rolloutv1alpha1.Rollout) (rolloutv1alpha1.RolloutHistorySpec, error) {
-	rolloutHistorySpec := rolloutv1alpha1.RolloutHistorySpec{}
+func (r *RolloutHistoryReconciler) getRolloutHistorySpec(rollout *rolloutv1beta1.Rollout) (rolloutv1beta1.RolloutHistorySpec, error) {
+	rolloutHistorySpec := rolloutv1beta1.RolloutHistorySpec{}
 	var err error
 	// get rolloutInfo
 	if rolloutHistorySpec.Rollout, err = r.getRolloutInfo(rollout); err != nil {
 		return rolloutHistorySpec, err
 	}
 	// get workloadInfo
-	var workload *rolloutv1alpha1.WorkloadInfo
+	var workload *rolloutv1beta1.WorkloadInfo
 	if workload, err = r.Finder.getWorkloadInfoForRef(rollout.Namespace, rollout.Spec.ObjectRef.WorkloadRef); err != nil {
 		return rolloutHistorySpec, err
 	}
@@ -225,8 +225,8 @@ func (r *RolloutHistoryReconciler) getRolloutHistorySpec(rollout *rolloutv1alpha
 }
 
 // getRolloutInfo get RolloutInfo to for rolloutHistorySpec
-func (r *RolloutHistoryReconciler) getRolloutInfo(rollout *rolloutv1alpha1.Rollout) (rolloutv1alpha1.RolloutInfo, error) {
-	rolloutInfo := rolloutv1alpha1.RolloutInfo{}
+func (r *RolloutHistoryReconciler) getRolloutInfo(rollout *rolloutv1beta1.Rollout) (rolloutv1beta1.RolloutInfo, error) {
+	rolloutInfo := rolloutv1beta1.RolloutInfo{}
 	var err error
 	rolloutInfo.Name = rollout.Name
 	rolloutInfo.RolloutID = rollout.Status.CanaryStatus.ObservedRolloutID
@@ -237,10 +237,10 @@ func (r *RolloutHistoryReconciler) getRolloutInfo(rollout *rolloutv1alpha1.Rollo
 }
 
 // getServiceInfo get ServiceInfo for rolloutHistorySpec
-func (r *RolloutHistoryReconciler) getServiceInfo(rollout *rolloutv1alpha1.Rollout) (rolloutv1alpha1.ServiceInfo, error) {
+func (r *RolloutHistoryReconciler) getServiceInfo(rollout *rolloutv1beta1.Rollout) (rolloutv1beta1.ServiceInfo, error) {
 	// get service
 	service := &corev1.Service{}
-	serviceInfo := rolloutv1alpha1.ServiceInfo{}
+	serviceInfo := rolloutv1beta1.ServiceInfo{}
 	err := r.Get(context.TODO(), types.NamespacedName{Namespace: rollout.Namespace, Name: rollout.Spec.Strategy.Canary.TrafficRoutings[0].Service}, service)
 	if err != nil {
 		return serviceInfo, errors.New("service not find")
@@ -254,8 +254,8 @@ func (r *RolloutHistoryReconciler) getServiceInfo(rollout *rolloutv1alpha1.Rollo
 }
 
 // getTrafficRoutingInfo get TrafficRoutingInfo for rolloutHistorySpec
-func (r *RolloutHistoryReconciler) getTrafficRoutingInfo(rollout *rolloutv1alpha1.Rollout) (rolloutv1alpha1.TrafficRoutingInfo, error) {
-	trafficRoutingInfo := rolloutv1alpha1.TrafficRoutingInfo{}
+func (r *RolloutHistoryReconciler) getTrafficRoutingInfo(rollout *rolloutv1beta1.Rollout) (rolloutv1beta1.TrafficRoutingInfo, error) {
+	trafficRoutingInfo := rolloutv1beta1.TrafficRoutingInfo{}
 	var err error
 	// if gateway is configured, get it
 	if rollout.Spec.Strategy.Canary.TrafficRoutings[0].Gateway != nil &&
@@ -277,7 +277,7 @@ func (r *RolloutHistoryReconciler) getTrafficRoutingInfo(rollout *rolloutv1alpha
 }
 
 // getGateWayInfo get HTTPRouteInfo for TrafficRoutingInfo
-func (r *RolloutHistoryReconciler) getGateWayInfo(rollout *rolloutv1alpha1.Rollout) (*rolloutv1alpha1.HTTPRouteInfo, error) {
+func (r *RolloutHistoryReconciler) getGateWayInfo(rollout *rolloutv1beta1.Rollout) (*rolloutv1beta1.HTTPRouteInfo, error) {
 	// get HTTPRoute
 	gatewayName := *rollout.Spec.Strategy.Canary.TrafficRoutings[0].Gateway.HTTPRouteName
 	HTTPRoute := &v1alpha2.HTTPRoute{}
@@ -286,7 +286,7 @@ func (r *RolloutHistoryReconciler) getGateWayInfo(rollout *rolloutv1alpha1.Rollo
 		return nil, errors.New("initGateway error: HTTPRoute " + gatewayName + " not find")
 	}
 	// marshal HTTPRoute into HTTPRouteInfo for rolloutHistory
-	gatewayInfo := &rolloutv1alpha1.HTTPRouteInfo{}
+	gatewayInfo := &rolloutv1beta1.HTTPRouteInfo{}
 	gatewayInfo.Name = HTTPRoute.Name
 	if gatewayInfo.Data.Raw, err = json.Marshal(HTTPRoute.Spec); err != nil {
 		return nil, err
@@ -295,7 +295,7 @@ func (r *RolloutHistoryReconciler) getGateWayInfo(rollout *rolloutv1alpha1.Rollo
 }
 
 // getIngressInfo get IngressInfo for TrafficRoutingInfo
-func (r *RolloutHistoryReconciler) getIngressInfo(rollout *rolloutv1alpha1.Rollout) (*rolloutv1alpha1.IngressInfo, error) {
+func (r *RolloutHistoryReconciler) getIngressInfo(rollout *rolloutv1beta1.Rollout) (*rolloutv1beta1.IngressInfo, error) {
 	// get Ingress
 	ingressName := rollout.Spec.Strategy.Canary.TrafficRoutings[0].Ingress.Name
 	ingress := &networkingv1.Ingress{}
@@ -304,7 +304,7 @@ func (r *RolloutHistoryReconciler) getIngressInfo(rollout *rolloutv1alpha1.Rollo
 		return nil, errors.New("initIngressInfo error: Ingress " + ingressName + " not find")
 	}
 	// marshal ingress into ingressInfo
-	ingressInfo := &rolloutv1alpha1.IngressInfo{}
+	ingressInfo := &rolloutv1beta1.IngressInfo{}
 	ingressInfo.Name = ingressName
 	if ingressInfo.Data.Raw, err = json.Marshal(ingress.Spec); err != nil {
 		return nil, err
@@ -313,9 +313,9 @@ func (r *RolloutHistoryReconciler) getIngressInfo(rollout *rolloutv1alpha1.Rollo
 }
 
 // updateRolloutHistoryWhenRolloutIsCompeleted record all pods released when rollout phase is healthy
-func (r *RolloutHistoryReconciler) updateRolloutHistoryWhenRolloutIsCompeleted(rollout *rolloutv1alpha1.Rollout, rolloutHistory *rolloutv1alpha1.RolloutHistory) error {
+func (r *RolloutHistoryReconciler) updateRolloutHistoryWhenRolloutIsCompeleted(rollout *rolloutv1beta1.Rollout, rolloutHistory *rolloutv1beta1.RolloutHistory) error {
 	// do update until rollout.status.Phase is equl to RolloutPhaseHealthy
-	if rollout.Status.Phase != rolloutv1alpha1.RolloutPhaseHealthy {
+	if rollout.Status.Phase != rolloutv1beta1.RolloutPhaseHealthy {
 		return nil
 	}
 	// when this rollot's phase has been healthy, rolloutHistory record steps information and rollout.spec
@@ -335,7 +335,7 @@ func (r *RolloutHistoryReconciler) updateRolloutHistoryWhenRolloutIsCompeleted(r
 		return nil
 	}
 	// make .status.phase PhaseCompleted
-	rolloutHistory.Status.Phase = rolloutv1alpha1.PhaseCompleted
+	rolloutHistory.Status.Phase = rolloutv1beta1.PhaseCompleted
 	// record all pods information for rolloutHistory .status.canarySteps
 	err = r.recordStatusCanarySteps(rollout, rolloutHistory)
 	if err != nil {
@@ -346,8 +346,8 @@ func (r *RolloutHistoryReconciler) updateRolloutHistoryWhenRolloutIsCompeleted(r
 }
 
 // recordStatusCanarySteps record all pods information which are canary released
-func (r *RolloutHistoryReconciler) recordStatusCanarySteps(rollout *rolloutv1alpha1.Rollout, rolloutHistory *rolloutv1alpha1.RolloutHistory) error {
-	rolloutHistory.Status.CanarySteps = make([]rolloutv1alpha1.CanaryStepInfo, 0)
+func (r *RolloutHistoryReconciler) recordStatusCanarySteps(rollout *rolloutv1beta1.Rollout, rolloutHistory *rolloutv1beta1.RolloutHistory) error {
+	rolloutHistory.Status.CanarySteps = make([]rolloutv1beta1.CanaryStepInfo, 0)
 	for i := 0; i < len(rollout.Spec.Strategy.Canary.Steps); i++ {
 		podList := &corev1.PodList{}
 		var extraSelector labels.Selector
@@ -358,7 +358,7 @@ func (r *RolloutHistoryReconciler) recordStatusCanarySteps(rollout *rolloutv1alp
 			return err
 		}
 		// get extra labelSelector including rolloutBathID, rolloutID and workload selector
-		lableSelectorString := fmt.Sprintf("%v=%v,%v=%v,%v", rolloutv1alpha1.RolloutBatchIDLabel, len(rolloutHistory.Status.CanarySteps)+1, rolloutv1alpha1.RolloutIDLabel, rolloutHistory.Spec.Rollout.RolloutID, selector.String())
+		lableSelectorString := fmt.Sprintf("%v=%v,%v=%v,%v", rolloutv1beta1.RolloutBatchIDLabel, len(rolloutHistory.Status.CanarySteps)+1, rolloutv1beta1.RolloutIDLabel, rolloutHistory.Spec.Rollout.RolloutID, selector.String())
 		extraSelector, err = labels.Parse(lableSelectorString)
 		if err != nil {
 			return err
@@ -371,17 +371,17 @@ func (r *RolloutHistoryReconciler) recordStatusCanarySteps(rollout *rolloutv1alp
 		// if num of pods is empty, append a empty CanaryStepInfo{} to canarySteps
 		if len(podList.Items) == 0 {
 			index := int32(len(rolloutHistory.Status.CanarySteps)) + 1
-			rolloutHistory.Status.CanarySteps = append(rolloutHistory.Status.CanarySteps, rolloutv1alpha1.CanaryStepInfo{CanaryStepIndex: index})
+			rolloutHistory.Status.CanarySteps = append(rolloutHistory.Status.CanarySteps, rolloutv1beta1.CanaryStepInfo{CanaryStepIndex: index})
 			continue
 		}
 		// get current step pods released
-		currentStepInfo := rolloutv1alpha1.CanaryStepInfo{}
-		var pods []rolloutv1alpha1.Pod
+		currentStepInfo := rolloutv1beta1.CanaryStepInfo{}
+		var pods []rolloutv1beta1.Pod
 		// get pods name, ip, node and add them to .status.canarySteps
 		for i := range podList.Items {
 			pod := &podList.Items[i]
 			if pod.DeletionTimestamp.IsZero() {
-				cur := rolloutv1alpha1.Pod{Name: pod.Name, IP: pod.Status.PodIP, NodeName: pod.Spec.NodeName}
+				cur := rolloutv1beta1.Pod{Name: pod.Name, IP: pod.Status.PodIP, NodeName: pod.Spec.NodeName}
 				pods = append(pods, cur)
 			}
 		}

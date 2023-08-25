@@ -31,7 +31,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
 
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
 	"github.com/openkruise/rollouts/pkg/util"
 	labelsutil "github.com/openkruise/rollouts/pkg/util/labels"
@@ -476,7 +476,7 @@ func (dc *DeploymentController) syncDeploymentStatus(ctx context.Context, allRSs
 }
 
 // calculateStatus calculates the latest status for the provided deployment by looking into the provided replica sets.
-func calculateStatus(allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, deployment *apps.Deployment, strategy *rolloutsv1alpha1.DeploymentStrategy) apps.DeploymentStatus {
+func calculateStatus(allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, deployment *apps.Deployment, strategy *rolloutsv1beta1.DeploymentStrategy) apps.DeploymentStatus {
 	availableReplicas := deploymentutil.GetAvailableReplicaCountForReplicaSets(allRSs)
 	totalReplicas := deploymentutil.GetReplicaCountForReplicaSets(allRSs)
 	unavailableReplicas := totalReplicas - availableReplicas

@@ -38,7 +38,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
 )
 
@@ -68,7 +68,7 @@ type DeploymentController struct {
 	rsLister appslisters.ReplicaSetLister
 
 	// we will use this strategy to replace spec.strategy of deployment
-	strategy rolloutsv1alpha1.DeploymentStrategy
+	strategy rolloutsv1beta1.DeploymentStrategy
 }
 
 // getReplicaSetsForDeployment uses ControllerRefManager to reconcile
@@ -147,7 +147,7 @@ func (dc *DeploymentController) patchExtraStatus(deployment *apps.Deployment) er
 		updatedReadyReplicas = newRS.Status.ReadyReplicas
 	}
 
-	extraStatus := &rolloutsv1alpha1.DeploymentExtraStatus{
+	extraStatus := &rolloutsv1beta1.DeploymentExtraStatus{
 		UpdatedReadyReplicas:    updatedReadyReplicas,
 		ExpectedUpdatedReplicas: deploymentutil.NewRSReplicasLimit(dc.strategy.Partition, deployment),
 	}
@@ -159,12 +159,12 @@ func (dc *DeploymentController) patchExtraStatus(deployment *apps.Deployment) er
 	}
 
 	extraStatusAnno := string(extraStatusByte)
-	if deployment.Annotations[rolloutsv1alpha1.DeploymentExtraStatusAnnotation] == extraStatusAnno {
+	if deployment.Annotations[rolloutsv1beta1.DeploymentExtraStatusAnnotation] == extraStatusAnno {
 		return nil // no need to update
 	}
 
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`,
-		rolloutsv1alpha1.DeploymentExtraStatusAnnotation,
+		rolloutsv1beta1.DeploymentExtraStatusAnnotation,
 		strings.Replace(extraStatusAnno, `"`, `\"`, -1))
 
 	_, err = dc.client.AppsV1().Deployments(deployment.Namespace).

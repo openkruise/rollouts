@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
@@ -104,26 +104,26 @@ var (
 		},
 	}
 
-	demoTR = &v1alpha1.TrafficRouting{
+	demoTR = &v1beta1.TrafficRouting{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rollouts.kruise.io/v1alpha1",
+			APIVersion: "rollouts.kruise.io/v1beta1",
 			Kind:       "TrafficRouting",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "tr-demo",
 			Labels: map[string]string{},
 		},
-		Spec: v1alpha1.TrafficRoutingSpec{
-			ObjectRef: []v1alpha1.TrafficRoutingRef{
+		Spec: v1beta1.TrafficRoutingSpec{
+			ObjectRef: []v1beta1.TrafficRoutingRef{
 				{
 					Service: "echoserver",
-					Ingress: &v1alpha1.IngressTrafficRouting{
+					Ingress: &v1beta1.IngressTrafficRouting{
 						Name: "echoserver",
 					},
 				},
 			},
-			Strategy: v1alpha1.TrafficRoutingStrategy{
-				Matches: []v1alpha1.HttpRouteMatch{
+			Strategy: v1beta1.TrafficRoutingStrategy{
+				Matches: []v1beta1.HttpRouteMatch{
 					// header
 					{
 						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
@@ -185,15 +185,15 @@ func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = kruisev1aplphal.AddToScheme(scheme)
-	_ = v1alpha1.AddToScheme(scheme)
+	_ = v1beta1.AddToScheme(scheme)
 }
 
 func TestTrafficRoutingTest(t *testing.T) {
 	cases := []struct {
 		name              string
 		getObj            func() ([]*corev1.Service, []*netv1.Ingress)
-		getTrafficRouting func() *v1alpha1.TrafficRouting
-		expectObj         func() ([]*corev1.Service, []*netv1.Ingress, *v1alpha1.TrafficRouting)
+		getTrafficRouting func() *v1beta1.TrafficRouting
+		expectObj         func() ([]*corev1.Service, []*netv1.Ingress, *v1beta1.TrafficRouting)
 		expectDone        bool
 	}{
 		{
@@ -201,14 +201,14 @@ func TestTrafficRoutingTest(t *testing.T) {
 			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getTrafficRouting: func() *v1alpha1.TrafficRouting {
+			getTrafficRouting: func() *v1beta1.TrafficRouting {
 				return demoTR.DeepCopy()
 			},
-			expectObj: func() ([]*corev1.Service, []*netv1.Ingress, *v1alpha1.TrafficRouting) {
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress, *v1beta1.TrafficRouting) {
 				s1 := demoService.DeepCopy()
 				tr := demoTR.DeepCopy()
-				tr.Status = v1alpha1.TrafficRoutingStatus{
-					Phase: v1alpha1.TrafficRoutingPhaseHealthy,
+				tr.Status = v1beta1.TrafficRoutingStatus{
+					Phase: v1beta1.TrafficRoutingPhaseHealthy,
 				}
 				return []*corev1.Service{s1}, []*netv1.Ingress{demoIngress.DeepCopy()}, tr
 			},
@@ -219,20 +219,20 @@ func TestTrafficRoutingTest(t *testing.T) {
 			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getTrafficRouting: func() *v1alpha1.TrafficRouting {
+			getTrafficRouting: func() *v1beta1.TrafficRouting {
 				obj := demoTR.DeepCopy()
-				obj.Status = v1alpha1.TrafficRoutingStatus{
-					Phase: v1alpha1.TrafficRoutingPhaseHealthy,
+				obj.Status = v1beta1.TrafficRoutingStatus{
+					Phase: v1beta1.TrafficRoutingPhaseHealthy,
 				}
-				obj.Finalizers = []string{fmt.Sprintf("%s/rollout-test", v1alpha1.ProgressingRolloutFinalizerPrefix),
+				obj.Finalizers = []string{fmt.Sprintf("%s/rollout-test", v1beta1.ProgressingRolloutFinalizerPrefix),
 					util.TrafficRoutingFinalizer}
 				return obj
 			},
-			expectObj: func() ([]*corev1.Service, []*netv1.Ingress, *v1alpha1.TrafficRouting) {
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress, *v1beta1.TrafficRouting) {
 				s1 := demoService.DeepCopy()
 				tr := demoTR.DeepCopy()
-				tr.Status = v1alpha1.TrafficRoutingStatus{
-					Phase: v1alpha1.TrafficRoutingPhaseProgressing,
+				tr.Status = v1beta1.TrafficRoutingStatus{
+					Phase: v1beta1.TrafficRoutingPhaseProgressing,
 				}
 				return []*corev1.Service{s1}, []*netv1.Ingress{demoIngress.DeepCopy()}, tr
 			},
@@ -243,16 +243,16 @@ func TestTrafficRoutingTest(t *testing.T) {
 			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getTrafficRouting: func() *v1alpha1.TrafficRouting {
+			getTrafficRouting: func() *v1beta1.TrafficRouting {
 				obj := demoTR.DeepCopy()
-				obj.Status = v1alpha1.TrafficRoutingStatus{
-					Phase: v1alpha1.TrafficRoutingPhaseProgressing,
+				obj.Status = v1beta1.TrafficRoutingStatus{
+					Phase: v1beta1.TrafficRoutingPhaseProgressing,
 				}
-				obj.Finalizers = []string{fmt.Sprintf("%s/rollout-test", v1alpha1.ProgressingRolloutFinalizerPrefix),
+				obj.Finalizers = []string{fmt.Sprintf("%s/rollout-test", v1beta1.ProgressingRolloutFinalizerPrefix),
 					util.TrafficRoutingFinalizer}
 				return obj
 			},
-			expectObj: func() ([]*corev1.Service, []*netv1.Ingress, *v1alpha1.TrafficRouting) {
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress, *v1beta1.TrafficRouting) {
 				s1 := demoService.DeepCopy()
 				i1 := demoIngress.DeepCopy()
 				i2 := demoIngress.DeepCopy()
@@ -260,8 +260,8 @@ func TestTrafficRoutingTest(t *testing.T) {
 				i2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
 				i2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "0"
 				tr := demoTR.DeepCopy()
-				tr.Status = v1alpha1.TrafficRoutingStatus{
-					Phase: v1alpha1.TrafficRoutingPhaseProgressing,
+				tr.Status = v1beta1.TrafficRoutingStatus{
+					Phase: v1beta1.TrafficRoutingPhaseProgressing,
 				}
 				return []*corev1.Service{s1}, []*netv1.Ingress{i1, i2}, tr
 			},
@@ -278,16 +278,16 @@ func TestTrafficRoutingTest(t *testing.T) {
 				i2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "0"
 				return []*corev1.Service{s1}, []*netv1.Ingress{i1, i2}
 			},
-			getTrafficRouting: func() *v1alpha1.TrafficRouting {
+			getTrafficRouting: func() *v1beta1.TrafficRouting {
 				obj := demoTR.DeepCopy()
-				obj.Status = v1alpha1.TrafficRoutingStatus{
-					Phase: v1alpha1.TrafficRoutingPhaseProgressing,
+				obj.Status = v1beta1.TrafficRoutingStatus{
+					Phase: v1beta1.TrafficRoutingPhaseProgressing,
 				}
-				obj.Finalizers = []string{fmt.Sprintf("%s/rollout-test", v1alpha1.ProgressingRolloutFinalizerPrefix),
+				obj.Finalizers = []string{fmt.Sprintf("%s/rollout-test", v1beta1.ProgressingRolloutFinalizerPrefix),
 					util.TrafficRoutingFinalizer}
 				return obj
 			},
-			expectObj: func() ([]*corev1.Service, []*netv1.Ingress, *v1alpha1.TrafficRouting) {
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress, *v1beta1.TrafficRouting) {
 				s1 := demoService.DeepCopy()
 				i1 := demoIngress.DeepCopy()
 				i2 := demoIngress.DeepCopy()
@@ -296,8 +296,8 @@ func TestTrafficRoutingTest(t *testing.T) {
 				i2.Annotations["nginx.ingress.kubernetes.io/canary-by-header"] = "user_id"
 				i2.Annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = "123456"
 				tr := demoTR.DeepCopy()
-				tr.Status = v1alpha1.TrafficRoutingStatus{
-					Phase: v1alpha1.TrafficRoutingPhaseProgressing,
+				tr.Status = v1beta1.TrafficRoutingStatus{
+					Phase: v1beta1.TrafficRoutingPhaseProgressing,
 				}
 				return []*corev1.Service{s1}, []*netv1.Ingress{i1, i2}, tr
 			},
@@ -315,16 +315,16 @@ func TestTrafficRoutingTest(t *testing.T) {
 				i2.Annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = "123456"
 				return []*corev1.Service{s1}, []*netv1.Ingress{i1, i2}
 			},
-			getTrafficRouting: func() *v1alpha1.TrafficRouting {
+			getTrafficRouting: func() *v1beta1.TrafficRouting {
 				obj := demoTR.DeepCopy()
-				obj.Status = v1alpha1.TrafficRoutingStatus{
-					Phase: v1alpha1.TrafficRoutingPhaseProgressing,
+				obj.Status = v1beta1.TrafficRoutingStatus{
+					Phase: v1beta1.TrafficRoutingPhaseProgressing,
 				}
-				obj.Finalizers = []string{fmt.Sprintf("%s/rollout-test", v1alpha1.ProgressingRolloutFinalizerPrefix),
+				obj.Finalizers = []string{fmt.Sprintf("%s/rollout-test", v1beta1.ProgressingRolloutFinalizerPrefix),
 					util.TrafficRoutingFinalizer}
 				return obj
 			},
-			expectObj: func() ([]*corev1.Service, []*netv1.Ingress, *v1alpha1.TrafficRouting) {
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress, *v1beta1.TrafficRouting) {
 				s1 := demoService.DeepCopy()
 				i1 := demoIngress.DeepCopy()
 				i2 := demoIngress.DeepCopy()
@@ -333,8 +333,8 @@ func TestTrafficRoutingTest(t *testing.T) {
 				i2.Annotations["nginx.ingress.kubernetes.io/canary-by-header"] = "user_id"
 				i2.Annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = "123456"
 				tr := demoTR.DeepCopy()
-				tr.Status = v1alpha1.TrafficRoutingStatus{
-					Phase: v1alpha1.TrafficRoutingPhaseProgressing,
+				tr.Status = v1beta1.TrafficRoutingStatus{
+					Phase: v1beta1.TrafficRoutingPhaseProgressing,
 				}
 				return []*corev1.Service{s1}, []*netv1.Ingress{i1, i2}, tr
 			},
@@ -405,9 +405,9 @@ func checkObjEqual(c client.WithWatch, t *testing.T, expect client.Object) {
 		}
 
 	case "TrafficRouting":
-		s1 := obj.(*v1alpha1.TrafficRouting)
+		s1 := obj.(*v1beta1.TrafficRouting)
 		s1.Status.Message = ""
-		s2 := expect.(*v1alpha1.TrafficRouting)
+		s2 := expect.(*v1beta1.TrafficRouting)
 		if !reflect.DeepEqual(s1.Status, s2.Status) {
 			t.Fatalf("expect(%s), but get object(%s)", util.DumpJSON(s2), util.DumpJSON(s1))
 		}
@@ -421,7 +421,7 @@ func getEmptyObject(gvk schema.GroupVersionKind) client.Object {
 	case "Ingress":
 		return &netv1.Ingress{}
 	case "TrafficRouting":
-		return &v1alpha1.TrafficRouting{}
+		return &v1beta1.TrafficRouting{}
 	}
 	return nil
 }

@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -94,10 +94,10 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to BatchRelease
-	err = c.Watch(&source.Kind{Type: &v1alpha1.BatchRelease{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
+	err = c.Watch(&source.Kind{Type: &v1beta1.BatchRelease{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldObject := e.ObjectOld.(*v1alpha1.BatchRelease)
-			newObject := e.ObjectNew.(*v1alpha1.BatchRelease)
+			oldObject := e.ObjectOld.(*v1beta1.BatchRelease)
+			newObject := e.ObjectNew.(*v1beta1.BatchRelease)
 			if oldObject.Generation != newObject.Generation || newObject.DeletionTimestamp != nil {
 				klog.V(3).Infof("Observed updated Spec for BatchRelease: %s/%s", newObject.Namespace, newObject.Name)
 				return true
@@ -152,7 +152,7 @@ type BatchReleaseReconciler struct {
 // Reconcile reads that state of the cluster for a Rollout object and makes changes based on the state read
 // and what is in the Rollout.Spec
 func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	release := new(v1alpha1.BatchRelease)
+	release := new(v1beta1.BatchRelease)
 	err := r.Get(context.TODO(), req.NamespacedName, release)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -216,7 +216,7 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 }
 
 // updateStatus update BatchRelease status to newStatus
-func (r *BatchReleaseReconciler) updateStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) error {
+func (r *BatchReleaseReconciler) updateStatus(release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus) error {
 	var err error
 	defer func() {
 		if err != nil {
@@ -234,7 +234,7 @@ func (r *BatchReleaseReconciler) updateStatus(release *v1alpha1.BatchRelease, ne
 	objectKey := client.ObjectKeyFromObject(release)
 	if !reflect.DeepEqual(release.Status, *newStatus) {
 		err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-			clone := &v1alpha1.BatchRelease{}
+			clone := &v1beta1.BatchRelease{}
 			getErr := r.Get(context.TODO(), objectKey, clone)
 			if getErr != nil {
 				return getErr
@@ -247,7 +247,7 @@ func (r *BatchReleaseReconciler) updateStatus(release *v1alpha1.BatchRelease, ne
 }
 
 // handleFinalizer will remove finalizer in finalized phase and add finalizer in the other phases.
-func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease) (bool, error) {
+func (r *BatchReleaseReconciler) handleFinalizer(release *v1beta1.BatchRelease) (bool, error) {
 	var err error
 	defer func() {
 		if err != nil {
@@ -257,7 +257,7 @@ func (r *BatchReleaseReconciler) handleFinalizer(release *v1alpha1.BatchRelease)
 
 	// remove the release finalizer if it needs
 	if !release.DeletionTimestamp.IsZero() &&
-		release.Status.Phase == v1alpha1.RolloutPhaseCompleted &&
+		release.Status.Phase == v1beta1.RolloutPhaseCompleted &&
 		controllerutil.ContainsFinalizer(release, ReleaseFinalizer) {
 		err = util.UpdateFinalizer(r.Client, release, util.RemoveFinalizerOpType, ReleaseFinalizer)
 		if client.IgnoreNotFound(err) != nil {

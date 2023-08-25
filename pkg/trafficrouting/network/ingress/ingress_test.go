@@ -19,7 +19,7 @@ import (
 	"reflect"
 	"testing"
 
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
 	corev1 "k8s.io/api/core/v1"
@@ -253,7 +253,7 @@ var (
 func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = rolloutsv1alpha1.AddToScheme(scheme)
+	_ = rolloutsv1beta1.AddToScheme(scheme)
 }
 
 func TestInitialize(t *testing.T) {
@@ -277,7 +277,7 @@ func TestInitialize(t *testing.T) {
 		Key:           "rollout-demo",
 		StableService: "echoserver",
 		CanaryService: "echoserver-canary",
-		TrafficConf: &rolloutsv1alpha1.IngressTrafficRouting{
+		TrafficConf: &rolloutsv1beta1.IngressTrafficRouting{
 			Name: "echoserver",
 		},
 	}
@@ -307,7 +307,7 @@ func TestEnsureRoutes(t *testing.T) {
 		name          string
 		getConfigmap  func() *corev1.ConfigMap
 		getIngress    func() []*netv1.Ingress
-		getRoutes     func() *rolloutsv1alpha1.CanaryStep
+		getRoutes     func() *rolloutsv1beta1.CanaryStep
 		expectIngress func() *netv1.Ingress
 		ingressType   string
 	}{
@@ -327,11 +327,11 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
-				return &rolloutsv1alpha1.CanaryStep{
-					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
+			getRoutes: func() *rolloutsv1beta1.CanaryStep {
+				return &rolloutsv1beta1.CanaryStep{
+					TrafficRoutingStrategy: rolloutsv1beta1.TrafficRoutingStrategy{
 						Weight: nil,
-						Matches: []rolloutsv1alpha1.HttpRouteMatch{
+						Matches: []rolloutsv1beta1.HttpRouteMatch{
 							// header
 							{
 								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
@@ -398,9 +398,9 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
-				return &rolloutsv1alpha1.CanaryStep{
-					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
+			getRoutes: func() *rolloutsv1beta1.CanaryStep {
+				return &rolloutsv1beta1.CanaryStep{
+					TrafficRoutingStrategy: rolloutsv1beta1.TrafficRoutingStrategy{
 						Weight: utilpointer.Int32(40),
 					},
 				}
@@ -433,11 +433,11 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
+			getRoutes: func() *rolloutsv1beta1.CanaryStep {
 				iType := gatewayv1alpha2.HeaderMatchRegularExpression
-				return &rolloutsv1alpha1.CanaryStep{
-					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
-						Matches: []rolloutsv1alpha1.HttpRouteMatch{
+				return &rolloutsv1beta1.CanaryStep{
+					TrafficRoutingStrategy: rolloutsv1beta1.TrafficRoutingStrategy{
+						Matches: []rolloutsv1beta1.HttpRouteMatch{
 							// header
 							{
 								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
@@ -481,10 +481,10 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
-				return &rolloutsv1alpha1.CanaryStep{
-					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
-						Matches: []rolloutsv1alpha1.HttpRouteMatch{
+			getRoutes: func() *rolloutsv1beta1.CanaryStep {
+				return &rolloutsv1beta1.CanaryStep{
+					TrafficRoutingStrategy: rolloutsv1beta1.TrafficRoutingStrategy{
+						Matches: []rolloutsv1beta1.HttpRouteMatch{
 							// header
 							{
 								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
@@ -524,7 +524,7 @@ func TestEnsureRoutes(t *testing.T) {
 		Key:           "rollout-demo",
 		StableService: "echoserver",
 		CanaryService: "echoserver-canary",
-		TrafficConf: &rolloutsv1alpha1.IngressTrafficRouting{
+		TrafficConf: &rolloutsv1beta1.IngressTrafficRouting{
 			Name: "echoserver",
 		},
 	}
@@ -594,7 +594,7 @@ func TestFinalise(t *testing.T) {
 		Key:           "rollout-demo",
 		StableService: "echoserver",
 		CanaryService: "echoserver-canary",
-		TrafficConf: &rolloutsv1alpha1.IngressTrafficRouting{
+		TrafficConf: &rolloutsv1beta1.IngressTrafficRouting{
 			Name: "echoserver",
 		},
 	}

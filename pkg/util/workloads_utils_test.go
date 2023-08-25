@@ -25,7 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,7 +41,7 @@ func init() {
 	scheme = runtime.NewScheme()
 	_ = appsv1.AddToScheme(scheme)
 	_ = appsv1beta1.AddToScheme(scheme)
-	_ = appsv1alpha1.AddToScheme(scheme)
+	_ = rolloutsv1beta1.AddToScheme(scheme)
 	_ = kruiseappsv1alpha1.AddToScheme(scheme)
 }
 

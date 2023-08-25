@@ -27,7 +27,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -49,9 +49,9 @@ const TIME_LAYOUT = "2006-01-02 15:04:05"
 
 var (
 	scheme        *runtime.Scheme
-	releaseDeploy = &v1alpha1.BatchRelease{
+	releaseDeploy = &v1beta1.BatchRelease{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: v1alpha1.GroupVersion.String(),
+			APIVersion: v1beta1.GroupVersion.String(),
 			Kind:       "BatchRelease",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -59,17 +59,17 @@ var (
 			Namespace: "application",
 			UID:       types.UID("87076677"),
 		},
-		Spec: v1alpha1.BatchReleaseSpec{
-			TargetRef: v1alpha1.ObjectRef{
-				WorkloadRef: &v1alpha1.WorkloadRef{
+		Spec: v1beta1.BatchReleaseSpec{
+			TargetRef: v1beta1.ObjectRef{
+				WorkloadRef: &v1beta1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
 					Name:       "sample",
 				},
 			},
-			ReleasePlan: v1alpha1.ReleasePlan{
+			ReleasePlan: v1beta1.ReleasePlan{
 				BatchPartition: pointer.Int32(0),
-				Batches: []v1alpha1.ReleaseBatch{
+				Batches: []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
 					},
@@ -129,9 +129,9 @@ var (
 )
 
 var (
-	releaseClone = &v1alpha1.BatchRelease{
+	releaseClone = &v1beta1.BatchRelease{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: v1alpha1.GroupVersion.String(),
+			APIVersion: v1beta1.GroupVersion.String(),
 			Kind:       "BatchRelease",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -139,17 +139,17 @@ var (
 			Namespace: "application",
 			UID:       types.UID("87076677"),
 		},
-		Spec: v1alpha1.BatchReleaseSpec{
-			TargetRef: v1alpha1.ObjectRef{
-				WorkloadRef: &v1alpha1.WorkloadRef{
+		Spec: v1beta1.BatchReleaseSpec{
+			TargetRef: v1beta1.ObjectRef{
+				WorkloadRef: &v1beta1.WorkloadRef{
 					APIVersion: "apps.kruise.io/v1alpha1",
 					Kind:       "CloneSet",
 					Name:       "sample",
 				},
 			},
-			ReleasePlan: v1alpha1.ReleasePlan{
+			ReleasePlan: v1beta1.ReleasePlan{
 				BatchPartition: pointer.Int32Ptr(0),
-				Batches: []v1alpha1.ReleaseBatch{
+				Batches: []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
 					},
@@ -209,7 +209,7 @@ var (
 func init() {
 	scheme = runtime.NewScheme()
 	apimachineryruntime.Must(apps.AddToScheme(scheme))
-	apimachineryruntime.Must(v1alpha1.AddToScheme(scheme))
+	apimachineryruntime.Must(v1beta1.AddToScheme(scheme))
 	apimachineryruntime.Must(kruiseappsv1alpha1.AddToScheme(scheme))
 
 	controlInfo, _ := json.Marshal(metav1.NewControllerRef(releaseDeploy, releaseDeploy.GroupVersionKind()))
@@ -232,13 +232,13 @@ func TestReconcile_CloneSet(t *testing.T) {
 		GetRelease    func() client.Object
 		GetCloneSet   func() []client.Object
 		ExpectedBatch int32
-		ExpectedPhase v1alpha1.RolloutPhase
-		ExpectedState v1alpha1.BatchReleaseBatchStateType
+		ExpectedPhase v1beta1.RolloutPhase
+		ExpectedState v1beta1.BatchReleaseBatchStateType
 	}{
 		{
 			Name: "Preparing, Input-Phase=Preparing, Output-Phase=Progressing",
 			GetRelease: func() client.Object {
-				release := setPhase(releaseClone, v1alpha1.RolloutPhasePreparing)
+				release := setPhase(releaseClone, v1beta1.RolloutPhasePreparing)
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -254,12 +254,12 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
 		},
 		{
 			Name: "Progressing, stage=0, Input-State=Upgrade, Output-State=Verify",
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.UpgradingBatchState)
+				release := setState(releaseClone, v1beta1.UpgradingBatchState)
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -275,13 +275,13 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.VerifyingBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.VerifyingBatchState,
 		},
 		{
 			Name: "Progressing, stage=0, Input-State=Upgrade, Output-State=Verify",
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.UpgradingBatchState)
+				release := setState(releaseClone, v1beta1.UpgradingBatchState)
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -297,13 +297,13 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.VerifyingBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.VerifyingBatchState,
 		},
 		{
 			Name: "Progressing, stage=0, Input-State=Verify, Output-State=BatchReady",
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.VerifyingBatchState)
+				release := setState(releaseClone, v1beta1.VerifyingBatchState)
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
 				stableTemplate.Spec.Containers = containers("v1")
@@ -321,13 +321,13 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.ReadyBatchState,
 		},
 		{
 			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=Upgrade",
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.ReadyBatchState)
+				release := setState(releaseClone, v1beta1.ReadyBatchState)
 				release.Status.CanaryStatus.BatchReadyTime = getOldTime()
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
 				canaryTemplate := stableClone.Spec.Template.DeepCopy()
@@ -347,14 +347,14 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.UpgradingBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.UpgradingBatchState,
 			ExpectedBatch: 1,
 		},
 		{
 			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=BatchReady",
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.ReadyBatchState)
+				release := setState(releaseClone, v1beta1.ReadyBatchState)
 				now := metav1.Now()
 				release.Status.CanaryStatus.BatchReadyTime = &now
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
@@ -374,13 +374,13 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.ReadyBatchState,
 		},
 		{
 			Name: "Special Case: Scaling, Input-State=BatchReady, Output-State=Upgrade",
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.ReadyBatchState)
+				release := setState(releaseClone, v1beta1.ReadyBatchState)
 				now := metav1.Now()
 				release.Status.CanaryStatus.BatchReadyTime = &now
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
@@ -401,13 +401,13 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.UpgradingBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.UpgradingBatchState,
 		},
 		{
 			Name: `Special Case: RollBack, Input-Phase=Progressing, Output-Phase=Progressing`,
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.ReadyBatchState)
+				release := setState(releaseClone, v1beta1.ReadyBatchState)
 				now := metav1.Now()
 				release.Status.CanaryStatus.BatchReadyTime = &now
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
@@ -431,13 +431,13 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.ReadyBatchState,
 		},
 		{
 			Name: `Special Case: Deletion, Input-Phase=Progressing, Output-Phase=Finalizing`,
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.ReadyBatchState)
+				release := setState(releaseClone, v1beta1.ReadyBatchState)
 				now := metav1.Now()
 				release.Status.CanaryStatus.BatchReadyTime = &now
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
@@ -459,13 +459,13 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseFinalizing,
-			ExpectedState: v1alpha1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseFinalizing,
+			ExpectedState: v1beta1.ReadyBatchState,
 		},
 		{
 			Name: `Special Case: Continuous Release, Input-Phase=Progressing, Output-Phase=Progressing`,
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.ReadyBatchState)
+				release := setState(releaseClone, v1beta1.ReadyBatchState)
 				now := metav1.Now()
 				release.Status.CanaryStatus.BatchReadyTime = &now
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
@@ -493,13 +493,13 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.ReadyBatchState,
 		},
 		{
 			Name: `Special Case: BatchPartition=nil, Input-Phase=Progressing, Output-Phase=Finalizing`,
 			GetRelease: func() client.Object {
-				release := setState(releaseClone, v1alpha1.ReadyBatchState)
+				release := setState(releaseClone, v1beta1.ReadyBatchState)
 				now := metav1.Now()
 				release.Status.CanaryStatus.BatchReadyTime = &now
 				stableTemplate := stableClone.Spec.Template.DeepCopy()
@@ -521,8 +521,8 @@ func TestReconcile_CloneSet(t *testing.T) {
 					canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseFinalizing,
-			ExpectedState: v1alpha1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseFinalizing,
+			ExpectedState: v1beta1.ReadyBatchState,
 		},
 	}
 
@@ -545,7 +545,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).Should(BeNumerically(">=", int64(0)))
 
-			newRelease := v1alpha1.BatchRelease{}
+			newRelease := v1beta1.BatchRelease{}
 			err = cli.Get(context.TODO(), key, &newRelease)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newRelease.Status.Phase).Should(Equal(cs.ExpectedPhase))
@@ -563,14 +563,14 @@ func TestReconcile_Deployment(t *testing.T) {
 		GetRelease     func() client.Object
 		GetDeployments func() []client.Object
 		ExpectedBatch  int32
-		ExpectedPhase  v1alpha1.RolloutPhase
-		ExpectedState  v1alpha1.BatchReleaseBatchStateType
+		ExpectedPhase  v1beta1.RolloutPhase
+		ExpectedState  v1beta1.BatchReleaseBatchStateType
 	}{
 		// Following cases of Linear Transaction on State Machine
 		{
 			Name: "IfNeedProgress=true, Input-Phase=Healthy, Output-Phase=Progressing",
 			GetRelease: func() client.Object {
-				return setPhase(releaseDeploy, v1alpha1.RolloutPhaseHealthy)
+				return setPhase(releaseDeploy, v1beta1.RolloutPhaseHealthy)
 			},
 			GetDeployments: func() []client.Object {
 				stable := getStableWithReady(stableDeploy, "v2").(*apps.Deployment)
@@ -579,12 +579,12 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
 		},
 		{
 			Name: "Preparing, Input-Phase=Preparing, Output-Phase=Progressing",
 			GetRelease: func() client.Object {
-				return setPhase(releaseDeploy, v1alpha1.RolloutPhasePreparing)
+				return setPhase(releaseDeploy, v1beta1.RolloutPhasePreparing)
 			},
 			GetDeployments: func() []client.Object {
 				stable := getStableWithReady(stableDeploy, "v2")
@@ -593,12 +593,12 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
 		},
 		{
 			Name: "Progressing, stage=0, Input-State=Upgrade, Output-State=Verify",
 			GetRelease: func() client.Object {
-				return setState(releaseDeploy, v1alpha1.UpgradingBatchState)
+				return setState(releaseDeploy, v1beta1.UpgradingBatchState)
 			},
 			GetDeployments: func() []client.Object {
 				stable := getStableWithReady(stableDeploy, "v2")
@@ -607,8 +607,8 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.VerifyingBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.VerifyingBatchState,
 		},
 		{
 			Name: "Progressing, stage=0, Input-State=Verify, Output-State=Upgrade",
@@ -616,7 +616,7 @@ func TestReconcile_Deployment(t *testing.T) {
 				release := releaseDeploy.DeepCopy()
 				release.Status.CanaryStatus.UpdatedReplicas = 5
 				release.Status.CanaryStatus.UpdatedReadyReplicas = 5
-				return setState(release, v1alpha1.VerifyingBatchState)
+				return setState(release, v1beta1.VerifyingBatchState)
 			},
 			GetDeployments: func() []client.Object {
 				stable := getStableWithReady(stableDeploy, "v2")
@@ -625,8 +625,8 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.UpgradingBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.UpgradingBatchState,
 		},
 		{
 			Name: "Progressing, stage=0, Input-State=Verify, Output-State=BatchReady",
@@ -634,7 +634,7 @@ func TestReconcile_Deployment(t *testing.T) {
 				release := releaseDeploy.DeepCopy()
 				release.Status.CanaryStatus.UpdatedReplicas = 10
 				release.Status.CanaryStatus.UpdatedReadyReplicas = 10
-				return setState(release, v1alpha1.VerifyingBatchState)
+				return setState(release, v1beta1.VerifyingBatchState)
 			},
 			GetDeployments: func() []client.Object {
 				stable := getStableWithReady(stableDeploy, "v2")
@@ -643,8 +643,8 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.ReadyBatchState,
 		},
 		{
 			Name: "Progressing, stage=0->1, Input-State=BatchReady, Output-State=Upgrade",
@@ -653,7 +653,7 @@ func TestReconcile_Deployment(t *testing.T) {
 				release.Status.CanaryStatus.UpdatedReplicas = 10
 				release.Status.CanaryStatus.UpdatedReadyReplicas = 10
 				release.Spec.ReleasePlan.BatchPartition = pointer.Int32Ptr(1)
-				return setState(release, v1alpha1.ReadyBatchState)
+				return setState(release, v1beta1.ReadyBatchState)
 			},
 			GetDeployments: func() []client.Object {
 				stable := getStableWithReady(stableDeploy, "v2")
@@ -662,8 +662,8 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.UpgradingBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.UpgradingBatchState,
 			ExpectedBatch: 1,
 		},
 		{
@@ -672,7 +672,7 @@ func TestReconcile_Deployment(t *testing.T) {
 				release := releaseDeploy.DeepCopy()
 				release.Status.CanaryStatus.UpdatedReplicas = 10
 				release.Status.CanaryStatus.UpdatedReadyReplicas = 10
-				release = setState(release, v1alpha1.ReadyBatchState)
+				release = setState(release, v1beta1.ReadyBatchState)
 				return release
 			},
 			GetDeployments: func() []client.Object {
@@ -682,13 +682,13 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.ReadyBatchState,
 		},
 		{
 			Name: "Special Case: Scaling, Input-State=BatchReady, Output-State=Upgrade",
 			GetRelease: func() client.Object {
-				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
+				release := setState(releaseDeploy, v1beta1.ReadyBatchState)
 				now := metav1.Now()
 				release.Status.CanaryStatus.BatchReadyTime = &now
 				return release
@@ -701,13 +701,13 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.UpgradingBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.UpgradingBatchState,
 		},
 		{
 			Name: `Special Case: RollBack, Input-Phase=Progressing, Output-Phase=Progressing`,
 			GetRelease: func() client.Object {
-				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
+				release := setState(releaseDeploy, v1beta1.ReadyBatchState)
 				now := metav1.Now()
 				release.Status.CanaryStatus.BatchReadyTime = &now
 				stableTemplate := stableDeploy.Spec.Template.DeepCopy()
@@ -725,13 +725,13 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
-			ExpectedState: v1alpha1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.ReadyBatchState,
 		},
 		{
 			Name: `Special Case: Deletion, Input-Phase=Progressing, Output-Phase=Finalizing`,
 			GetRelease: func() client.Object {
-				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
+				release := setState(releaseDeploy, v1beta1.ReadyBatchState)
 				now := metav1.Now()
 				release.Status.CanaryStatus.BatchReadyTime = &now
 				stableTemplate := stableDeploy.Spec.Template.DeepCopy()
@@ -751,13 +751,13 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedPhase: v1alpha1.RolloutPhaseFinalizing,
-			ExpectedState: v1alpha1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseFinalizing,
+			ExpectedState: v1beta1.ReadyBatchState,
 		},
 		{
 			Name: `Special Case: Continuous Release, Input-Phase=Progressing, Output-Phase=Progressing`,
 			GetRelease: func() client.Object {
-				release := setState(releaseDeploy, v1alpha1.ReadyBatchState)
+				release := setState(releaseDeploy, v1beta1.ReadyBatchState)
 				now := metav1.Now()
 				release.Status.CanaryStatus.BatchReadyTime = &now
 				stableTemplate := stableDeploy.Spec.Template.DeepCopy()
@@ -775,8 +775,8 @@ func TestReconcile_Deployment(t *testing.T) {
 					stable, canary,
 				}
 			},
-			ExpectedState: v1alpha1.ReadyBatchState,
-			ExpectedPhase: v1alpha1.RolloutPhaseProgressing,
+			ExpectedState: v1beta1.ReadyBatchState,
+			ExpectedPhase: v1beta1.RolloutPhaseProgressing,
 		},
 	}
 
@@ -808,7 +808,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			result, _ := reconciler.Reconcile(context.TODO(), request)
 			Expect(result.RequeueAfter).Should(BeNumerically(">=", int64(0)))
 
-			newRelease := v1alpha1.BatchRelease{}
+			newRelease := v1beta1.BatchRelease{}
 			err := cli.Get(context.TODO(), key, &newRelease)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newRelease.Status.Phase).Should(Equal(cs.ExpectedPhase))
@@ -827,7 +827,7 @@ func containers(version string) []corev1.Container {
 	}
 }
 
-func setPhase(release *v1alpha1.BatchRelease, phase v1alpha1.RolloutPhase) *v1alpha1.BatchRelease {
+func setPhase(release *v1beta1.BatchRelease, phase v1beta1.RolloutPhase) *v1beta1.BatchRelease {
 	r := release.DeepCopy()
 	r.Status.Phase = phase
 	r.Status.ObservedWorkloadReplicas = 100
@@ -835,9 +835,9 @@ func setPhase(release *v1alpha1.BatchRelease, phase v1alpha1.RolloutPhase) *v1al
 	return r
 }
 
-func setState(release *v1alpha1.BatchRelease, state v1alpha1.BatchReleaseBatchStateType) *v1alpha1.BatchRelease {
+func setState(release *v1beta1.BatchRelease, state v1beta1.BatchReleaseBatchStateType) *v1beta1.BatchRelease {
 	r := release.DeepCopy()
-	r.Status.Phase = v1alpha1.RolloutPhaseProgressing
+	r.Status.Phase = v1beta1.RolloutPhaseProgressing
 	r.Status.CanaryStatus.CurrentBatchState = state
 	r.Status.ObservedWorkloadReplicas = 100
 	r.Status.ObservedReleasePlanHash = util.HashReleasePlanBatches(&release.Spec.ReleasePlan)

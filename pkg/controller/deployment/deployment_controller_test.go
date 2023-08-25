@@ -32,7 +32,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/pointer"
 
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/deployment/util"
 )
 
@@ -198,7 +198,7 @@ func TestSyncDeployment(t *testing.T) {
 				eventRecorder: fakeRecord,
 				dLister:       appslisters.NewDeploymentLister(dInformer.GetIndexer()),
 				rsLister:      appslisters.NewReplicaSetLister(rsInformer.GetIndexer()),
-				strategy: rolloutsv1alpha1.DeploymentStrategy{
+				strategy: rolloutsv1beta1.DeploymentStrategy{
 					RollingUpdate: &apps.RollingUpdateDeployment{
 						MaxSurge:       &test.maxSurge,
 						MaxUnavailable: &test.maxUnavailable,

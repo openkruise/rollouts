@@ -17,7 +17,7 @@ import (
 	"context"
 	"reflect"
 
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -34,7 +34,7 @@ type Config struct {
 	Namespace     string
 	CanaryService string
 	StableService string
-	TrafficConf   *rolloutv1alpha1.GatewayTrafficRouting
+	TrafficConf   *rolloutv1beta1.GatewayTrafficRouting
 }
 
 type gatewayController struct {
@@ -56,7 +56,7 @@ func (r *gatewayController) Initialize(ctx context.Context) error {
 	return r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: *r.conf.TrafficConf.HTTPRouteName}, route)
 }
 
-func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *rolloutv1alpha1.TrafficRoutingStrategy) (bool, error) {
+func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *rolloutv1beta1.TrafficRoutingStrategy) (bool, error) {
 	weight := strategy.Weight
 	matches := strategy.Matches
 	// headerModifier := strategy.RequestHeaderModifier
@@ -118,7 +118,7 @@ func (r *gatewayController) Finalise(ctx context.Context) error {
 	return nil
 }
 
-func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch,
+func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32, matches []rolloutv1beta1.HttpRouteMatch,
 	rh *gatewayv1alpha2.HTTPRequestHeaderFilter) []gatewayv1alpha2.HTTPRouteRule {
 	var desired []gatewayv1alpha2.HTTPRouteRule
 	// Only when finalize method parameter weight=-1,
@@ -146,7 +146,7 @@ func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRo
 	return r.buildCanaryWeightHttpRoutes(rules, weight)
 }
 
-func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.HTTPRouteRule, matchs []rolloutv1alpha1.HttpRouteMatch) []gatewayv1alpha2.HTTPRouteRule {
+func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.HTTPRouteRule, matchs []rolloutv1beta1.HttpRouteMatch) []gatewayv1alpha2.HTTPRouteRule {
 	var desired []gatewayv1alpha2.HTTPRouteRule
 	var canarys []gatewayv1alpha2.HTTPRouteRule
 	for i := range rules {

@@ -19,7 +19,7 @@ package network
 import (
 	"context"
 
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 )
 
 // NetworkProvider common function across all TrafficRouting implementation
@@ -33,7 +33,7 @@ type NetworkProvider interface {
 	// 1. check if canary has been set desired weight.
 	// 2. If not, set canary desired weight
 	// When the first set weight is returned false, mainly to give the provider some time to process, only when again ensure, will return true
-	EnsureRoutes(ctx context.Context, strategy *rolloutv1alpha1.TrafficRoutingStrategy) (bool, error)
+	EnsureRoutes(ctx context.Context, strategy *rolloutv1beta1.TrafficRoutingStrategy) (bool, error)
 	// Finalise will do some cleanup work after the canary rollout complete, such as delete canary ingress.
 	// Finalise is called with a 3-second delay after completing the canary.
 	Finalise(ctx context.Context) error

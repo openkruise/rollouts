@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
 	apps "k8s.io/api/apps/v1"
@@ -38,7 +38,7 @@ import (
 var (
 	scheme *runtime.Scheme
 
-	rolloutDemo = &v1alpha1.Rollout{
+	rolloutDemo = &v1beta1.Rollout{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rollout-demo",
 			Labels: map[string]string{},
@@ -46,46 +46,46 @@ var (
 				util.RolloutHashAnnotation: "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd",
 			},
 		},
-		Spec: v1alpha1.RolloutSpec{
-			ObjectRef: v1alpha1.ObjectRef{
-				WorkloadRef: &v1alpha1.WorkloadRef{
+		Spec: v1beta1.RolloutSpec{
+			ObjectRef: v1beta1.ObjectRef{
+				WorkloadRef: &v1beta1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
 					Name:       "echoserver",
 				},
 			},
-			Strategy: v1alpha1.RolloutStrategy{
-				Canary: &v1alpha1.CanaryStrategy{
-					Steps: []v1alpha1.CanaryStep{
+			Strategy: v1beta1.RolloutStrategy{
+				Canary: &v1beta1.CanaryStrategy{
+					Steps: []v1beta1.CanaryStep{
 						{
-							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(5),
 							},
 							Replicas: &intstr.IntOrString{IntVal: 1},
 						},
 						{
-							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(20),
 							},
 							Replicas: &intstr.IntOrString{IntVal: 2},
 						},
 						{
-							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(60),
 							},
 							Replicas: &intstr.IntOrString{IntVal: 6},
 						},
 						{
-							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(100),
 							},
 							Replicas: &intstr.IntOrString{IntVal: 10},
 						},
 					},
-					TrafficRoutings: []v1alpha1.TrafficRoutingRef{
+					TrafficRoutings: []v1beta1.TrafficRoutingRef{
 						{
 							Service: "echoserver",
-							Ingress: &v1alpha1.IngressTrafficRouting{
+							Ingress: &v1beta1.IngressTrafficRouting{
 								Name: "echoserver",
 							},
 						},
@@ -93,13 +93,13 @@ var (
 				},
 			},
 		},
-		Status: v1alpha1.RolloutStatus{
-			Phase:        v1alpha1.RolloutPhaseProgressing,
-			CanaryStatus: &v1alpha1.CanaryStatus{},
-			Conditions: []v1alpha1.RolloutCondition{
+		Status: v1beta1.RolloutStatus{
+			Phase:        v1beta1.RolloutPhaseProgressing,
+			CanaryStatus: &v1beta1.CanaryStatus{},
+			Conditions: []v1beta1.RolloutCondition{
 				{
-					Type:   v1alpha1.RolloutConditionProgressing,
-					Reason: v1alpha1.ProgressingReasonInitializing,
+					Type:   v1beta1.RolloutConditionProgressing,
+					Reason: v1beta1.ProgressingReasonInitializing,
 					Status: corev1.ConditionTrue,
 				},
 			},
@@ -199,22 +199,22 @@ var (
 		},
 	}
 
-	batchDemo = &v1alpha1.BatchRelease{
+	batchDemo = &v1beta1.BatchRelease{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "rollout-demo",
 			Labels:     map[string]string{},
 			Generation: 1,
 		},
-		Spec: v1alpha1.BatchReleaseSpec{
-			TargetRef: v1alpha1.ObjectRef{
-				WorkloadRef: &v1alpha1.WorkloadRef{
+		Spec: v1beta1.BatchReleaseSpec{
+			TargetRef: v1beta1.ObjectRef{
+				WorkloadRef: &v1beta1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
 					Name:       "echoserver",
 				},
 			},
 		},
-		Status: v1alpha1.BatchReleaseStatus{},
+		Status: v1beta1.BatchReleaseStatus{},
 	}
 
 	demoService = corev1.Service{
@@ -318,22 +318,22 @@ var (
 		},
 	}
 
-	demoTR = &v1alpha1.TrafficRouting{
+	demoTR = &v1beta1.TrafficRouting{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "tr-demo",
 			Labels: map[string]string{},
 		},
-		Spec: v1alpha1.TrafficRoutingSpec{
-			ObjectRef: []v1alpha1.TrafficRoutingRef{
+		Spec: v1beta1.TrafficRoutingSpec{
+			ObjectRef: []v1beta1.TrafficRoutingRef{
 				{
 					Service: "echoserver",
-					Ingress: &v1alpha1.IngressTrafficRouting{
+					Ingress: &v1beta1.IngressTrafficRouting{
 						Name: "echoserver",
 					},
 				},
 			},
-			Strategy: v1alpha1.TrafficRoutingStrategy{
-				Matches: []v1alpha1.HttpRouteMatch{
+			Strategy: v1beta1.TrafficRoutingStrategy{
+				Matches: []v1beta1.HttpRouteMatch{
 					// header
 					{
 						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
@@ -353,5 +353,5 @@ func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = kruisev1aplphal.AddToScheme(scheme)
-	_ = v1alpha1.AddToScheme(scheme)
+	_ = v1beta1.AddToScheme(scheme)
 }

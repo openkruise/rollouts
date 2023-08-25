@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
@@ -83,20 +83,20 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 		}
 	}
 	switch canaryStatus.CurrentStepState {
-	case v1alpha1.CanaryStepStateUpgrade:
-		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1alpha1.CanaryStepStateUpgrade)
+	case v1beta1.CanaryStepStateUpgrade:
+		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1beta1.CanaryStepStateUpgrade)
 		done, err := m.doCanaryUpgrade(c)
 		if err != nil {
 			return err
 		} else if done {
-			canaryStatus.CurrentStepState = v1alpha1.CanaryStepStateTrafficRouting
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
-				canaryStatus.CurrentStepIndex, v1alpha1.CanaryStepStateUpgrade, canaryStatus.CurrentStepState)
+				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateUpgrade, canaryStatus.CurrentStepState)
 		}
 
-	case v1alpha1.CanaryStepStateTrafficRouting:
-		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1alpha1.CanaryStepStateTrafficRouting)
+	case v1beta1.CanaryStepStateTrafficRouting:
+		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1beta1.CanaryStepStateTrafficRouting)
 		tr := newTrafficRoutingContext(c)
 		done, err := m.trafficRoutingManager.DoTrafficRouting(tr)
 		c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
@@ -104,55 +104,55 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 			return err
 		} else if done {
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-			canaryStatus.CurrentStepState = v1alpha1.CanaryStepStateMetricsAnalysis
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateMetricsAnalysis
 			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
-				canaryStatus.CurrentStepIndex, v1alpha1.CanaryStepStateTrafficRouting, canaryStatus.CurrentStepState)
+				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateTrafficRouting, canaryStatus.CurrentStepState)
 		}
 		expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
 		c.RecheckTime = &expectedTime
 
-	case v1alpha1.CanaryStepStateMetricsAnalysis:
-		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1alpha1.CanaryStepStateMetricsAnalysis)
+	case v1beta1.CanaryStepStateMetricsAnalysis:
+		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1beta1.CanaryStepStateMetricsAnalysis)
 		done, err := m.doCanaryMetricsAnalysis(c)
 		if err != nil {
 			return err
 		} else if done {
-			canaryStatus.CurrentStepState = v1alpha1.CanaryStepStatePaused
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStatePaused
 			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
-				canaryStatus.CurrentStepIndex, v1alpha1.CanaryStepStateMetricsAnalysis, canaryStatus.CurrentStepState)
+				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateMetricsAnalysis, canaryStatus.CurrentStepState)
 		}
 
-	case v1alpha1.CanaryStepStatePaused:
-		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1alpha1.CanaryStepStatePaused)
+	case v1beta1.CanaryStepStatePaused:
+		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1beta1.CanaryStepStatePaused)
 		done, err := m.doCanaryPaused(c)
 		if err != nil {
 			return err
 		} else if done {
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-			canaryStatus.CurrentStepState = v1alpha1.CanaryStepStateReady
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateReady
 			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
-				canaryStatus.CurrentStepIndex, v1alpha1.CanaryStepStatePaused, canaryStatus.CurrentStepState)
+				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStatePaused, canaryStatus.CurrentStepState)
 		}
 
-	case v1alpha1.CanaryStepStateReady:
-		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1alpha1.CanaryStepStateReady)
+	case v1beta1.CanaryStepStateReady:
+		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1beta1.CanaryStepStateReady)
 		// run next step
 		if len(c.Rollout.Spec.Strategy.Canary.Steps) > int(canaryStatus.CurrentStepIndex) {
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			canaryStatus.CurrentStepIndex++
-			canaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 			klog.Infof("rollout(%s/%s) canary step from(%d) -> to(%d)", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.CurrentStepIndex-1, canaryStatus.CurrentStepIndex)
 		} else {
 			klog.Infof("rollout(%s/%s) canary run all steps, and completed", c.Rollout.Namespace, c.Rollout.Name)
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-			canaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 			return nil
 		}
 		klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
-			canaryStatus.CurrentStepIndex, v1alpha1.CanaryStepStateReady, canaryStatus.CurrentStepState)
+			canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateReady, canaryStatus.CurrentStepState)
 		// canary completed
-	case v1alpha1.CanaryStepStateCompleted:
-		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1alpha1.CanaryStepStateCompleted)
+	case v1beta1.CanaryStepStateCompleted:
+		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1beta1.CanaryStepStateCompleted)
 	}
 
 	return nil
@@ -162,7 +162,7 @@ func (m *canaryReleaseManager) doCanaryUpgrade(c *RolloutContext) (bool, error) 
 	// verify whether batchRelease configuration is the latest
 	steps := len(c.Rollout.Spec.Strategy.Canary.Steps)
 	canaryStatus := c.NewStatus.CanaryStatus
-	cond := util.GetRolloutCondition(*c.NewStatus, v1alpha1.RolloutConditionProgressing)
+	cond := util.GetRolloutCondition(*c.NewStatus, v1beta1.RolloutConditionProgressing)
 	cond.Message = fmt.Sprintf("Rollout is in step(%d/%d), and upgrade workload to new version", canaryStatus.CurrentStepIndex, steps)
 	c.NewStatus.Message = cond.Message
 	// run batch release to upgrade the workloads
@@ -178,7 +178,7 @@ func (m *canaryReleaseManager) doCanaryUpgrade(c *RolloutContext) (bool, error) 
 		return false, nil
 	}
 	// check whether batchRelease is ready(whether new pods is ready.)
-	if br.Status.CanaryStatus.CurrentBatchState != v1alpha1.ReadyBatchState ||
+	if br.Status.CanaryStatus.CurrentBatchState != v1beta1.ReadyBatchState ||
 		br.Status.CanaryStatus.CurrentBatch+1 < canaryStatus.CurrentStepIndex {
 		klog.Infof("rollout(%s/%s) batchRelease status(%s) is not ready, and wait a moment", c.Rollout.Namespace, c.Rollout.Name, util.DumpJSON(br.Status))
 		return false, nil
@@ -205,7 +205,7 @@ func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 			return true, nil
 		}
 	}
-	cond := util.GetRolloutCondition(*c.NewStatus, v1alpha1.RolloutConditionProgressing)
+	cond := util.GetRolloutCondition(*c.NewStatus, v1beta1.RolloutConditionProgressing)
 	// need manual confirmation
 	if currentStep.Pause.Duration == nil {
 		klog.Infof("rollout(%s/%s) don't set pause duration, and need manual confirmation", c.Rollout.Namespace, c.Rollout.Name)
@@ -289,7 +289,7 @@ func (m *canaryReleaseManager) removeRolloutProgressingAnnotation(c *RolloutCont
 	return nil
 }
 
-func (m *canaryReleaseManager) runBatchRelease(rollout *v1alpha1.Rollout, rolloutId string, batch int32, isRollback bool) (bool, *v1alpha1.BatchRelease, error) {
+func (m *canaryReleaseManager) runBatchRelease(rollout *v1beta1.Rollout, rolloutId string, batch int32, isRollback bool) (bool, *v1beta1.BatchRelease, error) {
 	batch = batch - 1
 	br, err := m.fetchBatchRelease(rollout.Namespace, rollout.Name)
 	if errors.IsNotFound(err) {
@@ -330,37 +330,37 @@ func (m *canaryReleaseManager) runBatchRelease(rollout *v1alpha1.Rollout, rollou
 	return false, br, nil
 }
 
-func (m *canaryReleaseManager) fetchBatchRelease(ns, name string) (*v1alpha1.BatchRelease, error) {
-	br := &v1alpha1.BatchRelease{}
+func (m *canaryReleaseManager) fetchBatchRelease(ns, name string) (*v1beta1.BatchRelease, error) {
+	br := &v1beta1.BatchRelease{}
 	// batchRelease.name is equal related rollout.name
 	err := m.Get(context.TODO(), client.ObjectKey{Namespace: ns, Name: name}, br)
 	return br, err
 }
 
-func createBatchRelease(rollout *v1alpha1.Rollout, rolloutID string, batch int32, isRollback bool) *v1alpha1.BatchRelease {
-	var batches []v1alpha1.ReleaseBatch
+func createBatchRelease(rollout *v1beta1.Rollout, rolloutID string, batch int32, isRollback bool) *v1beta1.BatchRelease {
+	var batches []v1beta1.ReleaseBatch
 	for _, step := range rollout.Spec.Strategy.Canary.Steps {
 		if step.Replicas == nil {
-			batches = append(batches, v1alpha1.ReleaseBatch{CanaryReplicas: intstr.FromString(strconv.Itoa(int(*step.Weight)) + "%")})
+			batches = append(batches, v1beta1.ReleaseBatch{CanaryReplicas: intstr.FromString(strconv.Itoa(int(*step.Weight)) + "%")})
 		} else {
-			batches = append(batches, v1alpha1.ReleaseBatch{CanaryReplicas: *step.Replicas})
+			batches = append(batches, v1beta1.ReleaseBatch{CanaryReplicas: *step.Replicas})
 		}
 	}
-	br := &v1alpha1.BatchRelease{
+	br := &v1beta1.BatchRelease{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:       rollout.Namespace,
 			Name:            rollout.Name,
 			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(rollout, rolloutControllerKind)},
 		},
-		Spec: v1alpha1.BatchReleaseSpec{
-			TargetRef: v1alpha1.ObjectRef{
-				WorkloadRef: &v1alpha1.WorkloadRef{
+		Spec: v1beta1.BatchReleaseSpec{
+			TargetRef: v1beta1.ObjectRef{
+				WorkloadRef: &v1beta1.WorkloadRef{
 					APIVersion: rollout.Spec.ObjectRef.WorkloadRef.APIVersion,
 					Kind:       rollout.Spec.ObjectRef.WorkloadRef.Kind,
 					Name:       rollout.Spec.ObjectRef.WorkloadRef.Name,
 				},
 			},
-			ReleasePlan: v1alpha1.ReleasePlan{
+			ReleasePlan: v1beta1.ReleasePlan{
 				Batches:                  batches,
 				RolloutID:                rolloutID,
 				BatchPartition:           utilpointer.Int32Ptr(batch),
@@ -371,10 +371,10 @@ func createBatchRelease(rollout *v1alpha1.Rollout, rolloutID string, batch int32
 	}
 	annotations := map[string]string{}
 	if isRollback {
-		annotations[v1alpha1.RollbackInBatchAnnotation] = rollout.Annotations[v1alpha1.RollbackInBatchAnnotation]
+		annotations[v1beta1.RollbackInBatchAnnotation] = rollout.Annotations[v1beta1.RollbackInBatchAnnotation]
 	}
-	if style, ok := rollout.Annotations[v1alpha1.RolloutStyleAnnotation]; ok {
-		annotations[v1alpha1.RolloutStyleAnnotation] = style
+	if style, ok := rollout.Annotations[v1beta1.RolloutStyleAnnotation]; ok {
+		annotations[v1beta1.RolloutStyleAnnotation] = style
 	}
 	if len(annotations) > 0 {
 		br.Annotations = annotations
@@ -383,7 +383,7 @@ func createBatchRelease(rollout *v1alpha1.Rollout, rolloutID string, batch int32
 }
 
 func (m *canaryReleaseManager) removeBatchRelease(c *RolloutContext) (bool, error) {
-	batch := &v1alpha1.BatchRelease{}
+	batch := &v1beta1.BatchRelease{}
 	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Rollout.Namespace, Name: c.Rollout.Name}, batch)
 	if err != nil && errors.IsNotFound(err) {
 		return true, nil
@@ -418,7 +418,7 @@ func (m *canaryReleaseManager) finalizingBatchRelease(c *RolloutContext) (bool, 
 	// The Completed phase means batchRelease controller has processed all it
 	// should process. If BatchRelease phase is completed, we can do nothing.
 	if br.Spec.ReleasePlan.BatchPartition == nil &&
-		br.Status.Phase == v1alpha1.RolloutPhaseCompleted {
+		br.Status.Phase == v1beta1.RolloutPhaseCompleted {
 		klog.Infof("rollout(%s/%s) finalizing batchRelease(%s) done", c.Rollout.Namespace, c.Rollout.Name, util.DumpJSON(br.Status))
 		return true, nil
 	}
@@ -431,7 +431,7 @@ func (m *canaryReleaseManager) finalizingBatchRelease(c *RolloutContext) (bool, 
 		// - If checkReady is false, finalizing policy must be NOT "WaitResume";
 		// Otherwise, we should correct it.
 		switch br.Spec.ReleasePlan.FinalizingPolicy {
-		case v1alpha1.WaitResumeFinalizingPolicyType:
+		case v1beta1.WaitResumeFinalizingPolicyType:
 			if waitReady { // no need to patch again
 				return false, nil
 			}
@@ -443,9 +443,9 @@ func (m *canaryReleaseManager) finalizingBatchRelease(c *RolloutContext) (bool, 
 	}
 
 	// Correct finalizing policy.
-	policy := v1alpha1.ImmediateFinalizingPolicyType
+	policy := v1beta1.ImmediateFinalizingPolicyType
 	if waitReady {
-		policy = v1alpha1.WaitResumeFinalizingPolicyType
+		policy = v1beta1.WaitResumeFinalizingPolicyType
 	}
 
 	// Patch BatchPartition and FinalizingPolicy, BatchPartition always patch null here.
@@ -458,7 +458,7 @@ func (m *canaryReleaseManager) finalizingBatchRelease(c *RolloutContext) (bool, 
 }
 
 // syncBatchRelease sync status of br to canaryStatus, and sync rollout-id of canaryStatus to br.
-func (m *canaryReleaseManager) syncBatchRelease(br *v1alpha1.BatchRelease, canaryStatus *v1alpha1.CanaryStatus) error {
+func (m *canaryReleaseManager) syncBatchRelease(br *v1beta1.BatchRelease, canaryStatus *v1beta1.CanaryStatus) error {
 	// sync from BatchRelease status to Rollout canaryStatus
 	canaryStatus.CanaryReplicas = br.Status.CanaryStatus.UpdatedReplicas
 	canaryStatus.CanaryReadyReplicas = br.Status.CanaryStatus.UpdatedReadyReplicas

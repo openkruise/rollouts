@@ -32,7 +32,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/pointer"
 
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 )
 
 func newDControllerRef(d *apps.Deployment) *metav1.OwnerReference {
@@ -258,7 +258,7 @@ func TestReconcileNewReplicaSet(t *testing.T) {
 			dc := &DeploymentController{
 				client:        fakeClient,
 				eventRecorder: fakeRecord,
-				strategy: rolloutsv1alpha1.DeploymentStrategy{
+				strategy: rolloutsv1beta1.DeploymentStrategy{
 					RollingUpdate: &apps.RollingUpdateDeployment{
 						MaxSurge: &test.maxSurge,
 					},
@@ -384,7 +384,7 @@ func TestReconcileOldReplicaSet(t *testing.T) {
 			dc := &DeploymentController{
 				client:        fakeClient,
 				eventRecorder: fakeRecord,
-				strategy: rolloutsv1alpha1.DeploymentStrategy{
+				strategy: rolloutsv1beta1.DeploymentStrategy{
 					RollingUpdate: &apps.RollingUpdateDeployment{
 						MaxSurge:       &test.maxSurge,
 						MaxUnavailable: &test.maxUnavailable,

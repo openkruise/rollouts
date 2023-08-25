@@ -36,21 +36,21 @@ import (
 
 	"github.com/openkruise/kruise-api/apps/pub"
 	kruisev1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 )
 
 func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = kruisev1alpha1.AddToScheme(scheme)
-	_ = rolloutv1alpha1.AddToScheme(scheme)
+	_ = rolloutv1beta1.AddToScheme(scheme)
 	_ = v1alpha2.AddToScheme(scheme)
 }
 
 var (
 	scheme *runtime.Scheme
 
-	rollouthistoryDemo = rolloutv1alpha1.RolloutHistory{
+	rollouthistoryDemo = rolloutv1beta1.RolloutHistory{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "RolloutHistory",
 			APIVersion: "rollouts.kruise.io/v1alpha1",
@@ -63,46 +63,46 @@ var (
 				rolloutNameLabel: "rollout-demo",
 			},
 		},
-		Spec: rolloutv1alpha1.RolloutHistorySpec{
-			Rollout: rolloutv1alpha1.RolloutInfo{
+		Spec: rolloutv1beta1.RolloutHistorySpec{
+			Rollout: rolloutv1beta1.RolloutInfo{
 				RolloutID: "1",
-				NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+				NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 					Name: "rollout-demo",
 				},
 			},
-			Service: rolloutv1alpha1.ServiceInfo{
-				NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+			Service: rolloutv1beta1.ServiceInfo{
+				NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 					Name: "service-demo",
 				},
 			},
-			TrafficRouting: rolloutv1alpha1.TrafficRoutingInfo{
-				Ingress: &rolloutv1alpha1.IngressInfo{
-					NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+			TrafficRouting: rolloutv1beta1.TrafficRoutingInfo{
+				Ingress: &rolloutv1beta1.IngressInfo{
+					NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 						Name: "ingress-demo",
 					},
 				},
-				HTTPRoute: &rolloutv1alpha1.HTTPRouteInfo{
-					NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+				HTTPRoute: &rolloutv1beta1.HTTPRouteInfo{
+					NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 						Name: "HTTPRoute-demo",
 					},
 				},
 			},
-			Workload: rolloutv1alpha1.WorkloadInfo{
+			Workload: rolloutv1beta1.WorkloadInfo{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "apps.kruise.io/v1alpha1",
 					Kind:       "CloneSet",
 				},
-				NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+				NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 					Name: "workload-demo",
 				},
 			},
 		},
-		Status: rolloutv1alpha1.RolloutHistoryStatus{
+		Status: rolloutv1beta1.RolloutHistoryStatus{
 			Phase: "",
-			CanarySteps: []rolloutv1alpha1.CanaryStepInfo{
+			CanarySteps: []rolloutv1beta1.CanaryStepInfo{
 				{
 					CanaryStepIndex: 1,
-					Pods: []rolloutv1alpha1.Pod{
+					Pods: []rolloutv1beta1.Pod{
 						{
 							Name:     "pod-1",
 							IP:       "1.2.3.4",
@@ -114,7 +114,7 @@ var (
 		},
 	}
 
-	rolloutDemo1 = rolloutv1alpha1.Rollout{
+	rolloutDemo1 = rolloutv1beta1.Rollout{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Rollout",
 			APIVersion: "rollouts.kruise.io/v1alpha1",
@@ -124,49 +124,49 @@ var (
 			Namespace: "default",
 			Labels:    map[string]string{},
 		},
-		Spec: rolloutv1alpha1.RolloutSpec{
-			ObjectRef: rolloutv1alpha1.ObjectRef{
-				WorkloadRef: &rolloutv1alpha1.WorkloadRef{
+		Spec: rolloutv1beta1.RolloutSpec{
+			ObjectRef: rolloutv1beta1.ObjectRef{
+				WorkloadRef: &rolloutv1beta1.WorkloadRef{
 					APIVersion: "apps.kruise.io/v1alpha1",
 					Kind:       "CloneSet",
 					Name:       "workload-demo",
 				},
 			},
 			DeprecatedRolloutID: "1",
-			Strategy: rolloutv1alpha1.RolloutStrategy{
-				Canary: &rolloutv1alpha1.CanaryStrategy{
-					Steps: []rolloutv1alpha1.CanaryStep{
+			Strategy: rolloutv1beta1.RolloutStrategy{
+				Canary: &rolloutv1beta1.CanaryStrategy{
+					Steps: []rolloutv1beta1.CanaryStep{
 						{
-							TrafficRoutingStrategy: rolloutv1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: rolloutv1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(5),
 							},
-							Pause: rolloutv1alpha1.RolloutPause{
+							Pause: rolloutv1beta1.RolloutPause{
 								Duration: utilpointer.Int32(0),
 							},
 						},
 						{
-							TrafficRoutingStrategy: rolloutv1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: rolloutv1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(40),
 							},
-							Pause: rolloutv1alpha1.RolloutPause{},
+							Pause: rolloutv1beta1.RolloutPause{},
 						},
 						{
-							TrafficRoutingStrategy: rolloutv1alpha1.TrafficRoutingStrategy{
+							TrafficRoutingStrategy: rolloutv1beta1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(100),
 							},
-							Pause: rolloutv1alpha1.RolloutPause{
+							Pause: rolloutv1beta1.RolloutPause{
 								Duration: utilpointer.Int32(0),
 							},
 						},
 					},
-					TrafficRoutings: []rolloutv1alpha1.TrafficRoutingRef{
+					TrafficRoutings: []rolloutv1beta1.TrafficRoutingRef{
 						{
 							Service: "service-demo",
-							Ingress: &rolloutv1alpha1.IngressTrafficRouting{
+							Ingress: &rolloutv1beta1.IngressTrafficRouting{
 								ClassType: "nginx",
 								Name:      "ingress-demo",
 							},
-							Gateway: &rolloutv1alpha1.GatewayTrafficRouting{
+							Gateway: &rolloutv1beta1.GatewayTrafficRouting{
 								HTTPRouteName: utilpointer.String("HTTPRoute-demo"),
 							},
 						},
@@ -326,8 +326,8 @@ var (
 			Name:      "pod-demo",
 			Namespace: "default",
 			Labels: map[string]string{
-				rolloutv1alpha1.RolloutBatchIDLabel: "1",
-				rolloutv1alpha1.RolloutIDLabel:      "1",
+				rolloutv1beta1.RolloutBatchIDLabel: "1",
+				rolloutv1beta1.RolloutIDLabel:      "1",
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -345,9 +345,9 @@ func TestReconcile(t *testing.T) {
 		getWorkload          func() []*kruisev1alpha1.CloneSet
 		getIngress           func() []*networkingv1.Ingress
 		getHTTPRoute         func() []*v1alpha2.HTTPRoute
-		getRollout           func() []*rolloutv1alpha1.Rollout
-		getRolloutHistory    func() []*rolloutv1alpha1.RolloutHistory
-		expectRolloutHistory func() []*rolloutv1alpha1.RolloutHistory
+		getRollout           func() []*rolloutv1beta1.Rollout
+		getRolloutHistory    func() []*rolloutv1beta1.RolloutHistory
+		expectRolloutHistory func() []*rolloutv1beta1.RolloutHistory
 	}{
 		{
 			name: "test1, create a new rolloutHistory for rollout",
@@ -377,25 +377,25 @@ func TestReconcile(t *testing.T) {
 				httpRoutes := []*v1alpha2.HTTPRoute{}
 				return httpRoutes
 			},
-			getRollout: func() []*rolloutv1alpha1.Rollout {
+			getRollout: func() []*rolloutv1beta1.Rollout {
 				rollout := rolloutDemo1.DeepCopy()
-				rollout.Status = rolloutv1alpha1.RolloutStatus{
-					CanaryStatus: &rolloutv1alpha1.CanaryStatus{
+				rollout.Status = rolloutv1beta1.RolloutStatus{
+					CanaryStatus: &rolloutv1beta1.CanaryStatus{
 						ObservedRolloutID: "1",
 					},
-					Phase: rolloutv1alpha1.RolloutPhaseProgressing,
+					Phase: rolloutv1beta1.RolloutPhaseProgressing,
 				}
-				return []*rolloutv1alpha1.Rollout{rollout}
+				return []*rolloutv1beta1.Rollout{rollout}
 			},
-			getRolloutHistory: func() []*rolloutv1alpha1.RolloutHistory {
-				rollouthistories := []*rolloutv1alpha1.RolloutHistory{}
+			getRolloutHistory: func() []*rolloutv1beta1.RolloutHistory {
+				rollouthistories := []*rolloutv1beta1.RolloutHistory{}
 				return rollouthistories
 			},
-			expectRolloutHistory: func() []*rolloutv1alpha1.RolloutHistory {
+			expectRolloutHistory: func() []*rolloutv1beta1.RolloutHistory {
 				rollouthistory := rollouthistoryDemo.DeepCopy()
-				rollouthistory.Spec = rolloutv1alpha1.RolloutHistorySpec{}
-				rollouthistory.Status = rolloutv1alpha1.RolloutHistoryStatus{}
-				return []*rolloutv1alpha1.RolloutHistory{rollouthistory}
+				rollouthistory.Spec = rolloutv1beta1.RolloutHistorySpec{}
+				rollouthistory.Status = rolloutv1beta1.RolloutHistoryStatus{}
+				return []*rolloutv1beta1.RolloutHistory{rollouthistory}
 			},
 		},
 		{
@@ -414,8 +414,8 @@ func TestReconcile(t *testing.T) {
 					PodIP: "1.2.3.1",
 				}
 				pod1.Labels = map[string]string{
-					rolloutv1alpha1.RolloutBatchIDLabel: "1",
-					rolloutv1alpha1.RolloutIDLabel:      "2",
+					rolloutv1beta1.RolloutBatchIDLabel: "1",
+					rolloutv1beta1.RolloutIDLabel:      "2",
 					"app":                               "echoserver",
 				}
 
@@ -426,8 +426,8 @@ func TestReconcile(t *testing.T) {
 					PodIP: "1.2.3.2",
 				}
 				pod2.Labels = map[string]string{
-					rolloutv1alpha1.RolloutBatchIDLabel: "2",
-					rolloutv1alpha1.RolloutIDLabel:      "2",
+					rolloutv1beta1.RolloutBatchIDLabel: "2",
+					rolloutv1beta1.RolloutIDLabel:      "2",
 					"app":                               "echoserver",
 				}
 
@@ -438,8 +438,8 @@ func TestReconcile(t *testing.T) {
 					PodIP: "1.2.3.3",
 				}
 				pod3.Labels = map[string]string{
-					rolloutv1alpha1.RolloutBatchIDLabel: "3",
-					rolloutv1alpha1.RolloutIDLabel:      "2",
+					rolloutv1beta1.RolloutBatchIDLabel: "3",
+					rolloutv1beta1.RolloutIDLabel:      "2",
 					"app":                               "echoserver",
 				}
 
@@ -450,8 +450,8 @@ func TestReconcile(t *testing.T) {
 					PodIP: "1.2.3.4",
 				}
 				pod4.Labels = map[string]string{
-					rolloutv1alpha1.RolloutBatchIDLabel: "3",
-					rolloutv1alpha1.RolloutIDLabel:      "2",
+					rolloutv1beta1.RolloutBatchIDLabel: "3",
+					rolloutv1beta1.RolloutIDLabel:      "2",
 					"app":                               "echoserver",
 				}
 
@@ -462,8 +462,8 @@ func TestReconcile(t *testing.T) {
 					PodIP: "1.2.3.5",
 				}
 				pod5.Labels = map[string]string{
-					rolloutv1alpha1.RolloutBatchIDLabel: "3",
-					rolloutv1alpha1.RolloutIDLabel:      "2",
+					rolloutv1beta1.RolloutBatchIDLabel: "3",
+					rolloutv1beta1.RolloutIDLabel:      "2",
 					"app":                               "echoserver",
 				}
 
@@ -485,69 +485,69 @@ func TestReconcile(t *testing.T) {
 				httpRoutes := []*v1alpha2.HTTPRoute{httpRouteDemo.DeepCopy()}
 				return httpRoutes
 			},
-			getRollout: func() []*rolloutv1alpha1.Rollout {
+			getRollout: func() []*rolloutv1beta1.Rollout {
 				rollout := rolloutDemo1.DeepCopy()
 				rollout.Spec.DeprecatedRolloutID = "2"
-				rollout.Status = rolloutv1alpha1.RolloutStatus{
-					CanaryStatus: &rolloutv1alpha1.CanaryStatus{
+				rollout.Status = rolloutv1beta1.RolloutStatus{
+					CanaryStatus: &rolloutv1beta1.CanaryStatus{
 						ObservedRolloutID: "2",
 					},
-					Phase: rolloutv1alpha1.RolloutPhaseHealthy,
+					Phase: rolloutv1beta1.RolloutPhaseHealthy,
 				}
-				return []*rolloutv1alpha1.Rollout{rollout}
+				return []*rolloutv1beta1.Rollout{rollout}
 			},
-			getRolloutHistory: func() []*rolloutv1alpha1.RolloutHistory {
+			getRolloutHistory: func() []*rolloutv1beta1.RolloutHistory {
 				rollouthistory := rollouthistoryDemo.DeepCopy()
 				rollouthistory.Labels = map[string]string{
 					rolloutIDLabel:   "2",
 					rolloutNameLabel: "rollout-demo",
 				}
-				rollouthistory.Spec = rolloutv1alpha1.RolloutHistorySpec{}
-				rollouthistory.Status = rolloutv1alpha1.RolloutHistoryStatus{}
-				return []*rolloutv1alpha1.RolloutHistory{rollouthistory}
+				rollouthistory.Spec = rolloutv1beta1.RolloutHistorySpec{}
+				rollouthistory.Status = rolloutv1beta1.RolloutHistoryStatus{}
+				return []*rolloutv1beta1.RolloutHistory{rollouthistory}
 			},
-			expectRolloutHistory: func() []*rolloutv1alpha1.RolloutHistory {
+			expectRolloutHistory: func() []*rolloutv1beta1.RolloutHistory {
 				rollouthistory := rollouthistoryDemo.DeepCopy()
 				rollouthistory.Labels = map[string]string{
 					rolloutIDLabel:   "2",
 					rolloutNameLabel: "rollout-demo",
 				}
-				rollouthistory.Spec = rolloutv1alpha1.RolloutHistorySpec{
-					Rollout: rolloutv1alpha1.RolloutInfo{
+				rollouthistory.Spec = rolloutv1beta1.RolloutHistorySpec{
+					Rollout: rolloutv1beta1.RolloutInfo{
 						RolloutID: "2",
-						NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+						NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 							Name: "rollout-demo",
 						},
 					},
-					Workload: rolloutv1alpha1.WorkloadInfo{
-						NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+					Workload: rolloutv1beta1.WorkloadInfo{
+						NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 							Name: "workload-demo",
 						},
 					},
-					Service: rolloutv1alpha1.ServiceInfo{
-						NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+					Service: rolloutv1beta1.ServiceInfo{
+						NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 							Name: "service-demo",
 						},
 					},
-					TrafficRouting: rolloutv1alpha1.TrafficRoutingInfo{
-						Ingress: &rolloutv1alpha1.IngressInfo{
-							NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+					TrafficRouting: rolloutv1beta1.TrafficRoutingInfo{
+						Ingress: &rolloutv1beta1.IngressInfo{
+							NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 								Name: "ingress-demo",
 							},
 						},
-						HTTPRoute: &rolloutv1alpha1.HTTPRouteInfo{
-							NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+						HTTPRoute: &rolloutv1beta1.HTTPRouteInfo{
+							NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 								Name: "HTTPRoute-demo",
 							},
 						},
 					},
 				}
-				rollouthistory.Status = rolloutv1alpha1.RolloutHistoryStatus{
-					Phase: rolloutv1alpha1.PhaseCompleted,
-					CanarySteps: []rolloutv1alpha1.CanaryStepInfo{
+				rollouthistory.Status = rolloutv1beta1.RolloutHistoryStatus{
+					Phase: rolloutv1beta1.PhaseCompleted,
+					CanarySteps: []rolloutv1beta1.CanaryStepInfo{
 						{
 							CanaryStepIndex: 1,
-							Pods: []rolloutv1alpha1.Pod{
+							Pods: []rolloutv1beta1.Pod{
 								{
 									Name:     "pod1",
 									IP:       "1.2.3.1",
@@ -557,7 +557,7 @@ func TestReconcile(t *testing.T) {
 						},
 						{
 							CanaryStepIndex: 2,
-							Pods: []rolloutv1alpha1.Pod{
+							Pods: []rolloutv1beta1.Pod{
 								{
 									Name:     "pod2",
 									IP:       "1.2.3.2",
@@ -567,7 +567,7 @@ func TestReconcile(t *testing.T) {
 						},
 						{
 							CanaryStepIndex: 3,
-							Pods: []rolloutv1alpha1.Pod{
+							Pods: []rolloutv1beta1.Pod{
 								{
 									Name:     "pod3",
 									IP:       "1.2.3.3",
@@ -587,7 +587,7 @@ func TestReconcile(t *testing.T) {
 						},
 					},
 				}
-				return []*rolloutv1alpha1.RolloutHistory{rollouthistory}
+				return []*rolloutv1beta1.RolloutHistory{rollouthistory}
 			},
 		},
 		{
@@ -618,23 +618,23 @@ func TestReconcile(t *testing.T) {
 				httpRoutes := []*v1alpha2.HTTPRoute{}
 				return httpRoutes
 			},
-			getRollout: func() []*rolloutv1alpha1.Rollout {
+			getRollout: func() []*rolloutv1beta1.Rollout {
 				rollout := rolloutDemo1.DeepCopy()
 				rollout.Spec.DeprecatedRolloutID = ""
-				rollout.Status = rolloutv1alpha1.RolloutStatus{
-					CanaryStatus: &rolloutv1alpha1.CanaryStatus{
+				rollout.Status = rolloutv1beta1.RolloutStatus{
+					CanaryStatus: &rolloutv1beta1.CanaryStatus{
 						ObservedRolloutID: "",
 					},
-					Phase: rolloutv1alpha1.RolloutPhaseProgressing,
+					Phase: rolloutv1beta1.RolloutPhaseProgressing,
 				}
-				return []*rolloutv1alpha1.Rollout{rollout}
+				return []*rolloutv1beta1.Rollout{rollout}
 			},
-			getRolloutHistory: func() []*rolloutv1alpha1.RolloutHistory {
-				rollouthistories := []*rolloutv1alpha1.RolloutHistory{}
+			getRolloutHistory: func() []*rolloutv1beta1.RolloutHistory {
+				rollouthistories := []*rolloutv1beta1.RolloutHistory{}
 				return rollouthistories
 			},
-			expectRolloutHistory: func() []*rolloutv1alpha1.RolloutHistory {
-				rollouthistories := []*rolloutv1alpha1.RolloutHistory{}
+			expectRolloutHistory: func() []*rolloutv1beta1.RolloutHistory {
+				rollouthistories := []*rolloutv1beta1.RolloutHistory{}
 				return rollouthistories
 			},
 		},
@@ -666,59 +666,59 @@ func TestReconcile(t *testing.T) {
 				httpRoutes := []*v1alpha2.HTTPRoute{}
 				return httpRoutes
 			},
-			getRollout: func() []*rolloutv1alpha1.Rollout {
+			getRollout: func() []*rolloutv1beta1.Rollout {
 				rollout := rolloutDemo1.DeepCopy()
 				rollout.Spec.DeprecatedRolloutID = "4"
-				rollout.Status = rolloutv1alpha1.RolloutStatus{
-					CanaryStatus: &rolloutv1alpha1.CanaryStatus{
+				rollout.Status = rolloutv1beta1.RolloutStatus{
+					CanaryStatus: &rolloutv1beta1.CanaryStatus{
 						ObservedRolloutID: "4",
 					},
-					Phase: rolloutv1alpha1.RolloutPhaseProgressing,
+					Phase: rolloutv1beta1.RolloutPhaseProgressing,
 				}
-				return []*rolloutv1alpha1.Rollout{rollout}
+				return []*rolloutv1beta1.Rollout{rollout}
 			},
-			getRolloutHistory: func() []*rolloutv1alpha1.RolloutHistory {
+			getRolloutHistory: func() []*rolloutv1beta1.RolloutHistory {
 				rollouthistory := rollouthistoryDemo.DeepCopy()
 				rollouthistory.Labels = map[string]string{
 					rolloutIDLabel:   "4",
 					rolloutNameLabel: "rollout-demo",
 				}
-				rollouthistory.Spec = rolloutv1alpha1.RolloutHistorySpec{
-					Rollout: rolloutv1alpha1.RolloutInfo{
+				rollouthistory.Spec = rolloutv1beta1.RolloutHistorySpec{
+					Rollout: rolloutv1beta1.RolloutInfo{
 						RolloutID: "4",
-						NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+						NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 							Name: "rollout-demo",
 						},
 					},
-					Workload: rolloutv1alpha1.WorkloadInfo{
-						NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+					Workload: rolloutv1beta1.WorkloadInfo{
+						NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 							Name: "workload-demo",
 						},
 					},
-					Service: rolloutv1alpha1.ServiceInfo{
-						NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+					Service: rolloutv1beta1.ServiceInfo{
+						NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 							Name: "service-demo",
 						},
 					},
-					TrafficRouting: rolloutv1alpha1.TrafficRoutingInfo{
-						Ingress: &rolloutv1alpha1.IngressInfo{
-							NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+					TrafficRouting: rolloutv1beta1.TrafficRoutingInfo{
+						Ingress: &rolloutv1beta1.IngressInfo{
+							NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 								Name: "ingress-demo",
 							},
 						},
-						HTTPRoute: &rolloutv1alpha1.HTTPRouteInfo{
-							NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+						HTTPRoute: &rolloutv1beta1.HTTPRouteInfo{
+							NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 								Name: "HTTPRoute-demo",
 							},
 						},
 					},
 				}
-				rollouthistory.Status = rolloutv1alpha1.RolloutHistoryStatus{
-					Phase: rolloutv1alpha1.PhaseCompleted,
-					CanarySteps: []rolloutv1alpha1.CanaryStepInfo{
+				rollouthistory.Status = rolloutv1beta1.RolloutHistoryStatus{
+					Phase: rolloutv1beta1.PhaseCompleted,
+					CanarySteps: []rolloutv1beta1.CanaryStepInfo{
 						{
 							CanaryStepIndex: 1,
-							Pods: []rolloutv1alpha1.Pod{
+							Pods: []rolloutv1beta1.Pod{
 								{
 									Name:     "pod1",
 									IP:       "1.2.3.1",
@@ -728,7 +728,7 @@ func TestReconcile(t *testing.T) {
 						},
 						{
 							CanaryStepIndex: 2,
-							Pods: []rolloutv1alpha1.Pod{
+							Pods: []rolloutv1beta1.Pod{
 								{
 									Name:     "pod2",
 									IP:       "1.2.3.2",
@@ -738,7 +738,7 @@ func TestReconcile(t *testing.T) {
 						},
 						{
 							CanaryStepIndex: 3,
-							Pods: []rolloutv1alpha1.Pod{
+							Pods: []rolloutv1beta1.Pod{
 								{
 									Name:     "pod3",
 									IP:       "1.2.3.3",
@@ -758,50 +758,50 @@ func TestReconcile(t *testing.T) {
 						},
 					},
 				}
-				return []*rolloutv1alpha1.RolloutHistory{rollouthistory}
+				return []*rolloutv1beta1.RolloutHistory{rollouthistory}
 			},
-			expectRolloutHistory: func() []*rolloutv1alpha1.RolloutHistory {
+			expectRolloutHistory: func() []*rolloutv1beta1.RolloutHistory {
 				rollouthistory := rollouthistoryDemo.DeepCopy()
 				rollouthistory.Labels = map[string]string{
 					rolloutIDLabel:   "4",
 					rolloutNameLabel: "rollout-demo",
 				}
-				rollouthistory.Spec = rolloutv1alpha1.RolloutHistorySpec{
-					Rollout: rolloutv1alpha1.RolloutInfo{
+				rollouthistory.Spec = rolloutv1beta1.RolloutHistorySpec{
+					Rollout: rolloutv1beta1.RolloutInfo{
 						RolloutID: "4",
-						NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+						NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 							Name: "rollout-demo",
 						},
 					},
-					Workload: rolloutv1alpha1.WorkloadInfo{
-						NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+					Workload: rolloutv1beta1.WorkloadInfo{
+						NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 							Name: "workload-demo",
 						},
 					},
-					Service: rolloutv1alpha1.ServiceInfo{
-						NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+					Service: rolloutv1beta1.ServiceInfo{
+						NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 							Name: "service-demo",
 						},
 					},
-					TrafficRouting: rolloutv1alpha1.TrafficRoutingInfo{
-						Ingress: &rolloutv1alpha1.IngressInfo{
-							NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+					TrafficRouting: rolloutv1beta1.TrafficRoutingInfo{
+						Ingress: &rolloutv1beta1.IngressInfo{
+							NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 								Name: "ingress-demo",
 							},
 						},
-						HTTPRoute: &rolloutv1alpha1.HTTPRouteInfo{
-							NameAndSpecData: rolloutv1alpha1.NameAndSpecData{
+						HTTPRoute: &rolloutv1beta1.HTTPRouteInfo{
+							NameAndSpecData: rolloutv1beta1.NameAndSpecData{
 								Name: "HTTPRoute-demo",
 							},
 						},
 					},
 				}
-				rollouthistory.Status = rolloutv1alpha1.RolloutHistoryStatus{
-					Phase: rolloutv1alpha1.PhaseCompleted,
-					CanarySteps: []rolloutv1alpha1.CanaryStepInfo{
+				rollouthistory.Status = rolloutv1beta1.RolloutHistoryStatus{
+					Phase: rolloutv1beta1.PhaseCompleted,
+					CanarySteps: []rolloutv1beta1.CanaryStepInfo{
 						{
 							CanaryStepIndex: 1,
-							Pods: []rolloutv1alpha1.Pod{
+							Pods: []rolloutv1beta1.Pod{
 								{
 									Name:     "pod1",
 									IP:       "1.2.3.1",
@@ -811,7 +811,7 @@ func TestReconcile(t *testing.T) {
 						},
 						{
 							CanaryStepIndex: 2,
-							Pods: []rolloutv1alpha1.Pod{
+							Pods: []rolloutv1beta1.Pod{
 								{
 									Name:     "pod2",
 									IP:       "1.2.3.2",
@@ -821,7 +821,7 @@ func TestReconcile(t *testing.T) {
 						},
 						{
 							CanaryStepIndex: 3,
-							Pods: []rolloutv1alpha1.Pod{
+							Pods: []rolloutv1beta1.Pod{
 								{
 									Name:     "pod3",
 									IP:       "1.2.3.3",
@@ -841,7 +841,7 @@ func TestReconcile(t *testing.T) {
 						},
 					},
 				}
-				return []*rolloutv1alpha1.RolloutHistory{rollouthistory}
+				return []*rolloutv1beta1.RolloutHistory{rollouthistory}
 			},
 		},
 		{
@@ -872,23 +872,23 @@ func TestReconcile(t *testing.T) {
 				httpRoutes := []*v1alpha2.HTTPRoute{}
 				return httpRoutes
 			},
-			getRollout: func() []*rolloutv1alpha1.Rollout {
+			getRollout: func() []*rolloutv1beta1.Rollout {
 				rollout := rolloutDemo1.DeepCopy()
 				rollout.Spec.DeprecatedRolloutID = "5"
-				rollout.Status = rolloutv1alpha1.RolloutStatus{
-					CanaryStatus: &rolloutv1alpha1.CanaryStatus{
+				rollout.Status = rolloutv1beta1.RolloutStatus{
+					CanaryStatus: &rolloutv1beta1.CanaryStatus{
 						ObservedRolloutID: "5",
 					},
-					Phase: rolloutv1alpha1.RolloutPhaseHealthy,
+					Phase: rolloutv1beta1.RolloutPhaseHealthy,
 				}
-				return []*rolloutv1alpha1.Rollout{rollout}
+				return []*rolloutv1beta1.Rollout{rollout}
 			},
-			getRolloutHistory: func() []*rolloutv1alpha1.RolloutHistory {
-				rollouthistories := []*rolloutv1alpha1.RolloutHistory{}
+			getRolloutHistory: func() []*rolloutv1beta1.RolloutHistory {
+				rollouthistories := []*rolloutv1beta1.RolloutHistory{}
 				return rollouthistories
 			},
-			expectRolloutHistory: func() []*rolloutv1alpha1.RolloutHistory {
-				rollouthistories := []*rolloutv1alpha1.RolloutHistory{}
+			expectRolloutHistory: func() []*rolloutv1beta1.RolloutHistory {
+				rollouthistories := []*rolloutv1beta1.RolloutHistory{}
 				return rollouthistories
 			},
 		},
@@ -969,8 +969,8 @@ func TestReconcile(t *testing.T) {
 	}
 }
 
-func checkRolloutHistoryNum(c client.WithWatch, t *testing.T, expect []*rolloutv1alpha1.RolloutHistory) bool {
-	rollouthistories := &rolloutv1alpha1.RolloutHistoryList{}
+func checkRolloutHistoryNum(c client.WithWatch, t *testing.T, expect []*rolloutv1beta1.RolloutHistory) bool {
+	rollouthistories := &rolloutv1beta1.RolloutHistoryList{}
 	err := c.List(context.TODO(), rollouthistories, &client.ListOptions{}, client.InNamespace("default"))
 	if err != nil {
 		t.Fatalf("get rollouthistories failed: %s", err.Error())
@@ -981,10 +981,10 @@ func checkRolloutHistoryNum(c client.WithWatch, t *testing.T, expect []*rolloutv
 	return true
 }
 
-func checkRolloutHistoryInfoEqual(c client.WithWatch, t *testing.T, expect []*rolloutv1alpha1.RolloutHistory) bool {
+func checkRolloutHistoryInfoEqual(c client.WithWatch, t *testing.T, expect []*rolloutv1beta1.RolloutHistory) bool {
 	for i := range expect {
 		obj := expect[i]
-		rollouthistories := &rolloutv1alpha1.RolloutHistoryList{}
+		rollouthistories := &rolloutv1beta1.RolloutHistoryList{}
 		err := c.List(context.TODO(), rollouthistories, &client.ListOptions{}, client.InNamespace(obj.Namespace))
 		if err != nil {
 			t.Fatalf("get rollouthistories failed: %s", err.Error())
@@ -1015,7 +1015,7 @@ func checkRolloutHistoryInfoEqual(c client.WithWatch, t *testing.T, expect []*ro
 	return true
 }
 
-func checkRolloutHistorySpec(spec1 *rolloutv1alpha1.RolloutHistorySpec, spec2 *rolloutv1alpha1.RolloutHistorySpec) bool {
+func checkRolloutHistorySpec(spec1 *rolloutv1beta1.RolloutHistorySpec, spec2 *rolloutv1beta1.RolloutHistorySpec) bool {
 	// spec1 and spec2 may be empty when rollouthistory is not completed
 	if reflect.DeepEqual(spec1, spec2) {
 		return true
@@ -1033,7 +1033,7 @@ func checkRolloutHistorySpec(spec1 *rolloutv1alpha1.RolloutHistorySpec, spec2 *r
 	return true
 }
 
-func checkRolloutHistoryStatus(status1 *rolloutv1alpha1.RolloutHistoryStatus, status2 *rolloutv1alpha1.RolloutHistoryStatus) bool {
+func checkRolloutHistoryStatus(status1 *rolloutv1beta1.RolloutHistoryStatus, status2 *rolloutv1beta1.RolloutHistoryStatus) bool {
 	// in the first reconcile, there is only spec updated
 	// status1 and status2 may be empty when rollouthistory is not completed
 	if reflect.DeepEqual(status1, status2) {

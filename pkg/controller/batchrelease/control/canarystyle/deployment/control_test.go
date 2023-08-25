@@ -24,7 +24,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/util"
 	expectations "github.com/openkruise/rollouts/pkg/util/expectation"
@@ -105,9 +105,9 @@ var (
 		},
 	}
 
-	releaseDemo = &v1alpha1.BatchRelease{
+	releaseDemo = &v1beta1.BatchRelease{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "rollouts.kruise.io/v1alpha1",
+			APIVersion: "rollouts.kruise.io/v1beta1",
 			Kind:       "BatchRelease",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -115,10 +115,10 @@ var (
 			Namespace: deploymentKey.Namespace,
 			UID:       uuid.NewUUID(),
 		},
-		Spec: v1alpha1.BatchReleaseSpec{
-			ReleasePlan: v1alpha1.ReleasePlan{
-				FinalizingPolicy: v1alpha1.WaitResumeFinalizingPolicyType,
-				Batches: []v1alpha1.ReleaseBatch{
+		Spec: v1beta1.BatchReleaseSpec{
+			ReleasePlan: v1beta1.ReleasePlan{
+				FinalizingPolicy: v1beta1.WaitResumeFinalizingPolicyType,
+				Batches: []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
 					},
@@ -130,16 +130,16 @@ var (
 					},
 				},
 			},
-			TargetRef: v1alpha1.ObjectRef{
-				WorkloadRef: &v1alpha1.WorkloadRef{
+			TargetRef: v1beta1.ObjectRef{
+				WorkloadRef: &v1beta1.WorkloadRef{
 					APIVersion: deploymentDemo.APIVersion,
 					Kind:       deploymentDemo.Kind,
 					Name:       deploymentDemo.Name,
 				},
 			},
 		},
-		Status: v1alpha1.BatchReleaseStatus{
-			CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
+		Status: v1beta1.BatchReleaseStatus{
+			CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 				CurrentBatch: 1,
 			},
 		},
@@ -148,7 +148,7 @@ var (
 
 func init() {
 	apps.AddToScheme(scheme)
-	v1alpha1.AddToScheme(scheme)
+	v1beta1.AddToScheme(scheme)
 }
 
 func TestCalculateBatchContext(t *testing.T) {
@@ -157,7 +157,7 @@ func TestCalculateBatchContext(t *testing.T) {
 	percent := intstr.FromString("20%")
 	cases := map[string]struct {
 		workload func() (*apps.Deployment, *apps.Deployment)
-		release  func() *v1alpha1.BatchRelease
+		release  func() *v1beta1.BatchRelease
 		result   *batchcontext.BatchContext
 	}{
 		"normal case": {
@@ -184,21 +184,21 @@ func TestCalculateBatchContext(t *testing.T) {
 				}
 				return stable, canary
 			},
-			release: func() *v1alpha1.BatchRelease {
-				r := &v1alpha1.BatchRelease{
-					Spec: v1alpha1.BatchReleaseSpec{
-						ReleasePlan: v1alpha1.ReleasePlan{
+			release: func() *v1beta1.BatchRelease {
+				r := &v1beta1.BatchRelease{
+					Spec: v1beta1.BatchReleaseSpec{
+						ReleasePlan: v1beta1.ReleasePlan{
 							FailureThreshold: &percent,
-							FinalizingPolicy: v1alpha1.WaitResumeFinalizingPolicyType,
-							Batches: []v1alpha1.ReleaseBatch{
+							FinalizingPolicy: v1beta1.WaitResumeFinalizingPolicyType,
+							Batches: []v1beta1.ReleaseBatch{
 								{
 									CanaryReplicas: percent,
 								},
 							},
 						},
 					},
-					Status: v1alpha1.BatchReleaseStatus{
-						CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
+					Status: v1beta1.BatchReleaseStatus{
+						CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 							CurrentBatch: 0,
 						},
 					},
@@ -310,7 +310,7 @@ func TestRealCanaryController(t *testing.T) {
 	Expect(len(d.Finalizers)).Should(Equal(0))
 }
 
-func getCanaryDeployment(release *v1alpha1.BatchRelease, stable *apps.Deployment, c *realController) *apps.Deployment {
+func getCanaryDeployment(release *v1beta1.BatchRelease, stable *apps.Deployment, c *realController) *apps.Deployment {
 	ds, err := c.listDeployment(release)
 	Expect(err).NotTo(HaveOccurred())
 	if len(ds) == 0 {
@@ -328,7 +328,7 @@ func checkWorkloadInfo(stableInfo *util.WorkloadInfo, deployment *apps.Deploymen
 	Expect(stableInfo.Status.ObservedGeneration).Should(Equal(deployment.Status.ObservedGeneration))
 }
 
-func getControlInfo(release *v1alpha1.BatchRelease) string {
+func getControlInfo(release *v1beta1.BatchRelease) string {
 	owner, _ := json.Marshal(metav1.NewControllerRef(release, release.GetObjectKind().GroupVersionKind()))
 	return string(owner)
 }

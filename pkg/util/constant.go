@@ -19,7 +19,7 @@ package util
 import (
 	"fmt"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 )
 
 // For Rollout and BatchRelease
@@ -78,5 +78,5 @@ type WorkloadType string
 type FinalizerOpType string
 
 func ProgressingRolloutFinalizer(name string) string {
-	return fmt.Sprintf("%s/%s", v1alpha1.ProgressingRolloutFinalizerPrefix, name)
+	return fmt.Sprintf("%s/%s", v1beta1.ProgressingRolloutFinalizerPrefix, name)
 }

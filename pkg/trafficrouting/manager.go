@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/gateway"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/ingress"
@@ -43,8 +43,8 @@ type TrafficRoutingContext struct {
 	// only for log info
 	Key       string
 	Namespace string
-	ObjectRef []v1alpha1.TrafficRoutingRef
-	Strategy  v1alpha1.TrafficRoutingStrategy
+	ObjectRef []v1beta1.TrafficRoutingRef
+	Strategy  v1beta1.TrafficRoutingStrategy
 	// OnlyTrafficRouting
 	OnlyTrafficRouting bool
 	OwnerRef           metav1.OwnerReference

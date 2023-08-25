@@ -20,7 +20,7 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 )
 
@@ -59,9 +59,9 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 				clone.Spec.Template.Spec.Containers[0].Image = images[0]
 			}
 			clone.Spec.Template.Spec.Containers[0].Env[0].Value = version
-			strategy := unmarshal(clone.Annotations[rolloutsv1alpha1.DeploymentStrategyAnnotation])
+			strategy := unmarshal(clone.Annotations[rolloutsv1beta1.DeploymentStrategyAnnotation])
 			strategy.Paused = true
-			clone.Annotations[rolloutsv1alpha1.DeploymentStrategyAnnotation] = marshal(strategy)
+			clone.Annotations[rolloutsv1beta1.DeploymentStrategyAnnotation] = marshal(strategy)
 			return k8sClient.Update(context.TODO(), clone)
 		})).NotTo(HaveOccurred())
 
@@ -84,13 +84,13 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 			if err != nil {
 				return err
 			}
-			strategy := unmarshal(clone.Annotations[rolloutsv1alpha1.DeploymentStrategyAnnotation])
+			strategy := unmarshal(clone.Annotations[rolloutsv1beta1.DeploymentStrategyAnnotation])
 			if reflect.DeepEqual(desired, strategy.Partition) {
 				return nil
 			}
 			strategy.Paused = false
 			strategy.Partition = desired
-			clone.Annotations[rolloutsv1alpha1.DeploymentStrategyAnnotation] = marshal(strategy)
+			clone.Annotations[rolloutsv1beta1.DeploymentStrategyAnnotation] = marshal(strategy)
 			return k8sClient.Update(context.TODO(), clone)
 		})).NotTo(HaveOccurred())
 		return clone
@@ -189,7 +189,7 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 
 	UpdatePartitionWithCheck := func(deployment *apps.Deployment, desired intstr.IntOrString) {
 		By(fmt.Sprintf("update deployment %v to desired: %v, strategy: %v, and check",
-			client.ObjectKeyFromObject(deployment), deployment.Annotations[rolloutsv1alpha1.DeploymentStrategyAnnotation], desired))
+			client.ObjectKeyFromObject(deployment), deployment.Annotations[rolloutsv1beta1.DeploymentStrategyAnnotation], desired))
 		clone := UpdatePartitionWithoutCheck(deployment, desired)
 		count := 5
 		for count > 0 {
@@ -268,7 +268,7 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 			deployment := &apps.Deployment{}
 			deployment.Namespace = namespace
 			Expect(ReadYamlToObject("./test_data/deployment/deployment.yaml", deployment)).ToNot(HaveOccurred())
-			deployment.Annotations[rolloutsv1alpha1.DeploymentStrategyAnnotation] =
+			deployment.Annotations[rolloutsv1beta1.DeploymentStrategyAnnotation] =
 				`{"rollingStyle":"Partition","rollingUpdate":{"maxUnavailable":0,"maxSurge":1}}`
 			CreateObject(deployment)
 			CheckReplicas(deployment, 5, 5, 5)
@@ -283,7 +283,7 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 			deployment := &apps.Deployment{}
 			deployment.Namespace = namespace
 			Expect(ReadYamlToObject("./test_data/deployment/deployment.yaml", deployment)).ToNot(HaveOccurred())
-			deployment.Annotations[rolloutsv1alpha1.DeploymentStrategyAnnotation] =
+			deployment.Annotations[rolloutsv1beta1.DeploymentStrategyAnnotation] =
 				`{"rollingStyle":"Partition","rollingUpdate":{"maxUnavailable":1,"maxSurge":0}}`
 			deployment.Spec.MinReadySeconds = 10
 			CreateObject(deployment)
@@ -344,13 +344,13 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 	})
 })
 
-func unmarshal(strategyAnno string) *rolloutsv1alpha1.DeploymentStrategy {
-	strategy := &rolloutsv1alpha1.DeploymentStrategy{}
+func unmarshal(strategyAnno string) *rolloutsv1beta1.DeploymentStrategy {
+	strategy := &rolloutsv1beta1.DeploymentStrategy{}
 	_ = json.Unmarshal([]byte(strategyAnno), strategy)
 	return strategy
 }
 
-func marshal(strategy *rolloutsv1alpha1.DeploymentStrategy) string {
+func marshal(strategy *rolloutsv1beta1.DeploymentStrategy) string {
 	strategyAnno, _ := json.Marshal(strategy)
 	return string(strategyAnno)
 }

@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
@@ -60,7 +60,7 @@ func FilterPodsForUnorderedUpdate(pods []*corev1.Pod, ctx *batchcontext.BatchCon
 		if !util.IsConsistentWithRevision(pod, ctx.UpdateRevision) {
 			continue
 		}
-		if pod.Labels[util.NoNeedUpdatePodLabel] == ctx.RolloutID && pod.Labels[v1alpha1.RolloutIDLabel] != ctx.RolloutID {
+		if pod.Labels[util.NoNeedUpdatePodLabel] == ctx.RolloutID && pod.Labels[v1beta1.RolloutIDLabel] != ctx.RolloutID {
 			noNeedUpdate++
 			lowPriorityPods = append(lowPriorityPods, pod)
 		} else {

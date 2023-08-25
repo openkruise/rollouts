@@ -23,7 +23,7 @@ import (
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	expectations "github.com/openkruise/rollouts/pkg/util/expectation"
@@ -224,14 +224,14 @@ func getBatchRelease(c client.Reader, workloadNamespaceName types.NamespacedName
 			klog.Errorf("Failed to unmarshal controller info annotations for %v(%v)", gvk, workloadNamespaceName)
 		}
 
-		if br.APIVersion == v1alpha1.GroupVersion.String() && br.Kind == "BatchRelease" {
+		if br.APIVersion == v1beta1.GroupVersion.String() && br.Kind == "BatchRelease" {
 			klog.V(3).Infof("%s (%v) is managed by BatchRelease (%s), append queue and will reconcile BatchRelease", gvk.Kind, workloadNamespaceName, br.Name)
 			nsn = types.NamespacedName{Namespace: workloadNamespaceName.Namespace, Name: br.Name}
 			return
 		}
 	}
 
-	brList := &v1alpha1.BatchReleaseList{}
+	brList := &v1beta1.BatchReleaseList{}
 	namespace := workloadNamespaceName.Namespace
 	if err = c.List(context.TODO(), brList, client.InNamespace(namespace), utilclient.DisableDeepCopy); err != nil {
 		klog.Errorf("List BatchRelease failed: %s", err.Error())
@@ -269,7 +269,7 @@ func getControllerKey(object client.Object) *string {
 	if owner == nil {
 		return nil
 	}
-	if owner.APIVersion == v1alpha1.GroupVersion.String() {
+	if owner.APIVersion == v1beta1.GroupVersion.String() {
 		key := types.NamespacedName{Namespace: object.GetNamespace(), Name: owner.Name}.String()
 		return &key
 	}

@@ -23,7 +23,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -172,7 +172,7 @@ func TestWorkloadEventHandler_Create(t *testing.T) {
 			GetNewWorkload: func() client.Object {
 				object := getStableWithReady(stableDeploy, "v2").(*apps.Deployment)
 				controlInfo, _ := json.Marshal(&metav1.OwnerReference{
-					APIVersion: v1alpha1.GroupVersion.String(),
+					APIVersion: v1beta1.GroupVersion.String(),
 					Kind:       "Rollout",
 					Name:       "whatever",
 				})
@@ -228,7 +228,7 @@ func TestWorkloadEventHandler_Delete(t *testing.T) {
 			GetNewWorkload: func() client.Object {
 				object := getStableWithReady(stableDeploy, "v2").(*apps.Deployment)
 				controlInfo, _ := json.Marshal(&metav1.OwnerReference{
-					APIVersion: v1alpha1.GroupVersion.String(),
+					APIVersion: v1beta1.GroupVersion.String(),
 					Kind:       "Rollout",
 					Name:       "whatever",
 				})

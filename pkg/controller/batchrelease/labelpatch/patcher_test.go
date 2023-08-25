@@ -23,7 +23,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -156,7 +156,7 @@ func TestLabelPatcher(t *testing.T) {
 			Expect(err).NotTo(HaveOccurred())
 			patched := 0
 			for _, pod := range podList.Items {
-				if pod.Labels[v1alpha1.RolloutIDLabel] == ctx.RolloutID {
+				if pod.Labels[v1beta1.RolloutIDLabel] == ctx.RolloutID {
 					patched++
 				}
 			}
@@ -170,8 +170,8 @@ func TestLabelPatcher(t *testing.T) {
 
 func generatePods(ordinalBegin, ordinalEnd, labeled int32, rolloutID, batchID, version string) []*corev1.Pod {
 	podsWithLabel := generateLabeledPods(map[string]string{
-		v1alpha1.RolloutIDLabel:             rolloutID,
-		v1alpha1.RolloutBatchIDLabel:        batchID,
+		v1beta1.RolloutIDLabel:             rolloutID,
+		v1beta1.RolloutBatchIDLabel:        batchID,
 		apps.ControllerRevisionHashLabelKey: version,
 	}, int(labeled), int(ordinalBegin))
 

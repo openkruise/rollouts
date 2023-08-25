@@ -25,7 +25,7 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -46,9 +46,9 @@ const (
 )
 
 // controllerFinderFunc2 is a function type that maps <namespace, workloadRef> to a rolloutHistory's WorkloadInfo
-type controllerFinderFunc2 func(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*rolloutv1alpha1.WorkloadInfo, error)
+type controllerFinderFunc2 func(namespace string, ref *rolloutv1beta1.WorkloadRef) (*rolloutv1beta1.WorkloadInfo, error)
 
-type controllerFinderFunc2LabelSelector func(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*v1.LabelSelector, error)
+type controllerFinderFunc2LabelSelector func(namespace string, ref *rolloutv1beta1.WorkloadRef) (*v1.LabelSelector, error)
 type controllerFinder2 struct {
 	client.Client
 }
@@ -59,7 +59,7 @@ func newControllerFinder2(c client.Client) *controllerFinder2 {
 	}
 }
 
-func (r *controllerFinder2) getWorkloadInfoForRef(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*rolloutv1alpha1.WorkloadInfo, error) {
+func (r *controllerFinder2) getWorkloadInfoForRef(namespace string, ref *rolloutv1beta1.WorkloadRef) (*rolloutv1beta1.WorkloadInfo, error) {
 	for _, finder := range r.finders2() {
 		workloadInfo, err := finder(namespace, ref)
 		if workloadInfo != nil || err != nil {
@@ -69,7 +69,7 @@ func (r *controllerFinder2) getWorkloadInfoForRef(namespace string, ref *rollout
 	return nil, nil
 }
 
-func (r *controllerFinder2) getLabelSelectorForRef(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*v1.LabelSelector, error) {
+func (r *controllerFinder2) getLabelSelectorForRef(namespace string, ref *rolloutv1beta1.WorkloadRef) (*v1.LabelSelector, error) {
 	for _, finder := range r.finders2LabelSelector() {
 		labelSelector, err := finder(namespace, ref)
 		if labelSelector != nil || err != nil {
@@ -90,7 +90,7 @@ func (r *controllerFinder2) finders2() []controllerFinderFunc2 {
 }
 
 // getWorkloadInfoWithAdvancedStatefulSet returns WorkloadInfo with kruise statefulset referenced by the provided controllerRef
-func (r *controllerFinder2) getWorkloadInfoWithAdvancedStatefulSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*rolloutv1alpha1.WorkloadInfo, error) {
+func (r *controllerFinder2) getWorkloadInfoWithAdvancedStatefulSet(namespace string, ref *rolloutv1beta1.WorkloadRef) (*rolloutv1beta1.WorkloadInfo, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, util.ControllerKruiseKindSts.Kind, []string{util.ControllerKruiseKindSts.Group})
 	if !ok {
@@ -108,7 +108,7 @@ func (r *controllerFinder2) getWorkloadInfoWithAdvancedStatefulSet(namespace str
 	}
 
 	// assign value
-	workloadInfo := &rolloutv1alpha1.WorkloadInfo{}
+	workloadInfo := &rolloutv1beta1.WorkloadInfo{}
 	workloadInfo.APIVersion = workload.APIVersion
 	workloadInfo.Kind = workload.Kind
 	workloadInfo.Name = workload.Name
@@ -120,7 +120,7 @@ func (r *controllerFinder2) getWorkloadInfoWithAdvancedStatefulSet(namespace str
 }
 
 // getLabelSelectorWithAdvancedStatefulSet returns selector with kruise statefulset referenced by the provided controllerRef
-func (r *controllerFinder2) getLabelSelectorWithAdvancedStatefulSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*v1.LabelSelector, error) {
+func (r *controllerFinder2) getLabelSelectorWithAdvancedStatefulSet(namespace string, ref *rolloutv1beta1.WorkloadRef) (*v1.LabelSelector, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, util.ControllerKruiseKindSts.Kind, []string{util.ControllerKruiseKindSts.Group})
 	if !ok {
@@ -144,7 +144,7 @@ func (r *controllerFinder2) getLabelSelectorWithAdvancedStatefulSet(namespace st
 }
 
 // getWorkloadInfoWithCloneSet returns WorkloadInfo with kruise cloneset referenced by the provided controllerRef
-func (r *controllerFinder2) getWorkloadInfoWithCloneSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*rolloutv1alpha1.WorkloadInfo, error) {
+func (r *controllerFinder2) getWorkloadInfoWithCloneSet(namespace string, ref *rolloutv1beta1.WorkloadRef) (*rolloutv1beta1.WorkloadInfo, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, util.ControllerKruiseKindCS.Kind, []string{util.ControllerKruiseKindCS.Group})
 	if !ok {
@@ -162,7 +162,7 @@ func (r *controllerFinder2) getWorkloadInfoWithCloneSet(namespace string, ref *r
 	}
 
 	// assign value
-	workloadInfo := &rolloutv1alpha1.WorkloadInfo{}
+	workloadInfo := &rolloutv1beta1.WorkloadInfo{}
 	workloadInfo.APIVersion = workload.APIVersion
 	workloadInfo.Kind = workload.Kind
 	workloadInfo.Name = workload.Name
@@ -174,7 +174,7 @@ func (r *controllerFinder2) getWorkloadInfoWithCloneSet(namespace string, ref *r
 }
 
 // getLabelSelectorWithCloneSet returns selector with kruise cloneset referenced by the provided controllerRef
-func (r *controllerFinder2) getLabelSelectorWithCloneSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*v1.LabelSelector, error) {
+func (r *controllerFinder2) getLabelSelectorWithCloneSet(namespace string, ref *rolloutv1beta1.WorkloadRef) (*v1.LabelSelector, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, util.ControllerKruiseKindCS.Kind, []string{util.ControllerKruiseKindCS.Group})
 	if !ok {
@@ -198,7 +198,7 @@ func (r *controllerFinder2) getLabelSelectorWithCloneSet(namespace string, ref *
 }
 
 // getWorkloadInfoWithDeployment returns WorkloadInfo with k8s native deployment referenced by the provided controllerRef
-func (r *controllerFinder2) getWorkloadInfoWithDeployment(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*rolloutv1alpha1.WorkloadInfo, error) {
+func (r *controllerFinder2) getWorkloadInfoWithDeployment(namespace string, ref *rolloutv1beta1.WorkloadRef) (*rolloutv1beta1.WorkloadInfo, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, util.ControllerKindDep.Kind, []string{util.ControllerKindDep.Group})
 	if !ok {
@@ -216,7 +216,7 @@ func (r *controllerFinder2) getWorkloadInfoWithDeployment(namespace string, ref 
 	}
 
 	// assign value
-	workloadInfo := &rolloutv1alpha1.WorkloadInfo{}
+	workloadInfo := &rolloutv1beta1.WorkloadInfo{}
 	workloadInfo.APIVersion = workload.APIVersion
 	workloadInfo.Kind = workload.Kind
 	workloadInfo.Name = workload.Name
@@ -228,7 +228,7 @@ func (r *controllerFinder2) getWorkloadInfoWithDeployment(namespace string, ref 
 }
 
 // getLabelSelectorWithDeployment returns selector with deployment referenced by the provided controllerRef
-func (r *controllerFinder2) getLabelSelectorWithDeployment(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*v1.LabelSelector, error) {
+func (r *controllerFinder2) getLabelSelectorWithDeployment(namespace string, ref *rolloutv1beta1.WorkloadRef) (*v1.LabelSelector, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, util.ControllerKindDep.Kind, []string{util.ControllerKindDep.Group})
 	if !ok {
@@ -252,7 +252,7 @@ func (r *controllerFinder2) getLabelSelectorWithDeployment(namespace string, ref
 }
 
 // getWorkloadInfoWithNativeStatefulSet returns WorkloadInfo with k8s native statefulset referenced by the provided controllerRef
-func (r *controllerFinder2) getWorkloadInfoWithNativeStatefulSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*rolloutv1alpha1.WorkloadInfo, error) {
+func (r *controllerFinder2) getWorkloadInfoWithNativeStatefulSet(namespace string, ref *rolloutv1beta1.WorkloadRef) (*rolloutv1beta1.WorkloadInfo, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, util.ControllerKindSts.Kind, []string{util.ControllerKindSts.Group})
 	if !ok {
@@ -270,7 +270,7 @@ func (r *controllerFinder2) getWorkloadInfoWithNativeStatefulSet(namespace strin
 	}
 
 	// assign value
-	workloadInfo := &rolloutv1alpha1.WorkloadInfo{}
+	workloadInfo := &rolloutv1beta1.WorkloadInfo{}
 	workloadInfo.APIVersion = workload.APIVersion
 	workloadInfo.Kind = workload.Kind
 	workloadInfo.Name = workload.Name
@@ -282,7 +282,7 @@ func (r *controllerFinder2) getWorkloadInfoWithNativeStatefulSet(namespace strin
 }
 
 // getLabelSelectorWithNativeStatefulSet returns selector with deployment referenced by the provided controllerRef
-func (r *controllerFinder2) getLabelSelectorWithNativeStatefulSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*v1.LabelSelector, error) {
+func (r *controllerFinder2) getLabelSelectorWithNativeStatefulSet(namespace string, ref *rolloutv1beta1.WorkloadRef) (*v1.LabelSelector, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, util.ControllerKindSts.Kind, []string{util.ControllerKindSts.Group})
 	if !ok {
@@ -305,7 +305,7 @@ func (r *controllerFinder2) getLabelSelectorWithNativeStatefulSet(namespace stri
 	return labelSelector, nil
 }
 
-func verifyGroupKind(ref *rolloutv1alpha1.WorkloadRef, expectedKind string, expectedGroups []string) (bool, error) {
+func verifyGroupKind(ref *rolloutv1beta1.WorkloadRef, expectedKind string, expectedGroups []string) (bool, error) {
 	gv, err := schema.ParseGroupVersion(ref.APIVersion)
 	if err != nil {
 		return false, err

@@ -19,7 +19,7 @@ package deployment
 import (
 	"context"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
@@ -77,7 +77,7 @@ func (rc *realController) ListOwnedPods() ([]*corev1.Pod, error) {
 	return rc.pods, err
 }
 
-func (rc *realController) Initialize(release *v1alpha1.BatchRelease) error {
+func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 	if deploymentutil.IsUnderRolloutControl(rc.object) {
 		return nil // No need initialize again.
 	}
@@ -88,17 +88,17 @@ func (rc *realController) Initialize(release *v1alpha1.BatchRelease) error {
 	if rc.object.Spec.Strategy.RollingUpdate != nil {
 		rollingUpdate = rc.object.Spec.Strategy.RollingUpdate
 	}
-	strategy = v1alpha1.DeploymentStrategy{
+	strategy = v1beta1.DeploymentStrategy{
 		Paused:        false,
 		Partition:     intstr.FromInt(0),
-		RollingStyle:  v1alpha1.PartitionRollingStyle,
+		RollingStyle:  v1beta1.PartitionRollingStyle,
 		RollingUpdate: rollingUpdate,
 	}
 
 	d := rc.object.DeepCopy()
 	patchData := patch.NewDeploymentPatch()
-	patchData.InsertLabel(v1alpha1.AdvancedDeploymentControlLabel, "true")
-	patchData.InsertAnnotation(v1alpha1.DeploymentStrategyAnnotation, util.DumpJSON(&strategy))
+	patchData.InsertLabel(v1beta1.AdvancedDeploymentControlLabel, "true")
+	patchData.InsertAnnotation(v1beta1.DeploymentStrategyAnnotation, util.DumpJSON(&strategy))
 	patchData.InsertAnnotation(util.BatchReleaseControlAnnotation, util.DumpJSON(metav1.NewControllerRef(
 		release, release.GetObjectKind().GroupVersionKind())))
 
@@ -123,11 +123,11 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	d := rc.object.DeepCopy()
 	strategy.Partition = ctx.DesiredPartition
 	patchData := patch.NewDeploymentPatch()
-	patchData.InsertAnnotation(v1alpha1.DeploymentStrategyAnnotation, util.DumpJSON(&strategy))
+	patchData.InsertAnnotation(v1beta1.DeploymentStrategyAnnotation, util.DumpJSON(&strategy))
 	return rc.client.Patch(context.TODO(), d, patchData)
 }
 
-func (rc *realController) Finalize(release *v1alpha1.BatchRelease) error {
+func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	if rc.object == nil || !deploymentutil.IsUnderRolloutControl(rc.object) {
 		return nil // No need to finalize again.
 	}
@@ -137,17 +137,17 @@ func (rc *realController) Finalize(release *v1alpha1.BatchRelease) error {
 		strategy := util.GetDeploymentStrategy(rc.object)
 		patchData.UpdatePaused(false)
 		patchData.UpdateStrategy(apps.DeploymentStrategy{Type: apps.RollingUpdateDeploymentStrategyType, RollingUpdate: strategy.RollingUpdate})
-		patchData.DeleteAnnotation(v1alpha1.DeploymentStrategyAnnotation)
-		patchData.DeleteAnnotation(v1alpha1.DeploymentExtraStatusAnnotation)
-		patchData.DeleteLabel(v1alpha1.DeploymentStableRevisionLabel)
-		patchData.DeleteLabel(v1alpha1.AdvancedDeploymentControlLabel)
+		patchData.DeleteAnnotation(v1beta1.DeploymentStrategyAnnotation)
+		patchData.DeleteAnnotation(v1beta1.DeploymentExtraStatusAnnotation)
+		patchData.DeleteLabel(v1beta1.DeploymentStableRevisionLabel)
+		patchData.DeleteLabel(v1beta1.AdvancedDeploymentControlLabel)
 	}
 	d := rc.object.DeepCopy()
 	patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
 	return rc.client.Patch(context.TODO(), d, patchData)
 }
 
-func (rc *realController) CalculateBatchContext(release *v1alpha1.BatchRelease) (*batchcontext.BatchContext, error) {
+func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {
 	rolloutID := release.Spec.ReleasePlan.RolloutID
 	if rolloutID != "" {
 		// if rollout-id is set, the pod will be patched batch label,
@@ -181,6 +181,6 @@ func (rc *realController) getWorkloadInfo(d *apps.Deployment) *util.WorkloadInfo
 	workloadInfo := util.ParseWorkload(d)
 	extraStatus := util.GetDeploymentExtraStatus(d)
 	workloadInfo.Status.UpdatedReadyReplicas = extraStatus.UpdatedReadyReplicas
-	workloadInfo.Status.StableRevision = d.Labels[v1alpha1.DeploymentStableRevisionLabel]
+	workloadInfo.Status.StableRevision = d.Labels[v1beta1.DeploymentStableRevisionLabel]
 	return workloadInfo
 }

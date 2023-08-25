@@ -30,7 +30,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/feature"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -404,12 +404,12 @@ func GetEmptyObjectWithKey(object client.Object) client.Object {
 
 // GetDeploymentStrategy decode the strategy object for advanced deployment
 // from the annotation rollouts.kruise.io/deployment-strategy
-func GetDeploymentStrategy(deployment *apps.Deployment) v1alpha1.DeploymentStrategy {
-	strategy := v1alpha1.DeploymentStrategy{}
+func GetDeploymentStrategy(deployment *apps.Deployment) v1beta1.DeploymentStrategy {
+	strategy := v1beta1.DeploymentStrategy{}
 	if deployment == nil {
 		return strategy
 	}
-	strategyStr := deployment.Annotations[v1alpha1.DeploymentStrategyAnnotation]
+	strategyStr := deployment.Annotations[v1beta1.DeploymentStrategyAnnotation]
 	if strategyStr == "" {
 		return strategy
 	}
@@ -419,12 +419,12 @@ func GetDeploymentStrategy(deployment *apps.Deployment) v1alpha1.DeploymentStrat
 
 // GetDeploymentExtraStatus decode the extra-status object for advanced deployment
 // from the annotation rollouts.kruise.io/deployment-extra-status
-func GetDeploymentExtraStatus(deployment *apps.Deployment) v1alpha1.DeploymentExtraStatus {
-	extraStatus := v1alpha1.DeploymentExtraStatus{}
+func GetDeploymentExtraStatus(deployment *apps.Deployment) v1beta1.DeploymentExtraStatus {
+	extraStatus := v1beta1.DeploymentExtraStatus{}
 	if deployment == nil {
 		return extraStatus
 	}
-	extraStatusStr := deployment.Annotations[v1alpha1.DeploymentExtraStatusAnnotation]
+	extraStatusStr := deployment.Annotations[v1beta1.DeploymentExtraStatusAnnotation]
 	if extraStatusStr == "" {
 		return extraStatus
 	}

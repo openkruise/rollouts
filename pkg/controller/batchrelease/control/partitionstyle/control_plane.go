@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -39,14 +39,14 @@ type realBatchControlPlane struct {
 	client.Client
 	record.EventRecorder
 	patcher   labelpatch.LabelPatcher
-	release   *v1alpha1.BatchRelease
-	newStatus *v1alpha1.BatchReleaseStatus
+	release   *v1beta1.BatchRelease
+	newStatus *v1beta1.BatchReleaseStatus
 }
 
 type NewInterfaceFunc func(cli client.Client, key types.NamespacedName, gvk schema.GroupVersionKind) Interface
 
 // NewControlPlane creates a new release controller with partitioned-style to drive batch release state machine
-func NewControlPlane(f NewInterfaceFunc, cli client.Client, recorder record.EventRecorder, release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, key types.NamespacedName, gvk schema.GroupVersionKind) *realBatchControlPlane {
+func NewControlPlane(f NewInterfaceFunc, cli client.Client, recorder record.EventRecorder, release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus, key types.NamespacedName, gvk schema.GroupVersionKind) *realBatchControlPlane {
 	return &realBatchControlPlane{
 		Client:        cli,
 		EventRecorder: recorder,
@@ -203,7 +203,7 @@ func (rc *realBatchControlPlane) SyncWorkloadInformation() (control.WorkloadEven
 // - err: whether error occurs.
 func (rc *realBatchControlPlane) markNoNeedUpdatePodsIfNeeds() (*int32, error) {
 	// currently, we only support rollback scene, in the future, we may support more scenes.
-	if rc.release.Annotations[v1alpha1.RollbackInBatchAnnotation] == "" {
+	if rc.release.Annotations[v1beta1.RollbackInBatchAnnotation] == "" {
 		return nil, nil
 	}
 	// currently, if rollout-id is not set, it is no scene which require patch this label

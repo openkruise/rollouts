@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
@@ -37,8 +37,8 @@ import (
 var defaultGracePeriodSeconds int32 = 3
 
 type RolloutContext struct {
-	Rollout   *v1alpha1.Rollout
-	NewStatus *v1alpha1.RolloutStatus
+	Rollout   *v1beta1.Rollout
+	NewStatus *v1beta1.RolloutStatus
 	// related workload
 	Workload *util.Workload
 	// reconcile RequeueAfter recheckTime
@@ -48,8 +48,8 @@ type RolloutContext struct {
 }
 
 // parameter1 retryReconcile, parameter2 error
-func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1alpha1.Rollout, newStatus *v1alpha1.RolloutStatus) (*time.Time, error) {
-	cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout, newStatus *v1beta1.RolloutStatus) (*time.Time, error) {
+	cond := util.GetRolloutCondition(rollout.Status, v1beta1.RolloutConditionProgressing)
 	klog.Infof("reconcile rollout(%s/%s) progressing action...", rollout.Namespace, rollout.Name)
 	workload, err := r.finder.GetWorkloadForRef(rollout)
 	if err != nil {
@@ -64,17 +64,17 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1alpha1.Rollou
 	}
 	rolloutContext := &RolloutContext{Rollout: rollout, NewStatus: newStatus, Workload: workload}
 	switch cond.Reason {
-	case v1alpha1.ProgressingReasonInitializing:
+	case v1beta1.ProgressingReasonInitializing:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		// new canaryStatus
-		newStatus.CanaryStatus = &v1alpha1.CanaryStatus{
+		newStatus.CanaryStatus = &v1beta1.CanaryStatus{
 			ObservedWorkloadGeneration: rolloutContext.Workload.Generation,
 			RolloutHash:                rolloutContext.Rollout.Annotations[util.RolloutHashAnnotation],
 			ObservedRolloutID:          getRolloutID(rolloutContext.Workload),
 			StableRevision:             rolloutContext.Workload.StableRevision,
 			CanaryRevision:             rolloutContext.Workload.CanaryRevision,
 			CurrentStepIndex:           1,
-			CurrentStepState:           v1alpha1.CanaryStepStateUpgrade,
+			CurrentStepState:           v1beta1.CanaryStepStateUpgrade,
 			LastUpdateTime:             &metav1.Time{Time: time.Now()},
 		}
 		done, err := r.doProgressingInitializing(rolloutContext)
@@ -82,7 +82,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1alpha1.Rollou
 			klog.Errorf("rollout(%s/%s) doProgressingInitializing error(%s)", rollout.Namespace, rollout.Name, err.Error())
 			return nil, err
 		} else if done {
-			progressingStateTransition(newStatus, corev1.ConditionTrue, v1alpha1.ProgressingReasonInRolling, "Rollout is in Progressing")
+			progressingStateTransition(newStatus, corev1.ConditionTrue, v1beta1.ProgressingReasonInRolling, "Rollout is in Progressing")
 		} else {
 			// Incomplete, recheck
 			expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
@@ -90,14 +90,14 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1alpha1.Rollou
 			klog.Infof("rollout(%s/%s) doProgressingInitializing is incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
 		}
 
-	case v1alpha1.ProgressingReasonInRolling:
+	case v1beta1.ProgressingReasonInRolling:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		err = r.doProgressingInRolling(rolloutContext)
 		if err != nil {
 			return nil, err
 		}
 
-	case v1alpha1.ProgressingReasonFinalising:
+	case v1beta1.ProgressingReasonFinalising:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		var done bool
 		rolloutContext.WaitReady = true
@@ -106,7 +106,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1alpha1.Rollou
 			return nil, err
 			// finalizer is finished
 		} else if done {
-			progressingStateTransition(newStatus, corev1.ConditionFalse, v1alpha1.ProgressingReasonCompleted, "Rollout progressing has been completed")
+			progressingStateTransition(newStatus, corev1.ConditionFalse, v1beta1.ProgressingReasonCompleted, "Rollout progressing has been completed")
 			setRolloutSucceededCondition(newStatus, corev1.ConditionTrue)
 		} else {
 			// Incomplete, recheck
@@ -115,14 +115,14 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1alpha1.Rollou
 			klog.Infof("rollout(%s/%s) doProgressingFinalising is incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
 		}
 
-	case v1alpha1.ProgressingReasonPaused:
+	case v1beta1.ProgressingReasonPaused:
 		// from paused to rolling progressing
 		if !rollout.Spec.Strategy.Paused {
 			klog.Infof("rollout(%s/%s) is Progressing, from paused to rolling", rollout.Namespace, rollout.Name)
-			progressingStateTransition(newStatus, corev1.ConditionTrue, v1alpha1.ProgressingReasonInRolling, "")
+			progressingStateTransition(newStatus, corev1.ConditionTrue, v1beta1.ProgressingReasonInRolling, "")
 		}
 
-	case v1alpha1.ProgressingReasonCancelling:
+	case v1beta1.ProgressingReasonCancelling:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		var done bool
 		done, err = r.doFinalising(rolloutContext)
@@ -130,7 +130,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1alpha1.Rollou
 			return nil, err
 			// finalizer is finished
 		} else if done {
-			progressingStateTransition(newStatus, corev1.ConditionFalse, v1alpha1.ProgressingReasonCompleted, "Rollout progressing has been cancelled")
+			progressingStateTransition(newStatus, corev1.ConditionFalse, v1beta1.ProgressingReasonCompleted, "Rollout progressing has been cancelled")
 			setRolloutSucceededCondition(newStatus, corev1.ConditionFalse)
 		} else {
 			// Incomplete, recheck
@@ -139,10 +139,10 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1alpha1.Rollou
 			klog.Infof("rollout(%s/%s) doProgressingCancelling is incomplete, and recheck(%s)", rollout.Namespace, rollout.Name, expectedTime.String())
 		}
 
-	case v1alpha1.ProgressingReasonCompleted:
+	case v1beta1.ProgressingReasonCompleted:
 		// rollout phase from progressing to healthy
 		klog.Infof("rollout(%s/%s) phase is from progressing to healthy", rollout.Namespace, rollout.Name)
-		newStatus.Phase = v1alpha1.RolloutPhaseHealthy
+		newStatus.Phase = v1beta1.RolloutPhaseHealthy
 	}
 
 	return rolloutContext.RecheckTime, nil
@@ -160,15 +160,15 @@ func (r *RolloutReconciler) doProgressingInitializing(c *RolloutContext) (bool, 
 	// but in many scenarios the user may modify the workload and rollout spec at the same time,
 	// and there is a possibility that the workload is released first, and due to some network or other reasons the rollout spec is delayed by a few seconds,
 	// so this is mainly compatible with this scenario.
-	cond := util.GetRolloutCondition(*c.NewStatus, v1alpha1.RolloutConditionProgressing)
+	cond := util.GetRolloutCondition(*c.NewStatus, v1beta1.RolloutConditionProgressing)
 	if verifyTime := cond.LastUpdateTime.Add(time.Second * time.Duration(defaultGracePeriodSeconds)); verifyTime.After(time.Now()) {
 		klog.Infof("verify rollout(%s/%s) TrafficRouting, and wait a moment", c.Rollout.Namespace, c.Rollout.Name)
 		return false, nil
 	}
 
 	// TrafficRouting indicates the gateway traffic routing, and rollout release will trigger the trafficRouting
-	if c.Rollout.Annotations[v1alpha1.TrafficRoutingAnnotation] != "" {
-		return r.handleTrafficRouting(c.Rollout.Namespace, c.Rollout.Name, c.Rollout.Annotations[v1alpha1.TrafficRoutingAnnotation])
+	if c.Rollout.Annotations[v1beta1.TrafficRoutingAnnotation] != "" {
+		return r.handleTrafficRouting(c.Rollout.Namespace, c.Rollout.Name, c.Rollout.Annotations[v1beta1.TrafficRoutingAnnotation])
 	}
 	return true, nil
 }
@@ -200,9 +200,9 @@ func (r *RolloutReconciler) doProgressingInRolling(c *RolloutContext) error {
 	return r.handleNormalRolling(c)
 }
 
-func (r *RolloutReconciler) handleRolloutPaused(rollout *v1alpha1.Rollout, newStatus *v1alpha1.RolloutStatus) error {
+func (r *RolloutReconciler) handleRolloutPaused(rollout *v1beta1.Rollout, newStatus *v1beta1.RolloutStatus) error {
 	klog.Infof("rollout(%s/%s) is Progressing, but paused", rollout.Namespace, rollout.Name)
-	progressingStateTransition(newStatus, corev1.ConditionTrue, v1alpha1.ProgressingReasonPaused, "Rollout has been paused, you can resume it by kube-cli")
+	progressingStateTransition(newStatus, corev1.ConditionTrue, v1beta1.ProgressingReasonPaused, "Rollout has been paused, you can resume it by kube-cli")
 	return nil
 }
 
@@ -217,7 +217,7 @@ func (r *RolloutReconciler) handleContinuousRelease(c *RolloutContext) error {
 		return err
 	} else if done {
 		c.NewStatus.CanaryStatus = nil
-		progressingStateTransition(c.NewStatus, corev1.ConditionTrue, v1alpha1.ProgressingReasonInitializing, "Workload is continuous release")
+		progressingStateTransition(c.NewStatus, corev1.ConditionTrue, v1beta1.ProgressingReasonInitializing, "Workload is continuous release")
 		klog.Infof("rollout(%s/%s) workload is continuous publishing, reset complete", c.Rollout.Namespace, c.Rollout.Name)
 	} else {
 		// Incomplete, recheck
@@ -228,19 +228,19 @@ func (r *RolloutReconciler) handleContinuousRelease(c *RolloutContext) error {
 	return nil
 }
 
-func (r *RolloutReconciler) handleRollbackDirectly(rollout *v1alpha1.Rollout, workload *util.Workload, newStatus *v1alpha1.RolloutStatus) error {
+func (r *RolloutReconciler) handleRollbackDirectly(rollout *v1beta1.Rollout, workload *util.Workload, newStatus *v1beta1.RolloutStatus) error {
 	newStatus.CanaryStatus.CanaryRevision = workload.CanaryRevision
 	r.Recorder.Eventf(rollout, corev1.EventTypeNormal, "Progressing", "workload has been rollback, then rollout is canceled")
 	klog.Infof("rollout(%s/%s) workload has been rollback directly, then rollout canceled", rollout.Namespace, rollout.Name)
-	progressingStateTransition(newStatus, corev1.ConditionTrue, v1alpha1.ProgressingReasonCancelling, "The workload has been rolled back and the rollout process will be cancelled")
+	progressingStateTransition(newStatus, corev1.ConditionTrue, v1beta1.ProgressingReasonCancelling, "The workload has been rolled back and the rollout process will be cancelled")
 	return nil
 }
 
-func (r *RolloutReconciler) handleRollbackInBatches(rollout *v1alpha1.Rollout, workload *util.Workload, newStatus *v1alpha1.RolloutStatus) error {
+func (r *RolloutReconciler) handleRollbackInBatches(rollout *v1beta1.Rollout, workload *util.Workload, newStatus *v1beta1.RolloutStatus) error {
 	// restart from the beginning
 	newStatus.CanaryStatus.CurrentStepIndex = 1
 	newStatus.CanaryStatus.CanaryRevision = workload.CanaryRevision
-	newStatus.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
+	newStatus.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 	newStatus.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 	newStatus.CanaryStatus.RolloutHash = rollout.Annotations[util.RolloutHashAnnotation]
 	klog.Infof("rollout(%s/%s) workload has been rollback in batches, then restart from beginning", rollout.Namespace, rollout.Name)
@@ -255,7 +255,7 @@ func (r *RolloutReconciler) handleRolloutPlanChanged(c *RolloutContext) error {
 	}
 	// canary step configuration change causes current step index change
 	c.NewStatus.CanaryStatus.CurrentStepIndex = newStepIndex
-	c.NewStatus.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateUpgrade
+	c.NewStatus.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 	c.NewStatus.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 	c.NewStatus.CanaryStatus.RolloutHash = c.Rollout.Annotations[util.RolloutHashAnnotation]
 	klog.Infof("rollout(%s/%s) canary step configuration change, and stepIndex(%d) state(%s)",
@@ -265,9 +265,9 @@ func (r *RolloutReconciler) handleRolloutPlanChanged(c *RolloutContext) error {
 
 func (r *RolloutReconciler) handleNormalRolling(c *RolloutContext) error {
 	// check if canary is done
-	if c.NewStatus.CanaryStatus.CurrentStepState == v1alpha1.CanaryStepStateCompleted {
+	if c.NewStatus.CanaryStatus.CurrentStepState == v1beta1.CanaryStepStateCompleted {
 		klog.Infof("rollout(%s/%s) progressing rolling done", c.Rollout.Namespace, c.Rollout.Name)
-		progressingStateTransition(c.NewStatus, corev1.ConditionTrue, v1alpha1.ProgressingReasonFinalising, "Rollout has been completed and some closing work is being done")
+		progressingStateTransition(c.NewStatus, corev1.ConditionTrue, v1beta1.ProgressingReasonFinalising, "Rollout has been completed and some closing work is being done")
 		return nil
 	}
 	return r.canaryManager.runCanary(c)
@@ -275,7 +275,7 @@ func (r *RolloutReconciler) handleNormalRolling(c *RolloutContext) error {
 
 // name is rollout name, tr is trafficRouting name
 func (r *RolloutReconciler) handleTrafficRouting(namespace, name, tr string) (bool, error) {
-	obj := &v1alpha1.TrafficRouting{}
+	obj := &v1beta1.TrafficRouting{}
 	err := r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: tr}, obj)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -287,7 +287,7 @@ func (r *RolloutReconciler) handleTrafficRouting(namespace, name, tr string) (bo
 	if controllerutil.ContainsFinalizer(obj, util.ProgressingRolloutFinalizer(name)) {
 		return true, nil
 	}
-	if obj.Status.Phase == v1alpha1.TrafficRoutingPhaseFinalizing || obj.Status.Phase == v1alpha1.TrafficRoutingPhaseTerminating {
+	if obj.Status.Phase == v1beta1.TrafficRoutingPhaseFinalizing || obj.Status.Phase == v1beta1.TrafficRoutingPhaseTerminating {
 		klog.Infof("rollout(%s/%s) trafficRouting(%s) phase(%s), and wait a moment", namespace, name, tr, obj.Status.Phase)
 		return false, nil
 	}
@@ -301,7 +301,7 @@ func (r *RolloutReconciler) handleTrafficRouting(namespace, name, tr string) (bo
 }
 
 func (r *RolloutReconciler) finalizeTrafficRouting(namespace, name, tr string) error {
-	obj := &v1alpha1.TrafficRouting{}
+	obj := &v1beta1.TrafficRouting{}
 	err := r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: tr}, obj)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -330,27 +330,27 @@ func (r *RolloutReconciler) finalizeTrafficRouting(namespace, name, tr string) e
 
 ***********************************************************************
 */
-func isRolloutPaused(rollout *v1alpha1.Rollout) bool {
+func isRolloutPaused(rollout *v1beta1.Rollout) bool {
 	return rollout.Spec.Strategy.Paused
 }
 
-func isRolloutPlanChanged(rollout *v1alpha1.Rollout) bool {
+func isRolloutPlanChanged(rollout *v1beta1.Rollout) bool {
 	status := &rollout.Status
 	return status.CanaryStatus.RolloutHash != "" && status.CanaryStatus.RolloutHash != rollout.Annotations[util.RolloutHashAnnotation]
 }
 
-func isContinuousRelease(rollout *v1alpha1.Rollout, workload *util.Workload) bool {
+func isContinuousRelease(rollout *v1beta1.Rollout, workload *util.Workload) bool {
 	status := &rollout.Status
 	return status.CanaryStatus.CanaryRevision != "" && workload.CanaryRevision != status.CanaryStatus.CanaryRevision && !workload.IsInRollback
 }
 
-func isRollingBackDirectly(rollout *v1alpha1.Rollout, workload *util.Workload) bool {
+func isRollingBackDirectly(rollout *v1beta1.Rollout, workload *util.Workload) bool {
 	status := &rollout.Status
 	inBatch := util.IsRollbackInBatchPolicy(rollout, workload.Labels)
 	return workload.IsInRollback && workload.CanaryRevision != status.CanaryStatus.CanaryRevision && !inBatch
 }
 
-func isRollingBackInBatches(rollout *v1alpha1.Rollout, workload *util.Workload) bool {
+func isRollingBackInBatches(rollout *v1beta1.Rollout, workload *util.Workload) bool {
 	status := &rollout.Status
 	inBatch := util.IsRollbackInBatchPolicy(rollout, workload.Labels)
 	return workload.IsInRollback && workload.CanaryRevision != status.CanaryStatus.CanaryRevision && inBatch
@@ -407,8 +407,8 @@ func (r *RolloutReconciler) recalculateCanaryStep(c *RolloutContext) (int32, err
 func (r *RolloutReconciler) doFinalising(c *RolloutContext) (bool, error) {
 	klog.Infof("reconcile rollout(%s/%s) doFinalising", c.Rollout.Namespace, c.Rollout.Name)
 	// TrafficRouting indicates the gateway traffic routing, and rollout finalizer will trigger the trafficRouting finalizer
-	if c.Rollout.Annotations[v1alpha1.TrafficRoutingAnnotation] != "" {
-		err := r.finalizeTrafficRouting(c.Rollout.Namespace, c.Rollout.Name, c.Rollout.Annotations[v1alpha1.TrafficRoutingAnnotation])
+	if c.Rollout.Annotations[v1beta1.TrafficRoutingAnnotation] != "" {
+		err := r.finalizeTrafficRouting(c.Rollout.Namespace, c.Rollout.Name, c.Rollout.Annotations[v1beta1.TrafficRoutingAnnotation])
 		if err != nil {
 			return false, err
 		}
@@ -425,10 +425,10 @@ func (r *RolloutReconciler) doFinalising(c *RolloutContext) (bool, error) {
 	return true, nil
 }
 
-func progressingStateTransition(status *v1alpha1.RolloutStatus, condStatus corev1.ConditionStatus, reason, message string) {
-	cond := util.GetRolloutCondition(*status, v1alpha1.RolloutConditionProgressing)
+func progressingStateTransition(status *v1beta1.RolloutStatus, condStatus corev1.ConditionStatus, reason, message string) {
+	cond := util.GetRolloutCondition(*status, v1beta1.RolloutConditionProgressing)
 	if cond == nil {
-		cond = util.NewRolloutCondition(v1alpha1.RolloutConditionProgressing, condStatus, reason, message)
+		cond = util.NewRolloutCondition(v1beta1.RolloutConditionProgressing, condStatus, reason, message)
 	} else {
 		cond.Status = condStatus
 		cond.Reason = reason
@@ -440,10 +440,10 @@ func progressingStateTransition(status *v1alpha1.RolloutStatus, condStatus corev
 	status.Message = cond.Message
 }
 
-func setRolloutSucceededCondition(status *v1alpha1.RolloutStatus, condStatus corev1.ConditionStatus) {
-	cond := util.GetRolloutCondition(*status, v1alpha1.RolloutConditionSucceeded)
+func setRolloutSucceededCondition(status *v1beta1.RolloutStatus, condStatus corev1.ConditionStatus) {
+	cond := util.GetRolloutCondition(*status, v1beta1.RolloutConditionSucceeded)
 	if cond == nil {
-		cond = util.NewRolloutCondition(v1alpha1.RolloutConditionSucceeded, condStatus, "", "")
+		cond = util.NewRolloutCondition(v1beta1.RolloutConditionSucceeded, condStatus, "", "")
 	} else {
 		cond.Status = condStatus
 	}

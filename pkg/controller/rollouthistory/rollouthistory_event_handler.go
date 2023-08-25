@@ -17,7 +17,7 @@ limitations under the License.
 package rollouthistory
 
 import (
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -47,8 +47,8 @@ func (w *enqueueRequestForRolloutHistory) Update(evt event.UpdateEvent, q workqu
 
 func (w *enqueueRequestForRolloutHistory) handleEvent(q workqueue.RateLimitingInterface, obj client.Object) {
 	// In fact, rolloutHistory which is created by controller must have rolloutNameLabel and rolloutIDLabe
-	rolloutName, ok1 := obj.(*rolloutv1alpha1.RolloutHistory).Labels[rolloutNameLabel]
-	_, ok2 := obj.(*rolloutv1alpha1.RolloutHistory).Labels[rolloutIDLabel]
+	rolloutName, ok1 := obj.(*rolloutv1beta1.RolloutHistory).Labels[rolloutNameLabel]
+	_, ok2 := obj.(*rolloutv1beta1.RolloutHistory).Labels[rolloutIDLabel]
 	if !ok1 || !ok2 {
 		return
 	}
@@ -78,7 +78,7 @@ func (w *enqueueRequestForRollout) Update(evt event.UpdateEvent, q workqueue.Rat
 
 func (w *enqueueRequestForRollout) handleEvent(q workqueue.RateLimitingInterface, obj client.Object) {
 	// RolloutID shouldn't be empty
-	rollout := obj.(*rolloutv1alpha1.Rollout)
+	rollout := obj.(*rolloutv1beta1.Rollout)
 	if rollout.Status.CanaryStatus == nil || rollout.Status.CanaryStatus.ObservedRolloutID == "" {
 		return
 	}

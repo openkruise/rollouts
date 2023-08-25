@@ -25,7 +25,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	workloads "github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/test/images"
 	apps "k8s.io/api/apps/v1"
@@ -44,10 +44,10 @@ var _ = SIGDescribe("BatchRelease", func() {
 	var namespace string
 
 	DumpAllResources := func() {
-		rollout := &rolloutsv1alpha1.RolloutList{}
+		rollout := &rolloutsv1beta1.RolloutList{}
 		k8sClient.List(context.TODO(), rollout, client.InNamespace(namespace))
 		fmt.Println(workloads.DumpJSON(rollout))
-		batch := &rolloutsv1alpha1.BatchReleaseList{}
+		batch := &rolloutsv1beta1.BatchReleaseList{}
 		k8sClient.List(context.TODO(), batch, client.InNamespace(namespace))
 		fmt.Println(workloads.DumpJSON(batch))
 		deploy := &apps.DeploymentList{}
@@ -72,10 +72,10 @@ var _ = SIGDescribe("BatchRelease", func() {
 		Expect(k8sClient.Delete(context.TODO(), object)).NotTo(HaveOccurred())
 	}
 
-	UpdateRelease := func(object *rolloutsv1alpha1.BatchRelease) *rolloutsv1alpha1.BatchRelease {
-		var release *rolloutsv1alpha1.BatchRelease
+	UpdateRelease := func(object *rolloutsv1beta1.BatchRelease) *rolloutsv1beta1.BatchRelease {
+		var release *rolloutsv1beta1.BatchRelease
 		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			release = &rolloutsv1alpha1.BatchRelease{}
+			release = &rolloutsv1beta1.BatchRelease{}
 			err := GetObject(object.Namespace, object.Name, release)
 			if err != nil {
 				return err
@@ -140,7 +140,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 		return clone
 	}
 
-	GetCanaryDeployment := func(release *rolloutsv1alpha1.BatchRelease) *apps.Deployment {
+	GetCanaryDeployment := func(release *rolloutsv1beta1.BatchRelease) *apps.Deployment {
 		var dList *apps.DeploymentList
 		dList = &apps.DeploymentList{}
 		Expect(k8sClient.List(context.TODO(), dList, client.InNamespace(release.Namespace))).NotTo(HaveOccurred())
@@ -176,10 +176,10 @@ var _ = SIGDescribe("BatchRelease", func() {
 		}, 20*time.Minute, time.Second).Should(BeTrue())
 	}
 
-	WaitBatchReleaseProgressing := func(object *rolloutsv1alpha1.BatchRelease) {
+	WaitBatchReleaseProgressing := func(object *rolloutsv1beta1.BatchRelease) {
 		startTime := time.Now()
-		Eventually(func() rolloutsv1alpha1.RolloutPhase {
-			release := &rolloutsv1alpha1.BatchRelease{}
+		Eventually(func() rolloutsv1beta1.RolloutPhase {
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(GetObject(object.Namespace, object.Name, release)).NotTo(HaveOccurred())
 			if startTime.Add(time.Minute * 5).Before(time.Now()) {
 				DumpAllResources()
@@ -187,7 +187,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 			fmt.Println(release.Status.Phase)
 			return release.Status.Phase
-		}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseProgressing))
+		}, 10*time.Minute, time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseProgressing))
 	}
 
 	BeforeEach(func() {
@@ -206,14 +206,14 @@ var _ = SIGDescribe("BatchRelease", func() {
 		if workloads.DiscoverGVK(workloads.ControllerKruiseKindCS) {
 			k8sClient.DeleteAllOf(context.TODO(), &kruiseappsv1alpha1.CloneSet{}, client.InNamespace(namespace))
 		}
-		k8sClient.DeleteAllOf(context.TODO(), &rolloutsv1alpha1.BatchRelease{}, client.InNamespace(namespace))
+		k8sClient.DeleteAllOf(context.TODO(), &rolloutsv1beta1.BatchRelease{}, client.InNamespace(namespace))
 		Expect(k8sClient.Delete(context.TODO(), &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}, client.PropagationPolicy(metav1.DeletePropagationForeground))).Should(Succeed())
 	})
 
 	KruiseDescribe("CloneSet BatchRelease Checker", func() {
 		It("V1->V2: Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -249,16 +249,16 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2: Percentage, 50%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset_percentage_50.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -294,11 +294,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			expectedReplicas, _ := intstr.GetScaledValueFromIntOrPercent(
@@ -313,7 +313,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 		It("V1->V2(UnCompleted)->V3: Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease....")
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -352,9 +352,9 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("V1->V2: Checking BatchRelease status...")
-			clone := &rolloutsv1alpha1.BatchRelease{}
+			clone := &rolloutsv1beta1.BatchRelease{}
 			Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
-			Expect(clone.Status.Phase).ShouldNot(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			Expect(clone.Status.Phase).ShouldNot(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			/*************************************************************************************
 							V1->V2 Succeeded, Start to release V2->V3
@@ -371,16 +371,16 @@ var _ = SIGDescribe("BatchRelease", func() {
 			Expect(canaryRevisionV3).ShouldNot(Equal(canaryRevisionV2))
 
 			By("V2->V3: Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2: ScalingUp, Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -425,11 +425,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
@@ -441,7 +441,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 		It("V1->V2: ScalingDown, Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -486,11 +486,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
@@ -502,7 +502,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 		It("V1->V2: ScalingUp, Number, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset_number_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -547,11 +547,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
@@ -563,7 +563,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 		It("V1->V2: ScalingDown, Number, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/cloneset_number_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -609,11 +609,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Eventually(func() bool {
@@ -628,7 +628,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 		It("V1->V2: Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -639,7 +639,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
 			Expect(GetObject(release.Namespace, release.Name, release))
-			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1beta1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -667,16 +667,16 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2: Percentage, 50%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_50.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -687,7 +687,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
 			Expect(GetObject(release.Namespace, release.Name, release))
-			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1beta1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -715,11 +715,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 5*time.Minute, time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 5*time.Minute, time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking expected pods were updated when release completed...")
 			expectedReplicas, _ := intstr.GetScaledValueFromIntOrPercent(
@@ -734,7 +734,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 		It("V1->V2(UnCompleted)->V3: Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease....")
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -746,7 +746,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
 			Expect(GetObject(release.Namespace, release.Name, release))
-			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1beta1.RolloutPhaseHealthy))
 			stableRevisionV1 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
 
 			/*************************************************************************************
@@ -776,9 +776,9 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("V1->V2: Checking BatchRelease status...")
-			clone := &rolloutsv1alpha1.BatchRelease{}
+			clone := &rolloutsv1beta1.BatchRelease{}
 			Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
-			Expect(clone.Status.Phase).ShouldNot(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			Expect(clone.Status.Phase).ShouldNot(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			/*************************************************************************************
 							V1->V2 Not Completed, Start to release V1,V2->V3
@@ -795,16 +795,16 @@ var _ = SIGDescribe("BatchRelease", func() {
 			Expect(canaryRevisionV3).ShouldNot(Equal(canaryRevisionV2))
 
 			By("V2->V3: Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 		})
 
 		It("V1->V2: ScalingUp, Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -815,7 +815,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
 			Expect(GetObject(release.Namespace, release.Name, release))
-			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1beta1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -853,11 +853,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			fetchedDeployment := &apps.Deployment{}
@@ -874,7 +874,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 		It("V1->V2: ScalingDown, Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -885,7 +885,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
 			Expect(GetObject(release.Namespace, release.Name, release))
-			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1beta1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -923,11 +923,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			fetchedDeployment := &apps.Deployment{}
@@ -944,7 +944,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 		It("V1->V2: ScalingUp, Number, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_number_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -955,7 +955,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
 			Expect(GetObject(release.Namespace, release.Name, release))
-			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1beta1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -992,11 +992,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			fetchedDeployment := &apps.Deployment{}
@@ -1013,7 +1013,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 		It("V1->V2: ScalingDown, Number, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_number_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -1024,7 +1024,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
 			Expect(GetObject(release.Namespace, release.Name, release))
-			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1beta1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -1062,11 +1062,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			}
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			fetchedDeployment := &apps.Deployment{}
@@ -1083,7 +1083,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 		It("Rollback V1->V2->V1: Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -1095,7 +1095,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
 			Expect(GetObject(release.Namespace, release.Name, release))
-			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1beta1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevisionV1 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -1113,7 +1113,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			By("Waiting a minute and checking failed revision...")
 			time.Sleep(time.Minute)
 			for i := 0; i < 30; i++ {
-				fetchedRelease := &rolloutsv1alpha1.BatchRelease{}
+				fetchedRelease := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, fetchedRelease)).NotTo(HaveOccurred())
 				Expect(fetchedRelease.Status.CanaryStatus.UpdatedReplicas).Should(Equal(int32(1)))
 				Expect(fetchedRelease.Status.CanaryStatus.UpdatedReadyReplicas).Should(Equal(int32(0)))
@@ -1130,16 +1130,16 @@ var _ = SIGDescribe("BatchRelease", func() {
 			Expect(canaryRevisionV3).Should(Equal(stableRevisionV1))
 
 			By("Checking BatchRelease completed status phase...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 		})
 
 		It("Rollback V1->V2: Delete BatchRelease, Percentage, 100%, Succeeded", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -1152,7 +1152,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
 			Expect(GetObject(release.Namespace, release.Name, release))
-			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1beta1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevisionV1 := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -1169,7 +1169,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			By("Waiting a minute and checking failed revision...")
 			time.Sleep(time.Minute)
 			for i := 0; i < 30; i++ {
-				fetchedRelease := &rolloutsv1alpha1.BatchRelease{}
+				fetchedRelease := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, fetchedRelease)).NotTo(HaveOccurred())
 				Expect(fetchedRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(int32(0)))
 				time.Sleep(time.Second)
@@ -1185,7 +1185,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			By("Deleting BatchReleasing...")
 			DeleteObject(release)
 			Eventually(func() bool {
-				objectCopy := &rolloutsv1alpha1.BatchRelease{}
+				objectCopy := &rolloutsv1beta1.BatchRelease{}
 				err := GetObject(release.Namespace, release.Name, objectCopy)
 				return errors.IsNotFound(err)
 			}, time.Minute, time.Second).Should(BeTrue())
@@ -1198,7 +1198,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 
 		It("Plan changed during rollout", func() {
 			By("Creating BatchRelease...")
-			release := &rolloutsv1alpha1.BatchRelease{}
+			release := &rolloutsv1beta1.BatchRelease{}
 			Expect(ReadYamlToObject("./test_data/batchrelease/deployment_percentage_100.yaml", release)).ToNot(HaveOccurred())
 			CreateObject(release)
 
@@ -1214,7 +1214,7 @@ var _ = SIGDescribe("BatchRelease", func() {
 			CreateObject(deployment)
 			WaitDeploymentAllPodsReady(deployment)
 			Expect(GetObject(release.Namespace, release.Name, release))
-			Expect(release.Status.Phase).Should(Equal(rolloutsv1alpha1.RolloutPhaseHealthy))
+			Expect(release.Status.Phase).Should(Equal(rolloutsv1beta1.RolloutPhaseHealthy))
 
 			// record stable revision --> v1
 			stableRevision := workloads.ComputeHash(&deployment.Spec.Template, deployment.Status.CollisionCount)
@@ -1228,16 +1228,16 @@ var _ = SIGDescribe("BatchRelease", func() {
 			Expect(canaryRevision).ShouldNot(Equal(stableRevision))
 			WaitBatchReleaseProgressing(release)
 
-			var fetchedRelease *rolloutsv1alpha1.BatchRelease
+			var fetchedRelease *rolloutsv1beta1.BatchRelease
 			Eventually(func() bool {
-				fetchedRelease = &rolloutsv1alpha1.BatchRelease{}
+				fetchedRelease = &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, fetchedRelease)).NotTo(HaveOccurred())
 				return fetchedRelease.Status.CanaryStatus.CurrentBatch == 1 &&
-					fetchedRelease.Status.CanaryStatus.CurrentBatchState == rolloutsv1alpha1.ReadyBatchState
+					fetchedRelease.Status.CanaryStatus.CurrentBatchState == rolloutsv1beta1.ReadyBatchState
 			}, time.Minute, 5*time.Second).Should(BeTrue())
 
 			// now canary: 4
-			fetchedRelease.Spec.ReleasePlan.Batches = []rolloutsv1alpha1.ReleaseBatch{
+			fetchedRelease.Spec.ReleasePlan.Batches = []rolloutsv1beta1.ReleaseBatch{
 				{
 					CanaryReplicas: intstr.FromInt(4),
 				},
@@ -1250,11 +1250,11 @@ var _ = SIGDescribe("BatchRelease", func() {
 			UpdateRelease(fetchedRelease)
 
 			By("Checking BatchRelease status...")
-			Eventually(func() rolloutsv1alpha1.RolloutPhase {
-				clone := &rolloutsv1alpha1.BatchRelease{}
+			Eventually(func() rolloutsv1beta1.RolloutPhase {
+				clone := &rolloutsv1beta1.BatchRelease{}
 				Expect(GetObject(release.Namespace, release.Name, clone)).NotTo(HaveOccurred())
 				return clone.Status.Phase
-			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1alpha1.RolloutPhaseCompleted))
+			}, 15*time.Minute, 5*time.Second).Should(Equal(rolloutsv1beta1.RolloutPhaseCompleted))
 
 			By("Checking all pod were updated when release completed...")
 			Expect(GetObject(deployment.Namespace, deployment.Name, deployment)).NotTo(HaveOccurred())

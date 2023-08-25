@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -45,7 +45,7 @@ import (
 var (
 	concurrentReconciles            = 3
 	defaultGracePeriodSeconds int32 = 3
-	trControllerKind                = v1alpha1.SchemeGroupVersion.WithKind("TrafficRouting")
+	trControllerKind                = v1beta1.SchemeGroupVersion.WithKind("TrafficRouting")
 )
 
 func init() {
@@ -76,7 +76,7 @@ type TrafficRoutingReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *TrafficRoutingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// Fetch the Rollout instance
-	tr := &v1alpha1.TrafficRouting{}
+	tr := &v1beta1.TrafficRouting{}
 	err := r.Get(context.TODO(), req.NamespacedName, tr)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -96,38 +96,38 @@ func (r *TrafficRoutingReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	newStatus := tr.Status.DeepCopy()
 	if newStatus.Phase == "" {
-		newStatus.Phase = v1alpha1.TrafficRoutingPhaseInitial
+		newStatus.Phase = v1beta1.TrafficRoutingPhaseInitial
 	}
 	if !tr.DeletionTimestamp.IsZero() {
-		newStatus.Phase = v1alpha1.TrafficRoutingPhaseTerminating
+		newStatus.Phase = v1beta1.TrafficRoutingPhaseTerminating
 	}
 	var done = true
 	switch newStatus.Phase {
-	case v1alpha1.TrafficRoutingPhaseInitial:
+	case v1beta1.TrafficRoutingPhaseInitial:
 		err = r.trafficRoutingManager.InitializeTrafficRouting(newTrafficRoutingContext(tr))
 		if err == nil {
-			newStatus.Phase = v1alpha1.TrafficRoutingPhaseHealthy
+			newStatus.Phase = v1beta1.TrafficRoutingPhaseHealthy
 			newStatus.Message = "TrafficRouting is Healthy"
 		}
-	case v1alpha1.TrafficRoutingPhaseHealthy:
+	case v1beta1.TrafficRoutingPhaseHealthy:
 		if rolloutProgressingFinalizer(tr).Len() > 0 {
-			newStatus.Phase = v1alpha1.TrafficRoutingPhaseProgressing
+			newStatus.Phase = v1beta1.TrafficRoutingPhaseProgressing
 			newStatus.Message = "TrafficRouting is Progressing"
 		}
-	case v1alpha1.TrafficRoutingPhaseProgressing:
+	case v1beta1.TrafficRoutingPhaseProgressing:
 		if rolloutProgressingFinalizer(tr).Len() == 0 {
-			newStatus.Phase = v1alpha1.TrafficRoutingPhaseFinalizing
+			newStatus.Phase = v1beta1.TrafficRoutingPhaseFinalizing
 			newStatus.Message = "TrafficRouting is Finalizing"
 		} else {
 			done, err = r.trafficRoutingManager.DoTrafficRouting(newTrafficRoutingContext(tr))
 		}
-	case v1alpha1.TrafficRoutingPhaseFinalizing:
+	case v1beta1.TrafficRoutingPhaseFinalizing:
 		done, err = r.trafficRoutingManager.FinalisingTrafficRouting(newTrafficRoutingContext(tr), false)
 		if done {
-			newStatus.Phase = v1alpha1.TrafficRoutingPhaseHealthy
+			newStatus.Phase = v1beta1.TrafficRoutingPhaseHealthy
 			newStatus.Message = "TrafficRouting is Healthy"
 		}
-	case v1alpha1.TrafficRoutingPhaseTerminating:
+	case v1beta1.TrafficRoutingPhaseTerminating:
 		done, err = r.trafficRoutingManager.FinalisingTrafficRouting(newTrafficRoutingContext(tr), false)
 		if done {
 			// remove trafficRouting finalizer
@@ -144,7 +144,7 @@ func (r *TrafficRoutingReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	return ctrl.Result{}, r.updateTrafficRoutingStatus(tr, *newStatus)
 }
 
-func (r *TrafficRoutingReconciler) updateTrafficRoutingStatus(tr *v1alpha1.TrafficRouting, newStatus v1alpha1.TrafficRoutingStatus) error {
+func (r *TrafficRoutingReconciler) updateTrafficRoutingStatus(tr *v1beta1.TrafficRouting, newStatus v1beta1.TrafficRoutingStatus) error {
 	if reflect.DeepEqual(tr.Status, newStatus) {
 		return nil
 	}
@@ -164,7 +164,7 @@ func (r *TrafficRoutingReconciler) updateTrafficRoutingStatus(tr *v1alpha1.Traff
 }
 
 // handle adding and handle finalizer logic, it turns if we should continue to reconcile
-func (r *TrafficRoutingReconciler) handleFinalizer(tr *v1alpha1.TrafficRouting) error {
+func (r *TrafficRoutingReconciler) handleFinalizer(tr *v1beta1.TrafficRouting) error {
 	// delete trafficRouting crd, remove finalizer
 	if !tr.DeletionTimestamp.IsZero() {
 		err := util.UpdateFinalizer(r.Client, tr, util.RemoveFinalizerOpType, util.TrafficRoutingFinalizer)
@@ -188,10 +188,10 @@ func (r *TrafficRoutingReconciler) handleFinalizer(tr *v1alpha1.TrafficRouting) 
 	return nil
 }
 
-func rolloutProgressingFinalizer(tr *v1alpha1.TrafficRouting) sets.String {
+func rolloutProgressingFinalizer(tr *v1beta1.TrafficRouting) sets.String {
 	progressing := sets.String{}
 	for _, s := range tr.GetFinalizers() {
-		if strings.Contains(s, v1alpha1.ProgressingRolloutFinalizerPrefix) {
+		if strings.Contains(s, v1beta1.ProgressingRolloutFinalizerPrefix) {
 			progressing.Insert(s)
 		}
 	}
@@ -206,14 +206,14 @@ func (r *TrafficRoutingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 	// Watch for changes to trafficrouting
-	if err = c.Watch(&source.Kind{Type: &v1alpha1.TrafficRouting{}}, &handler.EnqueueRequestForObject{}); err != nil {
+	if err = c.Watch(&source.Kind{Type: &v1beta1.TrafficRouting{}}, &handler.EnqueueRequestForObject{}); err != nil {
 		return err
 	}
 	r.trafficRoutingManager = trafficrouting.NewTrafficRoutingManager(mgr.GetClient())
 	return nil
 }
 
-func newTrafficRoutingContext(tr *v1alpha1.TrafficRouting) *trafficrouting.TrafficRoutingContext {
+func newTrafficRoutingContext(tr *v1beta1.TrafficRouting) *trafficrouting.TrafficRoutingContext {
 	return &trafficrouting.TrafficRoutingContext{
 		Key:                fmt.Sprintf("TrafficRouting(%s/%s)", tr.Namespace, tr.Name),
 		Namespace:          tr.Namespace,

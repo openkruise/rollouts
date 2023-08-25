@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
@@ -55,7 +55,7 @@ func (r *realCanaryController) GetCanaryInfo() *util.WorkloadInfo {
 
 // Delete do not delete canary deployments actually, it only removes the finalizers of
 // Deployments. These deployments will be cascaded deleted when BatchRelease is deleted.
-func (r *realCanaryController) Delete(release *v1alpha1.BatchRelease) error {
+func (r *realCanaryController) Delete(release *v1beta1.BatchRelease) error {
 	deployments, err := r.listDeployment(release, client.InNamespace(r.objectKey.Namespace), utilclient.DisableDeepCopy)
 	if err != nil {
 		return err
@@ -87,7 +87,7 @@ func (r *realCanaryController) UpgradeBatch(ctx *batchcontext.BatchContext) erro
 	return r.canaryClient.Patch(context.TODO(), deployment, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
 }
 
-func (r *realCanaryController) Create(release *v1alpha1.BatchRelease) error {
+func (r *realCanaryController) Create(release *v1beta1.BatchRelease) error {
 	if r.canaryObject != nil {
 		return nil // Don't re-create if exists
 	}
@@ -113,7 +113,7 @@ func (r *realCanaryController) Create(release *v1alpha1.BatchRelease) error {
 	}
 	return r.create(release, stable)
 }
-func (r *realCanaryController) create(release *v1alpha1.BatchRelease, template *apps.Deployment) error {
+func (r *realCanaryController) create(release *v1beta1.BatchRelease, template *apps.Deployment) error {
 	canary := &apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%v-", r.objectKey.Name),
@@ -162,7 +162,7 @@ func (r *realCanaryController) create(release *v1alpha1.BatchRelease, template *
 	return fmt.Errorf("created canary deployment %v succeeded, but waiting informer synced", klog.KObj(canary))
 }
 
-func (r *realCanaryController) listDeployment(release *v1alpha1.BatchRelease, options ...client.ListOption) ([]*apps.Deployment, error) {
+func (r *realCanaryController) listDeployment(release *v1beta1.BatchRelease, options ...client.ListOption) ([]*apps.Deployment, error) {
 	dList := &apps.DeploymentList{}
 	if err := r.canaryClient.List(context.TODO(), dList, options...); err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ func (r *realCanaryController) listDeployment(release *v1alpha1.BatchRelease, op
 }
 
 // return the latest deployment with the newer creation time
-func filterCanaryDeployment(release *v1alpha1.BatchRelease, ds []*apps.Deployment, template *corev1.PodTemplateSpec) *apps.Deployment {
+func filterCanaryDeployment(release *v1beta1.BatchRelease, ds []*apps.Deployment, template *corev1.PodTemplateSpec) *apps.Deployment {
 	if len(ds) == 0 {
 		return nil
 	}

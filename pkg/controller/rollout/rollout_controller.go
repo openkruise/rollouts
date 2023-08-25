@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -42,7 +42,7 @@ var (
 	workloadHandler      handler.EventHandler
 	watchedWorkload      sync.Map
 
-	rolloutControllerKind = v1alpha1.SchemeGroupVersion.WithKind("Rollout")
+	rolloutControllerKind = v1beta1.SchemeGroupVersion.WithKind("Rollout")
 )
 
 func init() {
@@ -95,7 +95,7 @@ type RolloutReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// Fetch the Rollout instance
-	rollout := &v1alpha1.Rollout{}
+	rollout := &v1beta1.Rollout{}
 	err := r.Get(context.TODO(), req.NamespacedName, rollout)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -146,11 +146,11 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	var recheckTime *time.Time
 
 	switch rollout.Status.Phase {
-	case v1alpha1.RolloutPhaseProgressing:
+	case v1beta1.RolloutPhaseProgressing:
 		recheckTime, err = r.reconcileRolloutProgressing(rollout, newStatus)
-	case v1alpha1.RolloutPhaseTerminating:
+	case v1beta1.RolloutPhaseTerminating:
 		recheckTime, err = r.reconcileRolloutTerminating(rollout, newStatus)
-	case v1alpha1.RolloutPhaseDisabling:
+	case v1beta1.RolloutPhaseDisabling:
 		recheckTime, err = r.reconcileRolloutDisabling(rollout, newStatus)
 	}
 	if err != nil {
@@ -178,11 +178,11 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 	// Watch for changes to rollout
-	if err = c.Watch(&source.Kind{Type: &v1alpha1.Rollout{}}, &handler.EnqueueRequestForObject{}); err != nil {
+	if err = c.Watch(&source.Kind{Type: &v1beta1.Rollout{}}, &handler.EnqueueRequestForObject{}); err != nil {
 		return err
 	}
 	// Watch for changes to batchRelease
-	if err = c.Watch(&source.Kind{Type: &v1alpha1.BatchRelease{}}, &enqueueRequestForBatchRelease{reader: mgr.GetCache()}); err != nil {
+	if err = c.Watch(&source.Kind{Type: &v1beta1.BatchRelease{}}, &enqueueRequestForBatchRelease{reader: mgr.GetCache()}); err != nil {
 		return err
 	}
 	runtimeController = c
