@@ -1,0 +1,12 @@
+apiVersion: rollouts.kruise.io/v1beta1
+kind: BatchRelease
+metadata:
+  labels:
+    app.kubernetes.io/name: batchrelease
+    app.kubernetes.io/instance: batchrelease-sample
+    app.kubernetes.io/part-of: rollouts
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: rollouts
+  name: batchrelease-sample
+spec:
+  # TODO(user): Add fields here

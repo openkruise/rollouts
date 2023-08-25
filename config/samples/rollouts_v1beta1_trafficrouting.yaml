@@ -1,0 +1,12 @@
+apiVersion: rollouts.kruise.io/v1beta1
+kind: TrafficRouting
+metadata:
+  labels:
+    app.kubernetes.io/name: trafficrouting
+    app.kubernetes.io/instance: trafficrouting-sample
+    app.kubernetes.io/part-of: rollouts
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: rollouts
+  name: trafficrouting-sample
+spec:
+  # TODO(user): Add fields here

@@ -22,15 +22,6 @@ import (
 
 	kruisev1aplphal1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruisev1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
-	"github.com/openkruise/rollouts/pkg/controller/deployment"
-	"github.com/openkruise/rollouts/pkg/controller/rollout"
-	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
-	"github.com/openkruise/rollouts/pkg/controller/trafficrouting"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
-	"github.com/openkruise/rollouts/pkg/webhook"
 	"github.com/spf13/pflag"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -42,9 +33,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
+	"github.com/openkruise/rollouts/pkg/controller/deployment"
+	"github.com/openkruise/rollouts/pkg/controller/rollout"
+	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
+	"github.com/openkruise/rollouts/pkg/controller/trafficrouting"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
+	"github.com/openkruise/rollouts/pkg/webhook"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -60,6 +63,7 @@ func init() {
 	utilruntime.Must(rolloutsv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1alpha2.AddToScheme(scheme))
 	utilruntime.Must(admissionregistrationv1.AddToScheme(scheme))
+	utilruntime.Must(rolloutsv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 

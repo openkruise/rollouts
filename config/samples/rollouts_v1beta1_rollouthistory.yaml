@@ -1,0 +1,12 @@
+apiVersion: rollouts.kruise.io/v1beta1
+kind: RolloutHistory
+metadata:
+  labels:
+    app.kubernetes.io/name: rollouthistory
+    app.kubernetes.io/instance: rollouthistory-sample
+    app.kubernetes.io/part-of: rollouts
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: rollouts
+  name: rollouthistory-sample
+spec:
+  # TODO(user): Add fields here

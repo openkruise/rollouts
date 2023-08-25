@@ -1,0 +1,27 @@
+# permissions for end users to view rollouthistories.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: rollouthistory-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: rollouts
+    app.kubernetes.io/part-of: rollouts
+    app.kubernetes.io/managed-by: kustomize
+  name: rollouthistory-viewer-role
+rules:
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - rollouthistories
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - rollouts.kruise.io
+  resources:
+  - rollouthistories/status
+  verbs:
+  - get
