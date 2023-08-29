@@ -2293,6 +2293,149 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
+
+		It("V1->V2: Percentage 20%, Succeeded with NodePort-type service", func() {
+			finder := util.NewControllerFinder(k8sClient)
+			By("Creating Rollout...")
+			rollout := &v1alpha1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			replicas := intstr.FromInt(2)
+			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				{
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+					Replicas: &replicas,
+					Pause:    v1alpha1.RolloutPause{},
+				},
+			}
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			// service
+			service := &v1.Service{}
+			Expect(ReadYamlToObject("./test_data/rollout/service.yaml", service)).ToNot(HaveOccurred())
+			service.Spec.Type = "NodePort"
+			service.Spec.Ports[0].NodePort = 30000
+			CreateObject(service)
+			// ingress
+			ingress := &netv1.Ingress{}
+			Expect(ReadYamlToObject("./test_data/rollout/nginx_ingress.yaml", ingress)).ToNot(HaveOccurred())
+			CreateObject(ingress)
+			// workload
+			workload := &apps.Deployment{}
+			Expect(ReadYamlToObject("./test_data/rollout/deployment.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitDeploymentAllPodsReady(workload)
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			rss, err := finder.GetReplicaSetsForDeployment(workload)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(rss)).Should(BeNumerically("==", 1))
+			stableRevision := rss[0].Labels[apps.DefaultDeploymentUniqueLabelKey]
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseHealthy))
+			Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(stableRevision))
+			By("check rollout status & paused success")
+
+			// v1 -> v2, start rollout action
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDeployment(workload)
+			By("Update deployment env NODE_NAME from(version1) -> to(version2)")
+			time.Sleep(time.Second * 2)
+
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeTrue())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 0))
+			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			By("check deployment status & paused success")
+
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+
+			// check stable, canary service & ingress
+			// canary deployment
+			cWorkload, err := GetCanaryDeployment(workload)
+			Expect(err).NotTo(HaveOccurred())
+			crss, err := finder.GetReplicaSetsForDeployment(cWorkload)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(crss)).Should(BeNumerically("==", 1))
+			canaryRevision := crss[0].Labels[apps.DefaultDeploymentUniqueLabelKey]
+			Expect(*cWorkload.Spec.Replicas).Should(BeNumerically("==", 2))
+			Expect(cWorkload.Status.ReadyReplicas).Should(BeNumerically("==", 2))
+			for _, env := range cWorkload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
+			// stable service
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
+			Expect(service.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(stableRevision))
+			//canary service
+			cService := &v1.Service{}
+			Expect(GetObject(service.Name+"-canary", cService)).NotTo(HaveOccurred())
+			Expect(cService.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(canaryRevision))
+			// canary ingress
+			cIngress := &netv1.Ingress{}
+			Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(fmt.Sprintf("%d", *rollout.Spec.Strategy.Canary.Steps[0].Weight)))
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseProgressing))
+			Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(stableRevision))
+			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 2))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 2))
+			Expect(rollout.Status.CanaryStatus.PodTemplateHash).Should(Equal(canaryRevision))
+
+			// resume rollout
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutStatusPhase(rollout.Name, v1alpha1.RolloutPhaseHealthy)
+			By("rollout completed, and check")
+			// check service & ingress & deployment
+			// ingress
+			Expect(GetObject(ingress.Name, ingress)).NotTo(HaveOccurred())
+			cIngress = &netv1.Ingress{}
+			Expect(GetObject(fmt.Sprintf("%s-canary", ingress.Name), cIngress)).To(HaveOccurred())
+			// service
+			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
+			Expect(service.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(""))
+			cService = &v1.Service{}
+			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
+			// deployment
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeFalse())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
+			rss, err = finder.GetReplicaSetsForDeployment(workload)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(rss)).Should(BeNumerically("==", 1))
+			Expect(rss[0].Labels[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(canaryRevision))
+
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
+			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
+		})
 	})
 
 	KruiseDescribe("Canary rollout with Gateway API", func() {
