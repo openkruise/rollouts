@@ -170,8 +170,8 @@ func TestLabelPatcher(t *testing.T) {
 
 func generatePods(ordinalBegin, ordinalEnd, labeled int32, rolloutID, batchID, version string) []*corev1.Pod {
 	podsWithLabel := generateLabeledPods(map[string]string{
-		v1beta1.RolloutIDLabel:             rolloutID,
-		v1beta1.RolloutBatchIDLabel:        batchID,
+		v1beta1.RolloutIDLabel:              rolloutID,
+		v1beta1.RolloutBatchIDLabel:         batchID,
 		apps.ControllerRevisionHashLabelKey: version,
 	}, int(labeled), int(ordinalBegin))
 

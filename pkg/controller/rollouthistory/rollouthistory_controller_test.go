@@ -416,7 +416,7 @@ func TestReconcile(t *testing.T) {
 				pod1.Labels = map[string]string{
 					rolloutv1beta1.RolloutBatchIDLabel: "1",
 					rolloutv1beta1.RolloutIDLabel:      "2",
-					"app":                               "echoserver",
+					"app":                              "echoserver",
 				}
 
 				pod2 := podDemo.DeepCopy()
@@ -428,7 +428,7 @@ func TestReconcile(t *testing.T) {
 				pod2.Labels = map[string]string{
 					rolloutv1beta1.RolloutBatchIDLabel: "2",
 					rolloutv1beta1.RolloutIDLabel:      "2",
-					"app":                               "echoserver",
+					"app":                              "echoserver",
 				}
 
 				pod3 := podDemo.DeepCopy()
@@ -440,7 +440,7 @@ func TestReconcile(t *testing.T) {
 				pod3.Labels = map[string]string{
 					rolloutv1beta1.RolloutBatchIDLabel: "3",
 					rolloutv1beta1.RolloutIDLabel:      "2",
-					"app":                               "echoserver",
+					"app":                              "echoserver",
 				}
 
 				pod4 := podDemo.DeepCopy()
@@ -452,7 +452,7 @@ func TestReconcile(t *testing.T) {
 				pod4.Labels = map[string]string{
 					rolloutv1beta1.RolloutBatchIDLabel: "3",
 					rolloutv1beta1.RolloutIDLabel:      "2",
-					"app":                               "echoserver",
+					"app":                              "echoserver",
 				}
 
 				pod5 := podDemo.DeepCopy()
@@ -464,7 +464,7 @@ func TestReconcile(t *testing.T) {
 				pod5.Labels = map[string]string{
 					rolloutv1beta1.RolloutBatchIDLabel: "3",
 					rolloutv1beta1.RolloutIDLabel:      "2",
-					"app":                               "echoserver",
+					"app":                              "echoserver",
 				}
 
 				return []*corev1.Pod{pod1, pod2, pod3, pod4, pod5}
