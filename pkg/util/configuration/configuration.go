@@ -31,6 +31,7 @@ const (
 	RolloutConfigurationName = "kruise-rollout-configuration"
 
 	LuaTrafficRoutingIngressTypePrefix = "lua.traffic.routing.ingress"
+	LuaTrafficRoutingCustomTypePrefix  = "lua.traffic.routing"
 )
 
 func GetTrafficRoutingIngressLuaScript(client client.Client, iType string) (string, error) {

@@ -340,6 +340,19 @@ spec:
                             for supported service meshes to enable more fine-grained
                             traffic routing
                           properties:
+                            customNetworkRefs:
+                              description: CustomNetworkRefs hold a list of custom
+                                providers to route traffic
+                              items:
+                                properties:
+                                  apiVersion:
+                                    type: string
+                                  kind:
+                                    type: string
+                                  name:
+                                    type: string
+                                type: object
+                              type: array
                             gateway:
                               description: Gateway holds Gateway specific configuration
                                 to route traffic Gateway configuration only supports
