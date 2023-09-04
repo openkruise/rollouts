@@ -59,7 +59,7 @@ var (
 										"route": [
 											{
 												"destination": {
-													"host": "echoserver",
+													"host": "echoserver"
 												}
 											}
 										]
@@ -111,7 +111,7 @@ func TestInitialize(t *testing.T) {
 						Namespace: util.GetRolloutNamespace(),
 					},
 					Data: map[string]string{
-						fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingIngressTypePrefix, "VirtualService", "networking.istio.io"): "ExpectedLuaScript",
+						fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingCustomTypePrefix, "VirtualService", "networking.istio.io"): "ExpectedLuaScript",
 					},
 				}
 			},
@@ -131,7 +131,7 @@ func TestInitialize(t *testing.T) {
 			getUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
-				u.SetAPIVersion("networking.test.io/v1alpha3")
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
 				return u
 			},
 			getConfig: func() Config {
@@ -140,7 +140,7 @@ func TestInitialize(t *testing.T) {
 					CanaryService: "echoserver-canary",
 					TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
 						{
-							APIVersion: "networking.test.io/v1alpha3",
+							APIVersion: "networking.istio.io/v1alpha3",
 							Kind:       "VirtualService",
 							Name:       "echoserver",
 						},
@@ -154,14 +154,14 @@ func TestInitialize(t *testing.T) {
 						Namespace: util.GetRolloutNamespace(),
 					},
 					Data: map[string]string{
-						fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingIngressTypePrefix, "VirtualService", "networking.test.io"): "ExpectedLuaScript",
+						fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingIngressTypePrefix, "VirtualService", "networking.istio.io"): "ExpectedLuaScript",
 					},
 				}
 			},
 			expectUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
-				u.SetAPIVersion("networking.test.io/v1alpha3")
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
 				annotations := map[string]string{
 					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
 					"virtual":              "test",
@@ -227,22 +227,18 @@ func TestEnsureRoutes(t *testing.T) {
 			getUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
-				annotations := map[string]string{
-					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
-					"virtual":              "test",
-				}
-				u.SetAnnotations(annotations)
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
 				return u
 			},
 			expectInfo: func() (bool, *unstructured.Unstructured) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver","port":{"number":80}}}]}]},"annotations":{"virtual":"test"}}`,
+					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
 					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver","port":{"number":80}},"weight":95},{"destination":{"host":"echoserver-canary","port":{"number":80}},"weight":5}]}]}`
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
@@ -251,7 +247,7 @@ func TestEnsureRoutes(t *testing.T) {
 		},
 	}
 	config := Config{
-		RolloutName:   "rollout-demo",
+		Key:           "rollout-demo",
 		StableService: "echoserver",
 		CanaryService: "echoserver-canary",
 		TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
@@ -298,11 +294,11 @@ func TestFinalise(t *testing.T) {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(networkDemo))
 				annotations := map[string]string{
-					OriginalSpecAnnotation: `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`,
+					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
 					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":100},{"destination":{"host":"echoserver-canary"},"weight":0}}]}]}`
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec

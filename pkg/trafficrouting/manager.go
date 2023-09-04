@@ -266,7 +266,7 @@ func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, c
 	trafficRouting := con.ObjectRef[0]
 	if trafficRouting.CustomNetworkRefs != nil {
 		return custom.NewCustomController(c, custom.Config{
-			RolloutName:   con.Key,
+			Key:           con.Key,
 			RolloutNs:     con.Namespace,
 			CanaryService: cService,
 			StableService: sService,
