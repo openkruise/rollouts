@@ -167,8 +167,10 @@ type RolloutStatus struct {
 	// +optional
 	CanaryStatus *CanaryStatus `json:"canaryStatus,omitempty"`
 	// Conditions a list of conditions a rollout can have.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
 	// +optional
-	Conditions []RolloutCondition `json:"conditions,omitempty"`
+	Conditions []RolloutCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 	// +optional
 	//BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
 	// Phase is the rollout phase.

@@ -78,7 +78,9 @@ type ReleaseBatch struct {
 // BatchReleaseStatus defines the observed state of a release plan
 type BatchReleaseStatus struct {
 	// Conditions represents the observed process state of each phase during executing the release plan.
-	Conditions []RolloutCondition `json:"conditions,omitempty"`
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []RolloutCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 	// CanaryStatus describes the state of the canary rollout.
 	CanaryStatus BatchReleaseCanaryStatus `json:"canaryStatus,omitempty"`
 	// StableRevision is the pod-template-hash of stable revision pod template.
