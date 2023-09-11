@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2023 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -91,17 +91,16 @@ func (r *customController) Initialize(ctx context.Context) error {
 		obj.SetAPIVersion(ref.APIVersion)
 		obj.SetKind(ref.Kind)
 		if err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: ref.Name}, obj); err != nil {
-			klog.Errorf("failed to get custom network provider %s/%s", ref.Kind, ref.Name)
+			klog.Errorf("failed to get custom network provider %s(%s/%s): %s", ref.Kind, r.conf.RolloutNs, ref.Name, err.Error())
 			return err
 		}
 		// check if lua script exists
 		_, err := r.getLuaScript(ctx, ref)
 		if err != nil {
-			klog.Errorf("failed to get lua script for custom network provider %s: %s", ref.Kind, err.Error())
+			klog.Errorf("failed to get lua script for custom network provider %s(%s/%s): %s", ref.Kind, r.conf.RolloutNs, ref.Name, err.Error())
 			return err
 		}
 		if err := r.storeObject(obj); err != nil {
-			klog.Errorf("failed to store custom network provider %s/%s", ref.Kind, ref.Name)
 			return err
 		}
 	}
@@ -120,27 +119,29 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 		}
 		specStr := obj.GetAnnotations()[OriginalSpecAnnotation]
 		if specStr == "" {
-			continue
+			return false, fmt.Errorf("failed to get original spec from annotation for %s(%s/%s)", ref.Kind, r.conf.RolloutNs, ref.Name)
 		}
 		var oSpec Data
 		_ = json.Unmarshal([]byte(specStr), &oSpec)
 		luaScript, err := r.getLuaScript(ctx, ref)
 		if err != nil {
-			klog.Errorf("failed to get lua script for %s", ref.Kind)
+			klog.Errorf("failed to get lua script for %s(%s/%s): %s", ref.Kind, r.conf.RolloutNs, ref.Name, err.Error())
 			return false, err
 		}
 		nSpec, err := r.executeLuaForCanary(oSpec, strategy, luaScript)
 		if err != nil {
+			klog.Errorf("failed to execute lua for %s(%s/%s): %s", ref.Kind, r.conf.RolloutNs, ref.Name, err.Error())
 			return false, err
 		}
-		if cmpAndSetObject(nSpec, obj) {
+		nObj := obj.DeepCopy()
+		if compareAndSetObject(nSpec, nObj) {
 			continue
 		}
-		if err = r.Update(context.TODO(), obj); err != nil {
-			klog.Errorf("failed to update custom network provider")
+		if err = r.Update(context.TODO(), nObj); err != nil {
+			klog.Errorf("failed to update custom network provider %s(%s/%s) from (%s) to (%s)", ref.Kind, r.conf.RolloutNs, ref.Name, util.DumpJSON(obj), util.DumpJSON(nObj))
 			return false, err
 		}
-		klog.Infof("update custom network provider %s/%s success")
+		klog.Infof("update custom network provider %s(%s/%s) from (%s) to (%s) success", ref.Kind, r.conf.RolloutNs, ref.Name, util.DumpJSON(obj), util.DumpJSON(nObj))
 		done = false
 	}
 	return done, nil
@@ -153,13 +154,12 @@ func (r *customController) Finalise(ctx context.Context) error {
 		obj.SetKind(ref.Kind)
 		if err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: ref.Name}, obj); err != nil {
 			if errors.IsNotFound(err) {
-				klog.Infof("custom network provider %s/%s not found when finalising", ref.Kind, ref.Name)
+				klog.Infof("custom network provider %s(%s/%s) not found when finalising", ref.Kind, r.conf.RolloutNs, ref.Name)
 				continue
 			}
 			return err
 		}
 		if err := r.restoreObject(obj); err != nil {
-			klog.Errorf("failed to restore object: %s/%s", ref.Kind, ref.Name)
 			return err
 		}
 	}
@@ -187,10 +187,10 @@ func (r *customController) storeObject(obj *unstructured.Unstructured) error {
 	annotations[OriginalSpecAnnotation] = cSpec
 	obj.SetAnnotations(annotations)
 	if err := r.Update(context.TODO(), obj); err != nil {
-		klog.Errorf("failed to store custom network provider %s/%s", obj.GetKind(), obj.GetName())
+		klog.Errorf("failed to store custom network provider %s(%s/%s): %s", obj.GetKind(), r.conf.RolloutNs, obj.GetName(), err.Error())
 		return err
 	}
-	klog.Infof("store custom network provider %s/%s success", obj.GetKind(), obj.GetName())
+	klog.Infof("store old configuration of custom network provider %s(%s/%s) in annotation(%s) success", obj.GetKind(), r.conf.RolloutNs, obj.GetName(), OriginalSpecAnnotation)
 	return nil
 }
 
@@ -207,10 +207,10 @@ func (r *customController) restoreObject(obj *unstructured.Unstructured) error {
 	obj.SetAnnotations(oSpec.Annotations)
 	obj.SetLabels(oSpec.Labels)
 	if err := r.Update(context.TODO(), obj); err != nil {
-		klog.Errorf("failed to restore custom network provider %s/%s", obj.GetKind(), obj.GetName())
+		klog.Errorf("failed to restore object %s(%s/%s) from annotation(%s): %s", obj.GetKind(), r.conf.RolloutNs, obj.GetName(), OriginalSpecAnnotation, err.Error())
 		return err
 	}
-	klog.Infof("restore custom network provider %s/%s success", obj.GetKind(), obj.GetName())
+	klog.Infof("restore custom network provider %s(%s/%s) from annotation(%s) success", obj.GetKind(), obj.GetNamespace(), obj.GetName(), OriginalSpecAnnotation)
 	return nil
 }
 
@@ -272,21 +272,21 @@ func (r *customController) getLuaScript(ctx context.Context, ref rolloutv1alpha1
 	configMap := &corev1.ConfigMap{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: nameSpace, Name: name}, configMap)
 	if err != nil {
-		return "", fmt.Errorf("failed to get configMap %s/%s", nameSpace, name)
+		return "", fmt.Errorf("failed to get ConfigMap(%s/%s)", nameSpace, name)
 	} else {
 		// in format like "lua.traffic.routing.ingress.aliyun-alb"
 		key = fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingCustomTypePrefix, ref.Kind, group)
 		if script, ok := configMap.Data[key]; ok {
 			return script, nil
 		} else if !ok {
-			return "", fmt.Errorf("expected script of %s not found in ConfigMap", key)
+			return "", fmt.Errorf("expected script not found neither locally nor in ConfigMap")
 		}
 	}
 	return "", nil
 }
 
-// compare and update obj, return if the obj is updated
-func cmpAndSetObject(data Data, obj *unstructured.Unstructured) bool {
+// compare and update obj, return whether the obj is updated
+func compareAndSetObject(data Data, obj *unstructured.Unstructured) bool {
 	spec := data.Spec
 	annotations := data.Annotations
 	if annotations == nil {

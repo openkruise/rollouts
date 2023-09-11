@@ -918,12 +918,8 @@ func (in *TrafficRoutingRef) DeepCopyInto(out *TrafficRoutingRef) {
 	}
 	if in.CustomNetworkRefs != nil {
 		in, out := &in.CustomNetworkRefs, &out.CustomNetworkRefs
-		*out = new([]CustomNetworkRef)
-		if **in != nil {
-			in, out := *in, *out
-			*out = make([]CustomNetworkRef, len(*in))
-			copy(*out, *in)
-		}
+		*out = make([]CustomNetworkRef, len(*in))
+		copy(*out, *in)
 	}
 }
 

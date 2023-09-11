@@ -270,7 +270,7 @@ func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, c
 			RolloutNs:     con.Namespace,
 			CanaryService: cService,
 			StableService: sService,
-			TrafficConf:   *trafficRouting.CustomNetworkRefs,
+			TrafficConf:   trafficRouting.CustomNetworkRefs,
 			OwnerRef:      con.OwnerRef,
 		})
 	}

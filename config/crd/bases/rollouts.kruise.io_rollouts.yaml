@@ -351,6 +351,10 @@ spec:
                                     type: string
                                   name:
                                     type: string
+                                required:
+                                - apiVersion
+                                - kind
+                                - name
                                 type: object
                               type: array
                             gateway:
