@@ -1,12 +1,3 @@
--- obj = { canaryWeight = 20, stableWeight = 80,
--- matches = {
---     { headers = { { name = "user-agent", value = "pc", type = "Exact", },
---         { type = "RegularExpression", name = "name", value = ".*demo", }, }, }, },
--- canaryService = "nginx-service-canary", stableService = "nginx-service",
--- data = {
---     spec = { hosts = { "*", }, http = { { route = { { destination = { host = "nginx-service", subset = "v1"}, }, { destination = { host = "nginx-service", subset = "v2"}, } }, }, },
---         gateways = { "nginx-gateway", }, }, }, }
-
 spec = obj.data.spec
 
 if obj.canaryWeight == -1 then

@@ -39,8 +39,8 @@ import (
 )
 
 var (
-	scheme      *runtime.Scheme
-	networkDemo = `
+	scheme             *runtime.Scheme
+	virtualServiceDemo = `
 						{
 							"apiVersion": "networking.istio.io/v1alpha3",
 							"kind": "VirtualService",
@@ -68,6 +68,44 @@ var (
 							}
 						}
 						`
+	destinationRuleDemo = `
+						{
+							"apiVersion": "networking.istio.io/v1alpha3",
+							"kind": "DestinationRule",
+							"metadata": {
+								"name": "dr-demo"
+							},
+							"spec": {
+								"host": "mockb",
+								"subsets": [
+									{
+										"labels": {
+											"version": "base"
+										},
+										"name": "version-base"
+									}
+								],
+								"trafficPolicy": {
+									"loadBalancer": {
+										"simple": "ROUND_ROBIN"
+									}
+								}
+							}
+						}
+						`
+	// lua script for this resource contains error and cannot be executed
+	luaErrorDemo = `
+						{
+							"apiVersion": "networking.error.io/v1alpha3",
+							"kind": "LuaError",
+							"metadata": {
+								"name": "error-demo"
+							},
+							"spec": {
+								"error": true
+							}
+						}
+						`
 )
 
 func init() {
@@ -88,7 +126,7 @@ func TestInitialize(t *testing.T) {
 			name: "test1, find lua script locally",
 			getUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(networkDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
 				return u
 			},
 			getConfig: func() Config {
@@ -117,7 +155,7 @@ func TestInitialize(t *testing.T) {
 			},
 			expectUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(networkDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
 				annotations := map[string]string{
 					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
 					"virtual":              "test",
@@ -130,7 +168,7 @@ func TestInitialize(t *testing.T) {
 			name: "test2, find lua script in ConfigMap",
 			getUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(networkDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
 				u.SetAPIVersion("networking.istio.io/v1alpha3")
 				return u
 			},
@@ -160,7 +198,7 @@ func TestInitialize(t *testing.T) {
 			},
 			expectUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(networkDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
 				u.SetAPIVersion("networking.istio.io/v1alpha3")
 				annotations := map[string]string{
 					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
@@ -211,28 +249,57 @@ func checkEqual(cli client.Client, t *testing.T, expect *unstructured.Unstructur
 
 func TestEnsureRoutes(t *testing.T) {
 	cases := []struct {
-		name            string
-		getLua          func() map[string]string
-		getRoutes       func() *rolloutsv1alpha1.TrafficRoutingStrategy
-		getUnstructured func() *unstructured.Unstructured
-		expectInfo      func() (bool, *unstructured.Unstructured)
+		name                string
+		getLua              func() map[string]string
+		getRoutes           func() *rolloutsv1alpha1.TrafficRoutingStrategy
+		getUnstructureds    func() []*unstructured.Unstructured
+		getConfig           func() Config
+		expectState         func() (bool, bool)
+		expectUnstructureds func() []*unstructured.Unstructured
 	}{
 		{
-			name: "test1",
+			name: "test1, do traffic routing for VirtualService and DestinationRule",
 			getRoutes: func() *rolloutsv1alpha1.TrafficRoutingStrategy {
 				return &rolloutsv1alpha1.TrafficRoutingStrategy{
 					Weight: utilpointer.Int32(5),
 				}
 			},
-			getUnstructured: func() *unstructured.Unstructured {
+			getUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(networkDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
 				u.SetAPIVersion("networking.istio.io/v1alpha3")
-				return u
+				objects = append(objects, u)
+
+				u = &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
+				objects = append(objects, u)
+				return objects
 			},
-			expectInfo: func() (bool, *unstructured.Unstructured) {
+			getConfig: func() Config {
+				return Config{
+					Key:           "rollout-demo",
+					StableService: "echoserver",
+					CanaryService: "echoserver-canary",
+					TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
+						{
+							APIVersion: "networking.istio.io/v1alpha3",
+							Kind:       "VirtualService",
+							Name:       "echoserver",
+						},
+						{
+							APIVersion: "networking.istio.io/v1alpha3",
+							Kind:       "DestinationRule",
+							Name:       "dr-demo",
+						},
+					},
+				}
+			},
+			expectUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(networkDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
 				annotations := map[string]string{
 					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
 					"virtual":              "test",
@@ -242,41 +309,126 @@ func TestEnsureRoutes(t *testing.T) {
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
-				return false, u
+				objects = append(objects, u)
+
+				u = &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				annotations = map[string]string{
+					OriginalSpecAnnotation: `{"spec":{"host":"mockb","subsets":[{"labels":{"version":"base"},"name":"version-base"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`,
+				}
+				u.SetAnnotations(annotations)
+				specStr = `{"host":"mockb","subsets":[{"labels":{"version":"base"},"name":"version-base"},{"labels":{"istio.service.tag":"gray"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
+				_ = json.Unmarshal([]byte(specStr), &spec)
+				u.Object["spec"] = spec
+				objects = append(objects, u)
+				return objects
+			},
+			expectState: func() (bool, bool) {
+				done := false
+				hasError := false
+				return done, hasError
 			},
 		},
-	}
-	config := Config{
-		Key:           "rollout-demo",
-		StableService: "echoserver",
-		CanaryService: "echoserver-canary",
-		TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
-			{
-				APIVersion: "networking.istio.io/v1alpha3",
-				Kind:       "VirtualService",
-				Name:       "echoserver",
+		{
+			name: "test2, do traffic routing but failed to execute lua",
+			getRoutes: func() *rolloutsv1alpha1.TrafficRoutingStrategy {
+				return &rolloutsv1alpha1.TrafficRoutingStrategy{
+					Weight: utilpointer.Int32(5),
+				}
+			},
+			getUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
+				objects = append(objects, u)
+
+				u = &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(luaErrorDemo))
+				u.SetAPIVersion("networking.error.io/v1alpha3")
+				objects = append(objects, u)
+				return objects
+			},
+			getConfig: func() Config {
+				return Config{
+					Key:           "rollout-demo",
+					StableService: "echoserver",
+					CanaryService: "echoserver-canary",
+					TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
+						{
+							APIVersion: "networking.istio.io/v1alpha3",
+							Kind:       "VirtualService",
+							Name:       "echoserver",
+						},
+						{
+							APIVersion: "networking.error.io/v1alpha3",
+							Kind:       "LuaError",
+							Name:       "error-demo",
+						},
+					},
+				}
+			},
+			expectUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				annotations := map[string]string{
+					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
+					"virtual":              "test",
+				}
+				u.SetAnnotations(annotations)
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`
+				var spec interface{}
+				_ = json.Unmarshal([]byte(specStr), &spec)
+				u.Object["spec"] = spec
+				objects = append(objects, u)
+
+				u = &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(luaErrorDemo))
+				annotations = map[string]string{
+					OriginalSpecAnnotation: `{"spec":{"error":true}}`,
+				}
+				u.SetAnnotations(annotations)
+				specStr = `{"error":true}`
+				_ = json.Unmarshal([]byte(specStr), &spec)
+				u.Object["spec"] = spec
+				objects = append(objects, u)
+				return objects
+			},
+			expectState: func() (bool, bool) {
+				done := false
+				hasError := true
+				return done, hasError
 			},
 		},
 	}
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			fakeCli := fake.NewClientBuilder().WithScheme(scheme).Build()
-			err := fakeCli.Create(context.TODO(), cs.getUnstructured())
-			if err != nil {
-				klog.Errorf(err.Error())
-				return
+			for _, obj := range cs.getUnstructureds() {
+				err := fakeCli.Create(context.TODO(), obj)
+				if err != nil {
+					t.Fatalf("failed to create objects: %s", err.Error())
+				}
 			}
-			c, _ := NewCustomController(fakeCli, config)
+			c, _ := NewCustomController(fakeCli, cs.getConfig())
 			strategy := cs.getRoutes()
-			expect1, expect2 := cs.expectInfo()
-			c.Initialize(context.TODO())
-			done, err := c.EnsureRoutes(context.TODO(), strategy)
+			expectDone, expectHasError := cs.expectState()
+			err := c.Initialize(context.TODO())
 			if err != nil {
-				t.Fatalf("EnsureRoutes failed: %s", err.Error())
-			} else if done != expect1 {
-				t.Fatalf("expect(%v), but get(%v)", expect1, done)
+				t.Fatalf("failed to initialize custom controller")
 			}
-			checkEqual(fakeCli, t, expect2)
+			done, err := c.EnsureRoutes(context.TODO(), strategy)
+			if !expectHasError && err != nil {
+				t.Fatalf("EnsureRoutes failed: %s", err.Error())
+			} else if expectHasError && err == nil {
+				t.Fatalf("expect error occured but not")
+			} else if done != expectDone {
+				t.Fatalf("expect(%v), but get(%v)", expectDone, done)
+			}
+			for _, expectUnstructured := range cs.expectUnstructureds() {
+				checkEqual(fakeCli, t, expectUnstructured)
+			}
 		})
 	}
 }
@@ -289,10 +441,10 @@ func TestFinalise(t *testing.T) {
 		expectUnstructured func() *unstructured.Unstructured
 	}{
 		{
-			name: "test1",
+			name: "test1, finalise VirtualService",
 			getUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(networkDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
 				annotations := map[string]string{
 					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
 					"virtual":              "test",
@@ -319,7 +471,7 @@ func TestFinalise(t *testing.T) {
 			},
 			expectUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(networkDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
 				return u
 			},
 		},
