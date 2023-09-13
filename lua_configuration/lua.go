@@ -42,6 +42,10 @@ func PathWalk() error {
 			return fmt.Errorf("failed to walk path: %s", err.Error())
 		}
 		dir := filepath.Dir(path)
+		if _, err := os.Stat(filepath.Join(dir, "testdata")); err != nil {
+			fmt.Printf("testdata not found in %s\n", dir)
+			return nil
+		}
 		err = filepath.Walk(filepath.Join(dir, "testdata"), func(path string, info os.FileInfo, err error) error {
 			if !info.IsDir() && filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml" {
 				fmt.Printf("--- walking path: %s ---\n", path)
@@ -82,11 +86,7 @@ func ObjectToTable(path string) error {
 			}
 			var canaryService string
 			stableService := rollout.Spec.Strategy.Canary.TrafficRoutings[0].Service
-			// if rollout.Spec.Strategy.Canary.TrafficRoutings[0].CreateCanaryService {
 			canaryService = fmt.Sprintf("%s-canary", stableService)
-			// } else {
-			// 	canaryService = stableService
-			// }
 			data := &custom.LuaData{
 				Data: custom.Data{
 					Labels:      testCase.Original.GetLabels(),
