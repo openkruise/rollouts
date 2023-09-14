@@ -25,7 +25,9 @@ type TestCase struct {
 	Expected       []*unstructured.Unstructured `json:"expected,omitempty"`
 }
 
-// convert testdata to lua object for debugging
+// this function aims to convert testdata to lua object for debugging
+// run `go run lua.go`, then this program will get all testdata and convert them into lua objects
+// copy the generated objects to lua scripts and then you can start debugging your lua scripts
 func main() {
 	err := PathWalk()
 	if err != nil {
