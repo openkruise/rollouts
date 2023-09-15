@@ -290,7 +290,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 			if newObj.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
 				modified = true
 				newObj.Spec.Strategy = oldObj.Spec.Strategy
-				klog.Warningf("")
+				klog.Warningf("Cannot modify strategy for deployment %s/%s when deployment's strategy type is Recreate", newObj.Namespace, newObj.Name)
 			}
 		}
 		return modified, nil
