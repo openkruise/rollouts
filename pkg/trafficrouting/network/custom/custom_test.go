@@ -116,11 +116,10 @@ func init() {
 
 func TestInitialize(t *testing.T) {
 	cases := []struct {
-		name               string
-		getUnstructured    func() *unstructured.Unstructured
-		getConfig          func() Config
-		getConfigMap       func() *corev1.ConfigMap
-		expectUnstructured func() *unstructured.Unstructured
+		name            string
+		getUnstructured func() *unstructured.Unstructured
+		getConfig       func() Config
+		getConfigMap    func() *corev1.ConfigMap
 	}{
 		{
 			name: "test1, find lua script locally",
@@ -153,23 +152,13 @@ func TestInitialize(t *testing.T) {
 					},
 				}
 			},
-			expectUnstructured: func() *unstructured.Unstructured {
-				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
-				annotations := map[string]string{
-					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
-					"virtual":              "test",
-				}
-				u.SetAnnotations(annotations)
-				return u
-			},
 		},
 		{
 			name: "test2, find lua script in ConfigMap",
 			getUnstructured: func() *unstructured.Unstructured {
 				u := &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
-				u.SetAPIVersion("networking.istio.io/v1alpha3")
+				u.SetAPIVersion("networking.test.io/v1alpha3")
 				return u
 			},
 			getConfig: func() Config {
@@ -178,7 +167,7 @@ func TestInitialize(t *testing.T) {
 					CanaryService: "echoserver-canary",
 					TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
 						{
-							APIVersion: "networking.istio.io/v1alpha3",
+							APIVersion: "networking.test.io/v1alpha3",
 							Kind:       "VirtualService",
 							Name:       "echoserver",
 						},
@@ -192,20 +181,9 @@ func TestInitialize(t *testing.T) {
 						Namespace: util.GetRolloutNamespace(),
 					},
 					Data: map[string]string{
-						fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingIngressTypePrefix, "VirtualService", "networking.istio.io"): "ExpectedLuaScript",
+						fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingCustomTypePrefix, "VirtualService", "networking.test.io"): "ExpectedLuaScript",
 					},
 				}
-			},
-			expectUnstructured: func() *unstructured.Unstructured {
-				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
-				u.SetAPIVersion("networking.istio.io/v1alpha3")
-				annotations := map[string]string{
-					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
-					"virtual":              "test",
-				}
-				u.SetAnnotations(annotations)
-				return u
 			},
 		},
 	}
@@ -226,7 +204,6 @@ func TestInitialize(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Initialize failed: %s", err.Error())
 			}
-			checkEqual(fakeCli, t, cs.expectUnstructured())
 		})
 	}
 }
@@ -422,7 +399,7 @@ func TestEnsureRoutes(t *testing.T) {
 			if !expectHasError && err != nil {
 				t.Fatalf("EnsureRoutes failed: %s", err.Error())
 			} else if expectHasError && err == nil {
-				t.Fatalf("expect error occured but not")
+				t.Fatalf("expect error occurred but not")
 			} else if done != expectDone {
 				t.Fatalf("expect(%v), but get(%v)", expectDone, done)
 			}

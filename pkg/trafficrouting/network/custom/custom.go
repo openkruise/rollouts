@@ -87,7 +87,6 @@ func NewCustomController(client client.Client, conf Config) (network.NetworkProv
 
 // when initializing, first check lua and get all custom providers, then store custom providers
 func (r *customController) Initialize(ctx context.Context) error {
-	customNetworkRefList := make([]*unstructured.Unstructured, 0)
 	for _, ref := range r.conf.TrafficConf {
 		obj := &unstructured.Unstructured{}
 		obj.SetAPIVersion(ref.APIVersion)
@@ -100,15 +99,6 @@ func (r *customController) Initialize(ctx context.Context) error {
 		_, err := r.getLuaScript(ctx, ref)
 		if err != nil {
 			klog.Errorf("failed to get lua script for custom network provider %s(%s/%s): %s", ref.Kind, r.conf.RolloutNs, ref.Name, err.Error())
-			return err
-		}
-		customNetworkRefList = append(customNetworkRefList, obj)
-	}
-	for i := 0; i < len(customNetworkRefList); i++ {
-		nObj := customNetworkRefList[i].DeepCopy()
-		err := r.storeObject(nObj)
-		if err != nil {
-			klog.Errorf("failed to store custom network provider %s(%s/%s): %s", customNetworkRefList[i].GetKind(), r.conf.RolloutNs, customNetworkRefList[i].GetName(), err.Error())
 			return err
 		}
 	}
@@ -124,9 +114,8 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 		return true, nil
 	}
 	var err error
-	nSpecList := make([]Data, 0)
 	customNetworkRefList := make([]*unstructured.Unstructured, 0)
-	// first execute lua for new spec
+	// first get all custom network provider object
 	for _, ref := range r.conf.TrafficConf {
 		obj := &unstructured.Unstructured{}
 		obj.SetAPIVersion(ref.APIVersion)
@@ -134,6 +123,24 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 		if err = r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: ref.Name}, obj); err != nil {
 			return false, err
 		}
+		customNetworkRefList = append(customNetworkRefList, obj)
+	}
+	// check if original configuration is stored in annotation, store it if not.
+	for i := 0; i < len(customNetworkRefList); i++ {
+		obj := customNetworkRefList[i]
+		if _, ok := obj.GetAnnotations()[OriginalSpecAnnotation]; !ok {
+			err := r.storeObject(obj)
+			if err != nil {
+				klog.Errorf("failed to store custom network provider %s(%s/%s): %s", customNetworkRefList[i].GetKind(), r.conf.RolloutNs, customNetworkRefList[i].GetName(), err.Error())
+				return false, err
+			}
+		}
+	}
+	nSpecList := make([]Data, 0)
+	// first execute lua for new spec
+	for i := 0; i < len(customNetworkRefList); i++ {
+		obj := customNetworkRefList[i]
+		ref := r.conf.TrafficConf[i]
 		specStr := obj.GetAnnotations()[OriginalSpecAnnotation]
 		if specStr == "" {
 			return false, fmt.Errorf("failed to get original spec from annotation for %s(%s/%s)", ref.Kind, r.conf.RolloutNs, ref.Name)
@@ -151,7 +158,6 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 			return false, err
 		}
 		nSpecList = append(nSpecList, nSpec)
-		customNetworkRefList = append(customNetworkRefList, obj)
 	}
 	// update CustomNetworkRefs then
 	for i := 0; i < len(nSpecList); i++ {
@@ -181,7 +187,7 @@ func (r *customController) Finalise(ctx context.Context) error {
 				klog.Infof("custom network provider %s(%s/%s) not found when finalising", ref.Kind, r.conf.RolloutNs, ref.Name)
 				continue
 			}
-			klog.Errorf("failed to get %s(%s/%s) when finalising, proccess next first", ref.Kind, r.conf.RolloutNs, ref.Name)
+			klog.Errorf("failed to get %s(%s/%s) when finalising, process next first", ref.Kind, r.conf.RolloutNs, ref.Name)
 			done = false
 			continue
 		}
@@ -228,7 +234,7 @@ func (r *customController) storeObject(obj *unstructured.Unstructured) error {
 func (r *customController) restoreObject(obj *unstructured.Unstructured) error {
 	annotations := obj.GetAnnotations()
 	if annotations == nil || annotations[OriginalSpecAnnotation] == "" {
-		klog.Infof("OriginalSpecAnnotation not found in custom network provider %s(%s/%s)")
+		klog.Infof("OriginalSpecAnnotation not found in custom network provider %s(%s/%s)", obj.GetKind(), r.conf.RolloutNs, obj.GetName())
 		return nil
 	}
 	oSpecStr := annotations[OriginalSpecAnnotation]
