@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/trafficrouting/network/custom"
+	custom "github.com/openkruise/rollouts/pkg/trafficrouting/network/customNetworkProvider"
 	"github.com/openkruise/rollouts/pkg/util/luamanager"
 	lua "github.com/yuin/gopher-lua"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

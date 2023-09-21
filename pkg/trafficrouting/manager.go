@@ -23,7 +23,7 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
-	"github.com/openkruise/rollouts/pkg/trafficrouting/network/custom"
+	custom "github.com/openkruise/rollouts/pkg/trafficrouting/network/customNetworkProvider"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/gateway"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/ingress"
 	"github.com/openkruise/rollouts/pkg/util"
