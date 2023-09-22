@@ -95,6 +95,7 @@ func (r *customController) Initialize(ctx context.Context) error {
 			klog.Errorf("failed to get custom network provider %s(%s/%s): %s", ref.Kind, r.conf.RolloutNs, ref.Name, err.Error())
 			return err
 		}
+
 		// check if lua script exists
 		_, err := r.getLuaScript(ctx, ref)
 		if err != nil {
@@ -114,17 +115,19 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 		return true, nil
 	}
 	var err error
-	customNetworkRefList := make([]*unstructured.Unstructured, 0)
+	customNetworkRefList := make([]*unstructured.Unstructured, len(r.conf.TrafficConf))
+
 	// first get all custom network provider object
-	for _, ref := range r.conf.TrafficConf {
+	for i, ref := range r.conf.TrafficConf {
 		obj := &unstructured.Unstructured{}
 		obj.SetAPIVersion(ref.APIVersion)
 		obj.SetKind(ref.Kind)
 		if err = r.Get(ctx, types.NamespacedName{Namespace: r.conf.RolloutNs, Name: ref.Name}, obj); err != nil {
 			return false, err
 		}
-		customNetworkRefList = append(customNetworkRefList, obj)
+		customNetworkRefList[i] = obj
 	}
+
 	// check if original configuration is stored in annotation, store it if not.
 	for i := 0; i < len(customNetworkRefList); i++ {
 		obj := customNetworkRefList[i]
@@ -136,8 +139,9 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 			}
 		}
 	}
-	nSpecList := make([]Data, 0)
+
 	// first execute lua for new spec
+	nSpecList := make([]Data, len(r.conf.TrafficConf))
 	for i := 0; i < len(customNetworkRefList); i++ {
 		obj := customNetworkRefList[i]
 		ref := r.conf.TrafficConf[i]
@@ -157,21 +161,20 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1
 			klog.Errorf("failed to execute lua for %s(%s/%s): %s", ref.Kind, r.conf.RolloutNs, ref.Name, err.Error())
 			return false, err
 		}
-		nSpecList = append(nSpecList, nSpec)
+		nSpecList[i] = nSpec
 	}
+
 	// update CustomNetworkRefs then
 	for i := 0; i < len(nSpecList); i++ {
-		nObj := customNetworkRefList[i].DeepCopy()
 		nSpec := nSpecList[i]
-		if compareAndSetObject(nSpec, nObj) {
-			continue
-		}
-		if err = r.Update(context.TODO(), nObj); err != nil {
-			klog.Errorf("failed to update custom network provider %s(%s/%s) from (%s) to (%s)", nObj.GetKind(), r.conf.RolloutNs, nObj.GetName(), util.DumpJSON(customNetworkRefList[i]), util.DumpJSON(nObj))
+		updated, err := r.compareAndUpdateObject(nSpec, customNetworkRefList[i])
+		if err != nil {
+			klog.Errorf("failed to update object %s(%s/%s) when ensure routes: %s", customNetworkRefList[i].GetKind(), r.conf.RolloutNs, customNetworkRefList[i].GetName(), err.Error())
 			return false, err
 		}
-		klog.Infof("update custom network provider %s(%s/%s) from (%s) to (%s) success", nObj.GetKind(), r.conf.RolloutNs, nObj.GetName(), util.DumpJSON(customNetworkRefList[i]), util.DumpJSON(nObj))
-		done = false
+		if updated {
+			done = false
+		}
 	}
 	return done, nil
 }
@@ -323,7 +326,7 @@ func (r *customController) getLuaScript(ctx context.Context, ref rolloutv1alpha1
 }
 
 // compare and update obj, return whether the obj is updated
-func compareAndSetObject(data Data, obj *unstructured.Unstructured) bool {
+func (r *customController) compareAndUpdateObject(data Data, obj *unstructured.Unstructured) (bool, error) {
 	spec := data.Spec
 	annotations := data.Annotations
 	if annotations == nil {
@@ -334,10 +337,16 @@ func compareAndSetObject(data Data, obj *unstructured.Unstructured) bool {
 	if util.DumpJSON(obj.Object["spec"]) == util.DumpJSON(spec) &&
 		reflect.DeepEqual(obj.GetAnnotations(), annotations) &&
 		reflect.DeepEqual(obj.GetLabels(), labels) {
-		return true
+		return false, nil
 	}
-	obj.Object["spec"] = spec
-	obj.SetAnnotations(annotations)
-	obj.SetLabels(labels)
-	return false
+	nObj := obj.DeepCopy()
+	nObj.Object["spec"] = spec
+	nObj.SetAnnotations(annotations)
+	nObj.SetLabels(labels)
+	if err := r.Update(context.TODO(), nObj); err != nil {
+		klog.Errorf("failed to update custom network provider %s(%s/%s) from (%s) to (%s)", nObj.GetKind(), r.conf.RolloutNs, nObj.GetName(), util.DumpJSON(obj), util.DumpJSON(nObj))
+		return false, err
+	}
+	klog.Infof("update custom network provider %s(%s/%s) from (%s) to (%s) success", nObj.GetKind(), r.conf.RolloutNs, nObj.GetName(), util.DumpJSON(obj), util.DumpJSON(nObj))
+	return true, nil
 }
