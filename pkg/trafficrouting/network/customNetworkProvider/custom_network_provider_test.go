@@ -20,12 +20,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
+	"github.com/openkruise/rollouts/pkg/util/luamanager"
+	lua "github.com/yuin/gopher-lua"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -34,8 +39,10 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
+	luajson "layeh.com/gopher-json"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/yaml"
 )
 
 var (
@@ -470,4 +477,173 @@ func TestFinalise(t *testing.T) {
 			checkEqual(fakeCli, t, cs.expectUnstructured())
 		})
 	}
+}
+
+type TestCase struct {
+	Rollout        *rolloutsv1alpha1.Rollout        `json:"rollout,omitempty"`
+	TrafficRouting *rolloutsv1alpha1.TrafficRouting `json:"trafficRouting,omitempty"`
+	Original       *unstructured.Unstructured       `json:"original,omitempty"`
+	Expected       []*unstructured.Unstructured     `json:"expected,omitempty"`
+}
+
+// test if the lua script of a network provider run as expected
+func TestLuaScript(t *testing.T) {
+	err := filepath.Walk("../../../../lua_configuration", func(path string, f os.FileInfo, err error) error {
+		if !strings.Contains(path, "trafficRouting.lua") {
+			return nil
+		}
+		if err != nil {
+			t.Errorf("failed to walk lua script dir")
+			return err
+		}
+		script, err := readScript(t, path)
+		if err != nil {
+			t.Errorf("failed to read lua script from: %s", path)
+			return err
+		}
+		dir := filepath.Dir(path)
+		err = filepath.Walk(filepath.Join(dir, "testdata"), func(path string, info os.FileInfo, err error) error {
+			klog.Infof("testing lua script: %s", path)
+			if err != nil {
+				t.Errorf("fail to walk testdata dir")
+				return err
+			}
+
+			if !info.IsDir() && filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml" {
+				testCase, err := getLuaTestCase(t, path)
+				if err != nil {
+					t.Errorf("faied to get lua test case: %s", path)
+					return err
+				}
+				rollout := testCase.Rollout
+				trafficRouting := testCase.TrafficRouting
+				if rollout != nil {
+					steps := rollout.Spec.Strategy.Canary.Steps
+					for i, step := range steps {
+						weight := step.TrafficRoutingStrategy.Weight
+						if weight == nil {
+							weight = utilpointer.Int32(-1)
+						}
+						var canaryService string
+						stableService := rollout.Spec.Strategy.Canary.TrafficRoutings[0].Service
+						canaryService = fmt.Sprintf("%s-canary", stableService)
+						data := &LuaData{
+							Data: Data{
+								Labels:      testCase.Original.GetLabels(),
+								Annotations: testCase.Original.GetAnnotations(),
+								Spec:        testCase.Original.Object["spec"],
+							},
+							Matches:       step.TrafficRoutingStrategy.Matches,
+							CanaryWeight:  *weight,
+							StableWeight:  100 - *weight,
+							CanaryService: canaryService,
+							StableService: stableService,
+						}
+						nSpec, err := executeLua(data, script)
+						if err != nil {
+							t.Errorf("failed to execute lua for test case: %s", path)
+							return err
+						}
+						eSpec := Data{
+							Spec:        testCase.Expected[i].Object["spec"],
+							Annotations: testCase.Expected[i].GetAnnotations(),
+							Labels:      testCase.Expected[i].GetLabels(),
+						}
+						if util.DumpJSON(eSpec) != util.DumpJSON(nSpec) {
+							return fmt.Errorf("expect %s, but get %s for test case: %s", util.DumpJSON(eSpec), util.DumpJSON(nSpec), path)
+						}
+					}
+				} else if trafficRouting != nil {
+					weight := trafficRouting.Spec.Strategy.Weight
+					if weight == nil {
+						weight = utilpointer.Int32(-1)
+					}
+					var canaryService string
+					stableService := trafficRouting.Spec.ObjectRef[0].Service
+					canaryService = stableService
+					data := &LuaData{
+						Data: Data{
+							Labels:      testCase.Original.GetLabels(),
+							Annotations: testCase.Original.GetAnnotations(),
+							Spec:        testCase.Original.Object["spec"],
+						},
+						Matches:       trafficRouting.Spec.Strategy.Matches,
+						CanaryWeight:  *weight,
+						StableWeight:  100 - *weight,
+						CanaryService: canaryService,
+						StableService: stableService,
+					}
+					nSpec, err := executeLua(data, script)
+					if err != nil {
+						t.Errorf("failed to execute lua for test case: %s", path)
+						return err
+					}
+					eSpec := Data{
+						Spec:        testCase.Expected[0].Object["spec"],
+						Annotations: testCase.Expected[0].GetAnnotations(),
+						Labels:      testCase.Expected[0].GetLabels(),
+					}
+					if util.DumpJSON(eSpec) != util.DumpJSON(nSpec) {
+						return fmt.Errorf("expect %s, but get %s for test case: %s", util.DumpJSON(eSpec), util.DumpJSON(nSpec), path)
+					}
+				} else {
+					return fmt.Errorf("neither rollout nor trafficRouting defined in test case: %s", path)
+				}
+			}
+			return nil
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("failed to test lua scripts: %s", err.Error())
+	}
+}
+
+func readScript(t *testing.T, path string) (string, error) {
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	return string(data), err
+}
+
+func getLuaTestCase(t *testing.T, path string) (*TestCase, error) {
+	yamlFile, err := os.ReadFile(path)
+	if err != nil {
+		t.Errorf("failed to read file %s", path)
+		return nil, err
+	}
+	luaTestCase := &TestCase{}
+	err = yaml.Unmarshal(yamlFile, luaTestCase)
+	if err != nil {
+		t.Errorf("test case %s format error", path)
+		return nil, err
+	}
+	return luaTestCase, nil
+}
+
+func executeLua(data *LuaData, script string) (Data, error) {
+	luaManager := &luamanager.LuaManager{}
+	unObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(data)
+	if err != nil {
+		return Data{}, err
+	}
+	u := &unstructured.Unstructured{Object: unObj}
+	l, err := luaManager.RunLuaScript(u, script)
+	if err != nil {
+		return Data{}, err
+	}
+	returnValue := l.Get(-1)
+	var nSpec Data
+	if returnValue.Type() == lua.LTTable {
+		jsonBytes, err := luajson.Encode(returnValue)
+		if err != nil {
+			return Data{}, err
+		}
+		err = json.Unmarshal(jsonBytes, &nSpec)
+		if err != nil {
+			return Data{}, err
+		}
+	}
+	return nSpec, nil
 }
