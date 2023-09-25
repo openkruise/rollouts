@@ -97,6 +97,7 @@ func (r *TrafficRoutingReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	newStatus := tr.Status.DeepCopy()
 	if newStatus.Phase == "" {
 		newStatus.Phase = v1alpha1.TrafficRoutingPhaseInitial
+		newStatus.Message = "TrafficRouting is Initializing"
 	}
 	if !tr.DeletionTimestamp.IsZero() {
 		newStatus.Phase = v1alpha1.TrafficRoutingPhaseTerminating

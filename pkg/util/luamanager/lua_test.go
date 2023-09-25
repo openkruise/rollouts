@@ -30,6 +30,20 @@ import (
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
+type LuaData struct {
+	Data          Data
+	CanaryWeight  int32
+	StableWeight  int32
+	Matches       []rolloutv1alpha1.HttpRouteMatch
+	CanaryService string
+	StableService string
+}
+type Data struct {
+	Spec        interface{}       `json:"spec,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
 func TestRunLuaScript(t *testing.T) {
 	cases := []struct {
 		name         string

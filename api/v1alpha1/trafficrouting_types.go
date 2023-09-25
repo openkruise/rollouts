@@ -36,6 +36,8 @@ type TrafficRoutingRef struct {
 	// Gateway holds Gateway specific configuration to route traffic
 	// Gateway configuration only supports >= v0.4.0 (v1alpha2).
 	Gateway *GatewayTrafficRouting `json:"gateway,omitempty"`
+	// CustomNetworkRefs hold a list of custom providers to route traffic
+	CustomNetworkRefs []CustomNetworkRef `json:"customNetworkRefs,omitempty"`
 }
 
 // IngressTrafficRouting configuration for ingress controller to control traffic routing
@@ -147,6 +149,12 @@ type TrafficRoutingList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []TrafficRouting `json:"items"`
+}
+
+type CustomNetworkRef struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
 }
 
 func init() {

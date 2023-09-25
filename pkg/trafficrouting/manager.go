@@ -23,6 +23,7 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
+	custom "github.com/openkruise/rollouts/pkg/trafficrouting/network/customNetworkProvider"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/gateway"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/ingress"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -263,6 +264,16 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 
 func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, cService string) (network.NetworkProvider, error) {
 	trafficRouting := con.ObjectRef[0]
+	if trafficRouting.CustomNetworkRefs != nil {
+		return custom.NewCustomController(c, custom.Config{
+			Key:           con.Key,
+			RolloutNs:     con.Namespace,
+			CanaryService: cService,
+			StableService: sService,
+			TrafficConf:   trafficRouting.CustomNetworkRefs,
+			OwnerRef:      con.OwnerRef,
+		})
+	}
 	if trafficRouting.Ingress != nil {
 		return ingress.NewIngressTrafficRouting(c, ingress.Config{
 			Key:           con.Key,
