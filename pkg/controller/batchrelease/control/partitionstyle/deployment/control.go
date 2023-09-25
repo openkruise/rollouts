@@ -95,6 +95,7 @@ func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 		RollingStyle:  v1alpha1.PartitionRollingStyle,
 		RollingUpdate: rollingUpdate,
 	}
+	v1alpha1.SetDefaultDeploymentStrategy(&strategy)
 
 	d := rc.object.DeepCopy()
 	patchData := patch.NewDeploymentPatch()
