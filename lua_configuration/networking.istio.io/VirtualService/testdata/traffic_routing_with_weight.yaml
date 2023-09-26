@@ -1,0 +1,50 @@
+trafficRouting:
+  apiVersion: rollouts.kruise.io/v1alpha1
+  kind: TrafficRouting
+  metadata:
+    name: tr-demo
+  spec:
+    strategy:
+      weight: 50
+    objectRef:
+    - service: svc-demo
+      customNetworkRefs:
+      - apiVersion: networking.istio.io/v1alpha3
+        kind: VirtualService
+        name: vs-demo
+original:
+  apiVersion: networking.istio.io/v1alpha3
+  kind: VirtualService
+  metadata:
+    name: vs-demo
+  spec:
+    hosts:
+    - "*"
+    gateways:
+    - nginx-gateway
+    http:
+    - route:
+      - destination:
+          host: svc-demo
+          subset: base
+expected:
+  - apiVersion: networking.istio.io/v1alpha3
+    kind: VirtualService
+    metadata:
+      name: nginx-vs
+      namespace: demo
+    spec:
+      hosts:
+      - "*"
+      gateways:
+      - nginx-gateway
+      http:
+      - route:
+        - destination:
+            host: svc-demo
+            subset: base
+          weight: 50
+        - destination:
+            host: svc-demo
+            subset: canary
+          weight: 50
