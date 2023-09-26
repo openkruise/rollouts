@@ -1,0 +1,18 @@
+  apiVersion: rollouts.kruise.io/v1alpha1
+  kind: Rollout
+  metadata:
+    name: rollouts-demo
+    annotations:
+      rollouts.kruise.io/rolling-style: canary
+      rollouts.kruise.io/trafficrouting: tr-demo
+  spec:
+    disabled: false
+    objectRef:
+      workloadRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: echoserver
+    strategy:
+      canary:
+        steps:
+        - replicas: 1

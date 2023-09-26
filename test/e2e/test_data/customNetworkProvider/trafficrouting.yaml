@@ -1,0 +1,20 @@
+apiVersion: rollouts.kruise.io/v1alpha1
+kind: TrafficRouting
+metadata:
+  name: tr-demo
+spec:
+  strategy:
+    matches:
+    - headers:
+      - type: Exact
+        name: user-agent
+        value: pc
+  objectRef:
+  - service: echoserver
+    customNetworkRefs:
+    - apiVersion: networking.istio.io/v1alpha3
+      kind: VirtualService
+      name: vs-demo
+    - apiVersion: networking.istio.io/v1alpha3
+      kind: DestinationRule
+      name: ds-demo
