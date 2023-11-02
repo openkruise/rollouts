@@ -36,6 +36,7 @@ import (
 
 	"github.com/openkruise/kruise-api/apps/pub"
 	kruisev1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	rolloutapi "github.com/openkruise/rollouts/api"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 )
 
@@ -43,7 +44,7 @@ func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = kruisev1alpha1.AddToScheme(scheme)
-	_ = rolloutv1alpha1.AddToScheme(scheme)
+	_ = rolloutapi.AddToScheme(scheme)
 	_ = v1alpha2.AddToScheme(scheme)
 }
 

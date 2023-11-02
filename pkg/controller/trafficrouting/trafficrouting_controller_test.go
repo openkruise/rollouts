@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"testing"
 
-	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
+	rolloutapi "github.com/openkruise/rollouts/api"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -184,8 +184,7 @@ var (
 func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kruisev1aplphal.AddToScheme(scheme)
-	_ = v1alpha1.AddToScheme(scheme)
+	_ = rolloutapi.AddToScheme(scheme)
 }
 
 func TestTrafficRoutingTest(t *testing.T) {

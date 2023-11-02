@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle"
@@ -59,7 +59,7 @@ func (rc *realController) BuildStableController() (canarystyle.StableInterface, 
 	return rc, nil
 }
 
-func (rc *realController) BuildCanaryController(release *v1alpha1.BatchRelease) (canarystyle.CanaryInterface, error) {
+func (rc *realController) BuildCanaryController(release *v1beta1.BatchRelease) (canarystyle.CanaryInterface, error) {
 	if rc.canaryObject != nil {
 		return rc, nil
 	}
@@ -82,7 +82,7 @@ func (rc *realController) BuildCanaryController(release *v1alpha1.BatchRelease) 
 	return rc, nil
 }
 
-func (rc *realController) CalculateBatchContext(release *v1alpha1.BatchRelease) *batchcontext.BatchContext {
+func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) *batchcontext.BatchContext {
 	replicas := *rc.stableObject.Spec.Replicas
 	currentBatch := release.Status.CanaryStatus.CurrentBatch
 	desiredUpdate := int32(control.CalculateBatchReplicas(release, int(replicas), int(currentBatch)))

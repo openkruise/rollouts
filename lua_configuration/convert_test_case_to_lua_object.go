@@ -8,18 +8,18 @@ import (
 	"strings"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	custom "github.com/openkruise/rollouts/pkg/trafficrouting/network/customNetworkProvider"
 	"github.com/openkruise/rollouts/pkg/util/luamanager"
 	lua "github.com/yuin/gopher-lua"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/yaml"
-
 	utilpointer "k8s.io/utils/pointer"
+	"sigs.k8s.io/yaml"
 )
 
 type TestCase struct {
-	Rollout        *v1alpha1.Rollout            `json:"rollout,omitempty"`
+	Rollout        *v1beta1.Rollout             `json:"rollout,omitempty"`
 	TrafficRouting *v1alpha1.TrafficRouting     `json:"trafficRouting,omitempty"`
 	Original       *unstructured.Unstructured   `json:"original,omitempty"`
 	Expected       []*unstructured.Unstructured `json:"expected,omitempty"`

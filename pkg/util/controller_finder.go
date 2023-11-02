@@ -24,6 +24,7 @@ import (
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -65,7 +66,7 @@ type Workload struct {
 
 // ControllerFinderFunc is a function type that maps a pod to a list of
 // controllers and their scale.
-type ControllerFinderFunc func(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error)
+type ControllerFinderFunc func(namespace string, ref *rolloutv1beta1.WorkloadRef) (*Workload, error)
 
 type ControllerFinder struct {
 	client.Client
@@ -84,13 +85,13 @@ func NewControllerFinder(c client.Client) *ControllerFinder {
 // +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=replicasets/status,verbs=get;update;patch
 
-func (r *ControllerFinder) GetWorkloadForRef(rollout *rolloutv1alpha1.Rollout) (*Workload, error) {
+func (r *ControllerFinder) GetWorkloadForRef(rollout *rolloutv1beta1.Rollout) (*Workload, error) {
 	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
 	if workloadRef == nil {
 		return nil, nil
 	}
 
-	switch strings.ToLower(rollout.Annotations[rolloutv1alpha1.RolloutStyleAnnotation]) {
+	switch strings.ToLower(rollout.Annotations[rolloutv1beta1.RolloutStyleAnnotation]) {
 	case strings.ToLower(string(rolloutv1alpha1.PartitionRollingStyle)):
 		for _, finder := range r.partitionStyleFinders() {
 			workload, err := finder(rollout.Namespace, workloadRef)
@@ -137,7 +138,7 @@ var (
 )
 
 // getKruiseCloneSet returns the kruise cloneSet referenced by the provided controllerRef.
-func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
+func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1beta1.WorkloadRef) (*Workload, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, ControllerKruiseKindCS.Kind, []string{ControllerKruiseKindCS.Group})
 	if !ok {
@@ -179,7 +180,7 @@ func (r *ControllerFinder) getKruiseCloneSet(namespace string, ref *rolloutv1alp
 	return workload, nil
 }
 
-func (r *ControllerFinder) getKruiseDaemonSet(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
+func (r *ControllerFinder) getKruiseDaemonSet(namespace string, ref *rolloutv1beta1.WorkloadRef) (*Workload, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, ControllerKruiseKindDS.Kind, []string{ControllerKruiseKindDS.Group})
 	if !ok {
@@ -223,7 +224,7 @@ func (r *ControllerFinder) getKruiseDaemonSet(namespace string, ref *rolloutv1al
 }
 
 // getPartitionStyleDeployment returns the Advanced Deployment referenced by the provided controllerRef.
-func (r *ControllerFinder) getAdvancedDeployment(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
+func (r *ControllerFinder) getAdvancedDeployment(namespace string, ref *rolloutv1beta1.WorkloadRef) (*Workload, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, ControllerKindDep.Kind, []string{ControllerKindDep.Group})
 	if !ok {
@@ -277,7 +278,7 @@ func (r *ControllerFinder) getAdvancedDeployment(namespace string, ref *rolloutv
 }
 
 // getDeployment returns the k8s native deployment referenced by the provided controllerRef.
-func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
+func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1beta1.WorkloadRef) (*Workload, error) {
 	// This error is irreversible, so there is no need to return error
 	ok, _ := verifyGroupKind(ref, ControllerKindDep.Kind, []string{ControllerKindDep.Group})
 	if !ok {
@@ -334,7 +335,7 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1alpha1.
 	return workload, err
 }
 
-func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rolloutv1alpha1.WorkloadRef) (*Workload, error) {
+func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rolloutv1beta1.WorkloadRef) (*Workload, error) {
 	if ref == nil {
 		return nil, nil
 	}
@@ -445,7 +446,7 @@ func (r *ControllerFinder) getDeploymentStableRs(obj *apps.Deployment) (*apps.Re
 	return rss[0], nil
 }
 
-func verifyGroupKind(ref *rolloutv1alpha1.WorkloadRef, expectedKind string, expectedGroups []string) (bool, error) {
+func verifyGroupKind(ref *rolloutv1beta1.WorkloadRef, expectedKind string, expectedGroups []string) (bool, error) {
 	gv, err := schema.ParseGroupVersion(ref.APIVersion)
 	if err != nil {
 		return false, err

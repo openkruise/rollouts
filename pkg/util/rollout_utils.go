@@ -27,6 +27,7 @@ import (
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -44,7 +45,7 @@ type RolloutState struct {
 	RolloutName string `json:"rolloutName"`
 }
 
-func IsRollbackInBatchPolicy(rollout *rolloutv1alpha1.Rollout, labels map[string]string) bool {
+func IsRollbackInBatchPolicy(rollout *rolloutv1beta1.Rollout, labels map[string]string) bool {
 	// currently, only support the case of no traffic routing
 	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
 		return false
@@ -130,7 +131,7 @@ func DiscoverGVK(gvk schema.GroupVersionKind) bool {
 	return true
 }
 
-func GetGVKFrom(workloadRef *rolloutv1alpha1.WorkloadRef) schema.GroupVersionKind {
+func GetGVKFrom(workloadRef *rolloutv1beta1.WorkloadRef) schema.GroupVersionKind {
 	if workloadRef == nil {
 		return schema.GroupVersionKind{}
 	}
@@ -148,7 +149,7 @@ func AddWatcherDynamically(c controller.Controller, h handler.EventHandler, gvk 
 	return true, c.Watch(&source.Kind{Type: object}, h)
 }
 
-func HashReleasePlanBatches(releasePlan *rolloutv1alpha1.ReleasePlan) string {
+func HashReleasePlanBatches(releasePlan *rolloutv1beta1.ReleasePlan) string {
 	by, _ := json.Marshal(releasePlan)
 	md5Hash := sha256.Sum256(by)
 	return hex.EncodeToString(md5Hash[:])

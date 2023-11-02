@@ -26,7 +26,9 @@ import (
 	"strings"
 	"testing"
 
+	rolloutapi "github.com/openkruise/rollouts/api"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
 	"github.com/openkruise/rollouts/pkg/util/luamanager"
@@ -118,7 +120,7 @@ var (
 func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = rolloutsv1alpha1.AddToScheme(scheme)
+	_ = rolloutapi.AddToScheme(scheme)
 }
 
 func TestInitialize(t *testing.T) {
@@ -480,7 +482,7 @@ func TestFinalise(t *testing.T) {
 }
 
 type TestCase struct {
-	Rollout        *rolloutsv1alpha1.Rollout        `json:"rollout,omitempty"`
+	Rollout        *rolloutsv1beta1.Rollout         `json:"rollout,omitempty"`
 	TrafficRouting *rolloutsv1alpha1.TrafficRouting `json:"trafficRouting,omitempty"`
 	Original       *unstructured.Unstructured       `json:"original,omitempty"`
 	Expected       []*unstructured.Unstructured     `json:"expected,omitempty"`

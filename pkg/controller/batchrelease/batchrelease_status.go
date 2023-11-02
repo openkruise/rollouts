@@ -20,6 +20,7 @@ import (
 	"reflect"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -29,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-func (r *Executor) syncStatusBeforeExecuting(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, controller control.Interface) (bool, reconcile.Result, error) {
+func (r *Executor) syncStatusBeforeExecuting(release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus, controller control.Interface) (bool, reconcile.Result, error) {
 	var err error
 	var message string
 	var needRetry bool
@@ -145,7 +146,7 @@ func (r *Executor) syncStatusBeforeExecuting(release *v1alpha1.BatchRelease, new
 	return needStopThisRound, result, err
 }
 
-func refreshStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, workloadInfo *util.WorkloadInfo) {
+func refreshStatus(release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus, workloadInfo *util.WorkloadInfo) {
 	// refresh workload info for status
 	if workloadInfo != nil {
 		newStatus.CanaryStatus.UpdatedReplicas = workloadInfo.Status.UpdatedReplicas
@@ -156,76 +157,76 @@ func refreshStatus(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchRele
 	}
 }
 
-func isPlanFinalizing(release *v1alpha1.BatchRelease) bool {
-	if release.DeletionTimestamp != nil || release.Status.Phase == v1alpha1.RolloutPhaseFinalizing {
+func isPlanFinalizing(release *v1beta1.BatchRelease) bool {
+	if release.DeletionTimestamp != nil || release.Status.Phase == v1beta1.RolloutPhaseFinalizing {
 		return true
 	}
 	return release.Spec.ReleasePlan.BatchPartition == nil
 }
 
-func isPlanCompleted(release *v1alpha1.BatchRelease) bool {
-	return release.Status.Phase == v1alpha1.RolloutPhaseCompleted
+func isPlanCompleted(release *v1beta1.BatchRelease) bool {
+	return release.Status.Phase == v1beta1.RolloutPhaseCompleted
 }
 
-func isPlanChanged(release *v1alpha1.BatchRelease) bool {
-	return release.Status.ObservedReleasePlanHash != util.HashReleasePlanBatches(&release.Spec.ReleasePlan) && release.Status.Phase == v1alpha1.RolloutPhaseProgressing
+func isPlanChanged(release *v1beta1.BatchRelease) bool {
+	return release.Status.ObservedReleasePlanHash != util.HashReleasePlanBatches(&release.Spec.ReleasePlan) && release.Status.Phase == v1beta1.RolloutPhaseProgressing
 }
 
-func isPlanUnhealthy(release *v1alpha1.BatchRelease) bool {
-	return int(release.Status.CanaryStatus.CurrentBatch) >= len(release.Spec.ReleasePlan.Batches) && release.Status.Phase == v1alpha1.RolloutPhaseProgressing
+func isPlanUnhealthy(release *v1beta1.BatchRelease) bool {
+	return int(release.Status.CanaryStatus.CurrentBatch) >= len(release.Spec.ReleasePlan.Batches) && release.Status.Phase == v1beta1.RolloutPhaseProgressing
 }
 
 func isGetWorkloadInfoError(err error) bool {
 	return err != nil && !errors.IsNotFound(err)
 }
 
-func isWorkloadGone(event control.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
-	return event == control.WorkloadHasGone && release.Status.Phase != v1alpha1.RolloutPhaseInitial && release.Status.Phase != ""
+func isWorkloadGone(event control.WorkloadEventType, release *v1beta1.BatchRelease) bool {
+	return event == control.WorkloadHasGone && release.Status.Phase != v1beta1.RolloutPhaseInitial && release.Status.Phase != ""
 }
 
-func isWorkloadScaling(event control.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
-	return event == control.WorkloadReplicasChanged && release.Status.Phase == v1alpha1.RolloutPhaseProgressing
+func isWorkloadScaling(event control.WorkloadEventType, release *v1beta1.BatchRelease) bool {
+	return event == control.WorkloadReplicasChanged && release.Status.Phase == v1beta1.RolloutPhaseProgressing
 }
 
-func isWorkloadRevisionChanged(event control.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
-	return event == control.WorkloadPodTemplateChanged && release.Status.Phase == v1alpha1.RolloutPhaseProgressing
+func isWorkloadRevisionChanged(event control.WorkloadEventType, release *v1beta1.BatchRelease) bool {
+	return event == control.WorkloadPodTemplateChanged && release.Status.Phase == v1beta1.RolloutPhaseProgressing
 }
 
-func isWorkloadRollbackInBatch(event control.WorkloadEventType, release *v1alpha1.BatchRelease) bool {
+func isWorkloadRollbackInBatch(event control.WorkloadEventType, release *v1beta1.BatchRelease) bool {
 	return (event == control.WorkloadRollbackInBatch || release.Annotations[v1alpha1.RollbackInBatchAnnotation] != "") &&
-		release.Status.CanaryStatus.NoNeedUpdateReplicas == nil && release.Status.Phase == v1alpha1.RolloutPhaseProgressing
+		release.Status.CanaryStatus.NoNeedUpdateReplicas == nil && release.Status.Phase == v1beta1.RolloutPhaseProgressing
 }
 
-func isWorkloadUnstable(event control.WorkloadEventType, _ *v1alpha1.BatchRelease) bool {
+func isWorkloadUnstable(event control.WorkloadEventType, _ *v1beta1.BatchRelease) bool {
 	return event == control.WorkloadStillReconciling
 }
 
-func isRollbackInBatchSatisfied(workloadInfo *util.WorkloadInfo, release *v1alpha1.BatchRelease) bool {
+func isRollbackInBatchSatisfied(workloadInfo *util.WorkloadInfo, release *v1beta1.BatchRelease) bool {
 	return workloadInfo.Status.StableRevision == workloadInfo.Status.UpdateRevision && release.Annotations[v1alpha1.RollbackInBatchAnnotation] != ""
 }
 
-func signalRePrepareRollback(newStatus *v1alpha1.BatchReleaseStatus) {
-	newStatus.Phase = v1alpha1.RolloutPhasePreparing
+func signalRePrepareRollback(newStatus *v1beta1.BatchReleaseStatus) {
+	newStatus.Phase = v1beta1.RolloutPhasePreparing
 	newStatus.CanaryStatus.BatchReadyTime = nil
-	newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+	newStatus.CanaryStatus.CurrentBatchState = v1beta1.UpgradingBatchState
 }
 
-func signalRestartBatch(status *v1alpha1.BatchReleaseStatus) {
+func signalRestartBatch(status *v1beta1.BatchReleaseStatus) {
 	status.CanaryStatus.BatchReadyTime = nil
-	status.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+	status.CanaryStatus.CurrentBatchState = v1beta1.UpgradingBatchState
 }
 
-func signalRestartAll(status *v1alpha1.BatchReleaseStatus) {
-	emptyStatus := v1alpha1.BatchReleaseStatus{}
+func signalRestartAll(status *v1beta1.BatchReleaseStatus) {
+	emptyStatus := v1beta1.BatchReleaseStatus{}
 	resetStatus(&emptyStatus)
 	*status = emptyStatus
 }
 
-func signalFinalizing(status *v1alpha1.BatchReleaseStatus) {
-	status.Phase = v1alpha1.RolloutPhaseFinalizing
+func signalFinalizing(status *v1beta1.BatchReleaseStatus) {
+	status.Phase = v1beta1.RolloutPhaseFinalizing
 }
 
-func signalRecalculate(release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus) {
+func signalRecalculate(release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus) {
 	// When BatchRelease plan was changed, rollout controller will update this batchRelease cr,
 	// and rollout controller will set BatchPartition as its expected current batch index.
 	currentBatch := int32(0)
@@ -242,11 +243,11 @@ func signalRecalculate(release *v1alpha1.BatchRelease, newStatus *v1alpha1.Batch
 	newStatus.CanaryStatus.BatchReadyTime = nil
 	newStatus.CanaryStatus.CurrentBatch = currentBatch
 	newStatus.ObservedRolloutID = release.Spec.ReleasePlan.RolloutID
-	newStatus.CanaryStatus.CurrentBatchState = v1alpha1.UpgradingBatchState
+	newStatus.CanaryStatus.CurrentBatchState = v1beta1.UpgradingBatchState
 	newStatus.ObservedReleasePlanHash = util.HashReleasePlanBatches(&release.Spec.ReleasePlan)
 }
 
-func getInitializedStatus(status *v1alpha1.BatchReleaseStatus) *v1alpha1.BatchReleaseStatus {
+func getInitializedStatus(status *v1beta1.BatchReleaseStatus) *v1beta1.BatchReleaseStatus {
 	newStatus := status.DeepCopy()
 	if len(status.Phase) == 0 {
 		resetStatus(newStatus)
@@ -254,11 +255,11 @@ func getInitializedStatus(status *v1alpha1.BatchReleaseStatus) *v1alpha1.BatchRe
 	return newStatus
 }
 
-func resetStatus(status *v1alpha1.BatchReleaseStatus) {
-	status.Phase = v1alpha1.RolloutPhasePreparing
+func resetStatus(status *v1beta1.BatchReleaseStatus) {
+	status.Phase = v1beta1.RolloutPhasePreparing
 	status.StableRevision = ""
 	status.UpdateRevision = ""
 	status.ObservedReleasePlanHash = ""
 	status.ObservedWorkloadReplicas = -1
-	status.CanaryStatus = v1alpha1.BatchReleaseCanaryStatus{}
+	status.CanaryStatus = v1beta1.BatchReleaseCanaryStatus{}
 }

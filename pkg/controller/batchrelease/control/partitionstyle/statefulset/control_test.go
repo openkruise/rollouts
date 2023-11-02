@@ -27,7 +27,8 @@ import (
 	appsv1pub "github.com/openkruise/kruise-api/apps/pub"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutapi "github.com/openkruise/rollouts/api"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -111,7 +112,7 @@ var (
 		},
 	}
 
-	releaseDemo = &v1alpha1.BatchRelease{
+	releaseDemo = &v1beta1.BatchRelease{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "rollouts.kruise.io/v1alpha1",
 			Kind:       "BatchRelease",
@@ -121,9 +122,9 @@ var (
 			Namespace: stsKey.Namespace,
 			UID:       uuid.NewUUID(),
 		},
-		Spec: v1alpha1.BatchReleaseSpec{
-			ReleasePlan: v1alpha1.ReleasePlan{
-				Batches: []v1alpha1.ReleaseBatch{
+		Spec: v1beta1.BatchReleaseSpec{
+			ReleasePlan: v1beta1.ReleasePlan{
+				Batches: []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
 					},
@@ -135,16 +136,16 @@ var (
 					},
 				},
 			},
-			TargetRef: v1alpha1.ObjectRef{
-				WorkloadRef: &v1alpha1.WorkloadRef{
+			TargetRef: v1beta1.ObjectRef{
+				WorkloadRef: &v1beta1.WorkloadRef{
 					APIVersion: stsDemo.APIVersion,
 					Kind:       stsDemo.Kind,
 					Name:       stsDemo.Name,
 				},
 			},
 		},
-		Status: v1alpha1.BatchReleaseStatus{
-			CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
+		Status: v1beta1.BatchReleaseStatus{
+			CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 				CurrentBatch: 0,
 			},
 		},
@@ -155,7 +156,7 @@ func init() {
 	rand.Seed(87076677)
 	apps.AddToScheme(scheme)
 	corev1.AddToScheme(scheme)
-	v1alpha1.AddToScheme(scheme)
+	rolloutapi.AddToScheme(scheme)
 	kruiseappsv1alpha1.AddToScheme(scheme)
 	kruiseappsv1beta1.AddToScheme(scheme)
 }
@@ -166,7 +167,7 @@ func TestCalculateBatchContextForNativeStatefulSet(t *testing.T) {
 	percent := intstr.FromString("20%")
 	cases := map[string]struct {
 		workload func() *apps.StatefulSet
-		release  func() *v1alpha1.BatchRelease
+		release  func() *v1beta1.BatchRelease
 		pods     func() []*corev1.Pod
 		result   *batchcontext.BatchContext
 	}{
@@ -206,24 +207,24 @@ func TestCalculateBatchContextForNativeStatefulSet(t *testing.T) {
 				updatedReadyPods := generatePods(5, "update-version", "True")
 				return append(stablePods, updatedReadyPods...)
 			},
-			release: func() *v1alpha1.BatchRelease {
-				r := &v1alpha1.BatchRelease{
+			release: func() *v1beta1.BatchRelease {
+				r := &v1beta1.BatchRelease{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test-br",
 						Namespace: "test",
 					},
-					Spec: v1alpha1.BatchReleaseSpec{
-						ReleasePlan: v1alpha1.ReleasePlan{
+					Spec: v1beta1.BatchReleaseSpec{
+						ReleasePlan: v1beta1.ReleasePlan{
 							FailureThreshold: &percent,
-							Batches: []v1alpha1.ReleaseBatch{
+							Batches: []v1beta1.ReleaseBatch{
 								{
 									CanaryReplicas: percent,
 								},
 							},
 						},
 					},
-					Status: v1alpha1.BatchReleaseStatus{
-						CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
+					Status: v1beta1.BatchReleaseStatus{
+						CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 							CurrentBatch: 0,
 						},
 						UpdateRevision: "update-version",
@@ -281,24 +282,24 @@ func TestCalculateBatchContextForNativeStatefulSet(t *testing.T) {
 				updatedReadyPods := generatePods(10, "update-version", "True")
 				return append(stablePods, updatedReadyPods...)
 			},
-			release: func() *v1alpha1.BatchRelease {
-				r := &v1alpha1.BatchRelease{
+			release: func() *v1beta1.BatchRelease {
+				r := &v1beta1.BatchRelease{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test-br",
 						Namespace: "test",
 					},
-					Spec: v1alpha1.BatchReleaseSpec{
-						ReleasePlan: v1alpha1.ReleasePlan{
+					Spec: v1beta1.BatchReleaseSpec{
+						ReleasePlan: v1beta1.ReleasePlan{
 							FailureThreshold: &percent,
-							Batches: []v1alpha1.ReleaseBatch{
+							Batches: []v1beta1.ReleaseBatch{
 								{
 									CanaryReplicas: percent,
 								},
 							},
 						},
 					},
-					Status: v1alpha1.BatchReleaseStatus{
-						CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
+					Status: v1beta1.BatchReleaseStatus{
+						CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 							CurrentBatch:         0,
 							NoNeedUpdateReplicas: pointer.Int32(10),
 						},
@@ -360,7 +361,7 @@ func TestCalculateBatchContextForAdvancedStatefulSet(t *testing.T) {
 	percent := intstr.FromString("20%")
 	cases := map[string]struct {
 		workload func() *kruiseappsv1beta1.StatefulSet
-		release  func() *v1alpha1.BatchRelease
+		release  func() *v1beta1.BatchRelease
 		pods     func() []*corev1.Pod
 		result   *batchcontext.BatchContext
 	}{
@@ -409,24 +410,24 @@ func TestCalculateBatchContextForAdvancedStatefulSet(t *testing.T) {
 				updatedReadyPods := generatePods(5, "update-version", "True")
 				return append(stablePods, updatedReadyPods...)
 			},
-			release: func() *v1alpha1.BatchRelease {
-				r := &v1alpha1.BatchRelease{
+			release: func() *v1beta1.BatchRelease {
+				r := &v1beta1.BatchRelease{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test-br",
 						Namespace: "test",
 					},
-					Spec: v1alpha1.BatchReleaseSpec{
-						ReleasePlan: v1alpha1.ReleasePlan{
+					Spec: v1beta1.BatchReleaseSpec{
+						ReleasePlan: v1beta1.ReleasePlan{
 							FailureThreshold: &percent,
-							Batches: []v1alpha1.ReleaseBatch{
+							Batches: []v1beta1.ReleaseBatch{
 								{
 									CanaryReplicas: percent,
 								},
 							},
 						},
 					},
-					Status: v1alpha1.BatchReleaseStatus{
-						CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
+					Status: v1beta1.BatchReleaseStatus{
+						CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 							CurrentBatch: 0,
 						},
 						UpdateRevision: "update-version",
@@ -493,24 +494,24 @@ func TestCalculateBatchContextForAdvancedStatefulSet(t *testing.T) {
 				updatedReadyPods := generatePods(10, "update-version", "True")
 				return append(stablePods, updatedReadyPods...)
 			},
-			release: func() *v1alpha1.BatchRelease {
-				r := &v1alpha1.BatchRelease{
+			release: func() *v1beta1.BatchRelease {
+				r := &v1beta1.BatchRelease{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test-br",
 						Namespace: "test",
 					},
-					Spec: v1alpha1.BatchReleaseSpec{
-						ReleasePlan: v1alpha1.ReleasePlan{
+					Spec: v1beta1.BatchReleaseSpec{
+						ReleasePlan: v1beta1.ReleasePlan{
 							FailureThreshold: &percent,
-							Batches: []v1alpha1.ReleaseBatch{
+							Batches: []v1beta1.ReleaseBatch{
 								{
 									CanaryReplicas: percent,
 								},
 							},
 						},
 					},
-					Status: v1alpha1.BatchReleaseStatus{
-						CanaryStatus: v1alpha1.BatchReleaseCanaryStatus{
+					Status: v1beta1.BatchReleaseStatus{
+						CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 							CurrentBatch:         0,
 							NoNeedUpdateReplicas: pointer.Int32(10),
 						},
@@ -629,7 +630,7 @@ func checkWorkloadInfo(stableInfo *util.WorkloadInfo, sts *kruiseappsv1beta1.Sta
 	Expect(stableInfo.Status.ObservedGeneration).Should(Equal(sts.Status.ObservedGeneration))
 }
 
-func getControlInfo(release *v1alpha1.BatchRelease) string {
+func getControlInfo(release *v1beta1.BatchRelease) string {
 	owner, _ := json.Marshal(metav1.NewControllerRef(release, release.GetObjectKind().GroupVersionKind()))
 	return string(owner)
 }

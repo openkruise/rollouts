@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	addmissionv1 "k8s.io/api/admission/v1"
@@ -53,39 +54,72 @@ var _ admission.Handler = &RolloutCreateUpdateHandler{}
 func (h *RolloutCreateUpdateHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
 	switch req.Operation {
 	case addmissionv1.Create:
-		obj := &appsv1alpha1.Rollout{}
-		if err := h.Decoder.Decode(req, obj); err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		errList := h.validateRollout(obj)
-		if len(errList) != 0 {
-			return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+		// v1alpha1
+		if req.Kind.Version == appsv1alpha1.GroupVersion.Version {
+			obj := &appsv1alpha1.Rollout{}
+			if err := h.Decoder.Decode(req, obj); err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			errList := h.validateV1alpha1Rollout(obj)
+			if len(errList) != 0 {
+				return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+			}
+			// v1beta1
+		} else {
+			obj := &appsv1beta1.Rollout{}
+			if err := h.Decoder.Decode(req, obj); err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			errList := h.validateRollout(obj)
+			if len(errList) != 0 {
+				return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+			}
 		}
 
 	case addmissionv1.Update:
-		obj := &appsv1alpha1.Rollout{}
-		if err := h.Decoder.Decode(req, obj); err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		errList := h.validateRollout(obj)
-		if len(errList) != 0 {
-			return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
-		}
-		oldObj := &appsv1alpha1.Rollout{}
-		if err := h.Decoder.DecodeRaw(req.AdmissionRequest.OldObject, oldObj); err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		errList = h.validateRolloutUpdate(oldObj, obj)
-		if len(errList) != 0 {
-			return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+		// v1alpha1
+		if req.Kind.Version == appsv1alpha1.GroupVersion.Version {
+			obj := &appsv1alpha1.Rollout{}
+			if err := h.Decoder.Decode(req, obj); err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			errList := h.validateV1alpha1Rollout(obj)
+			if len(errList) != 0 {
+				return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+			}
+			oldObj := &appsv1alpha1.Rollout{}
+			if err := h.Decoder.DecodeRaw(req.AdmissionRequest.OldObject, oldObj); err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			errList = h.validateV1alpha1RolloutUpdate(oldObj, obj)
+			if len(errList) != 0 {
+				return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+			}
+		} else {
+			obj := &appsv1beta1.Rollout{}
+			if err := h.Decoder.Decode(req, obj); err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			errList := h.validateRollout(obj)
+			if len(errList) != 0 {
+				return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+			}
+			oldObj := &appsv1beta1.Rollout{}
+			if err := h.Decoder.DecodeRaw(req.AdmissionRequest.OldObject, oldObj); err != nil {
+				return admission.Errored(http.StatusBadRequest, err)
+			}
+			errList = h.validateRolloutUpdate(oldObj, obj)
+			if len(errList) != 0 {
+				return admission.Errored(http.StatusUnprocessableEntity, errList.ToAggregate())
+			}
 		}
 	}
 
 	return admission.ValidationResponse(true, "")
 }
 
-func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv1alpha1.Rollout) field.ErrorList {
-	latestObject := &appsv1alpha1.Rollout{}
+func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv1beta1.Rollout) field.ErrorList {
+	latestObject := &appsv1beta1.Rollout{}
 	err := h.Client.Get(context.TODO(), client.ObjectKeyFromObject(newObj), latestObject)
 	if err != nil {
 		return field.ErrorList{field.InternalError(field.NewPath("Rollout"), err)}
@@ -96,7 +130,7 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 
 	switch latestObject.Status.Phase {
 	// The workloadRef and TrafficRouting are not allowed to be modified in the Progressing, Terminating state
-	case appsv1alpha1.RolloutPhaseProgressing, appsv1alpha1.RolloutPhaseTerminating:
+	case appsv1beta1.RolloutPhaseProgressing, appsv1beta1.RolloutPhaseTerminating:
 		if !reflect.DeepEqual(oldObj.Spec.ObjectRef, newObj.Spec.ObjectRef) {
 			return field.ErrorList{field.Forbidden(field.NewPath("Spec.ObjectRef"), "Rollout 'ObjectRef' field is immutable")}
 		}
@@ -104,15 +138,15 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 		if !reflect.DeepEqual(oldObj.Spec.Strategy.Canary.TrafficRoutings, newObj.Spec.Strategy.Canary.TrafficRoutings) {
 			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary.TrafficRoutings"), "Rollout 'Strategy.Canary.TrafficRoutings' field is immutable")}
 		}
-		if !strings.EqualFold(oldObj.Annotations[appsv1alpha1.RolloutStyleAnnotation], newObj.Annotations[appsv1alpha1.RolloutStyleAnnotation]) {
+		if !strings.EqualFold(oldObj.Annotations[appsv1beta1.RolloutStyleAnnotation], newObj.Annotations[appsv1beta1.RolloutStyleAnnotation]) {
 			return field.ErrorList{field.Forbidden(field.NewPath("Metadata.Annotation"), "Rollout 'Rolling-Style' annotation is immutable")}
 		}
 	}
 
-	/*if newObj.Status.CanaryStatus != nil && newObj.Status.CanaryStatus.CurrentStepState == appsv1alpha1.CanaryStepStateReady {
+	/*if newObj.Status.CanaryStatus != nil && newObj.Status.CanaryStatus.CurrentStepState == appsv1beta1.CanaryStepStateReady {
 		if oldObj.Status.CanaryStatus != nil {
 			switch oldObj.Status.CanaryStatus.CurrentStepState {
-			case appsv1alpha1.CanaryStepStateCompleted, appsv1alpha1.CanaryStepStatePaused:
+			case appsv1beta1.CanaryStepStateCompleted, appsv1beta1.CanaryStepStatePaused:
 			default:
 				return field.ErrorList{field.Forbidden(field.NewPath("Status"), "CanaryStatus.CurrentStepState only allow to translate to 'StepInCompleted' from 'StepInPaused'")}
 			}
@@ -122,15 +156,15 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 	return nil
 }
 
-func (h *RolloutCreateUpdateHandler) validateRollout(rollout *appsv1alpha1.Rollout) field.ErrorList {
+func (h *RolloutCreateUpdateHandler) validateRollout(rollout *appsv1beta1.Rollout) field.ErrorList {
 	errList := validateRolloutSpec(rollout, field.NewPath("Spec"))
 	errList = append(errList, h.validateRolloutConflict(rollout, field.NewPath("Conflict Checker"))...)
 	return errList
 }
 
-func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1alpha1.Rollout, path *field.Path) field.ErrorList {
+func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1beta1.Rollout, path *field.Path) field.ErrorList {
 	errList := field.ErrorList{}
-	rolloutList := &appsv1alpha1.RolloutList{}
+	rolloutList := &appsv1beta1.RolloutList{}
 	err := h.Client.List(context.TODO(), rolloutList, client.InNamespace(rollout.Namespace), utilclient.DisableDeepCopy)
 	if err != nil {
 		return append(errList, field.InternalError(path, err))
@@ -146,18 +180,18 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1alph
 	return nil
 }
 
-func validateRolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
+func validateRolloutSpec(rollout *appsv1beta1.Rollout, fldPath *field.Path) field.ErrorList {
 	errList := validateRolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
 	errList = append(errList, validateRolloutRollingStyle(rollout, field.NewPath("RollingStyle"))...)
 	errList = append(errList, validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
 	return errList
 }
 
-func validateRolloutRollingStyle(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
-	switch strings.ToLower(rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation]) {
+func validateRolloutRollingStyle(rollout *appsv1beta1.Rollout, fldPath *field.Path) field.ErrorList {
+	switch strings.ToLower(rollout.Annotations[appsv1beta1.RolloutStyleAnnotation]) {
 	case "", strings.ToLower(string(appsv1alpha1.CanaryRollingStyle)), strings.ToLower(string(appsv1alpha1.PartitionRollingStyle)):
 	default:
-		return field.ErrorList{field.Invalid(fldPath, rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation],
+		return field.ErrorList{field.Invalid(fldPath, rollout.Annotations[appsv1beta1.RolloutStyleAnnotation],
 			"Rolling style must be 'Canary', 'Partition' or empty")}
 	}
 
@@ -165,14 +199,14 @@ func validateRolloutRollingStyle(rollout *appsv1alpha1.Rollout, fldPath *field.P
 	if workloadRef == nil || workloadRef.Kind == util.ControllerKindDep.Kind {
 		return nil // Deployment support all rolling styles, no need to validate.
 	}
-	if strings.EqualFold(rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation], string(appsv1alpha1.CanaryRollingStyle)) {
-		return field.ErrorList{field.Invalid(fldPath, rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation],
+	if strings.EqualFold(rollout.Annotations[appsv1beta1.RolloutStyleAnnotation], string(appsv1alpha1.CanaryRollingStyle)) {
+		return field.ErrorList{field.Invalid(fldPath, rollout.Annotations[appsv1beta1.RolloutStyleAnnotation],
 			"Only Deployment support canary rolling style")}
 	}
 	return nil
 }
 
-func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *field.Path) field.ErrorList {
+func validateRolloutSpecObjectRef(objectRef *appsv1beta1.ObjectRef, fldPath *field.Path) field.ErrorList {
 	if objectRef.WorkloadRef == nil {
 		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef is required")}
 	}
@@ -184,11 +218,11 @@ func validateRolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fldPath *fi
 	return nil
 }
 
-func validateRolloutSpecStrategy(strategy *appsv1alpha1.RolloutStrategy, fldPath *field.Path) field.ErrorList {
+func validateRolloutSpecStrategy(strategy *appsv1beta1.RolloutStrategy, fldPath *field.Path) field.ErrorList {
 	return validateRolloutSpecCanaryStrategy(strategy.Canary, fldPath.Child("Canary"))
 }
 
-func validateRolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
+func validateRolloutSpecCanaryStrategy(canary *appsv1beta1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
 	if canary == nil {
 		return field.ErrorList{field.Invalid(fldPath, nil, "Canary cannot be empty")}
 	}
@@ -227,7 +261,7 @@ func validateRolloutSpecCanaryTraffic(traffic appsv1alpha1.TrafficRoutingRef, fl
 	return errList
 }
 
-func validateRolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *field.Path, isTraffic bool) field.ErrorList {
+func validateRolloutSpecCanarySteps(steps []appsv1beta1.CanaryStep, fldPath *field.Path, isTraffic bool) field.ErrorList {
 	stepCount := len(steps)
 	if stepCount == 0 {
 		return field.ErrorList{field.Invalid(fldPath, steps, "The number of Canary.Steps cannot be empty")}
@@ -281,7 +315,7 @@ func IsPercentageCanaryReplicasType(replicas *intstr.IntOrString) bool {
 	return replicas == nil || replicas.Type == intstr.String
 }
 
-func IsSameWorkloadRefGVKName(a, b *appsv1alpha1.WorkloadRef) bool {
+func IsSameWorkloadRefGVKName(a, b *appsv1beta1.WorkloadRef) bool {
 	if a == nil || b == nil {
 		return false
 	}

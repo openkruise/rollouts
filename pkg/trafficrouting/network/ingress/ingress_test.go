@@ -19,7 +19,9 @@ import (
 	"reflect"
 	"testing"
 
+	rolloutsapi "github.com/openkruise/rollouts/api"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
 	corev1 "k8s.io/api/core/v1"
@@ -253,7 +255,7 @@ var (
 func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = rolloutsv1alpha1.AddToScheme(scheme)
+	_ = rolloutsapi.AddToScheme(scheme)
 }
 
 func TestInitialize(t *testing.T) {
@@ -307,7 +309,7 @@ func TestEnsureRoutes(t *testing.T) {
 		name          string
 		getConfigmap  func() *corev1.ConfigMap
 		getIngress    func() []*netv1.Ingress
-		getRoutes     func() *rolloutsv1alpha1.CanaryStep
+		getRoutes     func() *rolloutsv1beta1.CanaryStep
 		expectIngress func() *netv1.Ingress
 		ingressType   string
 	}{
@@ -327,8 +329,8 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
-				return &rolloutsv1alpha1.CanaryStep{
+			getRoutes: func() *rolloutsv1beta1.CanaryStep {
+				return &rolloutsv1beta1.CanaryStep{
 					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
 						Weight: nil,
 						Matches: []rolloutsv1alpha1.HttpRouteMatch{
@@ -398,8 +400,8 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
-				return &rolloutsv1alpha1.CanaryStep{
+			getRoutes: func() *rolloutsv1beta1.CanaryStep {
+				return &rolloutsv1beta1.CanaryStep{
 					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
 						Weight: utilpointer.Int32(40),
 					},
@@ -433,9 +435,9 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
+			getRoutes: func() *rolloutsv1beta1.CanaryStep {
 				iType := gatewayv1alpha2.HeaderMatchRegularExpression
-				return &rolloutsv1alpha1.CanaryStep{
+				return &rolloutsv1beta1.CanaryStep{
 					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
 						Matches: []rolloutsv1alpha1.HttpRouteMatch{
 							// header
@@ -481,8 +483,8 @@ func TestEnsureRoutes(t *testing.T) {
 				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
-			getRoutes: func() *rolloutsv1alpha1.CanaryStep {
-				return &rolloutsv1alpha1.CanaryStep{
+			getRoutes: func() *rolloutsv1beta1.CanaryStep {
+				return &rolloutsv1beta1.CanaryStep{
 					TrafficRoutingStrategy: rolloutsv1alpha1.TrafficRoutingStrategy{
 						Matches: []rolloutsv1alpha1.HttpRouteMatch{
 							// header
