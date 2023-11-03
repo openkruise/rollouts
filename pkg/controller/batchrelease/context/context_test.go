@@ -22,7 +22,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -36,14 +36,14 @@ func TestIsBatchReady(t *testing.T) {
 	p := func(f intstr.IntOrString) *intstr.IntOrString {
 		return &f
 	}
-	r := func(f *intstr.IntOrString, id, revision string) *v1alpha1.BatchRelease {
-		return &v1alpha1.BatchRelease{
-			Spec:   v1alpha1.BatchReleaseSpec{ReleasePlan: v1alpha1.ReleasePlan{RolloutID: id, FailureThreshold: f}},
-			Status: v1alpha1.BatchReleaseStatus{UpdateRevision: revision},
+	r := func(f *intstr.IntOrString, id, revision string) *v1beta1.BatchRelease {
+		return &v1beta1.BatchRelease{
+			Spec:   v1beta1.BatchReleaseSpec{ReleasePlan: v1beta1.ReleasePlan{RolloutID: id, FailureThreshold: f}},
+			Status: v1beta1.BatchReleaseStatus{UpdateRevision: revision},
 		}
 	}
 	cases := map[string]struct {
-		release        *v1alpha1.BatchRelease
+		release        *v1beta1.BatchRelease
 		pods           []*corev1.Pod
 		maxUnavailable *intstr.IntOrString
 		labelDesired   int32
@@ -151,11 +151,11 @@ func TestIsBatchReady(t *testing.T) {
 func generatePods(updatedReplicas, noNeedRollbackReplicas int) []*corev1.Pod {
 	podsNoNeed := generatePodsWith(map[string]string{
 		util.NoNeedUpdatePodLabel:           "0x1",
-		v1alpha1.RolloutIDLabel:             "1",
+		v1beta1.RolloutIDLabel:              "1",
 		apps.ControllerRevisionHashLabelKey: "version-1",
 	}, noNeedRollbackReplicas, 0)
 	return append(generatePodsWith(map[string]string{
-		v1alpha1.RolloutIDLabel:             "1",
+		v1beta1.RolloutIDLabel:              "1",
 		apps.ControllerRevisionHashLabelKey: "version-1",
 	}, updatedReplicas-noNeedRollbackReplicas, noNeedRollbackReplicas), podsNoNeed...)
 }

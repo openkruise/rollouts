@@ -519,6 +519,512 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - description: The rollout status phase
+      jsonPath: .status.phase
+      name: STATUS
+      type: string
+    - description: The rollout canary status step
+      jsonPath: .status.canaryStatus.currentStepIndex
+      name: CANARY_STEP
+      type: integer
+    - description: The rollout canary status step state
+      jsonPath: .status.canaryStatus.currentStepState
+      name: CANARY_STATE
+      type: string
+    - description: The rollout canary status message
+      jsonPath: .status.message
+      name: MESSAGE
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: Rollout is the Schema for the rollouts API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RolloutSpec defines the desired state of Rollout
+            properties:
+              disabled:
+                default: false
+                description: if a rollout disabled, then the rollout would not watch
+                  changes of workload
+                type: boolean
+              objectRef:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                  ObjectRef indicates workload'
+                properties:
+                  workloadRef:
+                    description: WorkloadRef contains enough information to let you
+                      identify a workload for Rollout Batch release of the bypass
+                    properties:
+                      apiVersion:
+                        description: API Version of the referent
+                        type: string
+                      kind:
+                        description: Kind of the referent
+                        type: string
+                      name:
+                        description: Name of the referent
+                        type: string
+                    required:
+                    - apiVersion
+                    - kind
+                    - name
+                    type: object
+                type: object
+              rolloutID:
+                description: DeprecatedRolloutID is the deprecated field. It is recommended
+                  that configure RolloutId in workload.annotations[rollouts.kruise.io/rollout-id].
+                  RolloutID should be changed before each workload revision publication.
+                  It is to distinguish consecutive multiple workload publications
+                  and rollout progress.
+                type: string
+              strategy:
+                description: rollout strategy
+                properties:
+                  canary:
+                    description: CanaryStrategy defines parameters for a Replica Based
+                      Canary
+                    properties:
+                      failureThreshold:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: FailureThreshold indicates how many failed pods
+                          can be tolerated in all upgraded pods. Only when FailureThreshold
+                          are satisfied, Rollout can enter ready state. If FailureThreshold
+                          is nil, Rollout will use the MaxUnavailable of workload
+                          as its FailureThreshold. Defaults to nil.
+                        x-kubernetes-int-or-string: true
+                      patchPodTemplateMetadata:
+                        description: PatchPodTemplateMetadata indicates patch configuration(e.g.
+                          labels, annotations) to the canary deployment podTemplateSpec.metadata
+                          only support for canary deployment
+                        properties:
+                          annotations:
+                            additionalProperties:
+                              type: string
+                            description: annotations
+                            type: object
+                          labels:
+                            additionalProperties:
+                              type: string
+                            description: labels
+                            type: object
+                        type: object
+                      steps:
+                        description: Steps define the order of phases to execute release
+                          in batches(20%, 40%, 60%, 80%, 100%)
+                        items:
+                          description: CanaryStep defines a step of a canary workload.
+                          properties:
+                            matches:
+                              description: Matches define conditions used for matching
+                                the incoming HTTP requests to canary service. Each
+                                match is independent, i.e. this rule will be matched
+                                if **any** one of the matches is satisfied. If Gateway
+                                API, current only support one match. And cannot support
+                                both weight and matches, if both are configured, then
+                                matches takes precedence.
+                              items:
+                                properties:
+                                  headers:
+                                    description: Headers specifies HTTP request header
+                                      matchers. Multiple match values are ANDed together,
+                                      meaning, a request must match all the specified
+                                      headers to select the route.
+                                    items:
+                                      description: HTTPHeaderMatch describes how to
+                                        select a HTTP route by matching HTTP request
+                                        headers.
+                                      properties:
+                                        name:
+                                          description: "Name is the name of the HTTP
+                                            Header to be matched. Name matching MUST
+                                            be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                            \n If multiple entries specify equivalent
+                                            header names, only the first entry with
+                                            an equivalent name MUST be considered
+                                            for a match. Subsequent entries with an
+                                            equivalent header name MUST be ignored.
+                                            Due to the case-insensitivity of header
+                                            names, \"foo\" and \"Foo\" are considered
+                                            equivalent. \n When a header is repeated
+                                            in an HTTP request, it is implementation-specific
+                                            behavior as to how this is represented.
+                                            Generally, proxies should follow the guidance
+                                            from the RFC: https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2
+                                            regarding processing a repeated header,
+                                            with special handling for \"Set-Cookie\"."
+                                          maxLength: 256
+                                          minLength: 1
+                                          pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
+                                          type: string
+                                        type:
+                                          default: Exact
+                                          description: "Type specifies how to match
+                                            against the value of the header. \n Support:
+                                            Core (Exact) \n Support: Custom (RegularExpression)
+                                            \n Since RegularExpression HeaderMatchType
+                                            has custom conformance, implementations
+                                            can support POSIX, PCRE or any other dialects
+                                            of regular expressions. Please read the
+                                            implementation's documentation to determine
+                                            the supported dialect."
+                                          enum:
+                                          - Exact
+                                          - RegularExpression
+                                          type: string
+                                        value:
+                                          description: Value is the value of HTTP
+                                            Header to be matched.
+                                          maxLength: 4096
+                                          minLength: 1
+                                          type: string
+                                      required:
+                                      - name
+                                      - value
+                                      type: object
+                                    maxItems: 16
+                                    type: array
+                                type: object
+                              type: array
+                            pause:
+                              description: Pause defines a pause stage for a rollout,
+                                manual or auto
+                              properties:
+                                duration:
+                                  description: Duration the amount of time to wait
+                                    before moving to the next step.
+                                  format: int32
+                                  type: integer
+                              type: object
+                            replicas:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: 'Replicas is the number of expected canary
+                                pods in this batch it can be an absolute number (ex:
+                                5) or a percentage of total pods.'
+                              x-kubernetes-int-or-string: true
+                            requestHeaderModifier:
+                              description: "Set overwrites the request with the given
+                                header (name, value) before the action. \n Input:
+                                \  GET /foo HTTP/1.1   my-header: foo \n requestHeaderModifier:
+                                \  set:   - name: \"my-header\"     value: \"bar\"
+                                \n Output:   GET /foo HTTP/1.1   my-header: bar"
+                              properties:
+                                add:
+                                  description: "Add adds the given header(s) (name,
+                                    value) to the request before the action. It appends
+                                    to any existing values associated with the header
+                                    name. \n Input:   GET /foo HTTP/1.1   my-header:
+                                    foo \n Config:   add:   - name: \"my-header\"
+                                    \    value: \"bar\" \n Output:   GET /foo HTTP/1.1
+                                    \  my-header: foo   my-header: bar"
+                                  items:
+                                    description: HTTPHeader represents an HTTP Header
+                                      name and value as defined by RFC 7230.
+                                    properties:
+                                      name:
+                                        description: "Name is the name of the HTTP
+                                          Header to be matched. Name matching MUST
+                                          be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                          \n If multiple entries specify equivalent
+                                          header names, the first entry with an equivalent
+                                          name MUST be considered for a match. Subsequent
+                                          entries with an equivalent header name MUST
+                                          be ignored. Due to the case-insensitivity
+                                          of header names, \"foo\" and \"Foo\" are
+                                          considered equivalent."
+                                        maxLength: 256
+                                        minLength: 1
+                                        pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
+                                        type: string
+                                      value:
+                                        description: Value is the value of HTTP Header
+                                          to be matched.
+                                        maxLength: 4096
+                                        minLength: 1
+                                        type: string
+                                    required:
+                                    - name
+                                    - value
+                                    type: object
+                                  maxItems: 16
+                                  type: array
+                                  x-kubernetes-list-map-keys:
+                                  - name
+                                  x-kubernetes-list-type: map
+                                remove:
+                                  description: "Remove the given header(s) from the
+                                    HTTP request before the action. The value of Remove
+                                    is a list of HTTP header names. Note that the
+                                    header names are case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+                                    \n Input:   GET /foo HTTP/1.1   my-header1: foo
+                                    \  my-header2: bar   my-header3: baz \n Config:
+                                    \  remove: [\"my-header1\", \"my-header3\"] \n
+                                    Output:   GET /foo HTTP/1.1   my-header2: bar"
+                                  items:
+                                    type: string
+                                  maxItems: 16
+                                  type: array
+                                set:
+                                  description: "Set overwrites the request with the
+                                    given header (name, value) before the action.
+                                    \n Input:   GET /foo HTTP/1.1   my-header: foo
+                                    \n Config:   set:   - name: \"my-header\"     value:
+                                    \"bar\" \n Output:   GET /foo HTTP/1.1   my-header:
+                                    bar"
+                                  items:
+                                    description: HTTPHeader represents an HTTP Header
+                                      name and value as defined by RFC 7230.
+                                    properties:
+                                      name:
+                                        description: "Name is the name of the HTTP
+                                          Header to be matched. Name matching MUST
+                                          be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                          \n If multiple entries specify equivalent
+                                          header names, the first entry with an equivalent
+                                          name MUST be considered for a match. Subsequent
+                                          entries with an equivalent header name MUST
+                                          be ignored. Due to the case-insensitivity
+                                          of header names, \"foo\" and \"Foo\" are
+                                          considered equivalent."
+                                        maxLength: 256
+                                        minLength: 1
+                                        pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
+                                        type: string
+                                      value:
+                                        description: Value is the value of HTTP Header
+                                          to be matched.
+                                        maxLength: 4096
+                                        minLength: 1
+                                        type: string
+                                    required:
+                                    - name
+                                    - value
+                                    type: object
+                                  maxItems: 16
+                                  type: array
+                                  x-kubernetes-list-map-keys:
+                                  - name
+                                  x-kubernetes-list-type: map
+                              type: object
+                            weight:
+                              description: Weight indicate how many percentage of
+                                traffic the canary pods should receive
+                              format: int32
+                              type: integer
+                          type: object
+                        type: array
+                      trafficRoutings:
+                        description: TrafficRoutings hosts all the supported service
+                          meshes supported to enable more fine-grained traffic routing
+                          and current only support one TrafficRouting
+                        items:
+                          description: TrafficRoutingRef hosts all the different configuration
+                            for supported service meshes to enable more fine-grained
+                            traffic routing
+                          properties:
+                            customNetworkRefs:
+                              description: CustomNetworkRefs hold a list of custom
+                                providers to route traffic
+                              items:
+                                properties:
+                                  apiVersion:
+                                    type: string
+                                  kind:
+                                    type: string
+                                  name:
+                                    type: string
+                                required:
+                                - apiVersion
+                                - kind
+                                - name
+                                type: object
+                              type: array
+                            gateway:
+                              description: Gateway holds Gateway specific configuration
+                                to route traffic Gateway configuration only supports
+                                >= v0.4.0 (v1alpha2).
+                              properties:
+                                httpRouteName:
+                                  description: HTTPRouteName refers to the name of
+                                    an `HTTPRoute` resource in the same namespace
+                                    as the `Rollout`
+                                  type: string
+                              type: object
+                            gracePeriodSeconds:
+                              description: Optional duration in seconds the traffic
+                                provider(e.g. nginx ingress controller) consumes the
+                                service, ingress configuration changes gracefully.
+                              format: int32
+                              type: integer
+                            ingress:
+                              description: Ingress holds Ingress specific configuration
+                                to route traffic, e.g. Nginx, Alb.
+                              properties:
+                                classType:
+                                  description: ClassType refers to the type of `Ingress`.
+                                    current support nginx, aliyun-alb. default is
+                                    nginx.
+                                  type: string
+                                name:
+                                  description: Name refers to the name of an `Ingress`
+                                    resource in the same namespace as the `Rollout`
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            service:
+                              description: Service holds the name of a service which
+                                selects pods with stable version and don't select
+                                any pods with canary version.
+                              type: string
+                          required:
+                          - service
+                          type: object
+                        type: array
+                    type: object
+                  paused:
+                    description: Paused indicates that the Rollout is paused. Default
+                      value is false
+                    type: boolean
+                type: object
+            required:
+            - objectRef
+            - strategy
+            type: object
+          status:
+            description: RolloutStatus defines the observed state of Rollout
+            properties:
+              canaryStatus:
+                description: Canary describes the state of the canary rollout
+                properties:
+                  canaryReadyReplicas:
+                    description: CanaryReadyReplicas the numbers of ready canary revision
+                      pods
+                    format: int32
+                    type: integer
+                  canaryReplicas:
+                    description: CanaryReplicas the numbers of canary revision pods
+                    format: int32
+                    type: integer
+                  canaryRevision:
+                    description: CanaryRevision is calculated by rollout based on
+                      podTemplateHash, and the internal logic flow uses It may be
+                      different from rs podTemplateHash in different k8s versions,
+                      so it cannot be used as service selector label
+                    type: string
+                  currentStepIndex:
+                    description: CurrentStepIndex defines the current step of the
+                      rollout is on. If the current step index is null, the controller
+                      will execute the rollout.
+                    format: int32
+                    type: integer
+                  currentStepState:
+                    type: string
+                  lastUpdateTime:
+                    format: date-time
+                    type: string
+                  message:
+                    type: string
+                  observedRolloutID:
+                    description: ObservedRolloutID will record the newest spec.RolloutID
+                      if status.canaryRevision equals to workload.updateRevision
+                    type: string
+                  observedWorkloadGeneration:
+                    description: observedWorkloadGeneration is the most recent generation
+                      observed for this Rollout ref workload generation.
+                    format: int64
+                    type: integer
+                  podTemplateHash:
+                    description: pod template hash is used as service selector label
+                    type: string
+                  rolloutHash:
+                    description: RolloutHash from rollout.spec object
+                    type: string
+                  stableRevision:
+                    description: StableRevision indicates the revision of stable pods
+                    type: string
+                required:
+                - canaryReadyReplicas
+                - canaryReplicas
+                - canaryRevision
+                - currentStepState
+                - podTemplateHash
+                type: object
+              conditions:
+                description: Conditions a list of conditions a rollout can have.
+                items:
+                  description: RolloutCondition describes the state of a rollout at
+                    a certain point.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another.
+                      format: date-time
+                      type: string
+                    lastUpdateTime:
+                      description: The last time this condition was updated.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition.
+                      type: string
+                    status:
+                      description: Phase of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of rollout condition.
+                      type: string
+                  required:
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              message:
+                description: Message provides details on why the rollout is in its
+                  current phase
+                type: string
+              observedGeneration:
+                description: observedGeneration is the most recent generation observed
+                  for this Rollout.
+                format: int64
+                type: integer
+              phase:
+                description: BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
+                  Phase is the rollout phase.
+                type: string
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}

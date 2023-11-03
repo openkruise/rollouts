@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -32,12 +33,12 @@ import (
 func TestCalculateRolloutHash(t *testing.T) {
 	cases := []struct {
 		name       string
-		getRollout func() *v1alpha1.Rollout
+		getRollout func() *v1beta1.Rollout
 		expectHash func() string
 	}{
 		{
 			name: "hash, test1",
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
 				return obj
 			},
@@ -47,11 +48,11 @@ func TestCalculateRolloutHash(t *testing.T) {
 		},
 		{
 			name: "hash, test2",
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Paused = true
 				obj.Spec.Strategy.Canary.FailureThreshold = &intstr.IntOrString{Type: intstr.Int}
-				obj.Spec.Strategy.Canary.Steps[0].Pause = v1alpha1.RolloutPause{Duration: utilpointer.Int32(10)}
+				obj.Spec.Strategy.Canary.Steps[0].Pause = v1beta1.RolloutPause{Duration: utilpointer.Int32(10)}
 				return obj
 			},
 			expectHash: func() string {
@@ -60,9 +61,9 @@ func TestCalculateRolloutHash(t *testing.T) {
 		},
 		{
 			name: "hash, test3",
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
 						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
 							Weight: utilpointer.Int32(50),
@@ -109,41 +110,41 @@ func TestCalculateRolloutHash(t *testing.T) {
 func TestCalculateRolloutStatus(t *testing.T) {
 	cases := []struct {
 		name        string
-		getRollout  func() *v1alpha1.Rollout
-		expectPhase v1alpha1.RolloutPhase
+		getRollout  func() *v1beta1.Rollout
+		expectPhase v1beta1.RolloutPhase
 	}{
 		{
 			name: "apply an enabled rollout",
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
 				obj.Name = "Rollout-demo1"
-				obj.Status = v1alpha1.RolloutStatus{}
+				obj.Status = v1beta1.RolloutStatus{}
 				obj.Spec.Disabled = false
 				return obj
 			},
-			expectPhase: v1alpha1.RolloutPhaseInitial,
+			expectPhase: v1beta1.RolloutPhaseInitial,
 		},
 		{
 			name: "disable an working rollout",
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
 				obj.Name = "Rollout-demo1"
-				obj.Status = v1alpha1.RolloutStatus{}
+				obj.Status = v1beta1.RolloutStatus{}
 				obj.Spec.Disabled = true
 				return obj
 			},
-			expectPhase: v1alpha1.RolloutPhaseDisabled,
+			expectPhase: v1beta1.RolloutPhaseDisabled,
 		},
 		{
 			name: "enable an disabled rollout",
-			getRollout: func() *v1alpha1.Rollout {
+			getRollout: func() *v1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
 				obj.Name = "Rollout-demo2"
-				obj.Status = v1alpha1.RolloutStatus{}
+				obj.Status = v1beta1.RolloutStatus{}
 				obj.Spec.Disabled = false
 				return obj
 			},
-			expectPhase: v1alpha1.RolloutPhaseInitial,
+			expectPhase: v1beta1.RolloutPhaseInitial,
 		},
 	}
 

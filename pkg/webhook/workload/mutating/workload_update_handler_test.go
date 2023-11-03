@@ -25,7 +25,9 @@ import (
 
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
+	rolloutapi "github.com/openkruise/rollouts/api"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 	"github.com/stretchr/testify/assert"
@@ -266,21 +268,21 @@ var (
 		},
 	}
 
-	rolloutDemo = &appsv1alpha1.Rollout{
+	rolloutDemo = &appsv1beta1.Rollout{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rollout-demo",
 			Labels: map[string]string{},
 		},
-		Spec: appsv1alpha1.RolloutSpec{
-			ObjectRef: appsv1alpha1.ObjectRef{
-				WorkloadRef: &appsv1alpha1.WorkloadRef{
+		Spec: appsv1beta1.RolloutSpec{
+			ObjectRef: appsv1beta1.ObjectRef{
+				WorkloadRef: &appsv1beta1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
 					Name:       "echoserver",
 				},
 			},
-			Strategy: appsv1alpha1.RolloutStrategy{
-				Canary: &appsv1alpha1.CanaryStrategy{},
+			Strategy: appsv1beta1.RolloutStrategy{
+				Canary: &appsv1beta1.CanaryStrategy{},
 			},
 		},
 	}
@@ -289,8 +291,7 @@ var (
 func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kruisev1aplphal.AddToScheme(scheme)
-	_ = appsv1alpha1.AddToScheme(scheme)
+	_ = rolloutapi.AddToScheme(scheme)
 }
 
 func TestHandlerDeployment(t *testing.T) {
@@ -298,7 +299,7 @@ func TestHandlerDeployment(t *testing.T) {
 		name       string
 		getObjs    func() (*apps.Deployment, *apps.Deployment)
 		expectObj  func() *apps.Deployment
-		getRollout func() *appsv1alpha1.Rollout
+		getRollout func() *appsv1beta1.Rollout
 		getRs      func() []*apps.ReplicaSet
 		isError    bool
 	}{
@@ -321,7 +322,7 @@ func TestHandlerDeployment(t *testing.T) {
 				rs := rsDemo.DeepCopy()
 				return []*apps.ReplicaSet{rs}
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				return rolloutDemo.DeepCopy()
 			},
 		},
@@ -342,9 +343,9 @@ func TestHandlerDeployment(t *testing.T) {
 				rs := rsDemo.DeepCopy()
 				return []*apps.ReplicaSet{rs}
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{
+				obj.Spec.ObjectRef.WorkloadRef = &appsv1beta1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
 					Name:       "other",
@@ -373,9 +374,9 @@ func TestHandlerDeployment(t *testing.T) {
 				rs2.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				return []*apps.ReplicaSet{rs1, rs2}
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				demo := rolloutDemo.DeepCopy()
-				demo.Spec.Strategy.Canary = &appsv1alpha1.CanaryStrategy{
+				demo.Spec.Strategy.Canary = &appsv1beta1.CanaryStrategy{
 					TrafficRoutings: []appsv1alpha1.TrafficRoutingRef{
 						{
 							Service: "echoserver",
@@ -412,7 +413,7 @@ func TestHandlerDeployment(t *testing.T) {
 				rs := rsDemo.DeepCopy()
 				return []*apps.ReplicaSet{rs}
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				return rolloutDemo.DeepCopy()
 			},
 		},
@@ -440,7 +441,7 @@ func TestHandlerDeployment(t *testing.T) {
 				rs := rsDemo.DeepCopy()
 				return []*apps.ReplicaSet{rs}
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
 				return obj
 			},
@@ -450,7 +451,7 @@ func TestHandlerDeployment(t *testing.T) {
 			getObjs: func() (*apps.Deployment, *apps.Deployment) {
 				oldObj := deploymentDemo.DeepCopy()
 				newObj := deploymentDemo.DeepCopy()
-				newObj.Annotations[appsv1alpha1.RolloutIDLabel] = "v2"
+				newObj.Annotations[appsv1beta1.RolloutIDLabel] = "v2"
 				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				return oldObj, newObj
 			},
@@ -459,14 +460,14 @@ func TestHandlerDeployment(t *testing.T) {
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
 				obj.Spec.Paused = true
-				obj.Annotations[appsv1alpha1.RolloutIDLabel] = "v2"
+				obj.Annotations[appsv1beta1.RolloutIDLabel] = "v2"
 				return obj
 			},
 			getRs: func() []*apps.ReplicaSet {
 				rs := rsDemo.DeepCopy()
 				return []*apps.ReplicaSet{rs}
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
 				return obj
 			},
@@ -476,21 +477,21 @@ func TestHandlerDeployment(t *testing.T) {
 			getObjs: func() (*apps.Deployment, *apps.Deployment) {
 				oldObj := deploymentDemo.DeepCopy()
 				newObj := deploymentDemo.DeepCopy()
-				newObj.Annotations[appsv1alpha1.RolloutIDLabel] = "v1-alpha1"
+				newObj.Annotations[appsv1beta1.RolloutIDLabel] = "v1-alpha1"
 				return oldObj, newObj
 			},
 			expectObj: func() *apps.Deployment {
 				obj := deploymentDemo.DeepCopy()
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
 				obj.Spec.Paused = true
-				obj.Annotations[appsv1alpha1.RolloutIDLabel] = "v1-alpha1"
+				obj.Annotations[appsv1beta1.RolloutIDLabel] = "v1-alpha1"
 				return obj
 			},
 			getRs: func() []*apps.ReplicaSet {
 				rs := rsDemo.DeepCopy()
 				return []*apps.ReplicaSet{rs}
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
 				return obj
 			},
@@ -499,23 +500,23 @@ func TestHandlerDeployment(t *testing.T) {
 			name: "rolloutId no change, and podTemplateSpec change",
 			getObjs: func() (*apps.Deployment, *apps.Deployment) {
 				oldObj := deploymentDemo.DeepCopy()
-				oldObj.Annotations[appsv1alpha1.RolloutIDLabel] = "v1"
+				oldObj.Annotations[appsv1beta1.RolloutIDLabel] = "v1"
 				newObj := deploymentDemo.DeepCopy()
 				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
-				newObj.Annotations[appsv1alpha1.RolloutIDLabel] = "v1"
+				newObj.Annotations[appsv1beta1.RolloutIDLabel] = "v1"
 				return oldObj, newObj
 			},
 			expectObj: func() *apps.Deployment {
 				obj := deploymentDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
-				obj.Annotations[appsv1alpha1.RolloutIDLabel] = "v1"
+				obj.Annotations[appsv1beta1.RolloutIDLabel] = "v1"
 				return obj
 			},
 			getRs: func() []*apps.ReplicaSet {
 				rs := rsDemo.DeepCopy()
 				return []*apps.ReplicaSet{rs}
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
 				return obj
 			},
@@ -561,7 +562,7 @@ func TestHandlerCloneSet(t *testing.T) {
 		name       string
 		getObjs    func() (*kruisev1aplphal.CloneSet, *kruisev1aplphal.CloneSet)
 		expectObj  func() *kruisev1aplphal.CloneSet
-		getRollout func() *appsv1alpha1.Rollout
+		getRollout func() *appsv1beta1.Rollout
 		isError    bool
 	}{
 		{
@@ -579,9 +580,9 @@ func TestHandlerCloneSet(t *testing.T) {
 				obj.Spec.UpdateStrategy.Partition = &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}
 				return obj
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{
+				obj.Spec.ObjectRef.WorkloadRef = &appsv1beta1.WorkloadRef{
 					APIVersion: "apps.kruise.io/v1alpha1",
 					Kind:       "CloneSet",
 					Name:       "echoserver",
@@ -625,7 +626,7 @@ func TestHandlerDaemonSet(t *testing.T) {
 		name       string
 		getObjs    func() (*kruisev1aplphal.DaemonSet, *kruisev1aplphal.DaemonSet)
 		expectObj  func() *kruisev1aplphal.DaemonSet
-		getRollout func() *appsv1alpha1.Rollout
+		getRollout func() *appsv1beta1.Rollout
 		isError    bool
 	}{
 		{
@@ -643,9 +644,9 @@ func TestHandlerDaemonSet(t *testing.T) {
 				obj.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32(math.MaxInt16)
 				return obj
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{
+				obj.Spec.ObjectRef.WorkloadRef = &appsv1beta1.WorkloadRef{
 					APIVersion: "apps.kruise.io/v1alpha1",
 					Kind:       "DaemonSet",
 					Name:       "echoserver",
@@ -689,7 +690,7 @@ func TestHandleStatefulSet(t *testing.T) {
 		name       string
 		getObjs    func() (*kruiseappsv1beta1.StatefulSet, *kruiseappsv1beta1.StatefulSet)
 		expectObj  func() *kruiseappsv1beta1.StatefulSet
-		getRollout func() *appsv1alpha1.Rollout
+		getRollout func() *appsv1beta1.Rollout
 		isError    bool
 	}{
 		{
@@ -707,9 +708,9 @@ func TestHandleStatefulSet(t *testing.T) {
 				obj.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32(math.MaxInt16)
 				return obj
 			},
-			getRollout: func() *appsv1alpha1.Rollout {
+			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{
+				obj.Spec.ObjectRef.WorkloadRef = &appsv1beta1.WorkloadRef{
 					APIVersion: "apps.kruise.io/v1beta1",
 					Kind:       "StatefulSet",
 					Name:       "echoserver",

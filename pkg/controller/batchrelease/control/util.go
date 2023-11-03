@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,7 +32,7 @@ import (
 )
 
 // CalculateBatchReplicas return the planned updated replicas of current batch.
-func CalculateBatchReplicas(release *v1alpha1.BatchRelease, workloadReplicas, currentBatch int) int {
+func CalculateBatchReplicas(release *v1beta1.BatchRelease, workloadReplicas, currentBatch int) int {
 	batchSize, _ := intstr.GetScaledValueFromIntOrPercent(&release.Spec.ReleasePlan.Batches[currentBatch].CanaryReplicas, workloadReplicas, true)
 	if batchSize > workloadReplicas {
 		klog.Warningf("releasePlan has wrong batch replicas, batches[%d].replicas %v is more than workload.replicas %v", currentBatch, batchSize, workloadReplicas)
@@ -49,7 +49,7 @@ func CalculateBatchReplicas(release *v1alpha1.BatchRelease, workloadReplicas, cu
 // IsControlledByBatchRelease return true if
 // * object ownerReference has referred release;
 // * object has batchRelease control info annotation about release.
-func IsControlledByBatchRelease(release *v1alpha1.BatchRelease, object client.Object) bool {
+func IsControlledByBatchRelease(release *v1beta1.BatchRelease, object client.Object) bool {
 	if owner := metav1.GetControllerOfNoCopy(object); owner != nil && owner.UID == release.UID {
 		return true
 	}
@@ -64,7 +64,7 @@ func IsControlledByBatchRelease(release *v1alpha1.BatchRelease, object client.Ob
 }
 
 // BuildReleaseControlInfo return a NewControllerRef of release with escaped `"`.
-func BuildReleaseControlInfo(release *v1alpha1.BatchRelease) string {
+func BuildReleaseControlInfo(release *v1beta1.BatchRelease) string {
 	owner, _ := json.Marshal(metav1.NewControllerRef(release, release.GetObjectKind().GroupVersionKind()))
 	return strings.Replace(string(owner), `"`, `\"`, -1)
 }
@@ -102,8 +102,8 @@ func GenerateNotFoundError(name, resource string) error {
 }
 
 // ShouldWaitResume return true if FinalizingPolicy is "waitResume".
-func ShouldWaitResume(release *v1alpha1.BatchRelease) bool {
-	return release.Spec.ReleasePlan.FinalizingPolicy == v1alpha1.WaitResumeFinalizingPolicyType
+func ShouldWaitResume(release *v1beta1.BatchRelease) bool {
+	return release.Spec.ReleasePlan.FinalizingPolicy == v1beta1.WaitResumeFinalizingPolicyType
 }
 
 // IsCurrentMoreThanOrEqualToDesired return true if current >= desired

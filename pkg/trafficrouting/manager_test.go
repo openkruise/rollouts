@@ -23,8 +23,9 @@ import (
 	"testing"
 	"time"
 
-	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
+	rolloutapi "github.com/openkruise/rollouts/api"
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
 	apps "k8s.io/api/apps/v1"
@@ -103,7 +104,7 @@ var (
 		},
 	}
 
-	demoRollout = &v1alpha1.Rollout{
+	demoRollout = &v1beta1.Rollout{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rollout-demo",
 			Labels: map[string]string{},
@@ -111,17 +112,17 @@ var (
 				util.RolloutHashAnnotation: "rollout-hash-v1",
 			},
 		},
-		Spec: v1alpha1.RolloutSpec{
-			ObjectRef: v1alpha1.ObjectRef{
-				WorkloadRef: &v1alpha1.WorkloadRef{
+		Spec: v1beta1.RolloutSpec{
+			ObjectRef: v1beta1.ObjectRef{
+				WorkloadRef: &v1beta1.WorkloadRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
 					Name:       "echoserver",
 				},
 			},
-			Strategy: v1alpha1.RolloutStrategy{
-				Canary: &v1alpha1.CanaryStrategy{
-					Steps: []v1alpha1.CanaryStep{
+			Strategy: v1beta1.RolloutStrategy{
+				Canary: &v1beta1.CanaryStrategy{
+					Steps: []v1beta1.CanaryStep{
 						{
 							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
 								Weight: utilpointer.Int32(5),
@@ -158,22 +159,22 @@ var (
 				},
 			},
 		},
-		Status: v1alpha1.RolloutStatus{
-			Phase: v1alpha1.RolloutPhaseProgressing,
-			CanaryStatus: &v1alpha1.CanaryStatus{
+		Status: v1beta1.RolloutStatus{
+			Phase: v1beta1.RolloutPhaseProgressing,
+			CanaryStatus: &v1beta1.CanaryStatus{
 				ObservedWorkloadGeneration: 1,
 				RolloutHash:                "rollout-hash-v1",
 				ObservedRolloutID:          "rollout-id-1",
 				StableRevision:             "podtemplatehash-v1",
 				CanaryRevision:             "revision-v2",
 				CurrentStepIndex:           1,
-				CurrentStepState:           v1alpha1.CanaryStepStateTrafficRouting,
+				CurrentStepState:           v1beta1.CanaryStepStateTrafficRouting,
 				PodTemplateHash:            "podtemplatehash-v2",
 				LastUpdateTime:             &metav1.Time{Time: time.Now()},
 			},
-			Conditions: []v1alpha1.RolloutCondition{
+			Conditions: []v1beta1.RolloutCondition{
 				{
-					Type:   v1alpha1.RolloutConditionProgressing,
+					Type:   v1beta1.RolloutConditionProgressing,
 					Reason: v1alpha1.ProgressingReasonInRolling,
 					Status: corev1.ConditionFalse,
 				},
@@ -227,15 +228,14 @@ var (
 func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kruisev1aplphal.AddToScheme(scheme)
-	_ = v1alpha1.AddToScheme(scheme)
+	_ = rolloutapi.AddToScheme(scheme)
 }
 
 func TestDoTrafficRouting(t *testing.T) {
 	cases := []struct {
 		name       string
 		getObj     func() ([]*corev1.Service, []*netv1.Ingress)
-		getRollout func() (*v1alpha1.Rollout, *util.Workload)
+		getRollout func() (*v1beta1.Rollout, *util.Workload)
 		expectObj  func() ([]*corev1.Service, []*netv1.Ingress)
 		expectDone bool
 	}{
@@ -244,7 +244,7 @@ func TestDoTrafficRouting(t *testing.T) {
 			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				return demoRollout.DeepCopy(), &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
 			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
@@ -267,7 +267,7 @@ func TestDoTrafficRouting(t *testing.T) {
 				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
 				return []*corev1.Service{s1, s2}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoRollout.DeepCopy()
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
@@ -299,7 +299,7 @@ func TestDoTrafficRouting(t *testing.T) {
 				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "0"
 				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoRollout.DeepCopy()
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
@@ -336,7 +336,7 @@ func TestDoTrafficRouting(t *testing.T) {
 				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoRollout.DeepCopy()
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
@@ -373,7 +373,7 @@ func TestDoTrafficRouting(t *testing.T) {
 				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoRollout.DeepCopy()
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
 				obj.Status.CanaryStatus.CurrentStepIndex = 2
@@ -415,7 +415,7 @@ func TestDoTrafficRouting(t *testing.T) {
 				Namespace:        rollout.Namespace,
 				ObjectRef:        rollout.Spec.Strategy.Canary.TrafficRoutings,
 				Strategy:         currentStep.TrafficRoutingStrategy,
-				OwnerRef:         *metav1.NewControllerRef(rollout, v1alpha1.SchemeGroupVersion.WithKind("Rollout")),
+				OwnerRef:         *metav1.NewControllerRef(rollout, v1beta1.SchemeGroupVersion.WithKind("Rollout")),
 				RevisionLabelKey: workload.RevisionLabelKey,
 				StableRevision:   newStatus.CanaryStatus.StableRevision,
 				CanaryRevision:   newStatus.CanaryStatus.PodTemplateHash,
@@ -448,7 +448,7 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 	cases := []struct {
 		name                     string
 		getObj                   func() ([]*corev1.Service, []*netv1.Ingress)
-		getRollout               func() (*v1alpha1.Rollout, *util.Workload)
+		getRollout               func() (*v1beta1.Rollout, *util.Workload)
 		onlyRestoreStableService bool
 		expectObj                func() ([]*corev1.Service, []*netv1.Ingress)
 		expectDone               bool
@@ -469,9 +469,9 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoRollout.DeepCopy()
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
@@ -506,9 +506,9 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoRollout.DeepCopy()
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
@@ -543,9 +543,9 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoRollout.DeepCopy()
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
@@ -581,9 +581,9 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoRollout.DeepCopy()
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-3 * time.Second)}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
@@ -619,9 +619,9 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
 			},
-			getRollout: func() (*v1alpha1.Rollout, *util.Workload) {
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoRollout.DeepCopy()
-				obj.Status.CanaryStatus.CurrentStepState = v1alpha1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-3 * time.Second)}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
@@ -654,7 +654,7 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				Namespace:        rollout.Namespace,
 				ObjectRef:        rollout.Spec.Strategy.Canary.TrafficRoutings,
 				Strategy:         currentStep.TrafficRoutingStrategy,
-				OwnerRef:         *metav1.NewControllerRef(rollout, v1alpha1.SchemeGroupVersion.WithKind("Rollout")),
+				OwnerRef:         *metav1.NewControllerRef(rollout, v1beta1.SchemeGroupVersion.WithKind("Rollout")),
 				RevisionLabelKey: workload.RevisionLabelKey,
 				StableRevision:   newStatus.CanaryStatus.StableRevision,
 				CanaryRevision:   newStatus.CanaryStatus.PodTemplateHash,

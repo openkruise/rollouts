@@ -22,7 +22,7 @@ import (
 
 	kruisev1aplphal1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruisev1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutapi "github.com/openkruise/rollouts/api"
 	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
 	"github.com/openkruise/rollouts/pkg/controller/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/rollout"
@@ -57,7 +57,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(kruisev1aplphal1.AddToScheme(scheme))
 	utilruntime.Must(kruisev1beta1.AddToScheme(scheme))
-	utilruntime.Must(rolloutsv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(rolloutapi.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1alpha2.AddToScheme(scheme))
 	utilruntime.Must(admissionregistrationv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme

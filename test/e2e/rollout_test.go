@@ -49,6 +49,16 @@ const (
 	OriginalSpecAnnotation              = "rollouts.kruise.io/original-spec-configuration"
 )
 
+func getRolloutCondition(status v1alpha1.RolloutStatus, condType v1alpha1.RolloutConditionType) *v1alpha1.RolloutCondition {
+	for i := range status.Conditions {
+		c := status.Conditions[i]
+		if c.Type == condType {
+			return &c
+		}
+	}
+	return nil
+}
+
 var _ = SIGDescribe("Rollout", func() {
 	var namespace string
 
@@ -571,10 +581,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -739,10 +749,10 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -857,10 +867,10 @@ var _ = SIGDescribe("Rollout", func() {
 			// check progressing canceled
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
 			Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(stableRevision))
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -1011,10 +1021,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -1151,10 +1161,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -1288,10 +1298,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -1396,7 +1406,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// check rollout status
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonPaused))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", cIndex))
@@ -1430,10 +1440,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -1652,10 +1662,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -1787,10 +1797,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -1949,10 +1959,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -2113,10 +2123,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -2287,10 +2297,10 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -2429,10 +2439,10 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -2598,10 +2608,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -2704,10 +2714,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -2819,10 +2829,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
@@ -2966,10 +2976,10 @@ var _ = SIGDescribe("Rollout", func() {
 			// check progressing succeed
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -3063,10 +3073,10 @@ var _ = SIGDescribe("Rollout", func() {
 			By("rollout completed, and check")
 			// check progressing canceled
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
 			Expect(string(cond.Status)).Should(Equal("False"))
 			Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(stableRevision))
@@ -3230,10 +3240,10 @@ var _ = SIGDescribe("Rollout", func() {
 			// check progressing succeed
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
@@ -3327,10 +3337,10 @@ var _ = SIGDescribe("Rollout", func() {
 			// check progressing succeed
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})
@@ -3420,10 +3430,10 @@ var _ = SIGDescribe("Rollout", func() {
 			// check progressing succeed
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -3581,10 +3591,10 @@ var _ = SIGDescribe("Rollout", func() {
 				// check progressing succeed
 				Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 				Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-				cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+				cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 				Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-				cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+				cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 				WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 				//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -3731,10 +3741,10 @@ var _ = SIGDescribe("Rollout", func() {
 				// check progressing succeed
 				Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 				Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-				cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+				cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 				Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-				cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+				cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 				WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			})
@@ -3824,10 +3834,10 @@ var _ = SIGDescribe("Rollout", func() {
 				By("rollout completed, and check")
 				// check progressing canceled
 				Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-				cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+				cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 				Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-				cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+				cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
 				Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(stableRevision))
 
@@ -3932,10 +3942,10 @@ var _ = SIGDescribe("Rollout", func() {
 				// check progressing succeed
 				Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 				Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-				cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+				cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 				Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-				cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+				cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 				WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 				//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -4092,10 +4102,10 @@ var _ = SIGDescribe("Rollout", func() {
 				// check progressing succeed
 				Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 				Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-				cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+				cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 				Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-				cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+				cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 				WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 				//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -4242,10 +4252,10 @@ var _ = SIGDescribe("Rollout", func() {
 				// check progressing succeed
 				Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 				Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-				cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+				cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 				Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-				cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+				cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 				WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			})
@@ -4335,10 +4345,10 @@ var _ = SIGDescribe("Rollout", func() {
 				By("rollout completed, and check")
 				// check progressing canceled
 				Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-				cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+				cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 				Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-				cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+				cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
 				Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(stableRevision))
 
@@ -4443,10 +4453,10 @@ var _ = SIGDescribe("Rollout", func() {
 				// check progressing succeed
 				Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 				Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-				cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+				cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 				Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-				cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+				cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 				Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 				WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 				//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -5173,10 +5183,10 @@ var _ = SIGDescribe("Rollout", func() {
 			// check progressing succeed
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 			//Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(canaryRevision))
@@ -5645,10 +5655,10 @@ var _ = SIGDescribe("Rollout", func() {
 			// check progressing succeed
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 
@@ -5785,10 +5795,10 @@ var _ = SIGDescribe("Rollout", func() {
 			// check progressing succeed
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
+			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
 			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
 		})

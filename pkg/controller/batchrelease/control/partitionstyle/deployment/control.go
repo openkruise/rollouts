@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
@@ -77,7 +78,7 @@ func (rc *realController) ListOwnedPods() ([]*corev1.Pod, error) {
 	return rc.pods, err
 }
 
-func (rc *realController) Initialize(release *v1alpha1.BatchRelease) error {
+func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 	if deploymentutil.IsUnderRolloutControl(rc.object) {
 		return nil // No need initialize again.
 	}
@@ -127,7 +128,7 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	return rc.client.Patch(context.TODO(), d, patchData)
 }
 
-func (rc *realController) Finalize(release *v1alpha1.BatchRelease) error {
+func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	if rc.object == nil || !deploymentutil.IsUnderRolloutControl(rc.object) {
 		return nil // No need to finalize again.
 	}
@@ -147,7 +148,7 @@ func (rc *realController) Finalize(release *v1alpha1.BatchRelease) error {
 	return rc.client.Patch(context.TODO(), d, patchData)
 }
 
-func (rc *realController) CalculateBatchContext(release *v1alpha1.BatchRelease) (*batchcontext.BatchContext, error) {
+func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {
 	rolloutID := release.Spec.ReleasePlan.RolloutID
 	if rolloutID != "" {
 		// if rollout-id is set, the pod will be patched batch label,

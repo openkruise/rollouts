@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -34,7 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (retry bool, newStatus *v1alpha1.RolloutStatus, err error) {
+func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1beta1.Rollout) (retry bool, newStatus *v1beta1.RolloutStatus, err error) {
 	// hash rollout
 	if err = r.calculateRolloutHash(rollout); err != nil {
 		return false, nil, err
@@ -43,27 +44,27 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 	newStatus.ObservedGeneration = rollout.GetGeneration()
 	// delete rollout CRD
 	if !rollout.DeletionTimestamp.IsZero() {
-		if newStatus.Phase != v1alpha1.RolloutPhaseTerminating {
-			newStatus.Phase = v1alpha1.RolloutPhaseTerminating
-			cond := util.NewRolloutCondition(v1alpha1.RolloutConditionTerminating, corev1.ConditionTrue, v1alpha1.TerminatingReasonInTerminating, "Rollout is in terminating")
+		if newStatus.Phase != v1beta1.RolloutPhaseTerminating {
+			newStatus.Phase = v1beta1.RolloutPhaseTerminating
+			cond := util.NewRolloutCondition(v1beta1.RolloutConditionTerminating, corev1.ConditionTrue, v1alpha1.TerminatingReasonInTerminating, "Rollout is in terminating")
 			util.SetRolloutCondition(newStatus, *cond)
 		}
 		return false, newStatus, nil
 	}
 
-	if rollout.Spec.Disabled && newStatus.Phase != v1alpha1.RolloutPhaseDisabled && newStatus.Phase != v1alpha1.RolloutPhaseDisabling {
+	if rollout.Spec.Disabled && newStatus.Phase != v1beta1.RolloutPhaseDisabled && newStatus.Phase != v1beta1.RolloutPhaseDisabling {
 		// if rollout in progressing, indicates a working rollout is disabled, then the rollout should be finalized
-		if newStatus.Phase == v1alpha1.RolloutPhaseProgressing {
-			newStatus.Phase = v1alpha1.RolloutPhaseDisabling
+		if newStatus.Phase == v1beta1.RolloutPhaseProgressing {
+			newStatus.Phase = v1beta1.RolloutPhaseDisabling
 			newStatus.Message = "Disabling rollout, release resources"
 		} else {
-			newStatus.Phase = v1alpha1.RolloutPhaseDisabled
+			newStatus.Phase = v1beta1.RolloutPhaseDisabled
 			newStatus.Message = "Rollout is disabled"
 		}
 	}
 
 	if newStatus.Phase == "" {
-		newStatus.Phase = v1alpha1.RolloutPhaseInitial
+		newStatus.Phase = v1beta1.RolloutPhaseInitial
 	}
 	// get ref workload
 	workload, err := r.finder.GetWorkloadForRef(rollout)
@@ -72,9 +73,9 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 		return false, nil, err
 	} else if workload == nil {
 		if !rollout.Spec.Disabled {
-			newStatus = &v1alpha1.RolloutStatus{
+			newStatus = &v1beta1.RolloutStatus{
 				ObservedGeneration: rollout.Generation,
-				Phase:              v1alpha1.RolloutPhaseInitial,
+				Phase:              v1beta1.RolloutPhaseInitial,
 				Message:            "Workload Not Found",
 			}
 			klog.Infof("rollout(%s/%s) workload not found, and reset status be Initial", rollout.Namespace, rollout.Name)
@@ -97,18 +98,18 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 	}
 
 	switch newStatus.Phase {
-	case v1alpha1.RolloutPhaseInitial:
-		klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, v1alpha1.RolloutPhaseInitial, v1alpha1.RolloutPhaseHealthy)
-		newStatus.Phase = v1alpha1.RolloutPhaseHealthy
+	case v1beta1.RolloutPhaseInitial:
+		klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, v1beta1.RolloutPhaseInitial, v1beta1.RolloutPhaseHealthy)
+		newStatus.Phase = v1beta1.RolloutPhaseHealthy
 		newStatus.Message = "rollout is healthy"
-	case v1alpha1.RolloutPhaseHealthy:
+	case v1beta1.RolloutPhaseHealthy:
 		// workload released, entering the rollout progressing phase
 		if workload.InRolloutProgressing {
-			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, v1alpha1.RolloutPhaseHealthy, v1alpha1.RolloutPhaseProgressing)
-			newStatus.Phase = v1alpha1.RolloutPhaseProgressing
-			cond := util.NewRolloutCondition(v1alpha1.RolloutConditionProgressing, corev1.ConditionTrue, v1alpha1.ProgressingReasonInitializing, "Rollout is in Progressing")
+			klog.Infof("rollout(%s/%s) status phase from(%s) -> to(%s)", rollout.Namespace, rollout.Name, v1beta1.RolloutPhaseHealthy, v1beta1.RolloutPhaseProgressing)
+			newStatus.Phase = v1beta1.RolloutPhaseProgressing
+			cond := util.NewRolloutCondition(v1beta1.RolloutConditionProgressing, corev1.ConditionTrue, v1alpha1.ProgressingReasonInitializing, "Rollout is in Progressing")
 			util.SetRolloutCondition(newStatus, *cond)
-			util.RemoveRolloutCondition(newStatus, v1alpha1.RolloutConditionSucceeded)
+			util.RemoveRolloutCondition(newStatus, v1beta1.RolloutConditionSucceeded)
 		} else if newStatus.CanaryStatus == nil {
 			// The following logic is to make PaaS be able to judge whether the rollout is ready
 			// at the first deployment of the Rollout/Workload. For example: generally, a PaaS
@@ -123,21 +124,21 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 			// and PaaS platform cannot judge whether the deployment is completed base on the code above. So we have
 			// to update the status just like the rollout was completed.
 
-			newStatus.CanaryStatus = &v1alpha1.CanaryStatus{
+			newStatus.CanaryStatus = &v1beta1.CanaryStatus{
 				ObservedRolloutID:          getRolloutID(workload),
 				ObservedWorkloadGeneration: workload.Generation,
 				PodTemplateHash:            workload.PodTemplateHash,
 				CanaryRevision:             workload.CanaryRevision,
 				StableRevision:             workload.StableRevision,
 				CurrentStepIndex:           int32(len(rollout.Spec.Strategy.Canary.Steps)),
-				CurrentStepState:           v1alpha1.CanaryStepStateCompleted,
+				CurrentStepState:           v1beta1.CanaryStepStateCompleted,
 				RolloutHash:                rollout.Annotations[util.RolloutHashAnnotation],
 			}
 			newStatus.Message = "workload deployment is completed"
 		}
-	case v1alpha1.RolloutPhaseDisabled:
+	case v1beta1.RolloutPhaseDisabled:
 		if !rollout.Spec.Disabled {
-			newStatus.Phase = v1alpha1.RolloutPhaseHealthy
+			newStatus.Phase = v1beta1.RolloutPhaseHealthy
 			newStatus.Message = "rollout is healthy"
 		}
 	}
@@ -146,13 +147,13 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1alpha1.Rollout) (r
 
 // rolloutHash mainly records the step batch information, when the user step changes,
 // the current batch can be recalculated
-func (r *RolloutReconciler) calculateRolloutHash(rollout *v1alpha1.Rollout) error {
+func (r *RolloutReconciler) calculateRolloutHash(rollout *v1beta1.Rollout) error {
 	canary := rollout.Spec.Strategy.Canary.DeepCopy()
 	canary.FailureThreshold = nil
 	canary.Steps = nil
 	for i := range rollout.Spec.Strategy.Canary.Steps {
 		step := rollout.Spec.Strategy.Canary.Steps[i].DeepCopy()
-		step.Pause = v1alpha1.RolloutPause{}
+		step.Pause = v1beta1.RolloutPause{}
 		canary.Steps = append(canary.Steps, *step)
 	}
 	data := util.DumpJSON(canary)
@@ -176,7 +177,7 @@ func (r *RolloutReconciler) calculateRolloutHash(rollout *v1alpha1.Rollout) erro
 	return nil
 }
 
-func (r *RolloutReconciler) updateRolloutStatusInternal(rollout *v1alpha1.Rollout, newStatus v1alpha1.RolloutStatus) error {
+func (r *RolloutReconciler) updateRolloutStatusInternal(rollout *v1beta1.Rollout, newStatus v1beta1.RolloutStatus) error {
 	if reflect.DeepEqual(rollout.Status, newStatus) {
 		return nil
 	}
@@ -197,8 +198,8 @@ func (r *RolloutReconciler) updateRolloutStatusInternal(rollout *v1alpha1.Rollou
 	return nil
 }
 
-func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *v1alpha1.Rollout, newStatus *v1alpha1.RolloutStatus) (*time.Time, error) {
-	cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionTerminating)
+func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *v1beta1.Rollout, newStatus *v1beta1.RolloutStatus) (*time.Time, error) {
+	cond := util.GetRolloutCondition(rollout.Status, v1beta1.RolloutConditionTerminating)
 	if cond.Reason == v1alpha1.TerminatingReasonCompleted {
 		return nil, nil
 	}
@@ -225,7 +226,7 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *v1alpha1.Rollou
 	return c.RecheckTime, nil
 }
 
-func (r *RolloutReconciler) reconcileRolloutDisabling(rollout *v1alpha1.Rollout, newStatus *v1alpha1.RolloutStatus) (*time.Time, error) {
+func (r *RolloutReconciler) reconcileRolloutDisabling(rollout *v1beta1.Rollout, newStatus *v1beta1.RolloutStatus) (*time.Time, error) {
 	workload, err := r.finder.GetWorkloadForRef(rollout)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
@@ -237,7 +238,7 @@ func (r *RolloutReconciler) reconcileRolloutDisabling(rollout *v1alpha1.Rollout,
 		return nil, err
 	} else if done {
 		klog.Infof("rollout(%s/%s) is disabled", rollout.Namespace, rollout.Name)
-		newStatus.Phase = v1alpha1.RolloutPhaseDisabled
+		newStatus.Phase = v1beta1.RolloutPhaseDisabled
 		newStatus.Message = "Rollout is disabled"
 	} else {
 		// Incomplete, recheck
@@ -248,7 +249,7 @@ func (r *RolloutReconciler) reconcileRolloutDisabling(rollout *v1alpha1.Rollout,
 	return c.RecheckTime, nil
 }
 
-func (r *RolloutReconciler) patchWorkloadRolloutWebhookLabel(rollout *v1alpha1.Rollout) error {
+func (r *RolloutReconciler) patchWorkloadRolloutWebhookLabel(rollout *v1beta1.Rollout) error {
 	// get ref workload
 	workload, err := r.finder.GetWorkloadForRef(rollout)
 	if err != nil {
@@ -285,10 +286,10 @@ func (r *RolloutReconciler) patchWorkloadRolloutWebhookLabel(rollout *v1alpha1.R
 }
 
 // handle adding and handle finalizer logic, it turns if we should continue to reconcile
-func (r *RolloutReconciler) handleFinalizer(rollout *v1alpha1.Rollout) error {
+func (r *RolloutReconciler) handleFinalizer(rollout *v1beta1.Rollout) error {
 	// delete rollout crd, remove finalizer
 	if !rollout.DeletionTimestamp.IsZero() {
-		cond := util.GetRolloutCondition(rollout.Status, v1alpha1.RolloutConditionTerminating)
+		cond := util.GetRolloutCondition(rollout.Status, v1beta1.RolloutConditionTerminating)
 		if cond != nil && cond.Reason == v1alpha1.TerminatingReasonCompleted {
 			// Completed
 			if controllerutil.ContainsFinalizer(rollout, util.KruiseRolloutFinalizer) {
@@ -318,7 +319,7 @@ func (r *RolloutReconciler) handleFinalizer(rollout *v1alpha1.Rollout) error {
 
 func getRolloutID(workload *util.Workload) string {
 	if workload != nil {
-		return workload.Labels[v1alpha1.RolloutIDLabel]
+		return workload.Labels[v1beta1.RolloutIDLabel]
 	}
 	return ""
 }

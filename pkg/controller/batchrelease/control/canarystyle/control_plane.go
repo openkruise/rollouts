@@ -19,7 +19,7 @@ package canarystyle
 import (
 	"fmt"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -36,14 +36,14 @@ type realCanaryController struct {
 	client.Client
 	record.EventRecorder
 	patcher   labelpatch.LabelPatcher
-	release   *v1alpha1.BatchRelease
-	newStatus *v1alpha1.BatchReleaseStatus
+	release   *v1beta1.BatchRelease
+	newStatus *v1beta1.BatchReleaseStatus
 }
 
 type NewInterfaceFunc func(cli client.Client, key types.NamespacedName) Interface
 
 // NewControlPlane creates a new release controller to drive batch release state machine
-func NewControlPlane(f NewInterfaceFunc, cli client.Client, recorder record.EventRecorder, release *v1alpha1.BatchRelease, newStatus *v1alpha1.BatchReleaseStatus, key types.NamespacedName) *realCanaryController {
+func NewControlPlane(f NewInterfaceFunc, cli client.Client, recorder record.EventRecorder, release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus, key types.NamespacedName) *realCanaryController {
 	return &realCanaryController{
 		Client:        cli,
 		EventRecorder: recorder,

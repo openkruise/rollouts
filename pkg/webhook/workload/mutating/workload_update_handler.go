@@ -25,6 +25,7 @@ import (
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
@@ -231,10 +232,10 @@ func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstruct
 		return false, nil
 	}
 	oldMetadata, newMetadata := util.GetMetadata(oldObj), util.GetMetadata(newObj)
-	if newMetadata.Annotations[appsv1alpha1.RolloutIDLabel] != "" &&
-		oldMetadata.Annotations[appsv1alpha1.RolloutIDLabel] == newMetadata.Annotations[appsv1alpha1.RolloutIDLabel] {
+	if newMetadata.Annotations[appsv1beta1.RolloutIDLabel] != "" &&
+		oldMetadata.Annotations[appsv1beta1.RolloutIDLabel] == newMetadata.Annotations[appsv1beta1.RolloutIDLabel] {
 		return false, nil
-	} else if newMetadata.Annotations[appsv1alpha1.RolloutIDLabel] == "" && util.EqualIgnoreHash(oldTemplate, newTemplate) {
+	} else if newMetadata.Annotations[appsv1beta1.RolloutIDLabel] == "" && util.EqualIgnoreHash(oldTemplate, newTemplate) {
 		return false, nil
 	}
 
@@ -353,10 +354,10 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
 		return false, nil
 	}
-	if newObj.Annotations[appsv1alpha1.RolloutIDLabel] != "" &&
-		oldObj.Annotations[appsv1alpha1.RolloutIDLabel] == newObj.Annotations[appsv1alpha1.RolloutIDLabel] {
+	if newObj.Annotations[appsv1beta1.RolloutIDLabel] != "" &&
+		oldObj.Annotations[appsv1beta1.RolloutIDLabel] == newObj.Annotations[appsv1beta1.RolloutIDLabel] {
 		return false, nil
-	} else if newObj.Annotations[appsv1alpha1.RolloutIDLabel] == "" && util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
+	} else if newObj.Annotations[appsv1beta1.RolloutIDLabel] == "" && util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
 		return false, nil
 	}
 
@@ -386,10 +387,10 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 func (h *WorkloadHandler) handleDaemonSet(newObj, oldObj *kruiseappsv1alpha1.DaemonSet) (bool, error) {
 	// indicate whether the workload can enter the rollout process
 
-	if newObj.Annotations[appsv1alpha1.RolloutIDLabel] != "" &&
-		oldObj.Annotations[appsv1alpha1.RolloutIDLabel] == newObj.Annotations[appsv1alpha1.RolloutIDLabel] {
+	if newObj.Annotations[appsv1beta1.RolloutIDLabel] != "" &&
+		oldObj.Annotations[appsv1beta1.RolloutIDLabel] == newObj.Annotations[appsv1beta1.RolloutIDLabel] {
 		return false, nil
-	} else if newObj.Annotations[appsv1alpha1.RolloutIDLabel] == "" && util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
+	} else if newObj.Annotations[appsv1beta1.RolloutIDLabel] == "" && util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
 		return false, nil
 	}
 
@@ -411,9 +412,9 @@ func (h *WorkloadHandler) handleDaemonSet(newObj, oldObj *kruiseappsv1alpha1.Dae
 	return true, nil
 }
 
-func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.Rollout, error) {
+func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1beta1.Rollout, error) {
 	oGv := obj.GetObjectKind().GroupVersionKind()
-	rolloutList := &appsv1alpha1.RolloutList{}
+	rolloutList := &appsv1beta1.RolloutList{}
 	if err := h.Client.List(context.TODO(), rolloutList, utilclient.DisableDeepCopy,
 		&client.ListOptions{Namespace: obj.GetNamespace()}); err != nil {
 		klog.Errorf("WorkloadHandler List rollout failed: %s", err.Error())
@@ -424,7 +425,7 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1alpha1.
 		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.ObjectRef.WorkloadRef == nil {
 			continue
 		}
-		if rollout.Status.Phase == appsv1alpha1.RolloutPhaseDisabled {
+		if rollout.Status.Phase == appsv1beta1.RolloutPhaseDisabled {
 			klog.Infof("Disabled rollout(%s/%s) fetched when fetching matched rollout", rollout.Namespace, rollout.Name)
 			continue
 		}
@@ -459,10 +460,10 @@ func (h *WorkloadHandler) InjectDecoder(d *admission.Decoder) error {
 }
 
 func isEffectiveDeploymentRevisionChange(oldObj, newObj *apps.Deployment) bool {
-	if newObj.Annotations[appsv1alpha1.RolloutIDLabel] != "" &&
-		oldObj.Annotations[appsv1alpha1.RolloutIDLabel] == newObj.Annotations[appsv1alpha1.RolloutIDLabel] {
+	if newObj.Annotations[appsv1beta1.RolloutIDLabel] != "" &&
+		oldObj.Annotations[appsv1beta1.RolloutIDLabel] == newObj.Annotations[appsv1beta1.RolloutIDLabel] {
 		return false
-	} else if newObj.Annotations[appsv1alpha1.RolloutIDLabel] == "" &&
+	} else if newObj.Annotations[appsv1beta1.RolloutIDLabel] == "" &&
 		util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
 		return false
 	}

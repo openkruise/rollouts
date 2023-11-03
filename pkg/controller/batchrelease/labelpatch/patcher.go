@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
@@ -65,7 +65,7 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 			continue
 		}
 
-		podRolloutID := pod.Labels[v1alpha1.RolloutIDLabel]
+		podRolloutID := pod.Labels[v1beta1.RolloutIDLabel]
 		if pod.DeletionTimestamp.IsZero() && podRolloutID == ctx.RolloutID {
 			patchedUpdatedReplicas++
 		}
@@ -89,13 +89,13 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 		}
 
 		// if it has been patched, just ignore
-		if pod.Labels[v1alpha1.RolloutIDLabel] == ctx.RolloutID {
+		if pod.Labels[v1beta1.RolloutIDLabel] == ctx.RolloutID {
 			continue
 		}
 
 		clone := util.GetEmptyObjectWithKey(pod)
 		by := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s","%s":"%d"}}}`,
-			v1alpha1.RolloutIDLabel, ctx.RolloutID, v1alpha1.RolloutBatchIDLabel, ctx.CurrentBatch+1)
+			v1beta1.RolloutIDLabel, ctx.RolloutID, v1beta1.RolloutBatchIDLabel, ctx.CurrentBatch+1)
 		if err := r.Patch(context.TODO(), clone, client.RawPatch(types.StrategicMergePatchType, []byte(by))); err != nil {
 			return err
 		}
