@@ -5,59 +5,31 @@ if obj.canaryWeight == -1 then
     obj.stableWeight = 0
 end
 
-function FindAllRules(spec, protocol)
-    local rules = {}
-    if (spec[protocol] ~= nil) then
-        for _, proto in ipairs(spec[protocol]) do
-            table.insert(rules, proto)
-        end
+function GetHost(destination)
+    local host = destination.destination.host
+    dot_position = string.find(host, ".", 1, true)
+    if (dot_position) then
+        host = string.sub(host, 1, dot_position - 1)
     end
-    return rules
+    return host
 end
 
--- find matched route of VirtualService spec with stable svc
-function FindMatchedRules(spec, stableService, protocol)
+-- find routes of VirtualService with stableService
+function GetRulesToPatch(spec, stableService, protocol)
     local matchedRoutes = {}
-    local rules = FindAllRules(spec, protocol)
-    -- a rule contains 'match' and 'route'
-    for _, rule in ipairs(rules) do
-        -- skip routes with matches
-        if (rule.match == nil) then
-            for _, route in ipairs(rule.route) do
-                if route.destination.host == stableService then
-                    table.insert(matchedRoutes, rule)
-                    break
+    if (spec[protocol] ~= nil) then
+        for _, rule in ipairs(spec[protocol]) do
+            -- skip routes contain matches
+            if (rule.match == nil) then
+                for _, route in ipairs(rule.route) do
+                    if GetHost(route) == stableService then
+                        table.insert(matchedRoutes, rule)
+                    end
                 end
             end
         end
     end
     return matchedRoutes
-end
-
-function HasMatchedRule(spec, stableService, protocol)
-    local rules = FindAllRules(spec, protocol)
-    -- a rule contains 'match' and 'route'
-    for _, rule in ipairs(rules) do
-        for _, route in ipairs(rule.route) do
-            if route.destination.host == stableService then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-function DeepCopy(original)
-    local copy
-    if type(original) == 'table' then
-        copy = {}
-        for key, value in pairs(original) do
-            copy[key] = DeepCopy(value)
-        end
-    else
-        copy = original
-    end
-    return copy
 end
 
 function CalculateWeight(route, stableWeight, n)
@@ -70,14 +42,11 @@ function CalculateWeight(route, stableWeight, n)
     return weight
 end
 
--- generate routes with matches, insert a rule before other rules
-function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stableWeight, canaryWeight, protocol)
+-- generate routes with matches, insert a rule before other rules, only support http headers, cookies etc.
+function GenerateRoutesWithMatches(spec, matches, stableService, canaryService)
     for _, match in ipairs(matches) do
         local route = {}
         route["match"] = {}
-        if (not HasMatchedRule(spec, stableService, protocol)) then
-            return
-        end
         for key, value in pairs(match) do
             local vsMatch = {}
             vsMatch[key] = {}
@@ -103,26 +72,20 @@ function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stab
                 destination = {}
             }
         }
-        -- if stableService == canaryService, then do e2e release
+        -- stableService == canaryService indicates DestinationRule exists and subset is set to be canary by default
         if stableService == canaryService then
             route.route[1].destination.host = stableService
             route.route[1].destination.subset = "canary"
         else
             route.route[1].destination.host = canaryService
         end
-        if (protocol == "http") then
-            table.insert(spec.http, 1, route)
-        elseif (protocol == "tls") then
-            table.insert(spec.tls, 1, route)
-        elseif (protocol == "tcp") then
-            table.insert(spec.tcp, 1, route)
-        end
+        table.insert(spec.http, 1, route)
     end
 end
 
--- generate routes without matches, change every rule
+-- generate routes without matches, change every rule whose host is stableService
 function GenerateRoutes(spec, stableService, canaryService, stableWeight, canaryWeight, protocol)
-    local matchedRules = FindMatchedRules(spec, stableService, protocol)
+    local matchedRules = GetRulesToPatch(spec, stableService, protocol)
     for _, rule in ipairs(matchedRules) do
         local canary
         if stableService ~= canaryService then
@@ -153,9 +116,7 @@ end
 
 if (obj.matches)
 then
-    GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "http")
-    GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tcp")
-    GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tls")
+    GenerateRoutesWithMatches(spec, obj.matches, obj.stableService, obj.canaryService)
 else
     GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "http")
     GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tcp")
