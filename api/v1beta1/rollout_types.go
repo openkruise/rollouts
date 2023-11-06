@@ -86,12 +86,13 @@ type RolloutStrategy struct {
 	// Batches is batch release capacity, and does not contain traffic gray
 	//Users can specify their batch plan in this field, such as:
 	// batches:
-	// - replicas: 1  # batches 0
-	// - replicas: 2  # batches 1
-	// - replicas: 5  # batches 2
+	//   batchStep:
+	//   - replicas: 1  # batches 0
+	//   - replicas: 2  # batches 1
+	//   - replicas: 5  # batches 2
 	// Not that these canaryReplicas should be a non-decreasing sequence.
 	// +optional
-	Batches []BatchStrategy `json:"batches,omitempty"`
+	Batches *BatchStrategy `json:"batches,omitempty"`
 	// FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
 	// Only when FailureThreshold are satisfied, Rollout can enter ready state.
 	// If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
@@ -102,20 +103,16 @@ type RolloutStrategy struct {
 	// only support for canary deployment
 	// +optional
 	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
-	// End-to-end progressive delivery capacity for microservice application,
-	// Can only be used in conjunction with the batches field, such as:
-	// trafficRouting: spring-cloud
-	// batches:
-	// - replicas: 2
-	// This means constructing end-to-end grayscale environment,
-	// grayscale instance 2, where the traffic policy is trafficRouting
-	TrafficRouting string `json:"trafficRouting,omitempty"`
 }
 
 type BatchStrategy struct {
+	BatchStep []BatchStep `json:"batchStep"`
+}
+
+type BatchStep struct {
 	// Replicas is the number of expected canary pods in this batch
 	// it can be an absolute number (ex: 5) or a percentage of total pods.
-	Replicas *intstr.IntOrString `json:"replicas,omitempty"`
+	Replicas intstr.IntOrString `json:"replicas"`
 }
 
 // CanaryStrategy defines parameters for a Replica Based Canary
@@ -126,6 +123,9 @@ type CanaryStrategy struct {
 	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
 	// and current only support one TrafficRouting
 	TrafficRoutings []v1alpha1.TrafficRoutingRef `json:"trafficRoutings"`
+	// End-to-end progressive delivery capacity for microservice application,
+	// TrafficRouting is Type TrafficRouting Name
+	TrafficRouting string `json:"trafficRouting,omitempty"`
 }
 
 type PatchPodTemplateMetadata struct {
