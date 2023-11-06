@@ -65,12 +65,6 @@ type RolloutSpec struct {
 	Disabled bool `json:"disabled,omitempty"`
 }
 
-type ObjectRef struct {
-	// WorkloadRef contains enough information to let you identify a workload for Rollout
-	// Batch release of the bypass
-	WorkloadRef *WorkloadRef `json:"workloadRef,omitempty"`
-}
-
 // WorkloadRef holds a references to the Kubernetes object
 type WorkloadRef struct {
 	// API Version of the referent
