@@ -567,30 +567,6 @@ spec:
                 description: if a rollout disabled, then the rollout would not watch
                   changes of workload
                 type: boolean
-              objectRef:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
-                  ObjectRef indicates workload'
-                properties:
-                  workloadRef:
-                    description: WorkloadRef contains enough information to let you
-                      identify a workload for Rollout Batch release of the bypass
-                    properties:
-                      apiVersion:
-                        description: API Version of the referent
-                        type: string
-                      kind:
-                        description: Kind of the referent
-                        type: string
-                      name:
-                        description: Name of the referent
-                        type: string
-                    required:
-                    - apiVersion
-                    - kind
-                    - name
-                    type: object
-                type: object
               rolloutID:
                 description: DeprecatedRolloutID is the deprecated field. It is recommended
                   that configure RolloutId in workload.annotations[rollouts.kruise.io/rollout-id].
@@ -911,8 +887,28 @@ spec:
                       value is false
                     type: boolean
                 type: object
+              workloadRef:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                  DeprecatedObjectRef indicates workload DeprecatedObjectRef ObjectRef
+                  `json:"objectRef"` WorkloadRef contains enough information to let
+                  you identify a workload for Rollout Batch release of the bypass'
+                properties:
+                  apiVersion:
+                    description: API Version of the referent
+                    type: string
+                  kind:
+                    description: Kind of the referent
+                    type: string
+                  name:
+                    description: Name of the referent
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                - name
+                type: object
             required:
-            - objectRef
             - strategy
             type: object
           status:

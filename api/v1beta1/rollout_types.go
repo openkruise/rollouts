@@ -39,10 +39,6 @@ const (
 	// Users can use RolloutIDLabel and RolloutBatchIDLabel to select the pods that are upgraded in some certain batch and release.
 	RolloutBatchIDLabel = "rollouts.kruise.io/rollout-batch-id"
 
-	// RollbackInBatchAnnotation is set to rollout annotations.
-	// RollbackInBatchAnnotation allow use disable quick rollback, and will roll back in batch style.
-	RollbackInBatchAnnotation = "rollouts.kruise.io/rollback-in-batch"
-
 	// RolloutStyleAnnotation define the rolling behavior for Deployment.
 	// must be "partition" or "canary":
 	// * "partition" means rolling in batches just like CloneSet, and will NOT create any extra Workload;
@@ -52,31 +48,21 @@ const (
 	// Defaults to "canary" to Deployment.
 	// Defaults to "partition" to the others.
 	RolloutStyleAnnotation = "rollouts.kruise.io/rolling-style"
-
-	// TrafficRoutingAnnotation is the TrafficRouting Name, and it is the Rollout's TrafficRouting.
-	// The Rollout release will trigger the TrafficRouting release. For example:
-	// A microservice consists of three applications, and the invocation relationship is as follows: a -> b -> c,
-	// and application(a, b, c)'s gateway is trafficRouting. Any application(a, b or b) release will trigger TrafficRouting release.
-	TrafficRoutingAnnotation = "rollouts.kruise.io/trafficrouting"
 )
 
 // RolloutSpec defines the desired state of Rollout
 type RolloutSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	// ObjectRef indicates workload
-	ObjectRef ObjectRef `json:"objectRef"`
+	// WorkloadRef contains enough information to let you identify a workload for Rollout
+	// Batch release of the bypass
+	WorkloadRef *WorkloadRef `json:"workloadRef"`
 	// rollout strategy
 	Strategy RolloutStrategy `json:"strategy"`
-	// DeprecatedRolloutID is the deprecated field.
-	// It is recommended that configure RolloutId in workload.annotations[rollouts.kruise.io/rollout-id].
-	// RolloutID should be changed before each workload revision publication.
-	// It is to distinguish consecutive multiple workload publications and rollout progress.
-	DeprecatedRolloutID string `json:"rolloutID,omitempty"`
 	// if a rollout disabled, then the rollout would not watch changes of workload
 	//+kubebuilder:validation:Optional
 	//+kubebuilder:default=false
-	Disabled bool `json:"disabled"`
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 type ObjectRef struct {
@@ -101,17 +87,17 @@ type RolloutStrategy struct {
 	// Default value is false
 	Paused bool `json:"paused,omitempty"`
 	// +optional
+	// Traffic Graying, include canary release, A/B Testing release
 	Canary *CanaryStrategy `json:"canary,omitempty"`
-}
-
-// CanaryStrategy defines parameters for a Replica Based Canary
-type CanaryStrategy struct {
-	// Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%)
+	// Batches is batch release capacity, and does not contain traffic gray
+	//Users can specify their batch plan in this field, such as:
+	// batches:
+	// - replicas: 1  # batches 0
+	// - replicas: 2  # batches 1
+	// - replicas: 5  # batches 2
+	// Not that these canaryReplicas should be a non-decreasing sequence.
 	// +optional
-	Steps []CanaryStep `json:"steps,omitempty"`
-	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
-	// and current only support one TrafficRouting
-	TrafficRoutings []v1alpha1.TrafficRoutingRef `json:"trafficRoutings,omitempty"`
+	Batches []BatchStrategy `json:"batches,omitempty"`
 	// FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
 	// Only when FailureThreshold are satisfied, Rollout can enter ready state.
 	// If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
@@ -122,6 +108,30 @@ type CanaryStrategy struct {
 	// only support for canary deployment
 	// +optional
 	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
+	// End-to-end progressive delivery capacity for microservice application,
+	// Can only be used in conjunction with the batches field, such as:
+	// trafficRouting: spring-cloud
+	// batches:
+	// - replicas: 2
+	// This means constructing end-to-end grayscale environment,
+	// grayscale instance 2, where the traffic policy is trafficRouting
+	TrafficRouting string `json:"trafficRouting,omitempty"`
+}
+
+type BatchStrategy struct {
+	// Replicas is the number of expected canary pods in this batch
+	// it can be an absolute number (ex: 5) or a percentage of total pods.
+	Replicas *intstr.IntOrString `json:"replicas,omitempty"`
+}
+
+// CanaryStrategy defines parameters for a Replica Based Canary
+type CanaryStrategy struct {
+	// Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%)
+	// +optional
+	Steps []CanaryStep `json:"steps"`
+	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
+	// and current only support one TrafficRouting
+	TrafficRoutings []v1alpha1.TrafficRoutingRef `json:"trafficRoutings"`
 }
 
 type PatchPodTemplateMetadata struct {
