@@ -38,16 +38,6 @@ const (
 	// Only when RolloutIDLabel is set, RolloutBatchIDLabel will be patched.
 	// Users can use RolloutIDLabel and RolloutBatchIDLabel to select the pods that are upgraded in some certain batch and release.
 	RolloutBatchIDLabel = "rollouts.kruise.io/rollout-batch-id"
-
-	// RolloutStyleAnnotation define the rolling behavior for Deployment.
-	// must be "partition" or "canary":
-	// * "partition" means rolling in batches just like CloneSet, and will NOT create any extra Workload;
-	// * "canary" means rolling in canary way, and will create a canary Workload.
-	// Currently, only Deployment support both "partition" and "canary" rolling styles.
-	// For other workload types, they only support "partition" styles.
-	// Defaults to "canary" to Deployment.
-	// Defaults to "partition" to the others.
-	RolloutStyleAnnotation = "rollouts.kruise.io/rolling-style"
 )
 
 // RolloutSpec defines the desired state of Rollout
@@ -80,17 +70,71 @@ type RolloutStrategy struct {
 	// Paused indicates that the Rollout is paused.
 	// Default value is false
 	Paused bool `json:"paused,omitempty"`
-	// +optional
+	// Canary is Canary Release or A/B Testing Release
+	// (Scenario 1) A/B Testing, header[user-agent] of request http will be routing to canary version.
+	// canary:
+	//   replicas: 1
+	//   matches:
+	//   - headers:
+	//     - name: user-agent
+	//       type: Exact
+	//       value: pc
+	//   trafficRoutings:
+	//   - service: service-demo
+	//     ingress:
+	//       classType: nginx
+	//       name: ingress-demo
+	// (Scenario 2) canary release, 10 percent of request http will be routing to canary version.
+	// canary:
+	//   replicas: 1
+	//   weight: 10
+	//   trafficRoutings:
+	//   - service: service-demo
+	//     ingress:
+	//       classType: nginx
+	//       name: ingress-demo
 	// Traffic Graying, include canary release, A/B Testing release
 	Canary *CanaryStrategy `json:"canary,omitempty"`
-	// Batches is batch release capacity, and does not contain traffic gray
-	//Users can specify their batch plan in this field, such as:
+	// Batches is batch release capacity,
+	// (Scenario 1) Users can only instance replicas:
 	// batches:
-	//   batchStep:
+	//   steps:
 	//   - replicas: 1  # batches 0
 	//   - replicas: 2  # batches 1
 	//   - replicas: 5  # batches 2
-	// Not that these canaryReplicas should be a non-decreasing sequence.
+	// (Scenario 2) Users can a/b testing combined with batch release:
+	// batches:
+	//   steps:
+	//   - replicas: 1
+	//     matches:
+	//     - headers:
+	//       - name: user-agent
+	//         type: Exact
+	//         value: pc
+	//   - replicas: 20%
+	//   - replicas: 40%
+	//   - replicas: 80%
+	//   - replicas: 100%
+	//   trafficRoutings:
+	//   - service: service-demo
+	//     ingress:
+	//       classType: nginx
+	//       name: ingress-demo
+	// (Scenario 3) Users can traffic weight combined with batch release:
+	// batches:
+	//   steps:
+	//   - replicas: 1
+	//     weight: 10
+	//   - replicas: 20%
+	//   - replicas: 40%
+	//   - replicas: 80%
+	//   - replicas: 100%
+	//   trafficRoutings:
+	//   - service: service-demo
+	//     ingress:
+	//       classType: nginx
+	//       name: ingress-demo
+	// Not that these replicas should be a non-decreasing sequence.
 	// +optional
 	Batches *BatchStrategy `json:"batches,omitempty"`
 	// FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
@@ -106,37 +150,24 @@ type RolloutStrategy struct {
 }
 
 type BatchStrategy struct {
-	BatchStep []BatchStep `json:"batchStep"`
+	BatchStep []BatchStep `json:"steps"`
+	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
+	// and current only support one TrafficRouting
+	TrafficRoutings []v1alpha1.TrafficRoutingRef `json:"trafficRoutings"`
 }
 
 type BatchStep struct {
+	v1alpha1.TrafficRoutingStrategy `json:",inline"`
 	// Replicas is the number of expected canary pods in this batch
 	// it can be an absolute number (ex: 5) or a percentage of total pods.
-	Replicas intstr.IntOrString `json:"replicas"`
+	Replicas *intstr.IntOrString `json:"replicas"`
+	// Pause defines a pause stage for a rollout, manual or auto
+	// +optional
+	Pause RolloutPause `json:"pause,omitempty"`
 }
 
 // CanaryStrategy defines parameters for a Replica Based Canary
 type CanaryStrategy struct {
-	// Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%)
-	// +optional
-	Steps []CanaryStep `json:"steps"`
-	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
-	// and current only support one TrafficRouting
-	TrafficRoutings []v1alpha1.TrafficRoutingRef `json:"trafficRoutings"`
-	// End-to-end progressive delivery capacity for microservice application,
-	// TrafficRouting is Type TrafficRouting Name
-	TrafficRouting string `json:"trafficRouting,omitempty"`
-}
-
-type PatchPodTemplateMetadata struct {
-	// annotations
-	Annotations map[string]string `json:"annotations,omitempty"`
-	// labels
-	Labels map[string]string `json:"labels,omitempty"`
-}
-
-// CanaryStep defines a step of a canary workload.
-type CanaryStep struct {
 	v1alpha1.TrafficRoutingStrategy `json:",inline"`
 	// Replicas is the number of expected canary pods in this batch
 	// it can be an absolute number (ex: 5) or a percentage of total pods.
@@ -144,6 +175,19 @@ type CanaryStep struct {
 	// Pause defines a pause stage for a rollout, manual or auto
 	// +optional
 	Pause RolloutPause `json:"pause,omitempty"`
+	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
+	// and current only support one TrafficRouting
+	TrafficRoutings []v1alpha1.TrafficRoutingRef `json:"trafficRoutings"`
+	// End-to-end progressive delivery capacity for microservice application,
+	// TrafficRoutingRef is Type TrafficRouting's Name
+	TrafficRoutingRef string `json:"trafficRoutingRef,omitempty"`
+}
+
+type PatchPodTemplateMetadata struct {
+	// annotations
+	Annotations map[string]string `json:"annotations,omitempty"`
+	// labels
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 type HttpRouteMatch struct {
