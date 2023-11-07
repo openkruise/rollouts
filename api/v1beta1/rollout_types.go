@@ -143,10 +143,6 @@ type RolloutStrategy struct {
 	// FailureThreshold.
 	// Defaults to nil.
 	FailureThreshold *intstr.IntOrString `json:"failureThreshold,omitempty"`
-	// PatchPodTemplateMetadata indicates patch configuration(e.g. labels, annotations) to the canary deployment podTemplateSpec.metadata
-	// only support for canary deployment
-	// +optional
-	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
 }
 
 type BatchStrategy struct {
@@ -181,6 +177,10 @@ type CanaryStrategy struct {
 	// End-to-end progressive delivery capacity for microservice application,
 	// TrafficRoutingRef is Type TrafficRouting's Name
 	TrafficRoutingRef string `json:"trafficRoutingRef,omitempty"`
+	// PatchPodTemplateMetadata indicates patch configuration(e.g. labels, annotations) to the canary deployment podTemplateSpec.metadata
+	// only support for canary deployment
+	// +optional
+	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
 }
 
 type PatchPodTemplateMetadata struct {
