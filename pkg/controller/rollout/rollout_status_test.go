@@ -20,7 +20,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -43,7 +42,7 @@ func TestCalculateRolloutHash(t *testing.T) {
 				return obj
 			},
 			expectHash: func() string {
-				return "626fd556c5d5v2d9b4f7c2xvbc9dxddxzd48xvb9w9wfcdvdz6v959fbzd84b57x"
+				return "75746v7d5z9x59v5c7dff4wd9cv9cc28czf6c2z664w7zbb7vw2bzv76v99z6bd9"
 			},
 		},
 		{
@@ -56,7 +55,7 @@ func TestCalculateRolloutHash(t *testing.T) {
 				return obj
 			},
 			expectHash: func() string {
-				return "626fd556c5d5v2d9b4f7c2xvbc9dxddxzd48xvb9w9wfcdvdz6v959fbzd84b57x"
+				return "75746v7d5z9x59v5c7dff4wd9cv9cc28czf6c2z664w7zbb7vw2bzv76v99z6bd9"
 			},
 		},
 		{
@@ -65,20 +64,20 @@ func TestCalculateRolloutHash(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(50),
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+							Traffic: utilpointer.String("50%"),
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(100),
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+							Traffic: utilpointer.String("100%"),
 						},
 					},
 				}
 				return obj
 			},
 			expectHash: func() string {
-				return "8c449wxc46x8dd764x4v4wzvc7454f48478vd9db27fv8v9dw5cwbcb6b42b75dc"
+				return "db9c2x47d282c84z6684d598bzwf9b4x6ffb45fc456xdfv97945v2vb79w72c7z"
 			},
 		},
 	}

@@ -131,12 +131,10 @@ var (
 					},
 				},
 			},
-			TargetRef: v1beta1.ObjectRef{
-				WorkloadRef: &v1beta1.WorkloadRef{
-					APIVersion: deploymentDemo.APIVersion,
-					Kind:       deploymentDemo.Kind,
-					Name:       deploymentDemo.Name,
-				},
+			WorkloadRef: v1beta1.ObjectRef{
+				APIVersion: deploymentDemo.APIVersion,
+				Kind:       deploymentDemo.Kind,
+				Name:       deploymentDemo.Name,
 			},
 		},
 		Status: v1beta1.BatchReleaseStatus{

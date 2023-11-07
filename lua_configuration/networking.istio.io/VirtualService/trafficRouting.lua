@@ -114,7 +114,7 @@ function GenerateRoutes(spec, stableService, canaryService, stableWeight, canary
     end
 end
 
-if (obj.matches)
+if (obj.matches and next(obj.matches) ~= nil)
 then
     GenerateRoutesWithMatches(spec, obj.matches, obj.stableService, obj.canaryService)
 else

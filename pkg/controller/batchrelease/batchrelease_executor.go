@@ -19,11 +19,9 @@ package batchrelease
 import (
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle"
@@ -187,11 +185,7 @@ func (r *Executor) progressBatches(release *v1beta1.BatchRelease, newStatus *v1b
 
 // GetWorkloadController pick the right workload controller to work on the workload
 func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus) (control.Interface, error) {
-	targetRef := release.Spec.TargetRef.WorkloadRef
-	if targetRef == nil {
-		return nil, nil
-	}
-
+	targetRef := release.Spec.WorkloadRef
 	gvk := schema.FromAPIVersionAndKind(targetRef.APIVersion, targetRef.Kind)
 	if !util.IsSupportedWorkload(gvk) {
 		message := fmt.Sprintf("the workload type '%v' is not supported", gvk)
@@ -217,7 +211,7 @@ func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus
 
 	case apps.SchemeGroupVersion.String():
 		if targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
-			if strings.EqualFold(release.Annotations[v1beta1.RolloutStyleAnnotation], string(v1alpha1.PartitionRollingStyle)) {
+			if !release.Spec.ReleasePlan.EnableExtraWorkloadForCanary {
 				klog.InfoS("Using Deployment partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
 				return partitionstyle.NewControlPlane(partitiondeployment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 			} else {

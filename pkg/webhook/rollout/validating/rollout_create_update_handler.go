@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"strings"
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
@@ -131,15 +130,15 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 	switch latestObject.Status.Phase {
 	// The workloadRef and TrafficRouting are not allowed to be modified in the Progressing, Terminating state
 	case appsv1beta1.RolloutPhaseProgressing, appsv1beta1.RolloutPhaseTerminating:
-		if !reflect.DeepEqual(oldObj.Spec.ObjectRef, newObj.Spec.ObjectRef) {
+		if !reflect.DeepEqual(oldObj.Spec.WorkloadRef, newObj.Spec.WorkloadRef) {
 			return field.ErrorList{field.Forbidden(field.NewPath("Spec.ObjectRef"), "Rollout 'ObjectRef' field is immutable")}
 		}
 		// canary strategy
 		if !reflect.DeepEqual(oldObj.Spec.Strategy.Canary.TrafficRoutings, newObj.Spec.Strategy.Canary.TrafficRoutings) {
 			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary.TrafficRoutings"), "Rollout 'Strategy.Canary.TrafficRoutings' field is immutable")}
 		}
-		if !strings.EqualFold(oldObj.Annotations[appsv1beta1.RolloutStyleAnnotation], newObj.Annotations[appsv1beta1.RolloutStyleAnnotation]) {
-			return field.ErrorList{field.Forbidden(field.NewPath("Metadata.Annotation"), "Rollout 'Rolling-Style' annotation is immutable")}
+		if oldObj.Spec.Strategy.Canary.EnableExtraWorkloadForCanary != newObj.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
+			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary"), "Rollout enableExtraWorkloadForCanary is immutable")}
 		}
 	}
 
@@ -171,7 +170,7 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1beta
 	}
 	for i := range rolloutList.Items {
 		r := &rolloutList.Items[i]
-		if r.Name == rollout.Name || !IsSameWorkloadRefGVKName(r.Spec.ObjectRef.WorkloadRef, rollout.Spec.ObjectRef.WorkloadRef) {
+		if r.Name == rollout.Name || !IsSameWorkloadRefGVKName(&r.Spec.WorkloadRef, &rollout.Spec.WorkloadRef) {
 			continue
 		}
 		return field.ErrorList{field.Invalid(path, rollout.Name,
@@ -181,39 +180,32 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1beta
 }
 
 func validateRolloutSpec(rollout *appsv1beta1.Rollout, fldPath *field.Path) field.ErrorList {
-	errList := validateRolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
+	errList := validateRolloutSpecObjectRef(&rollout.Spec.WorkloadRef, fldPath.Child("ObjectRef"))
 	errList = append(errList, validateRolloutRollingStyle(rollout, field.NewPath("RollingStyle"))...)
 	errList = append(errList, validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
 	return errList
 }
 
 func validateRolloutRollingStyle(rollout *appsv1beta1.Rollout, fldPath *field.Path) field.ErrorList {
-	switch strings.ToLower(rollout.Annotations[appsv1beta1.RolloutStyleAnnotation]) {
-	case "", strings.ToLower(string(appsv1alpha1.CanaryRollingStyle)), strings.ToLower(string(appsv1alpha1.PartitionRollingStyle)):
-	default:
-		return field.ErrorList{field.Invalid(fldPath, rollout.Annotations[appsv1beta1.RolloutStyleAnnotation],
-			"Rolling style must be 'Canary', 'Partition' or empty")}
-	}
-
-	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
-	if workloadRef == nil || workloadRef.Kind == util.ControllerKindDep.Kind {
+	workloadRef := rollout.Spec.WorkloadRef
+	if workloadRef.Kind == util.ControllerKindDep.Kind {
 		return nil // Deployment support all rolling styles, no need to validate.
 	}
-	if strings.EqualFold(rollout.Annotations[appsv1beta1.RolloutStyleAnnotation], string(appsv1alpha1.CanaryRollingStyle)) {
-		return field.ErrorList{field.Invalid(fldPath, rollout.Annotations[appsv1beta1.RolloutStyleAnnotation],
-			"Only Deployment support canary rolling style")}
+	if rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
+		return field.ErrorList{field.Invalid(fldPath, rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary,
+			"Only Deployment can set enableExtraWorkloadForCanary=true")}
 	}
 	return nil
 }
 
-func validateRolloutSpecObjectRef(objectRef *appsv1beta1.ObjectRef, fldPath *field.Path) field.ErrorList {
-	if objectRef.WorkloadRef == nil {
-		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef is required")}
+func validateRolloutSpecObjectRef(workloadRef *appsv1beta1.ObjectRef, fldPath *field.Path) field.ErrorList {
+	if workloadRef == nil {
+		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), workloadRef, "WorkloadRef is required")}
 	}
 
-	gvk := schema.FromAPIVersionAndKind(objectRef.WorkloadRef.APIVersion, objectRef.WorkloadRef.Kind)
+	gvk := schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
 	if !util.IsSupportedWorkload(gvk) {
-		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), objectRef.WorkloadRef, "WorkloadRef kind is not supported")}
+		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), workloadRef, "WorkloadRef kind is not supported")}
 	}
 	return nil
 }
@@ -237,7 +229,7 @@ func validateRolloutSpecCanaryStrategy(canary *appsv1beta1.CanaryStrategy, fldPa
 	return errList
 }
 
-func validateRolloutSpecCanaryTraffic(traffic appsv1alpha1.TrafficRoutingRef, fldPath *field.Path) field.ErrorList {
+func validateRolloutSpecCanaryTraffic(traffic appsv1beta1.TrafficRoutingRef, fldPath *field.Path) field.ErrorList {
 	errList := field.ErrorList{}
 	if len(traffic.Service) == 0 {
 		errList = append(errList, field.Invalid(fldPath.Child("Service"), traffic.Service, "TrafficRouting.Service cannot be empty"))
@@ -269,40 +261,38 @@ func validateRolloutSpecCanarySteps(steps []appsv1beta1.CanaryStep, fldPath *fie
 
 	for i := range steps {
 		s := &steps[i]
-		if s.Weight == nil && s.Replicas == nil {
-			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `weight and replicas cannot be empty at the same time`)}
+		if s.Replicas == nil {
+			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `replicas cannot be empty`)}
 		}
-		if s.Replicas != nil {
-			canaryReplicas, err := intstr.GetScaledValueFromIntOrPercent(s.Replicas, 100, true)
-			if err != nil ||
-				canaryReplicas <= 0 ||
-				(canaryReplicas > 100 && s.Replicas.Type == intstr.String) {
-				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Replicas"),
-					s.Replicas, `replicas must be positive number, or a percentage with "0%" < canaryReplicas <= "100%"`)}
-			}
+		canaryReplicas, err := intstr.GetScaledValueFromIntOrPercent(s.Replicas, 100, true)
+		if err != nil ||
+			canaryReplicas <= 0 ||
+			(canaryReplicas > 100 && s.Replicas.Type == intstr.String) {
+			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Replicas"),
+				s.Replicas, `replicas must be positive number, or a percentage with "0%" < canaryReplicas <= "100%"`)}
+		}
+		if !isTraffic {
+			continue
+		}
+		if s.Traffic == nil {
+			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic cannot be empty`)}
+		}
+		is := intstr.FromString(*s.Traffic)
+		weight, err := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
+		if err != nil || weight <= 0 || weight > 100 {
+			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic must be percentage with "0%" < traffic <= "100%"`)}
 		}
 	}
 
 	for i := 1; i < stepCount; i++ {
 		prev := &steps[i-1]
 		curr := &steps[i]
-		if isTraffic && curr.Weight != nil && prev.Weight != nil && *curr.Weight < *prev.Weight {
-			return field.ErrorList{field.Invalid(fldPath.Child("Weight"), steps, `Steps.Weight must be a non decreasing sequence`)}
-		}
-
 		// if they are comparable, then compare them
 		if IsPercentageCanaryReplicasType(prev.Replicas) != IsPercentageCanaryReplicasType(curr.Replicas) {
 			continue
 		}
-
 		prevCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(prev.Replicas, 100, true)
 		currCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(curr.Replicas, 100, true)
-		if prev.Replicas == nil {
-			prevCanaryReplicas = int(*prev.Weight)
-		}
-		if curr.Replicas == nil {
-			currCanaryReplicas = int(*curr.Weight)
-		}
 		if currCanaryReplicas < prevCanaryReplicas {
 			return field.ErrorList{field.Invalid(fldPath.Child("CanaryReplicas"), steps, `Steps.CanaryReplicas must be a non decreasing sequence`)}
 		}
@@ -315,7 +305,7 @@ func IsPercentageCanaryReplicasType(replicas *intstr.IntOrString) bool {
 	return replicas == nil || replicas.Type == intstr.String
 }
 
-func IsSameWorkloadRefGVKName(a, b *appsv1beta1.WorkloadRef) bool {
+func IsSameWorkloadRefGVKName(a, b *appsv1beta1.ObjectRef) bool {
 	if a == nil || b == nil {
 		return false
 	}

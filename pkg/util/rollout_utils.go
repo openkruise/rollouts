@@ -50,7 +50,7 @@ func IsRollbackInBatchPolicy(rollout *rolloutv1beta1.Rollout, labels map[string]
 	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
 		return false
 	}
-	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
+	workloadRef := rollout.Spec.WorkloadRef
 	//currently, only CloneSet, StatefulSet support this policy
 	if workloadRef.Kind == ControllerKindSts.Kind ||
 		workloadRef.Kind == ControllerKruiseKindCS.Kind ||
@@ -131,7 +131,7 @@ func DiscoverGVK(gvk schema.GroupVersionKind) bool {
 	return true
 }
 
-func GetGVKFrom(workloadRef *rolloutv1beta1.WorkloadRef) schema.GroupVersionKind {
+func GetGVKFrom(workloadRef *rolloutv1beta1.ObjectRef) schema.GroupVersionKind {
 	if workloadRef == nil {
 		return schema.GroupVersionKind{}
 	}

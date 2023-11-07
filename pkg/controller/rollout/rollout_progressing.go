@@ -19,7 +19,6 @@ package rollout
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
@@ -391,12 +390,7 @@ func (r *RolloutReconciler) recalculateCanaryStep(c *RolloutContext) (int32, err
 	for i := range c.Rollout.Spec.Strategy.Canary.Steps {
 		step := c.Rollout.Spec.Strategy.Canary.Steps[i]
 		var desiredReplicas int
-		if step.Replicas != nil {
-			desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(step.Replicas, int(c.Workload.Replicas), true)
-		} else {
-			replicas := intstr.FromString(strconv.Itoa(int(*step.Weight)) + "%")
-			desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(&replicas, int(c.Workload.Replicas), true)
-		}
+		desiredReplicas, _ = intstr.GetScaledValueFromIntOrPercent(step.Replicas, int(c.Workload.Replicas), true)
 		stepIndex = int32(i + 1)
 		if currentReplicas <= desiredReplicas {
 			break

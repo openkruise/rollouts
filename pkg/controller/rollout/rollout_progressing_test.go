@@ -660,19 +660,13 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(20),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(50),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "50%"},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(100),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"},
 					},
 				}
 				return obj
@@ -705,19 +699,13 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(20),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(40),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "40%"},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(100),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"},
 					},
 				}
 				return obj
@@ -750,19 +738,13 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(40),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "40%"},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(60),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "60%"},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(100),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"},
 					},
 				}
 				return obj
@@ -795,19 +777,13 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(10),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(30),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(100),
-						},
+						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"},
 					},
 				}
 				return obj
@@ -840,8 +816,8 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 				obj := rolloutDemo.DeepCopy()
 				obj.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(2),
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+							Traffic: utilpointer.String("2%"),
 						},
 						Replicas: &intstr.IntOrString{
 							Type:   intstr.String,
@@ -849,8 +825,8 @@ func TestReCalculateCanaryStepIndex(t *testing.T) {
 						},
 					},
 					{
-						TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-							Weight: utilpointer.Int32(3),
+						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+							Traffic: utilpointer.String("3%"),
 						},
 						Replicas: &intstr.IntOrString{
 							Type:   intstr.String,

@@ -24,6 +24,7 @@ import (
 
 	webhookutil "github.com/openkruise/rollouts/pkg/webhook/util"
 	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
+	"github.com/openkruise/rollouts/pkg/webhook/util/crd"
 	"github.com/openkruise/rollouts/pkg/webhook/util/generator"
 	"github.com/openkruise/rollouts/pkg/webhook/util/writer"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
@@ -264,6 +265,10 @@ func (c *Controller) sync() error {
 
 	if err := configuration.Ensure(c.kubeClient, c.handlers, certs.CACert); err != nil {
 		return fmt.Errorf("failed to ensure configuration: %v", err)
+	}
+
+	if err := crd.Ensure(c.crdClient, c.crdLister, certs.CACert); err != nil {
+		return fmt.Errorf("failed to ensure crd: %v", err)
 	}
 
 	onceInit.Do(func() {

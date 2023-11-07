@@ -215,12 +215,15 @@ func (r *TrafficRoutingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func newTrafficRoutingContext(tr *v1alpha1.TrafficRouting) *trafficrouting.TrafficRoutingContext {
-	return &trafficrouting.TrafficRoutingContext{
+	c := &trafficrouting.TrafficRoutingContext{
 		Key:                fmt.Sprintf("TrafficRouting(%s/%s)", tr.Namespace, tr.Name),
 		Namespace:          tr.Namespace,
-		ObjectRef:          tr.Spec.ObjectRef,
-		Strategy:           tr.Spec.Strategy,
+		Strategy:           v1alpha1.ConversionToV1beta1TrafficRoutingStrategy(tr.Spec.Strategy),
 		OwnerRef:           *metav1.NewControllerRef(tr, trControllerKind),
 		OnlyTrafficRouting: true,
 	}
+	for _, ref := range tr.Spec.ObjectRef {
+		c.ObjectRef = append(c.ObjectRef, v1alpha1.ConversionToV1beta1TrafficRoutingRef(ref))
+	}
+	return c
 }

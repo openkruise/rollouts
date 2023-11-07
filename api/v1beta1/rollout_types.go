@@ -17,7 +17,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"github.com/openkruise/rollouts/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -42,51 +41,25 @@ const (
 	// RollbackInBatchAnnotation is set to rollout annotations.
 	// RollbackInBatchAnnotation allow use disable quick rollback, and will roll back in batch style.
 	RollbackInBatchAnnotation = "rollouts.kruise.io/rollback-in-batch"
-
-	// RolloutStyleAnnotation define the rolling behavior for Deployment.
-	// must be "partition" or "canary":
-	// * "partition" means rolling in batches just like CloneSet, and will NOT create any extra Workload;
-	// * "canary" means rolling in canary way, and will create a canary Workload.
-	// Currently, only Deployment support both "partition" and "canary" rolling styles.
-	// For other workload types, they only support "partition" styles.
-	// Defaults to "canary" to Deployment.
-	// Defaults to "partition" to the others.
-	RolloutStyleAnnotation = "rollouts.kruise.io/rolling-style"
-
-	// TrafficRoutingAnnotation is the TrafficRouting Name, and it is the Rollout's TrafficRouting.
-	// The Rollout release will trigger the TrafficRouting release. For example:
-	// A microservice consists of three applications, and the invocation relationship is as follows: a -> b -> c,
-	// and application(a, b, c)'s gateway is trafficRouting. Any application(a, b or b) release will trigger TrafficRouting release.
-	TrafficRoutingAnnotation = "rollouts.kruise.io/trafficrouting"
 )
 
 // RolloutSpec defines the desired state of Rollout
 type RolloutSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	// ObjectRef indicates workload
-	ObjectRef ObjectRef `json:"objectRef"`
+	// WorkloadRef contains enough information to let you identify a workload for Rollout
+	// Batch release of the bypass
+	WorkloadRef ObjectRef `json:"workloadRef"`
 	// rollout strategy
 	Strategy RolloutStrategy `json:"strategy"`
-	// DeprecatedRolloutID is the deprecated field.
-	// It is recommended that configure RolloutId in workload.annotations[rollouts.kruise.io/rollout-id].
-	// RolloutID should be changed before each workload revision publication.
-	// It is to distinguish consecutive multiple workload publications and rollout progress.
-	DeprecatedRolloutID string `json:"rolloutID,omitempty"`
 	// if a rollout disabled, then the rollout would not watch changes of workload
 	//+kubebuilder:validation:Optional
 	//+kubebuilder:default=false
 	Disabled bool `json:"disabled"`
 }
 
+// ObjectRef holds a references to the Kubernetes object
 type ObjectRef struct {
-	// WorkloadRef contains enough information to let you identify a workload for Rollout
-	// Batch release of the bypass
-	WorkloadRef *WorkloadRef `json:"workloadRef,omitempty"`
-}
-
-// WorkloadRef holds a references to the Kubernetes object
-type WorkloadRef struct {
 	// API Version of the referent
 	APIVersion string `json:"apiVersion"`
 	// Kind of the referent
@@ -111,7 +84,7 @@ type CanaryStrategy struct {
 	Steps []CanaryStep `json:"steps,omitempty"`
 	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
 	// and current only support one TrafficRouting
-	TrafficRoutings []v1alpha1.TrafficRoutingRef `json:"trafficRoutings,omitempty"`
+	TrafficRoutings []TrafficRoutingRef `json:"trafficRoutings,omitempty"`
 	// FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
 	// Only when FailureThreshold are satisfied, Rollout can enter ready state.
 	// If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
@@ -122,6 +95,12 @@ type CanaryStrategy struct {
 	// only support for canary deployment
 	// +optional
 	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
+	// If true, then it will create new deployment for canary, such as: workload-demo-canary.
+	// When user verifies that the canary version is ready, we will remove the canary deployment and release the deployment workload-demo in full.
+	// Current only support k8s native deployment
+	EnableExtraWorkloadForCanary bool `json:"enableExtraWorkloadForCanary,omitempty"`
+	// TrafficRoutingRef is TrafficRouting's Name
+	TrafficRoutingRef string `json:"trafficRoutingRef,omitempty"`
 }
 
 type PatchPodTemplateMetadata struct {
@@ -133,13 +112,42 @@ type PatchPodTemplateMetadata struct {
 
 // CanaryStep defines a step of a canary workload.
 type CanaryStep struct {
-	v1alpha1.TrafficRoutingStrategy `json:",inline"`
+	TrafficRoutingStrategy `json:",inline"`
 	// Replicas is the number of expected canary pods in this batch
 	// it can be an absolute number (ex: 5) or a percentage of total pods.
 	Replicas *intstr.IntOrString `json:"replicas,omitempty"`
 	// Pause defines a pause stage for a rollout, manual or auto
 	// +optional
 	Pause RolloutPause `json:"pause,omitempty"`
+}
+
+type TrafficRoutingStrategy struct {
+	// Traffic indicate how many percentage of traffic the canary pods should receive
+	// +optional
+	Traffic *string `json:"traffic,omitempty"`
+	// Set overwrites the request with the given header (name, value)
+	// before the action.
+	//
+	// Input:
+	//   GET /foo HTTP/1.1
+	//   my-header: foo
+	//
+	// requestHeaderModifier:
+	//   set:
+	//   - name: "my-header"
+	//     value: "bar"
+	//
+	// Output:
+	//   GET /foo HTTP/1.1
+	//   my-header: bar
+	//
+	// +optional
+	RequestHeaderModifier *gatewayv1alpha2.HTTPRequestHeaderFilter `json:"requestHeaderModifier,omitempty"`
+	// Matches define conditions used for matching the incoming HTTP requests to canary service.
+	// Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
+	// If Gateway API, current only support one match.
+	// And cannot support both weight and matches, if both are configured, then matches takes precedence.
+	Matches []HttpRouteMatch `json:"matches,omitempty"`
 }
 
 type HttpRouteMatch struct {

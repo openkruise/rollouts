@@ -44,10 +44,10 @@ const (
 	RevisionAnnotation = "deployment.kubernetes.io/revision"
 	// RevisionHistoryAnnotation maintains the history of all old revisions that a replica set has served for a deployment.
 	RevisionHistoryAnnotation = "deployment.kubernetes.io/revision-history"
-	// DesiredReplicasAnnotation is the desired replicas for a deployment recorded as an annotation
+	// ReplicasAnnotation is the desired replicas for a deployment recorded as an annotation
 	// in its replica sets. Helps in separating scaling events from the rollout process and for
 	// determining if the new replica set for a deployment is really saturated.
-	DesiredReplicasAnnotation = "deployment.kubernetes.io/desired-replicas"
+	ReplicasAnnotation = "deployment.kubernetes.io/desired-replicas"
 	// MaxReplicasAnnotation is the maximum replicas a deployment can have at a given point, which
 	// is deployment.spec.replicas + maxSurge. Used by the underlying replica sets to estimate their
 	// proportions in case the deployment has surge replicas.
@@ -267,7 +267,7 @@ var annotationsToSkip = map[string]bool{
 	v1.LastAppliedConfigAnnotation: true,
 	RevisionAnnotation:             true,
 	RevisionHistoryAnnotation:      true,
-	DesiredReplicasAnnotation:      true,
+	ReplicasAnnotation:             true,
 	MaxReplicasAnnotation:          true,
 	apps.DeprecatedRollbackTo:      true,
 }
@@ -325,9 +325,9 @@ func FindActiveOrLatest(newRS *apps.ReplicaSet, oldRSs []*apps.ReplicaSet) *apps
 	}
 }
 
-// GetDesiredReplicasAnnotation returns the number of desired replicas
-func GetDesiredReplicasAnnotation(rs *apps.ReplicaSet) (int32, bool) {
-	return getIntFromAnnotation(rs, DesiredReplicasAnnotation)
+// GetReplicasAnnotation returns the number of desired replicas
+func GetReplicasAnnotation(rs *apps.ReplicaSet) (int32, bool) {
+	return getIntFromAnnotation(rs, ReplicasAnnotation)
 }
 
 func getMaxReplicasAnnotation(rs *apps.ReplicaSet) (int32, bool) {
@@ -354,8 +354,8 @@ func SetReplicasAnnotations(rs *apps.ReplicaSet, desiredReplicas, maxReplicas in
 		rs.Annotations = make(map[string]string)
 	}
 	desiredString := fmt.Sprintf("%d", desiredReplicas)
-	if hasString := rs.Annotations[DesiredReplicasAnnotation]; hasString != desiredString {
-		rs.Annotations[DesiredReplicasAnnotation] = desiredString
+	if hasString := rs.Annotations[ReplicasAnnotation]; hasString != desiredString {
+		rs.Annotations[ReplicasAnnotation] = desiredString
 		updated = true
 	}
 	maxString := fmt.Sprintf("%d", maxReplicas)
@@ -372,7 +372,7 @@ func ReplicasAnnotationsNeedUpdate(rs *apps.ReplicaSet, desiredReplicas, maxRepl
 		return true
 	}
 	desiredString := fmt.Sprintf("%d", desiredReplicas)
-	if hasString := rs.Annotations[DesiredReplicasAnnotation]; hasString != desiredString {
+	if hasString := rs.Annotations[ReplicasAnnotation]; hasString != desiredString {
 		return true
 	}
 	maxString := fmt.Sprintf("%d", maxReplicas)
@@ -742,7 +742,7 @@ func IsSaturated(deployment *apps.Deployment, rs *apps.ReplicaSet) bool {
 	if rs == nil {
 		return false
 	}
-	desiredString := rs.Annotations[DesiredReplicasAnnotation]
+	desiredString := rs.Annotations[ReplicasAnnotation]
 	desired, err := strconv.Atoi(desiredString)
 	if err != nil {
 		return false

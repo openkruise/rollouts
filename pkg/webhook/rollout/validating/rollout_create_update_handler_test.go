@@ -22,7 +22,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	rolloutapi "github.com/openkruise/rollouts/api"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,56 +46,46 @@ var (
 			Annotations: map[string]string{},
 		},
 		Spec: appsv1beta1.RolloutSpec{
-			ObjectRef: appsv1beta1.ObjectRef{
-				WorkloadRef: &appsv1beta1.WorkloadRef{
-					APIVersion: apps.SchemeGroupVersion.String(),
-					Kind:       "Deployment",
-					Name:       "deployment-demo",
-				},
+			WorkloadRef: appsv1beta1.ObjectRef{
+				APIVersion: apps.SchemeGroupVersion.String(),
+				Kind:       "Deployment",
+				Name:       "deployment-demo",
 			},
 			Strategy: appsv1beta1.RolloutStrategy{
 				Canary: &appsv1beta1.CanaryStrategy{
 					Steps: []appsv1beta1.CanaryStep{
 						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
-								Weight: utilpointer.Int32(10),
+							TrafficRoutingStrategy: appsv1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("10%"),
 							},
 							Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: int32(1)},
 							Pause:    appsv1beta1.RolloutPause{},
 						},
 						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
-								Weight: utilpointer.Int32(10),
+							TrafficRoutingStrategy: appsv1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("10%"),
 							},
 							Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: int32(3)},
 							Pause:    appsv1beta1.RolloutPause{Duration: utilpointer.Int32(1 * 24 * 60 * 60)},
 						},
 						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
-								Weight: utilpointer.Int32(30),
+							TrafficRoutingStrategy: appsv1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("30%"),
 							},
-							Pause: appsv1beta1.RolloutPause{Duration: utilpointer.Int32(7 * 24 * 60 * 60)},
+							Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: int32(10)},
+							Pause:    appsv1beta1.RolloutPause{Duration: utilpointer.Int32(7 * 24 * 60 * 60)},
 						},
 						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
-								Weight: utilpointer.Int32(100),
+							TrafficRoutingStrategy: appsv1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("100%"),
 							},
-						},
-						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
-								Weight: utilpointer.Int32(101),
-							},
-						},
-						{
-							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
-								Weight: utilpointer.Int32(200),
-							},
+							Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: int32(20)},
 						},
 					},
-					TrafficRoutings: []appsv1alpha1.TrafficRoutingRef{
+					TrafficRoutings: []appsv1beta1.TrafficRoutingRef{
 						{
 							Service: "service-demo",
-							Ingress: &appsv1alpha1.IngressTrafficRouting{
+							Ingress: &appsv1beta1.IngressTrafficRouting{
 								ClassType: "nginx",
 								Name:      "ingress-nginx-demo",
 							},
@@ -129,21 +118,13 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Name:    "Normal case",
 			Succeed: true,
 			GetObject: func() []client.Object {
-				return []client.Object{rollout.DeepCopy()}
+				obj := rollout.DeepCopy()
+				return []client.Object{obj}
 			},
 		},
 		/***********************************************************
 			The following cases may lead to controller panic
 		 **********************************************************/
-		{
-			Name:    "WorkloadRef is nil",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Spec.ObjectRef.WorkloadRef = nil
-				return []client.Object{object}
-			},
-		},
 		{
 			Name:    "Canary is nil",
 			Succeed: false,
@@ -188,29 +169,21 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: true,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.ObjectRef.WorkloadRef = &appsv1beta1.WorkloadRef{
+				object.Spec.WorkloadRef = appsv1beta1.ObjectRef{
 					APIVersion: "apps/v1",
 					Kind:       "StatefulSet",
 					Name:       "whatever",
 				}
+
 				return []client.Object{object}
 			},
 		},
 		{
-			Name:    "Steps.Weight is a decreasing sequence",
+			Name:    "Steps.Traffic is a decreasing sequence",
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.Steps[2].Weight = utilpointer.Int32Ptr(5)
-				return []client.Object{object}
-			},
-		},
-		{
-			Name:    "Steps.Replicas is a decreasing sequence",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.Steps[1].Replicas = &intstr.IntOrString{Type: intstr.String, StrVal: "50%"}
+				object.Spec.Strategy.Canary.Steps[2].Traffic = utilpointer.String("%5")
 				return []client.Object{object}
 			},
 		},
@@ -242,20 +215,20 @@ func TestRolloutValidateCreate(t *testing.T) {
 			},
 		},
 		{
-			Name:    "Steps.Weight is illegal value, 0",
+			Name:    "Steps.Traffic is illegal value, 0",
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.Steps[1].Weight = utilpointer.Int32Ptr(0)
+				object.Spec.Strategy.Canary.Steps[1].Traffic = utilpointer.String("0%")
 				return []client.Object{object}
 			},
 		},
 		{
-			Name:    "Steps.Weight is illegal value, 101",
+			Name:    "Steps.Traffic is illegal value, 101",
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.Steps[1].Weight = utilpointer.Int32Ptr(101)
+				object.Spec.Strategy.Canary.Steps[1].Traffic = utilpointer.String("101%")
 				return []client.Object{object}
 			},
 		},
@@ -264,9 +237,7 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: true,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Annotations = map[string]string{
-					appsv1beta1.RolloutStyleAnnotation: "Canary",
-				}
+				object.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
 				return []client.Object{object}
 			},
 		},
@@ -275,20 +246,6 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: true,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Annotations = map[string]string{
-					appsv1beta1.RolloutStyleAnnotation: "Partition",
-				}
-				return []client.Object{object}
-			},
-		},
-		{
-			Name:    "Wrong rolling style",
-			Succeed: false,
-			GetObject: func() []client.Object {
-				object := rollout.DeepCopy()
-				object.Annotations = map[string]string{
-					appsv1beta1.RolloutStyleAnnotation: "Other",
-				}
 				return []client.Object{object}
 			},
 		},
@@ -297,21 +254,19 @@ func TestRolloutValidateCreate(t *testing.T) {
 			Succeed: false,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
-				object.Annotations = map[string]string{
-					appsv1beta1.RolloutStyleAnnotation: "Canary",
-				}
-				object.Spec.ObjectRef.WorkloadRef.APIVersion = "apps.kruise.io/v1alpha1"
-				object.Spec.ObjectRef.WorkloadRef.Kind = "CloneSet"
+				object.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
+				object.Spec.WorkloadRef.APIVersion = "apps.kruise.io/v1alpha1"
+				object.Spec.WorkloadRef.Kind = "CloneSet"
 				return []client.Object{object}
 			},
 		},
 		//{
-		//	Name:    "The last Steps.Weight is not 100",
+		//	Name:    "The last Steps.Traffic is not 100",
 		//	Succeed: false,
 		//	GetObject: func() []client.Object {
 		//		object := rollout.DeepCopy()
 		//		n := len(object.Spec.Strategy.Canary.Steps)
-		//		object.Spec.Strategy.Canary.Steps[n-1].Weight = 80
+		//		object.Spec.Strategy.Canary.Steps[n-1].Traffic = 80
 		//		return []client.Object{object}
 		//	},
 		//},
@@ -326,15 +281,15 @@ func TestRolloutValidateCreate(t *testing.T) {
 
 				object1 := rollout.DeepCopy()
 				object1.Name = "object-1"
-				object1.Spec.ObjectRef.WorkloadRef.Name = "another"
+				object1.Spec.WorkloadRef.Name = "another"
 
 				object2 := rollout.DeepCopy()
 				object2.Name = "object-2"
-				object2.Spec.ObjectRef.WorkloadRef.APIVersion = "another"
+				object2.Spec.WorkloadRef.APIVersion = "another"
 
 				object3 := rollout.DeepCopy()
 				object3.Name = "object-3"
-				object3.Spec.ObjectRef.WorkloadRef.Kind = "another"
+				object3.Spec.WorkloadRef.Kind = "another"
 
 				return []client.Object{
 					object, object1, object2, object3,
@@ -349,15 +304,15 @@ func TestRolloutValidateCreate(t *testing.T) {
 
 				object1 := rollout.DeepCopy()
 				object1.Name = "object-1"
-				object1.Spec.ObjectRef.WorkloadRef.Name = "another"
+				object1.Spec.WorkloadRef.Name = "another"
 
 				object2 := rollout.DeepCopy()
 				object2.Name = "object-2"
-				object2.Spec.ObjectRef.WorkloadRef.APIVersion = "another"
+				object2.Spec.WorkloadRef.APIVersion = "another"
 
 				object3 := rollout.DeepCopy()
 				object3.Name = "object-3"
-				object3.Spec.ObjectRef.WorkloadRef.Kind = "another"
+				object3.Spec.WorkloadRef.Kind = "another"
 
 				object4 := rollout.DeepCopy()
 				object4.Name = "object-4"
@@ -400,7 +355,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Spec.Strategy.Canary.Steps[0].Weight = utilpointer.Int32Ptr(5)
+				object.Spec.Strategy.Canary.Steps[0].Traffic = utilpointer.String("5%")
 				return object
 			},
 		},
@@ -430,7 +385,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
 				object.Status.Phase = appsv1beta1.RolloutPhaseProgressing
-				object.Spec.Strategy.Canary.Steps[0].Weight = utilpointer.Int32Ptr(5)
+				object.Spec.Strategy.Canary.Steps[0].Traffic = utilpointer.String("5%")
 				return object
 			},
 		},
@@ -439,14 +394,13 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			Succeed: false,
 			GetOldObject: func() client.Object {
 				object := rollout.DeepCopy()
-				object.Annotations[appsv1beta1.RolloutStyleAnnotation] = "Partition"
 				object.Status.Phase = appsv1beta1.RolloutPhaseProgressing
 				return object
 			},
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
 				object.Status.Phase = appsv1beta1.RolloutPhaseProgressing
-				object.Annotations[appsv1beta1.RolloutStyleAnnotation] = "Canary"
+				object.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
 				return object
 			},
 		},
@@ -476,7 +430,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
 				object.Status.Phase = appsv1beta1.RolloutPhaseInitial
-				object.Spec.Strategy.Canary.Steps[0].Weight = utilpointer.Int32Ptr(5)
+				object.Spec.Strategy.Canary.Steps[0].Traffic = utilpointer.String("5%")
 				return object
 			},
 		},
@@ -491,7 +445,7 @@ func TestRolloutValidateUpdate(t *testing.T) {
 			GetNewObject: func() client.Object {
 				object := rollout.DeepCopy()
 				object.Status.Phase = appsv1beta1.RolloutPhaseHealthy
-				object.Spec.Strategy.Canary.Steps[0].Weight = utilpointer.Int32Ptr(5)
+				object.Spec.Strategy.Canary.Steps[0].Traffic = utilpointer.String("5%")
 				return object
 			},
 		},

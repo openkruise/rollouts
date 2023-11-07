@@ -54,6 +54,10 @@ type ReleasePlan struct {
 	// only support for canary deployment
 	// +optional
 	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
+	// If true, then it will create new deployment for canary, such as: workload-demo-canary.
+	// When user verifies that the canary version is ready, we will remove the canary deployment and release the deployment workload-demo in full.
+	// Current only support k8s native deployment
+	EnableExtraWorkloadForCanary bool `json:"enableExtraWorkloadForCanary"`
 }
 
 type FinalizingPolicyType string

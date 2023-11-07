@@ -167,10 +167,10 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	klog.Infof("Begin to reconcile BatchRelease(%v/%v), release-phase: %v", release.Namespace, release.Name, release.Status.Phase)
 
 	//  If workload watcher does not exist, then add the watcher dynamically
-	workloadRef := release.Spec.TargetRef.WorkloadRef
-	workloadGVK := util.GetGVKFrom(workloadRef)
+	workloadRef := release.Spec.WorkloadRef
+	workloadGVK := util.GetGVKFrom(&workloadRef)
 	_, exists := watchedWorkload.Load(workloadGVK.String())
-	if workloadRef != nil && !exists {
+	if !exists {
 		succeeded, err := util.AddWatcherDynamically(runtimeController, workloadHandler, workloadGVK)
 		if err != nil {
 			return ctrl.Result{}, err

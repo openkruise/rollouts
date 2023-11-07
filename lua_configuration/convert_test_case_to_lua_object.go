@@ -14,6 +14,7 @@ import (
 	lua "github.com/yuin/gopher-lua"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/yaml"
 )
@@ -82,8 +83,12 @@ func objectToTable(path string) error {
 	if rollout != nil {
 		steps := rollout.Spec.Strategy.Canary.Steps
 		for i, step := range steps {
-			weight := step.TrafficRoutingStrategy.Weight
-			if step.TrafficRoutingStrategy.Weight == nil {
+			var weight *int32
+			if step.TrafficRoutingStrategy.Traffic != nil {
+				is := intstr.FromString(*step.TrafficRoutingStrategy.Traffic)
+				weightInt, _ := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
+				weight = utilpointer.Int32(int32(weightInt))
+			} else {
 				weight = utilpointer.Int32(-1)
 			}
 			var canaryService string
@@ -111,13 +116,19 @@ func objectToTable(path string) error {
 		var canaryService string
 		stableService := trafficRouting.Spec.ObjectRef[0].Service
 		canaryService = stableService
+		matches := make([]v1beta1.HttpRouteMatch, 0)
+		for _, match := range trafficRouting.Spec.Strategy.Matches {
+			obj := v1beta1.HttpRouteMatch{}
+			obj.Headers = match.Headers
+			matches = append(matches, obj)
+		}
 		data := &custom.LuaData{
 			Data: custom.Data{
 				Labels:      testCase.Original.GetLabels(),
 				Annotations: testCase.Original.GetAnnotations(),
 				Spec:        testCase.Original.Object["spec"],
 			},
-			Matches:       trafficRouting.Spec.Strategy.Matches,
+			Matches:       matches,
 			CanaryWeight:  *weight,
 			StableWeight:  100 - *weight,
 			CanaryService: canaryService,

@@ -240,14 +240,14 @@ func getBatchRelease(c client.Reader, workloadNamespaceName types.NamespacedName
 
 	for i := range brList.Items {
 		br := &brList.Items[i]
-		targetRef := br.Spec.TargetRef
-		targetGV, err := schema.ParseGroupVersion(targetRef.WorkloadRef.APIVersion)
+		targetRef := br.Spec.WorkloadRef
+		targetGV, err := schema.ParseGroupVersion(targetRef.APIVersion)
 		if err != nil {
-			klog.Errorf("Failed to parse targetRef's group version: %s for BatchRelease(%v)", targetRef.WorkloadRef.APIVersion, client.ObjectKeyFromObject(br))
+			klog.Errorf("Failed to parse targetRef's group version: %s for BatchRelease(%v)", targetRef.APIVersion, client.ObjectKeyFromObject(br))
 			continue
 		}
 
-		if targetRef.WorkloadRef.Kind == gvk.Kind && targetGV.Group == gvk.Group && targetRef.WorkloadRef.Name == workloadNamespaceName.Name {
+		if targetRef.Kind == gvk.Kind && targetGV.Group == gvk.Group && targetRef.Name == workloadNamespaceName.Name {
 			nsn = client.ObjectKeyFromObject(br)
 		}
 	}

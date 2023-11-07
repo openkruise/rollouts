@@ -17,10 +17,11 @@ import (
 	"context"
 	"reflect"
 
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -34,7 +35,7 @@ type Config struct {
 	Namespace     string
 	CanaryService string
 	StableService string
-	TrafficConf   *rolloutv1alpha1.GatewayTrafficRouting
+	TrafficConf   *v1beta1.GatewayTrafficRouting
 }
 
 type gatewayController struct {
@@ -56,8 +57,13 @@ func (r *gatewayController) Initialize(ctx context.Context) error {
 	return r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: *r.conf.TrafficConf.HTTPRouteName}, route)
 }
 
-func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *rolloutv1alpha1.TrafficRoutingStrategy) (bool, error) {
-	weight := strategy.Weight
+func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *v1beta1.TrafficRoutingStrategy) (bool, error) {
+	var weight *int32
+	if strategy.Traffic != nil {
+		is := intstr.FromString(*strategy.Traffic)
+		weightInt, _ := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
+		weight = utilpointer.Int32(int32(weightInt))
+	}
 	matches := strategy.Matches
 	// headerModifier := strategy.RequestHeaderModifier
 	var httpRoute gatewayv1alpha2.HTTPRoute
@@ -118,7 +124,7 @@ func (r *gatewayController) Finalise(ctx context.Context) error {
 	return nil
 }
 
-func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32, matches []rolloutv1alpha1.HttpRouteMatch,
+func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32, matches []v1beta1.HttpRouteMatch,
 	rh *gatewayv1alpha2.HTTPRequestHeaderFilter) []gatewayv1alpha2.HTTPRouteRule {
 	var desired []gatewayv1alpha2.HTTPRouteRule
 	// Only when finalize method parameter weight=-1,
@@ -146,7 +152,7 @@ func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRo
 	return r.buildCanaryWeightHttpRoutes(rules, weight)
 }
 
-func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.HTTPRouteRule, matchs []rolloutv1alpha1.HttpRouteMatch) []gatewayv1alpha2.HTTPRouteRule {
+func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.HTTPRouteRule, matchs []v1beta1.HttpRouteMatch) []gatewayv1alpha2.HTTPRouteRule {
 	var desired []gatewayv1alpha2.HTTPRouteRule
 	var canarys []gatewayv1alpha2.HTTPRouteRule
 	for i := range rules {

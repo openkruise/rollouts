@@ -274,12 +274,10 @@ var (
 			Labels: map[string]string{},
 		},
 		Spec: appsv1beta1.RolloutSpec{
-			ObjectRef: appsv1beta1.ObjectRef{
-				WorkloadRef: &appsv1beta1.WorkloadRef{
-					APIVersion: "apps/v1",
-					Kind:       "Deployment",
-					Name:       "echoserver",
-				},
+			WorkloadRef: appsv1beta1.ObjectRef{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Name:       "echoserver",
 			},
 			Strategy: appsv1beta1.RolloutStrategy{
 				Canary: &appsv1beta1.CanaryStrategy{},
@@ -345,7 +343,7 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.ObjectRef.WorkloadRef = &appsv1beta1.WorkloadRef{
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
 					APIVersion: "apps/v1",
 					Kind:       "Deployment",
 					Name:       "other",
@@ -377,10 +375,10 @@ func TestHandlerDeployment(t *testing.T) {
 			getRollout: func() *appsv1beta1.Rollout {
 				demo := rolloutDemo.DeepCopy()
 				demo.Spec.Strategy.Canary = &appsv1beta1.CanaryStrategy{
-					TrafficRoutings: []appsv1alpha1.TrafficRoutingRef{
+					TrafficRoutings: []appsv1beta1.TrafficRoutingRef{
 						{
 							Service: "echoserver",
-							Ingress: &appsv1alpha1.IngressTrafficRouting{
+							Ingress: &appsv1beta1.IngressTrafficRouting{
 								Name: "echoserver",
 							},
 						},
@@ -582,7 +580,7 @@ func TestHandlerCloneSet(t *testing.T) {
 			},
 			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.ObjectRef.WorkloadRef = &appsv1beta1.WorkloadRef{
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
 					APIVersion: "apps.kruise.io/v1alpha1",
 					Kind:       "CloneSet",
 					Name:       "echoserver",
@@ -646,7 +644,7 @@ func TestHandlerDaemonSet(t *testing.T) {
 			},
 			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.ObjectRef.WorkloadRef = &appsv1beta1.WorkloadRef{
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
 					APIVersion: "apps.kruise.io/v1alpha1",
 					Kind:       "DaemonSet",
 					Name:       "echoserver",
@@ -710,7 +708,7 @@ func TestHandleStatefulSet(t *testing.T) {
 			},
 			getRollout: func() *appsv1beta1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.ObjectRef.WorkloadRef = &appsv1beta1.WorkloadRef{
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
 					APIVersion: "apps.kruise.io/v1beta1",
 					Kind:       "StatefulSet",
 					Name:       "echoserver",

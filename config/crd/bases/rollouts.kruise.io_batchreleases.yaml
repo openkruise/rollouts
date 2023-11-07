@@ -345,6 +345,13 @@ spec:
                       - canaryReplicas
                       type: object
                     type: array
+                  enableExtraWorkloadForCanary:
+                    description: 'If true, then it will create new deployment for
+                      canary, such as: workload-demo-canary. When user verifies that
+                      the canary version is ready, we will remove the canary deployment
+                      and release the deployment workload-demo in full. Current only
+                      support k8s native deployment'
+                    type: boolean
                   failureThreshold:
                     anyOf:
                     - type: integer
@@ -378,33 +385,29 @@ spec:
                   rolloutID:
                     description: RolloutID indicates an id for each rollout progress
                     type: string
+                required:
+                - enableExtraWorkloadForCanary
                 type: object
-              targetReference:
-                description: TargetRef contains the GVK and name of the workload that
-                  we need to upgrade to.
+              workloadRef:
+                description: WorkloadRef contains enough information to let you identify
+                  a workload for Rollout Batch release of the bypass
                 properties:
-                  workloadRef:
-                    description: WorkloadRef contains enough information to let you
-                      identify a workload for Rollout Batch release of the bypass
-                    properties:
-                      apiVersion:
-                        description: API Version of the referent
-                        type: string
-                      kind:
-                        description: Kind of the referent
-                        type: string
-                      name:
-                        description: Name of the referent
-                        type: string
-                    required:
-                    - apiVersion
-                    - kind
-                    - name
-                    type: object
+                  apiVersion:
+                    description: API Version of the referent
+                    type: string
+                  kind:
+                    description: Kind of the referent
+                    type: string
+                  name:
+                    description: Name of the referent
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                - name
                 type: object
             required:
             - releasePlan
-            - targetReference
             type: object
           status:
             description: BatchReleaseStatus defines the observed state of a release

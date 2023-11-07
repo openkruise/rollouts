@@ -23,20 +23,20 @@ import (
 	"reflect"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/klog/v2"
-
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
 	"github.com/openkruise/rollouts/pkg/util/luamanager"
 	lua "github.com/yuin/gopher-lua"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -50,7 +50,7 @@ type LuaData struct {
 	Data          Data
 	CanaryWeight  int32
 	StableWeight  int32
-	Matches       []rolloutv1alpha1.HttpRouteMatch
+	Matches       []v1beta1.HttpRouteMatch
 	CanaryService string
 	StableService string
 }
@@ -72,7 +72,7 @@ type Config struct {
 	CanaryService string
 	StableService string
 	// network providers need to be created
-	TrafficConf []rolloutv1alpha1.CustomNetworkRef
+	TrafficConf []v1beta1.ObjectRef
 	OwnerRef    metav1.OwnerReference
 }
 
@@ -107,11 +107,11 @@ func (r *customController) Initialize(ctx context.Context) error {
 }
 
 // when ensuring routes, first execute lua for all custom providers, then update
-func (r *customController) EnsureRoutes(ctx context.Context, strategy *rolloutv1alpha1.TrafficRoutingStrategy) (bool, error) {
+func (r *customController) EnsureRoutes(ctx context.Context, strategy *v1beta1.TrafficRoutingStrategy) (bool, error) {
 	done := true
 	// *strategy.Weight == 0 indicates traffic routing is doing finalising and tries to route whole traffic to stable service
 	// then directly do finalising
-	if strategy.Weight != nil && *strategy.Weight == 0 {
+	if strategy.Traffic != nil && *strategy.Traffic == "0%" {
 		return true, nil
 	}
 	var err error
@@ -254,8 +254,13 @@ func (r *customController) restoreObject(obj *unstructured.Unstructured) error {
 	return nil
 }
 
-func (r *customController) executeLuaForCanary(spec Data, strategy *rolloutv1alpha1.TrafficRoutingStrategy, luaScript string) (Data, error) {
-	weight := strategy.Weight
+func (r *customController) executeLuaForCanary(spec Data, strategy *v1beta1.TrafficRoutingStrategy, luaScript string) (Data, error) {
+	var weight *int32
+	if strategy.Traffic != nil {
+		is := intstr.FromString(*strategy.Traffic)
+		weightInt, _ := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
+		weight = utilpointer.Int32(int32(weightInt))
+	}
 	matches := strategy.Matches
 	if weight == nil {
 		// the lua script does not have a pointer type,
@@ -296,7 +301,7 @@ func (r *customController) executeLuaForCanary(spec Data, strategy *rolloutv1alp
 	return Data{}, fmt.Errorf("expect table output from Lua script, not %s", returnValue.Type().String())
 }
 
-func (r *customController) getLuaScript(ctx context.Context, ref rolloutv1alpha1.CustomNetworkRef) (string, error) {
+func (r *customController) getLuaScript(ctx context.Context, ref v1beta1.ObjectRef) (string, error) {
 	// get local lua script
 	// luaScript.Provider: CRDGroupt/Kind
 	group := strings.Split(ref.APIVersion, "/")[0]

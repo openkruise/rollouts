@@ -270,9 +270,9 @@ func ScaleDownLimitForOld(oldRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, dep
 	klog.V(4).InfoS("Calculate scale down limit for ",
 		"Deployment", klog.KObj(deployment),
 		// About the new replica set
-		"Replicas(New)", *(newRS.Spec.Replicas), "DesiredReplicas(New)", newRSDesiredCount,
+		"Replicas(New)", *(newRS.Spec.Replicas), "Replicas(New)", newRSDesiredCount,
 		// About the old replica sets
-		"ReplicaS(Old)", oldPodsCount, "DesiredReplicas(Old)", oldRSDesiredCount, "ScaleDownLimit(Old)", scaleDownOldLimit,
+		"ReplicaS(Old)", oldPodsCount, "Replicas(Old)", oldRSDesiredCount, "ScaleDownLimit(Old)", scaleDownOldLimit,
 		// About the deployment
 		"Replicas(Deployment)", *(deployment.Spec.Replicas), "Partition(Deployment)", newRSUpdateLimit)
 

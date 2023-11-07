@@ -111,10 +111,10 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	klog.Infof("Begin to reconcile Rollout %v", klog.KObj(rollout))
 
 	//  If workload watcher does not exist, then add the watcher dynamically
-	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
-	workloadGVK := util.GetGVKFrom(workloadRef)
+	workloadRef := rollout.Spec.WorkloadRef
+	workloadGVK := util.GetGVKFrom(&workloadRef)
 	_, exists := watchedWorkload.Load(workloadGVK.String())
-	if workloadRef != nil && !exists {
+	if !exists {
 		succeeded, err := util.AddWatcherDynamically(runtimeController, workloadHandler, workloadGVK)
 		if err != nil {
 			return ctrl.Result{}, err
