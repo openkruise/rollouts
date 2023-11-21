@@ -120,6 +120,15 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 	canaryService := &corev1.Service{}
 	canaryService.Namespace = stableService.Namespace
 	canaryService.Name = canaryServiceName
+
+	if c.LastUpdateTime != nil {
+		// wait seconds for network providers to consume the modification about workload, service and so on.
+		if verifyTime := c.LastUpdateTime.Add(time.Second * time.Duration(trafficRouting.GracePeriodSeconds)); verifyTime.After(time.Now()) {
+			klog.Infof("%s update workload or service selector, and wait 3 seconds", c.Key)
+			return false, nil
+		}
+	}
+
 	// end-to-end canary deployment scenario(a -> b -> c), if only b or c is released,
 	//and a is not released in this scenario, then the canary service is not needed.
 	if !c.OnlyTrafficRouting {
@@ -139,6 +148,7 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 			}
 		}
 
+		serviceModified := false
 		// patch canary service to only select the canary pods
 		if canaryService.Spec.Selector[c.RevisionLabelKey] != c.CanaryRevision {
 			body := fmt.Sprintf(`{"spec":{"selector":{"%s":"%s"}}}`, c.RevisionLabelKey, c.CanaryRevision)
@@ -146,6 +156,7 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 				klog.Errorf("%s patch canary service(%s) selector failed: %s", c.Key, canaryService.Name, err.Error())
 				return false, err
 			}
+			serviceModified = true
 			// update canary service time, and wait 3 seconds, just to be safe
 			c.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			klog.Infof("%s patch canary service(%s) selector(%s=%s) success",
@@ -158,15 +169,13 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 				klog.Errorf("%s patch stable service(%s) selector failed: %s", c.Key, stableService.Name, err.Error())
 				return false, err
 			}
+			serviceModified = true
 			// update stable service time, and wait 3 seconds, just to be safe
 			c.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			klog.Infof("add %s stable service(%s) selector(%s=%s) success",
 				c.Key, stableService.Name, c.RevisionLabelKey, c.StableRevision)
-			return false, nil
 		}
-		// After modify stable service configuration, give the network provider 3 seconds to react
-		if verifyTime := c.LastUpdateTime.Add(time.Second * time.Duration(trafficRouting.GracePeriodSeconds)); verifyTime.After(time.Now()) {
-			klog.Infof("%s update service selector, and wait 3 seconds", c.Key)
+		if serviceModified {
 			return false, nil
 		}
 	}
