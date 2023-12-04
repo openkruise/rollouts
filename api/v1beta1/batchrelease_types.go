@@ -41,8 +41,9 @@ type BatchRelease struct {
 
 // BatchReleaseSpec defines how to describe an update between different compRevision
 type BatchReleaseSpec struct {
-	// TargetRef contains the GVK and name of the workload that we need to upgrade to.
-	TargetRef ObjectRef `json:"targetReference"`
+	// WorkloadRef contains enough information to let you identify a workload for Rollout
+	// Batch release of the bypass
+	WorkloadRef ObjectRef `json:"workloadRef,omitempty"`
 	// ReleasePlan is the details on how to rollout the resources
 	ReleasePlan ReleasePlan `json:"releasePlan"`
 }

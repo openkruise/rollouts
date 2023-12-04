@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strconv"
 	"time"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
@@ -32,7 +31,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
@@ -70,7 +68,7 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 	// When the first batch is trafficRouting rolling and the next steps are rolling release,
 	// We need to clean up the canary-related resources first and then rollout the rest of the batch.
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
-	if currentStep.Weight == nil && len(currentStep.Matches) == 0 {
+	if currentStep.Traffic == nil && len(currentStep.Matches) == 0 {
 		tr := newTrafficRoutingContext(c)
 		done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
 		c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
@@ -201,8 +199,7 @@ func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 	steps := len(c.Rollout.Spec.Strategy.Canary.Steps)
 	// If it is the last step, and 100% of pods, then return true
 	if int32(steps) == canaryStatus.CurrentStepIndex {
-		if currentStep.Weight != nil && *currentStep.Weight == 100 ||
-			currentStep.Replicas != nil && currentStep.Replicas.StrVal == "100%" {
+		if currentStep.Replicas != nil && currentStep.Replicas.StrVal == "100%" {
 			return true, nil
 		}
 	}
@@ -276,7 +273,7 @@ func (m *canaryReleaseManager) removeRolloutProgressingAnnotation(c *RolloutCont
 	if _, ok := c.Workload.Annotations[util.InRolloutProgressingAnnotation]; !ok {
 		return nil
 	}
-	workloadRef := c.Rollout.Spec.ObjectRef.WorkloadRef
+	workloadRef := c.Rollout.Spec.WorkloadRef
 	workloadGVK := schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
 	obj := util.GetEmptyWorkloadObject(workloadGVK)
 	obj.SetNamespace(c.Workload.Namespace)
@@ -313,7 +310,6 @@ func (m *canaryReleaseManager) runBatchRelease(rollout *v1beta1.Rollout, rollout
 		klog.Infof("rollout(%s/%s) do batchRelease batch(%d) success", rollout.Namespace, rollout.Name, batch+1)
 		return true, br, nil
 	}
-
 	// update batchRelease to the latest version
 	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		if err = m.Get(context.TODO(), client.ObjectKey{Namespace: newBr.Namespace, Name: newBr.Name}, br); err != nil {
@@ -341,11 +337,7 @@ func (m *canaryReleaseManager) fetchBatchRelease(ns, name string) (*v1beta1.Batc
 func createBatchRelease(rollout *v1beta1.Rollout, rolloutID string, batch int32, isRollback bool) *v1beta1.BatchRelease {
 	var batches []v1beta1.ReleaseBatch
 	for _, step := range rollout.Spec.Strategy.Canary.Steps {
-		if step.Replicas == nil {
-			batches = append(batches, v1beta1.ReleaseBatch{CanaryReplicas: intstr.FromString(strconv.Itoa(int(*step.Weight)) + "%")})
-		} else {
-			batches = append(batches, v1beta1.ReleaseBatch{CanaryReplicas: *step.Replicas})
-		}
+		batches = append(batches, v1beta1.ReleaseBatch{CanaryReplicas: *step.Replicas})
 	}
 	br := &v1beta1.BatchRelease{
 		ObjectMeta: metav1.ObjectMeta{
@@ -354,28 +346,24 @@ func createBatchRelease(rollout *v1beta1.Rollout, rolloutID string, batch int32,
 			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(rollout, rolloutControllerKind)},
 		},
 		Spec: v1beta1.BatchReleaseSpec{
-			TargetRef: v1beta1.ObjectRef{
-				WorkloadRef: &v1beta1.WorkloadRef{
-					APIVersion: rollout.Spec.ObjectRef.WorkloadRef.APIVersion,
-					Kind:       rollout.Spec.ObjectRef.WorkloadRef.Kind,
-					Name:       rollout.Spec.ObjectRef.WorkloadRef.Name,
-				},
+			WorkloadRef: v1beta1.ObjectRef{
+				APIVersion: rollout.Spec.WorkloadRef.APIVersion,
+				Kind:       rollout.Spec.WorkloadRef.Kind,
+				Name:       rollout.Spec.WorkloadRef.Name,
 			},
 			ReleasePlan: v1beta1.ReleasePlan{
-				Batches:                  batches,
-				RolloutID:                rolloutID,
-				BatchPartition:           utilpointer.Int32Ptr(batch),
-				FailureThreshold:         rollout.Spec.Strategy.Canary.FailureThreshold,
-				PatchPodTemplateMetadata: rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata,
+				Batches:                      batches,
+				RolloutID:                    rolloutID,
+				BatchPartition:               utilpointer.Int32Ptr(batch),
+				FailureThreshold:             rollout.Spec.Strategy.Canary.FailureThreshold,
+				PatchPodTemplateMetadata:     rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata,
+				EnableExtraWorkloadForCanary: rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary,
 			},
 		},
 	}
 	annotations := map[string]string{}
 	if isRollback {
 		annotations[v1alpha1.RollbackInBatchAnnotation] = rollout.Annotations[v1alpha1.RollbackInBatchAnnotation]
-	}
-	if style, ok := rollout.Annotations[v1beta1.RolloutStyleAnnotation]; ok {
-		annotations[v1beta1.RolloutStyleAnnotation] = style
 	}
 	if len(annotations) > 0 {
 		br.Annotations = annotations

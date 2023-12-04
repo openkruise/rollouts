@@ -159,8 +159,8 @@ func TestSyncDeployment(t *testing.T) {
 					rs.Status.Replicas = replicas
 					if strings.HasPrefix(name, "scale") {
 						rs.Annotations = map[string]string{
-							util.DesiredReplicasAnnotation: strconv.Itoa(-1),
-							util.MaxReplicasAnnotation:     strconv.Itoa(int(test.dAvailable + test.maxSurge.IntVal)),
+							util.ReplicasAnnotation:    strconv.Itoa(-1),
+							util.MaxReplicasAnnotation: strconv.Itoa(int(test.dAvailable + test.maxSurge.IntVal)),
 						}
 					}
 					rs.Spec.Template.Spec.Containers[0].Image = fmt.Sprintf("old-version-%d", index)
@@ -179,8 +179,8 @@ func TestSyncDeployment(t *testing.T) {
 				newRS.Spec.Replicas = pointer.Int32(test.newRSReplicas)
 				if strings.HasPrefix(name, "scale") {
 					newRS.Annotations = map[string]string{
-						util.DesiredReplicasAnnotation: strconv.Itoa(-1),
-						util.MaxReplicasAnnotation:     strconv.Itoa(int(test.dAvailable + test.maxSurge.IntVal)),
+						util.ReplicasAnnotation:    strconv.Itoa(-1),
+						util.MaxReplicasAnnotation: strconv.Itoa(int(test.dAvailable + test.maxSurge.IntVal)),
 					}
 				}
 				newRS.Status.Replicas = test.newRSReplicas

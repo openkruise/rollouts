@@ -422,14 +422,14 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1beta1.R
 	}
 	for i := range rolloutList.Items {
 		rollout := &rolloutList.Items[i]
-		if !rollout.DeletionTimestamp.IsZero() || rollout.Spec.ObjectRef.WorkloadRef == nil {
+		if !rollout.DeletionTimestamp.IsZero() {
 			continue
 		}
 		if rollout.Status.Phase == appsv1beta1.RolloutPhaseDisabled {
 			klog.Infof("Disabled rollout(%s/%s) fetched when fetching matched rollout", rollout.Namespace, rollout.Name)
 			continue
 		}
-		ref := rollout.Spec.ObjectRef.WorkloadRef
+		ref := rollout.Spec.WorkloadRef
 		gv, err := schema.ParseGroupVersion(ref.APIVersion)
 		if err != nil {
 			klog.Warningf("ParseGroupVersion rollout(%s/%s) ref failed: %s", rollout.Namespace, rollout.Name, err.Error())

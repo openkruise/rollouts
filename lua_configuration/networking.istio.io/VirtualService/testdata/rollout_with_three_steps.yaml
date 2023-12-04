@@ -1,17 +1,13 @@
-rollout: 
-  apiVersion: rollouts.kruise.io/v1alpha1
+rollout:
+  apiVersion: rollouts.kruise.io/v1beta1
   kind: Rollout
   metadata:
     name: rollouts-demo
-    annotations:
-      rollouts.kruise.io/rolling-style: canary
   spec:
-    disabled: false
-    objectRef:
-      workloadRef:
-        apiVersion: apps/v1
-        kind: Deployment
-        name: deploy-demo
+    workloadRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: deploy-demo
     strategy:
       canary:
         steps:
@@ -32,7 +28,7 @@ rollout:
             - type: RegularExpression
               name: name
               value: ".*demo"
-        - weight: 50
+        - traffic: "50%"
         trafficRoutings:
         - service: svc-demo
           customNetworkRefs:

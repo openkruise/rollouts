@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
 	custom "github.com/openkruise/rollouts/pkg/trafficrouting/network/customNetworkProvider"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/gateway"
@@ -44,8 +44,8 @@ type TrafficRoutingContext struct {
 	// only for log info
 	Key       string
 	Namespace string
-	ObjectRef []v1alpha1.TrafficRoutingRef
-	Strategy  v1alpha1.TrafficRoutingStrategy
+	ObjectRef []v1beta1.TrafficRoutingRef
+	Strategy  v1beta1.TrafficRoutingStrategy
 	// OnlyTrafficRouting
 	OnlyTrafficRouting bool
 	OwnerRef           metav1.OwnerReference
@@ -100,7 +100,7 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 	if trafficRouting.GracePeriodSeconds <= 0 {
 		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
 	}
-	if c.Strategy.Weight == nil && len(c.Strategy.Matches) == 0 {
+	if c.Strategy.Traffic == nil && len(c.Strategy.Matches) == 0 {
 		return true, nil
 	}
 
@@ -228,7 +228,7 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 	}
 
 	// First route 100% traffic to stable service
-	c.Strategy.Weight = utilpointer.Int32(0)
+	c.Strategy.Traffic = utilpointer.StringPtr("0%")
 	verify, err = trController.EnsureRoutes(context.TODO(), &c.Strategy)
 	if err != nil {
 		return false, err

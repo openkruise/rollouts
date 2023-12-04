@@ -107,15 +107,6 @@ func validateV1alpha1RolloutRollingStyle(rollout *appsv1alpha1.Rollout, fldPath 
 		return field.ErrorList{field.Invalid(fldPath, rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation],
 			"Rolling style must be 'Canary', 'Partition' or empty")}
 	}
-
-	workloadRef := rollout.Spec.ObjectRef.WorkloadRef
-	if workloadRef == nil || workloadRef.Kind == util.ControllerKindDep.Kind {
-		return nil // Deployment support all rolling styles, no need to validate.
-	}
-	if strings.EqualFold(rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation], string(appsv1alpha1.CanaryRollingStyle)) {
-		return field.ErrorList{field.Invalid(fldPath, rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation],
-			"Only Deployment support canary rolling style")}
-	}
 	return nil
 }
 
@@ -145,8 +136,32 @@ func validateV1alpha1RolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrate
 		errList = append(errList, field.Invalid(fldPath, canary.TrafficRoutings, "Rollout currently only support single TrafficRouting."))
 	}
 	for _, traffic := range canary.TrafficRoutings {
-		errList = append(errList, validateRolloutSpecCanaryTraffic(traffic, fldPath.Child("TrafficRouting"))...)
+		errList = append(errList, validateV1alpha1RolloutSpecCanaryTraffic(traffic, fldPath.Child("TrafficRouting"))...)
 	}
+	return errList
+}
+
+func validateV1alpha1RolloutSpecCanaryTraffic(traffic appsv1alpha1.TrafficRoutingRef, fldPath *field.Path) field.ErrorList {
+	errList := field.ErrorList{}
+	if len(traffic.Service) == 0 {
+		errList = append(errList, field.Invalid(fldPath.Child("Service"), traffic.Service, "TrafficRouting.Service cannot be empty"))
+	}
+
+	if traffic.Gateway == nil && traffic.Ingress == nil && traffic.CustomNetworkRefs == nil {
+		errList = append(errList, field.Invalid(fldPath.Child("TrafficRoutings"), traffic.Ingress, "TrafficRoutings are not set"))
+	}
+
+	if traffic.Ingress != nil {
+		if traffic.Ingress.Name == "" {
+			errList = append(errList, field.Invalid(fldPath.Child("Ingress"), traffic.Ingress, "TrafficRouting.Ingress.Ingress cannot be empty"))
+		}
+	}
+	if traffic.Gateway != nil {
+		if traffic.Gateway.HTTPRouteName == nil || *traffic.Gateway.HTTPRouteName == "" {
+			errList = append(errList, field.Invalid(fldPath.Child("Gateway"), traffic.Gateway, "TrafficRouting.Gateway must set the name of HTTPRoute or HTTPsRoute"))
+		}
+	}
+
 	return errList
 }
 

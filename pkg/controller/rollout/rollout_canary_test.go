@@ -57,6 +57,7 @@ func TestRunCanary(t *testing.T) {
 			},
 			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease) {
 				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
@@ -98,6 +99,7 @@ func TestRunCanary(t *testing.T) {
 					},
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
+				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
 				return br
 			},
 		},
@@ -130,6 +132,7 @@ func TestRunCanary(t *testing.T) {
 			},
 			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease) {
 				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
@@ -155,9 +158,10 @@ func TestRunCanary(t *testing.T) {
 					},
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
+				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
 				br.Status = v1beta1.BatchReleaseStatus{
 					ObservedGeneration:      1,
-					ObservedReleasePlanHash: "6d6a40791161e88ec0483688e951b589a4cbd0bf351974827706b79f99378fd5",
+					ObservedReleasePlanHash: "d444a1007776da957d7d8549e3375c96179621b85670ad1e2bb0fc5fea16446a",
 					CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 						CurrentBatchState:    v1beta1.ReadyBatchState,
 						CurrentBatch:         0,
@@ -200,6 +204,7 @@ func TestRunCanary(t *testing.T) {
 					},
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
+				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
 				return br
 			},
 		},

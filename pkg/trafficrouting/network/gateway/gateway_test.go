@@ -17,7 +17,7 @@ import (
 	"reflect"
 	"testing"
 
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilpointer "k8s.io/utils/pointer"
 	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -130,7 +130,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 	cases := []struct {
 		name          string
 		getRouteRules func() []gatewayv1alpha2.HTTPRouteRule
-		getRoutes     func() (*int32, []rolloutsv1alpha1.HttpRouteMatch)
+		getRoutes     func() (*int32, []v1beta1.HttpRouteMatch)
 		desiredRules  func() []gatewayv1alpha2.HTTPRouteRule
 	}{
 		{
@@ -139,9 +139,9 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				rules := routeDemo.DeepCopy().Spec.Rules
 				return rules
 			},
-			getRoutes: func() (*int32, []rolloutsv1alpha1.HttpRouteMatch) {
+			getRoutes: func() (*int32, []v1beta1.HttpRouteMatch) {
 				iType := gatewayv1alpha2.HeaderMatchRegularExpression
-				return nil, []rolloutsv1alpha1.HttpRouteMatch{
+				return nil, []v1beta1.HttpRouteMatch{
 					// header
 					{
 						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
@@ -360,7 +360,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				}
 				return rules
 			},
-			getRoutes: func() (*int32, []rolloutsv1alpha1.HttpRouteMatch) {
+			getRoutes: func() (*int32, []v1beta1.HttpRouteMatch) {
 				return utilpointer.Int32(20), nil
 			},
 			desiredRules: func() []gatewayv1alpha2.HTTPRouteRule {
@@ -494,7 +494,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				})
 				return rules
 			},
-			getRoutes: func() (*int32, []rolloutsv1alpha1.HttpRouteMatch) {
+			getRoutes: func() (*int32, []v1beta1.HttpRouteMatch) {
 				return utilpointer.Int32(-1), nil
 			},
 			desiredRules: func() []gatewayv1alpha2.HTTPRouteRule {

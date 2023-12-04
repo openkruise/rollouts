@@ -1104,15 +1104,15 @@ func TestAnnotationUtils(t *testing.T) {
 		if !updated {
 			t.Errorf("SetReplicasAnnotations() failed")
 		}
-		value, ok := tRS.Annotations[DesiredReplicasAnnotation]
+		value, ok := tRS.Annotations[ReplicasAnnotation]
 		if !ok {
-			t.Errorf("SetReplicasAnnotations did not set DesiredReplicasAnnotation")
+			t.Errorf("SetReplicasAnnotations did not set ReplicasAnnotation")
 		}
 		if value != "10" {
-			t.Errorf("SetReplicasAnnotations did not set DesiredReplicasAnnotation correctly value=%s", value)
+			t.Errorf("SetReplicasAnnotations did not set ReplicasAnnotation correctly value=%s", value)
 		}
 		if value, ok = tRS.Annotations[MaxReplicasAnnotation]; !ok {
-			t.Errorf("SetReplicasAnnotations did not set DesiredReplicasAnnotation")
+			t.Errorf("SetReplicasAnnotations did not set ReplicasAnnotation")
 		}
 		if value != "11" {
 			t.Errorf("SetReplicasAnnotations did not set MaxReplicasAnnotation correctly value=%s", value)
@@ -1120,7 +1120,7 @@ func TestAnnotationUtils(t *testing.T) {
 	})
 
 	//Test Case 3:  Check if annotations reflect deployments state
-	tRS.Annotations[DesiredReplicasAnnotation] = "1"
+	tRS.Annotations[ReplicasAnnotation] = "1"
 	tRS.Status.AvailableReplicas = 1
 	tRS.Spec.Replicas = new(int32)
 	*tRS.Spec.Replicas = 1
@@ -1160,7 +1160,7 @@ func TestReplicasAnnotationsNeedUpdate(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "hello",
 					Namespace:   "test",
-					Annotations: map[string]string{DesiredReplicasAnnotation: "8", MaxReplicasAnnotation: maxReplicas},
+					Annotations: map[string]string{ReplicasAnnotation: "8", MaxReplicasAnnotation: maxReplicas},
 				},
 				Spec: apps.ReplicaSetSpec{
 					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
@@ -1174,7 +1174,7 @@ func TestReplicasAnnotationsNeedUpdate(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "hello",
 					Namespace:   "test",
-					Annotations: map[string]string{DesiredReplicasAnnotation: desiredReplicas, MaxReplicasAnnotation: "16"},
+					Annotations: map[string]string{ReplicasAnnotation: desiredReplicas, MaxReplicasAnnotation: "16"},
 				},
 				Spec: apps.ReplicaSetSpec{
 					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
@@ -1188,7 +1188,7 @@ func TestReplicasAnnotationsNeedUpdate(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "hello",
 					Namespace:   "test",
-					Annotations: map[string]string{DesiredReplicasAnnotation: desiredReplicas, MaxReplicasAnnotation: maxReplicas},
+					Annotations: map[string]string{ReplicasAnnotation: desiredReplicas, MaxReplicasAnnotation: maxReplicas},
 				},
 				Spec: apps.ReplicaSetSpec{
 					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},

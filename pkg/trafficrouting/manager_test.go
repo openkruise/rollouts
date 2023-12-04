@@ -113,45 +113,43 @@ var (
 			},
 		},
 		Spec: v1beta1.RolloutSpec{
-			ObjectRef: v1beta1.ObjectRef{
-				WorkloadRef: &v1beta1.WorkloadRef{
-					APIVersion: "apps/v1",
-					Kind:       "Deployment",
-					Name:       "echoserver",
-				},
+			WorkloadRef: v1beta1.ObjectRef{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Name:       "echoserver",
 			},
 			Strategy: v1beta1.RolloutStrategy{
 				Canary: &v1beta1.CanaryStrategy{
 					Steps: []v1beta1.CanaryStep{
 						{
-							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-								Weight: utilpointer.Int32(5),
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("5%"),
 							},
 							Replicas: &intstr.IntOrString{IntVal: 1},
 						},
 						{
-							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-								Weight: utilpointer.Int32(20),
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("20%"),
 							},
 							Replicas: &intstr.IntOrString{IntVal: 2},
 						},
 						{
-							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-								Weight: utilpointer.Int32(60),
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("60%"),
 							},
 							Replicas: &intstr.IntOrString{IntVal: 6},
 						},
 						{
-							TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
-								Weight: utilpointer.Int32(100),
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("100%"),
 							},
 							Replicas: &intstr.IntOrString{IntVal: 10},
 						},
 					},
-					TrafficRoutings: []v1alpha1.TrafficRoutingRef{
+					TrafficRoutings: []v1beta1.TrafficRoutingRef{
 						{
 							Service: "echoserver",
-							Ingress: &v1alpha1.IngressTrafficRouting{
+							Ingress: &v1beta1.IngressTrafficRouting{
 								Name: "echoserver",
 							},
 						},

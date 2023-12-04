@@ -85,7 +85,7 @@ func (w *enqueueRequestForWorkload) getRolloutForWorkload(key types.NamespacedNa
 	}
 
 	for _, rollout := range rList.Items {
-		targetRef := rollout.Spec.ObjectRef.WorkloadRef
+		targetRef := rollout.Spec.WorkloadRef
 		targetGV, err := schema.ParseGroupVersion(targetRef.APIVersion)
 		if err != nil {
 			klog.Errorf("failed to parse rollout(%s/%s) targetRef's group version: %s", rollout.Namespace, rollout.Name, targetRef.APIVersion)

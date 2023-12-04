@@ -567,37 +567,6 @@ spec:
                 description: if a rollout disabled, then the rollout would not watch
                   changes of workload
                 type: boolean
-              objectRef:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
-                  ObjectRef indicates workload'
-                properties:
-                  workloadRef:
-                    description: WorkloadRef contains enough information to let you
-                      identify a workload for Rollout Batch release of the bypass
-                    properties:
-                      apiVersion:
-                        description: API Version of the referent
-                        type: string
-                      kind:
-                        description: Kind of the referent
-                        type: string
-                      name:
-                        description: Name of the referent
-                        type: string
-                    required:
-                    - apiVersion
-                    - kind
-                    - name
-                    type: object
-                type: object
-              rolloutID:
-                description: DeprecatedRolloutID is the deprecated field. It is recommended
-                  that configure RolloutId in workload.annotations[rollouts.kruise.io/rollout-id].
-                  RolloutID should be changed before each workload revision publication.
-                  It is to distinguish consecutive multiple workload publications
-                  and rollout progress.
-                type: string
               strategy:
                 description: rollout strategy
                 properties:
@@ -605,6 +574,13 @@ spec:
                     description: CanaryStrategy defines parameters for a Replica Based
                       Canary
                     properties:
+                      enableExtraWorkloadForCanary:
+                        description: 'If true, then it will create new deployment
+                          for canary, such as: workload-demo-canary. When user verifies
+                          that the canary version is ready, we will remove the canary
+                          deployment and release the deployment workload-demo in full.
+                          Current only support k8s native deployment'
+                        type: boolean
                       failureThreshold:
                         anyOf:
                         - type: integer
@@ -830,13 +806,15 @@ spec:
                                   - name
                                   x-kubernetes-list-type: map
                               type: object
-                            weight:
-                              description: Weight indicate how many percentage of
+                            traffic:
+                              description: Traffic indicate how many percentage of
                                 traffic the canary pods should receive
-                              format: int32
-                              type: integer
+                              type: string
                           type: object
                         type: array
+                      trafficRoutingRef:
+                        description: TrafficRoutingRef is TrafficRouting's Name
+                        type: string
                       trafficRoutings:
                         description: TrafficRoutings hosts all the supported service
                           meshes supported to enable more fine-grained traffic routing
@@ -850,12 +828,17 @@ spec:
                               description: CustomNetworkRefs hold a list of custom
                                 providers to route traffic
                               items:
+                                description: ObjectRef holds a references to the Kubernetes
+                                  object
                                 properties:
                                   apiVersion:
+                                    description: API Version of the referent
                                     type: string
                                   kind:
+                                    description: Kind of the referent
                                     type: string
                                   name:
+                                    description: Name of the referent
                                     type: string
                                 required:
                                 - apiVersion
@@ -911,9 +894,29 @@ spec:
                       value is false
                     type: boolean
                 type: object
+              workloadRef:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                  WorkloadRef contains enough information to let you identify a workload
+                  for Rollout Batch release of the bypass'
+                properties:
+                  apiVersion:
+                    description: API Version of the referent
+                    type: string
+                  kind:
+                    description: Kind of the referent
+                    type: string
+                  name:
+                    description: Name of the referent
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                - name
+                type: object
             required:
-            - objectRef
             - strategy
+            - workloadRef
             type: object
           status:
             description: RolloutStatus defines the observed state of Rollout

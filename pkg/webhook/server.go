@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/conversion"
 )
 
 type GateFunc func() (enabled bool)
@@ -90,11 +91,12 @@ func SetupWithManager(mgr manager.Manager) error {
 		server.Register(path, &webhook.Admission{Handler: handler})
 		klog.V(3).Infof("Registered webhook handler %s", path)
 	}
-
 	err := initialize(context.TODO(), mgr.GetConfig())
 	if err != nil {
 		return err
 	}
+	// register conversion webhook
+	server.Register("/convert", &conversion.Webhook{})
 	klog.Infof("webhook init done")
 	return nil
 }

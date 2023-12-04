@@ -61,15 +61,14 @@ var (
 			UID:       types.UID("87076677"),
 		},
 		Spec: v1beta1.BatchReleaseSpec{
-			TargetRef: v1beta1.ObjectRef{
-				WorkloadRef: &v1beta1.WorkloadRef{
-					APIVersion: "apps/v1",
-					Kind:       "Deployment",
-					Name:       "sample",
-				},
+			WorkloadRef: v1beta1.ObjectRef{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Name:       "sample",
 			},
 			ReleasePlan: v1beta1.ReleasePlan{
-				BatchPartition: pointer.Int32(0),
+				EnableExtraWorkloadForCanary: true,
+				BatchPartition:               pointer.Int32(0),
 				Batches: []v1beta1.ReleaseBatch{
 					{
 						CanaryReplicas: intstr.FromString("10%"),
@@ -141,12 +140,10 @@ var (
 			UID:       types.UID("87076677"),
 		},
 		Spec: v1beta1.BatchReleaseSpec{
-			TargetRef: v1beta1.ObjectRef{
-				WorkloadRef: &v1beta1.WorkloadRef{
-					APIVersion: "apps.kruise.io/v1alpha1",
-					Kind:       "CloneSet",
-					Name:       "sample",
-				},
+			WorkloadRef: v1beta1.ObjectRef{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "CloneSet",
+				Name:       "sample",
 			},
 			ReleasePlan: v1beta1.ReleasePlan{
 				BatchPartition: pointer.Int32Ptr(0),

@@ -28,7 +28,7 @@ import (
 
 	rolloutapi "github.com/openkruise/rollouts/api"
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	rolloutsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
 	"github.com/openkruise/rollouts/pkg/util/luamanager"
@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -141,7 +142,7 @@ func TestInitialize(t *testing.T) {
 				return Config{
 					StableService: "echoserver",
 					CanaryService: "echoserver-canary",
-					TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
+					TrafficConf: []v1beta1.ObjectRef{
 						{
 							APIVersion: "networking.istio.io/v1alpha3",
 							Kind:       "VirtualService",
@@ -174,7 +175,7 @@ func TestInitialize(t *testing.T) {
 				return Config{
 					StableService: "echoserver",
 					CanaryService: "echoserver-canary",
-					TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
+					TrafficConf: []v1beta1.ObjectRef{
 						{
 							APIVersion: "networking.test.io/v1alpha3",
 							Kind:       "VirtualService",
@@ -237,7 +238,7 @@ func TestEnsureRoutes(t *testing.T) {
 	cases := []struct {
 		name                string
 		getLua              func() map[string]string
-		getRoutes           func() *rolloutsv1alpha1.TrafficRoutingStrategy
+		getRoutes           func() *v1beta1.TrafficRoutingStrategy
 		getUnstructureds    func() []*unstructured.Unstructured
 		getConfig           func() Config
 		expectState         func() (bool, bool)
@@ -245,9 +246,9 @@ func TestEnsureRoutes(t *testing.T) {
 	}{
 		{
 			name: "test1, do traffic routing for VirtualService and DestinationRule",
-			getRoutes: func() *rolloutsv1alpha1.TrafficRoutingStrategy {
-				return &rolloutsv1alpha1.TrafficRoutingStrategy{
-					Weight: utilpointer.Int32(5),
+			getRoutes: func() *v1beta1.TrafficRoutingStrategy {
+				return &v1beta1.TrafficRoutingStrategy{
+					Traffic: utilpointer.String("5%"),
 				}
 			},
 			getUnstructureds: func() []*unstructured.Unstructured {
@@ -268,7 +269,7 @@ func TestEnsureRoutes(t *testing.T) {
 					Key:           "rollout-demo",
 					StableService: "echoserver",
 					CanaryService: "echoserver-canary",
-					TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
+					TrafficConf: []v1beta1.ObjectRef{
 						{
 							APIVersion: "networking.istio.io/v1alpha3",
 							Kind:       "VirtualService",
@@ -317,9 +318,9 @@ func TestEnsureRoutes(t *testing.T) {
 		},
 		{
 			name: "test2, do traffic routing but failed to execute lua",
-			getRoutes: func() *rolloutsv1alpha1.TrafficRoutingStrategy {
-				return &rolloutsv1alpha1.TrafficRoutingStrategy{
-					Weight: utilpointer.Int32(5),
+			getRoutes: func() *v1beta1.TrafficRoutingStrategy {
+				return &v1beta1.TrafficRoutingStrategy{
+					Traffic: utilpointer.String("5%"),
 				}
 			},
 			getUnstructureds: func() []*unstructured.Unstructured {
@@ -340,7 +341,7 @@ func TestEnsureRoutes(t *testing.T) {
 					Key:           "rollout-demo",
 					StableService: "echoserver",
 					CanaryService: "echoserver-canary",
-					TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
+					TrafficConf: []v1beta1.ObjectRef{
 						{
 							APIVersion: "networking.istio.io/v1alpha3",
 							Kind:       "VirtualService",
@@ -446,7 +447,7 @@ func TestFinalise(t *testing.T) {
 				return Config{
 					StableService: "echoserver",
 					CanaryService: "echoserver-canary",
-					TrafficConf: []rolloutsv1alpha1.CustomNetworkRef{
+					TrafficConf: []v1beta1.ObjectRef{
 						{
 							APIVersion: "networking.istio.io/v1alpha3",
 							Kind:       "VirtualService",
@@ -482,7 +483,7 @@ func TestFinalise(t *testing.T) {
 }
 
 type TestCase struct {
-	Rollout        *rolloutsv1beta1.Rollout         `json:"rollout,omitempty"`
+	Rollout        *v1beta1.Rollout                 `json:"rollout,omitempty"`
 	TrafficRouting *rolloutsv1alpha1.TrafficRouting `json:"trafficRouting,omitempty"`
 	Original       *unstructured.Unstructured       `json:"original,omitempty"`
 	Expected       []*unstructured.Unstructured     `json:"expected,omitempty"`
@@ -522,8 +523,12 @@ func TestLuaScript(t *testing.T) {
 				if rollout != nil {
 					steps := rollout.Spec.Strategy.Canary.Steps
 					for i, step := range steps {
-						weight := step.TrafficRoutingStrategy.Weight
-						if weight == nil {
+						var weight *int32
+						if step.TrafficRoutingStrategy.Traffic != nil {
+							is := intstr.FromString(*step.TrafficRoutingStrategy.Traffic)
+							weightInt, _ := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
+							weight = utilpointer.Int32(int32(weightInt))
+						} else {
 							weight = utilpointer.Int32(-1)
 						}
 						var canaryService string
@@ -563,13 +568,19 @@ func TestLuaScript(t *testing.T) {
 					var canaryService string
 					stableService := trafficRouting.Spec.ObjectRef[0].Service
 					canaryService = stableService
+					matches := make([]v1beta1.HttpRouteMatch, 0)
+					for _, match := range trafficRouting.Spec.Strategy.Matches {
+						obj := v1beta1.HttpRouteMatch{}
+						obj.Headers = match.Headers
+						matches = append(matches, obj)
+					}
 					data := &LuaData{
 						Data: Data{
 							Labels:      testCase.Original.GetLabels(),
 							Annotations: testCase.Original.GetAnnotations(),
 							Spec:        testCase.Original.Object["spec"],
 						},
-						Matches:       trafficRouting.Spec.Strategy.Matches,
+						Matches:       matches,
 						CanaryWeight:  *weight,
 						StableWeight:  100 - *weight,
 						CanaryService: canaryService,
@@ -615,6 +626,7 @@ func getLuaTestCase(t *testing.T, path string) (*TestCase, error) {
 		t.Errorf("failed to read file %s", path)
 		return nil, err
 	}
+	fmt.Println(string(yamlFile))
 	luaTestCase := &TestCase{}
 	err = yaml.Unmarshal(yamlFile, luaTestCase)
 	if err != nil {

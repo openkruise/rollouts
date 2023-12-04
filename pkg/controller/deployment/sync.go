@@ -525,7 +525,7 @@ func (dc *DeploymentController) isScalingEvent(ctx context.Context, d *apps.Depl
 	}
 	allRSs := append(oldRSs, newRS)
 	for _, rs := range deploymentutil.FilterActiveReplicaSets(allRSs) {
-		desired, ok := deploymentutil.GetDesiredReplicasAnnotation(rs)
+		desired, ok := deploymentutil.GetReplicasAnnotation(rs)
 		if !ok {
 			continue
 		}
