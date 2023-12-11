@@ -19,7 +19,8 @@ function GetRulesToPatch(spec, stableService, protocol)
     local matchedRoutes = {}
     if (spec[protocol] ~= nil) then
         for _, rule in ipairs(spec[protocol]) do
-            if next(rule.retries) == nil then
+            local retries = rule.retries or {}
+            if #retries == 0 then
                 rule.retries = nil
             end
             -- skip routes contain matches
@@ -49,7 +50,8 @@ end
 function GenerateRoutesWithMatches(spec, matches, stableService, canaryService)
     local http = spec.http
     for _, rule in ipairs(http) do
-        if next(rule.retries) == nil then
+        local retries = rule.retries or {}
+        if #retries == 0 then
             rule.retries = nil
         end
     end
