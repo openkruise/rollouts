@@ -152,7 +152,6 @@ webhooks:
     - rollouts.kruise.io
     apiVersions:
     - v1alpha1
-    - v1beta1
     operations:
     - CREATE
     - UPDATE
