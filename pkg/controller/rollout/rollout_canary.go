@@ -62,6 +62,11 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 	// update podTemplateHash, Why is this position assigned?
 	// Because If workload is deployment, only after canary pod already was created,
 	// we can get the podTemplateHash from pod.annotations[pod-template-hash]
+	// PodTemplateHash is used to select a new version of the Pod.
+
+	// Note:
+	// In a scenario of successive releases v1->v2->v3, It is possible that this is the PodTemplateHash value of v2,
+	// so it needs to be set later in the stepUpgrade
 	if canaryStatus.PodTemplateHash == "" {
 		canaryStatus.PodTemplateHash = c.Workload.PodTemplateHash
 	}
@@ -185,6 +190,8 @@ func (m *canaryReleaseManager) doCanaryUpgrade(c *RolloutContext) (bool, error) 
 	m.recorder.Eventf(c.Rollout, corev1.EventTypeNormal, "Progressing", fmt.Sprintf("upgrade step(%d) canary pods with new versions done", canaryStatus.CurrentStepIndex))
 	klog.Infof("rollout(%s/%s) batch(%s) state(%s), and success",
 		c.Rollout.Namespace, c.Rollout.Name, util.DumpJSON(br.Status), br.Status.CanaryStatus.CurrentBatchState)
+	// set the latest PodTemplateHash to selector the latest pods.
+	canaryStatus.PodTemplateHash = c.Workload.PodTemplateHash
 	return true, nil
 }
 

@@ -250,8 +250,8 @@ func TestRolloutValidateCreate(t *testing.T) {
 			},
 		},
 		{
-			Name:    "Miss matched rolling style",
-			Succeed: false,
+			Name:    "matched rolling style",
+			Succeed: true,
 			GetObject: func() []client.Object {
 				object := rollout.DeepCopy()
 				object.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true

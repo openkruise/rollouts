@@ -20,7 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-// +kubebuilder:webhook:path=/validate-rollouts-kruise-io-rollout,mutating=false,failurePolicy=fail,sideEffects=None,admissionReviewVersions=v1;v1beta1,groups=rollouts.kruise.io,resources=rollouts,verbs=create;update,versions=v1alpha1,name=vrollout.kb.io
+// +kubebuilder:webhook:path=/validate-rollouts-kruise-io-rollout,mutating=false,failurePolicy=fail,sideEffects=None,admissionReviewVersions=v1;v1beta1,groups=rollouts.kruise.io,resources=rollouts,verbs=create;update,versions=v1alpha1;v1beta1,name=vrollout.kb.io
 
 var (
 	// HandlerMap contains admission webhook handlers
