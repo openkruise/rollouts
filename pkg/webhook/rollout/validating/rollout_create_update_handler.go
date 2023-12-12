@@ -274,13 +274,15 @@ func validateRolloutSpecCanarySteps(steps []appsv1beta1.CanaryStep, fldPath *fie
 		if !isTraffic {
 			continue
 		}
-		if s.Traffic == nil {
-			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic cannot be empty`)}
+		if s.Traffic == nil && len(s.Matches) == 0 {
+			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic and matches cannot be empty at time same time`)}
 		}
-		is := intstr.FromString(*s.Traffic)
-		weight, err := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
-		if err != nil || weight <= 0 || weight > 100 {
-			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic must be percentage with "0%" < traffic <= "100%"`)}
+		if s.Traffic != nil {
+			is := intstr.FromString(*s.Traffic)
+			weight, err := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
+			if err != nil || weight <= 0 || weight > 100 {
+				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic must be percentage with "0%" < traffic <= "100%"`)}
+			}
 		}
 	}
 
