@@ -40,7 +40,7 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 type ingressController struct {
@@ -224,7 +224,7 @@ func defaultCanaryIngressName(name string) string {
 }
 
 func (r *ingressController) executeLuaForCanary(annotations map[string]string, weight *int32, matches []v1beta1.HttpRouteMatch,
-	headerModifier *gatewayv1alpha2.HTTPRequestHeaderFilter) (map[string]string, error) {
+	headerModifier *gatewayv1beta1.HTTPRequestHeaderFilter) (map[string]string, error) {
 
 	if weight == nil {
 		// the lua script does not have a pointer type,
@@ -236,7 +236,7 @@ func (r *ingressController) executeLuaForCanary(annotations map[string]string, w
 		Weight                string
 		Matches               []v1beta1.HttpRouteMatch
 		CanaryService         string
-		RequestHeaderModifier *gatewayv1alpha2.HTTPRequestHeaderFilter
+		RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter
 	}
 	data := &LuaData{
 		Annotations:           annotations,

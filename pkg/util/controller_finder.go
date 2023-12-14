@@ -299,7 +299,6 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1beta1.O
 		CanaryRevision:     ComputeHash(&stable.Spec.Template, nil),
 		RevisionLabelKey:   apps.DefaultDeploymentUniqueLabelKey,
 	}
-
 	// not in rollout progressing
 	if _, ok = workload.Annotations[InRolloutProgressingAnnotation]; !ok {
 		return workload, nil

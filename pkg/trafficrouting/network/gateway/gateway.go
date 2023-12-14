@@ -26,7 +26,7 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 type Config struct {
@@ -53,7 +53,7 @@ func NewGatewayTrafficRouting(client client.Client, conf Config) (network.Networ
 }
 
 func (r *gatewayController) Initialize(ctx context.Context) error {
-	route := &gatewayv1alpha2.HTTPRoute{}
+	route := &gatewayv1beta1.HTTPRoute{}
 	return r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: *r.conf.TrafficConf.HTTPRouteName}, route)
 }
 
@@ -66,7 +66,7 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *v1beta1.
 	}
 	matches := strategy.Matches
 	// headerModifier := strategy.RequestHeaderModifier
-	var httpRoute gatewayv1alpha2.HTTPRoute
+	var httpRoute gatewayv1beta1.HTTPRoute
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: *r.conf.TrafficConf.HTTPRouteName}, &httpRoute)
 	if err != nil {
 		return false, err
@@ -77,7 +77,7 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *v1beta1.
 		return true, nil
 	}
 	// set route
-	routeClone := &gatewayv1alpha2.HTTPRoute{}
+	routeClone := &gatewayv1beta1.HTTPRoute{}
 	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		if err = r.Client.Get(context.TODO(), types.NamespacedName{Namespace: httpRoute.Namespace, Name: httpRoute.Name}, routeClone); err != nil {
 			klog.Errorf("error getting updated httpRoute(%s/%s) from client", httpRoute.Namespace, httpRoute.Name)
@@ -94,7 +94,7 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *v1beta1.
 }
 
 func (r *gatewayController) Finalise(ctx context.Context) error {
-	httpRoute := &gatewayv1alpha2.HTTPRoute{}
+	httpRoute := &gatewayv1beta1.HTTPRoute{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: *r.conf.TrafficConf.HTTPRouteName}, httpRoute)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -108,7 +108,7 @@ func (r *gatewayController) Finalise(ctx context.Context) error {
 	if reflect.DeepEqual(httpRoute.Spec.Rules, desiredRule) {
 		return nil
 	}
-	routeClone := &gatewayv1alpha2.HTTPRoute{}
+	routeClone := &gatewayv1beta1.HTTPRoute{}
 	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		if err = r.Client.Get(context.TODO(), types.NamespacedName{Namespace: httpRoute.Namespace, Name: httpRoute.Name}, routeClone); err != nil {
 			klog.Errorf("error getting updated httpRoute(%s/%s) from client", httpRoute.Namespace, httpRoute.Name)
@@ -124,9 +124,9 @@ func (r *gatewayController) Finalise(ctx context.Context) error {
 	return nil
 }
 
-func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32, matches []v1beta1.HttpRouteMatch,
-	rh *gatewayv1alpha2.HTTPRequestHeaderFilter) []gatewayv1alpha2.HTTPRouteRule {
-	var desired []gatewayv1alpha2.HTTPRouteRule
+func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1beta1.HTTPRouteRule, weight *int32, matches []v1beta1.HttpRouteMatch,
+	rh *gatewayv1beta1.HTTPRequestHeaderFilter) []gatewayv1beta1.HTTPRouteRule {
+	var desired []gatewayv1beta1.HTTPRouteRule
 	// Only when finalize method parameter weight=-1,
 	// then we need to remove the canary route policy and restore to the original configuration
 	if weight != nil && *weight == -1 {
@@ -152,9 +152,9 @@ func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1alpha2.HTTPRo
 	return r.buildCanaryWeightHttpRoutes(rules, weight)
 }
 
-func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.HTTPRouteRule, matchs []v1beta1.HttpRouteMatch) []gatewayv1alpha2.HTTPRouteRule {
-	var desired []gatewayv1alpha2.HTTPRouteRule
-	var canarys []gatewayv1alpha2.HTTPRouteRule
+func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1beta1.HTTPRouteRule, matchs []v1beta1.HttpRouteMatch) []gatewayv1beta1.HTTPRouteRule {
+	var desired []gatewayv1beta1.HTTPRouteRule
+	var canarys []gatewayv1beta1.HTTPRouteRule
 	for i := range rules {
 		rule := rules[i]
 		if _, canaryRef := getServiceBackendRef(rule, r.conf.CanaryService); canaryRef != nil {
@@ -167,10 +167,10 @@ func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.
 		// according to stable rule to create canary rule
 		canaryRule := rule.DeepCopy()
 		_, canaryRef := getServiceBackendRef(*canaryRule, r.conf.StableService)
-		canaryRef.Name = gatewayv1alpha2.ObjectName(r.conf.CanaryService)
-		canaryRule.BackendRefs = []gatewayv1alpha2.HTTPBackendRef{*canaryRef}
+		canaryRef.Name = gatewayv1beta1.ObjectName(r.conf.CanaryService)
+		canaryRule.BackendRefs = []gatewayv1beta1.HTTPBackendRef{*canaryRef}
 		// set canary headers in httpRoute
-		var newMatches []gatewayv1alpha2.HTTPRouteMatch
+		var newMatches []gatewayv1beta1.HTTPRouteMatch
 		for j := range canaryRule.Matches {
 			canaryRuleMatch := &canaryRule.Matches[j]
 			for k := range matchs {
@@ -186,8 +186,8 @@ func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1alpha2.
 	return desired
 }
 
-func (r *gatewayController) buildCanaryWeightHttpRoutes(rules []gatewayv1alpha2.HTTPRouteRule, weight *int32) []gatewayv1alpha2.HTTPRouteRule {
-	var desired []gatewayv1alpha2.HTTPRouteRule
+func (r *gatewayController) buildCanaryWeightHttpRoutes(rules []gatewayv1beta1.HTTPRouteRule, weight *int32) []gatewayv1beta1.HTTPRouteRule {
+	var desired []gatewayv1beta1.HTTPRouteRule
 	for i := range rules {
 		rule := rules[i]
 		_, stableRef := getServiceBackendRef(rule, r.conf.StableService)
@@ -198,7 +198,7 @@ func (r *gatewayController) buildCanaryWeightHttpRoutes(rules []gatewayv1alpha2.
 		_, canaryRef := getServiceBackendRef(rule, r.conf.CanaryService)
 		if canaryRef == nil {
 			canaryRef = stableRef.DeepCopy()
-			canaryRef.Name = gatewayv1alpha2.ObjectName(r.conf.CanaryService)
+			canaryRef.Name = gatewayv1beta1.ObjectName(r.conf.CanaryService)
 		}
 		stableWeight, canaryWeight := generateCanaryWeight(*weight)
 		stableRef.Weight = &stableWeight
@@ -218,7 +218,7 @@ func generateCanaryWeight(canaryPercent int32) (stableWeight int32, canaryWeight
 }
 
 // int indicates ref index
-func getServiceBackendRef(rule gatewayv1alpha2.HTTPRouteRule, serviceName string) (int, *gatewayv1alpha2.HTTPBackendRef) {
+func getServiceBackendRef(rule gatewayv1beta1.HTTPRouteRule, serviceName string) (int, *gatewayv1beta1.HTTPBackendRef) {
 	for i := range rule.BackendRefs {
 		ref := rule.BackendRefs[i]
 		if ref.Kind != nil && *ref.Kind == "Service" && string(ref.Name) == serviceName {
@@ -228,7 +228,7 @@ func getServiceBackendRef(rule gatewayv1alpha2.HTTPRouteRule, serviceName string
 	return 0, nil
 }
 
-func setServiceBackendRef(rule *gatewayv1alpha2.HTTPRouteRule, ref gatewayv1alpha2.HTTPBackendRef) {
+func setServiceBackendRef(rule *gatewayv1beta1.HTTPRouteRule, ref gatewayv1beta1.HTTPBackendRef) {
 	if ref.Kind == nil || *ref.Kind != "Service" {
 		return
 	}
@@ -238,7 +238,7 @@ func setServiceBackendRef(rule *gatewayv1alpha2.HTTPRouteRule, ref gatewayv1alph
 		return
 	}
 	oldRefs := rule.BackendRefs
-	rule.BackendRefs = []gatewayv1alpha2.HTTPBackendRef{}
+	rule.BackendRefs = []gatewayv1beta1.HTTPBackendRef{}
 	for i := range oldRefs {
 		if i == index {
 			rule.BackendRefs = append(rule.BackendRefs, ref)
@@ -248,13 +248,13 @@ func setServiceBackendRef(rule *gatewayv1alpha2.HTTPRouteRule, ref gatewayv1alph
 	}
 }
 
-func filterOutServiceBackendRef(rule *gatewayv1alpha2.HTTPRouteRule, serviceName string) {
+func filterOutServiceBackendRef(rule *gatewayv1beta1.HTTPRouteRule, serviceName string) {
 	index, ref := getServiceBackendRef(*rule, serviceName)
 	if ref == nil {
 		return
 	}
 	oldRefs := rule.BackendRefs
-	rule.BackendRefs = []gatewayv1alpha2.HTTPBackendRef{}
+	rule.BackendRefs = []gatewayv1beta1.HTTPBackendRef{}
 	for i := range oldRefs {
 		if i == index {
 			continue

@@ -38,7 +38,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 var (
@@ -126,7 +126,7 @@ var (
 				Matches: []v1alpha1.HttpRouteMatch{
 					// header
 					{
-						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+						Headers: []gatewayv1beta1.HTTPHeaderMatch{
 							{
 								Name:  "user_id",
 								Value: "123456",

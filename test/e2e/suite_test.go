@@ -41,7 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -70,7 +70,7 @@ var _ = BeforeSuite(func(done Done) {
 	Expect(err).Should(BeNil())
 	err = kruisev1alpha1.AddToScheme(scheme)
 	Expect(err).Should(BeNil())
-	err = gatewayv1alpha2.AddToScheme(scheme)
+	err = gatewayv1beta1.AddToScheme(scheme)
 	Expect(err).Should(BeNil())
 	By("Setting up kubernetes client")
 	k8sClient, err = client.New(config.GetConfigOrDie(), client.Options{Scheme: scheme})
