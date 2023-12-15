@@ -181,21 +181,8 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1beta
 
 func validateRolloutSpec(rollout *appsv1beta1.Rollout, fldPath *field.Path) field.ErrorList {
 	errList := validateRolloutSpecObjectRef(&rollout.Spec.WorkloadRef, fldPath.Child("ObjectRef"))
-	errList = append(errList, validateRolloutRollingStyle(rollout, field.NewPath("RollingStyle"))...)
 	errList = append(errList, validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
 	return errList
-}
-
-func validateRolloutRollingStyle(rollout *appsv1beta1.Rollout, fldPath *field.Path) field.ErrorList {
-	workloadRef := rollout.Spec.WorkloadRef
-	if workloadRef.Kind == util.ControllerKindDep.Kind {
-		return nil // Deployment support all rolling styles, no need to validate.
-	}
-	if rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
-		return field.ErrorList{field.Invalid(fldPath, rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary,
-			"Only Deployment can set enableExtraWorkloadForCanary=true")}
-	}
-	return nil
 }
 
 func validateRolloutSpecObjectRef(workloadRef *appsv1beta1.ObjectRef, fldPath *field.Path) field.ErrorList {
@@ -273,9 +260,6 @@ func validateRolloutSpecCanarySteps(steps []appsv1beta1.CanaryStep, fldPath *fie
 		}
 		if !isTraffic {
 			continue
-		}
-		if s.Traffic == nil && len(s.Matches) == 0 {
-			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic and matches cannot be empty at time same time`)}
 		}
 		if s.Traffic != nil {
 			is := intstr.FromString(*s.Traffic)
