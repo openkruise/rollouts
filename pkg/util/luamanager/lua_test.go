@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	luajson "layeh.com/gopher-json"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 type LuaData struct {
@@ -66,7 +66,7 @@ func TestRunLuaScript(t *testing.T) {
 					Weight: "0",
 					Matches: []rolloutv1alpha1.HttpRouteMatch{
 						{
-							Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+							Headers: []gatewayv1beta1.HTTPHeaderMatch{
 								{
 									Name:  "user_id",
 									Value: "123456",

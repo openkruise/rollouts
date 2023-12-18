@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	utilpointer "k8s.io/utils/pointer"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 var (
@@ -334,7 +334,7 @@ var (
 				Matches: []v1alpha1.HttpRouteMatch{
 					// header
 					{
-						Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+						Headers: []gatewayv1beta1.HTTPHeaderMatch{
 							{
 								Name:  "user_id",
 								Value: "123456",

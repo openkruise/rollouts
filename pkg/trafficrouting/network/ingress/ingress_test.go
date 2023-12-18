@@ -32,7 +32,7 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 var (
@@ -335,7 +335,7 @@ func TestEnsureRoutes(t *testing.T) {
 						Matches: []v1beta1.HttpRouteMatch{
 							// header
 							{
-								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								Headers: []gatewayv1beta1.HTTPHeaderMatch{
 									{
 										Name:  "user_id",
 										Value: "123456",
@@ -344,7 +344,7 @@ func TestEnsureRoutes(t *testing.T) {
 							},
 							// cookies
 							{
-								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								Headers: []gatewayv1beta1.HTTPHeaderMatch{
 									{
 										Name:  "canary-by-cookie",
 										Value: "demo",
@@ -352,8 +352,8 @@ func TestEnsureRoutes(t *testing.T) {
 								},
 							},
 						},
-						RequestHeaderModifier: &gatewayv1alpha2.HTTPRequestHeaderFilter{
-							Set: []gatewayv1alpha2.HTTPHeader{
+						RequestHeaderModifier: &gatewayv1beta1.HTTPRequestHeaderFilter{
+							Set: []gatewayv1beta1.HTTPHeader{
 								{
 									Name:  "gray",
 									Value: "blue",
@@ -435,13 +435,13 @@ func TestEnsureRoutes(t *testing.T) {
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
 			getRoutes: func() *v1beta1.CanaryStep {
-				iType := gatewayv1alpha2.HeaderMatchRegularExpression
+				iType := gatewayv1beta1.HeaderMatchRegularExpression
 				return &v1beta1.CanaryStep{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Matches: []v1beta1.HttpRouteMatch{
 							// header
 							{
-								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								Headers: []gatewayv1beta1.HTTPHeaderMatch{
 									{
 										Name:  "user_id",
 										Value: "123*",
@@ -488,7 +488,7 @@ func TestEnsureRoutes(t *testing.T) {
 						Matches: []v1beta1.HttpRouteMatch{
 							// header
 							{
-								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								Headers: []gatewayv1beta1.HTTPHeaderMatch{
 									{
 										Name:  "Cookie",
 										Value: "demo1=value1;demo2=value2",

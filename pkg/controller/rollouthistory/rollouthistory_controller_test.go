@@ -21,6 +21,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/openkruise/kruise-api/apps/pub"
+	kruisev1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	rolloutapi "github.com/openkruise/rollouts/api"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,11 +37,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/gateway-api/apis/v1alpha2"
-
-	"github.com/openkruise/kruise-api/apps/pub"
-	kruisev1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutapi "github.com/openkruise/rollouts/api"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 )
 
 func init() {
@@ -309,7 +308,7 @@ var (
 		},
 		Spec: v1alpha2.HTTPRouteSpec{
 			CommonRouteSpec: v1alpha2.CommonRouteSpec{
-				ParentRefs: []v1alpha2.ParentRef{
+				ParentRefs: []v1alpha2.ParentReference{
 					{
 						Name: "demo-lb",
 					},

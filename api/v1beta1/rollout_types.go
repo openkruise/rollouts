@@ -20,7 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -142,7 +142,7 @@ type TrafficRoutingStrategy struct {
 	//   my-header: bar
 	//
 	// +optional
-	RequestHeaderModifier *gatewayv1alpha2.HTTPRequestHeaderFilter `json:"requestHeaderModifier,omitempty"`
+	RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter `json:"requestHeaderModifier,omitempty"`
 	// Matches define conditions used for matching the incoming HTTP requests to canary service.
 	// Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
 	// If Gateway API, current only support one match.
@@ -155,7 +155,7 @@ type HttpRouteMatch struct {
 	// ANDed together, meaning, a request must match all the specified headers
 	// to select the route.
 	// +kubebuilder:validation:MaxItems=16
-	Headers []gatewayv1alpha2.HTTPHeaderMatch `json:"headers,omitempty"`
+	Headers []gatewayv1beta1.HTTPHeaderMatch `json:"headers,omitempty"`
 }
 
 // RolloutPause defines a pause stage for a rollout

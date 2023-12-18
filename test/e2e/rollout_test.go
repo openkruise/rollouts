@@ -41,7 +41,7 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 const (
@@ -1844,7 +1844,7 @@ var _ = SIGDescribe("Rollout", func() {
 			By("Creating Rollout...")
 			rollout := &v1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
-			headerType := gatewayv1alpha2.HeaderMatchRegularExpression
+			headerType := gatewayv1beta1.HeaderMatchRegularExpression
 			replica1 := intstr.FromInt(1)
 			replica2 := intstr.FromInt(2)
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
@@ -1852,7 +1852,7 @@ var _ = SIGDescribe("Rollout", func() {
 					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
 						Matches: []v1alpha1.HttpRouteMatch{
 							{
-								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								Headers: []gatewayv1beta1.HTTPHeaderMatch{
 									{
 										Type:  &headerType,
 										Name:  "user_id",
@@ -1861,7 +1861,7 @@ var _ = SIGDescribe("Rollout", func() {
 								},
 							},
 							{
-								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								Headers: []gatewayv1beta1.HTTPHeaderMatch{
 									{
 										Name:  "canary-by-cookie",
 										Value: "demo",
@@ -2018,7 +2018,7 @@ var _ = SIGDescribe("Rollout", func() {
 					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
 						Matches: []v1alpha1.HttpRouteMatch{
 							{
-								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								Headers: []gatewayv1beta1.HTTPHeaderMatch{
 									{
 										Name:  "Cookie",
 										Value: "demo1=value1;demo2=value2",
@@ -2190,7 +2190,7 @@ var _ = SIGDescribe("Rollout", func() {
 					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
 						Matches: []v1alpha1.HttpRouteMatch{
 							{
-								Headers: []gatewayv1alpha2.HTTPHeaderMatch{
+								Headers: []gatewayv1beta1.HTTPHeaderMatch{
 									{
 										Name:  "Cookie",
 										Value: "demo1=value1;demo2=value2",
@@ -2523,7 +2523,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/service.yaml", service)).ToNot(HaveOccurred())
 			CreateObject(service)
 			// route
-			route := &gatewayv1alpha2.HTTPRoute{}
+			route := &gatewayv1beta1.HTTPRoute{}
 			Expect(ReadYamlToObject("./test_data/gateway/httproute-test.yaml", route)).ToNot(HaveOccurred())
 			CreateObject(route)
 			// workload
@@ -2554,7 +2554,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 1))
-			routeGet := &gatewayv1alpha2.HTTPRoute{}
+			routeGet := &gatewayv1beta1.HTTPRoute{}
 			Expect(GetObject(route.Name, routeGet)).NotTo(HaveOccurred())
 			stable, canary := getHTTPRouteWeight(*routeGet)
 			Expect(stable).Should(Equal(int32(80)))
@@ -6012,7 +6012,7 @@ func mergeMap(dst, patch map[string]string) map[string]string {
 	return dst
 }
 
-func getHTTPRouteWeight(route gatewayv1alpha2.HTTPRoute) (int32, int32) {
+func getHTTPRouteWeight(route gatewayv1beta1.HTTPRoute) (int32, int32) {
 	var stable, canary int32
 	for i := range route.Spec.Rules {
 		rules := route.Spec.Rules[i]

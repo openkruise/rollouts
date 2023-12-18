@@ -18,7 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	gatewayv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 const (
@@ -89,7 +89,7 @@ type TrafficRoutingStrategy struct {
 	//   my-header: bar
 	//
 	// +optional
-	RequestHeaderModifier *gatewayv1alpha2.HTTPRequestHeaderFilter `json:"requestHeaderModifier,omitempty"`
+	RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter `json:"requestHeaderModifier,omitempty"`
 	// Matches define conditions used for matching the incoming HTTP requests to canary service.
 	// Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
 	// If Gateway API, current only support one match.

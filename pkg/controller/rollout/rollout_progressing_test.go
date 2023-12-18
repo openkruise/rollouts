@@ -65,7 +65,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "56855c89f9"
+				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				return s
@@ -97,7 +97,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "56855c89f9"
+				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
@@ -138,7 +138,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
@@ -151,7 +151,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "56855c89f9"
+				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
@@ -193,7 +193,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
@@ -207,7 +207,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "56855c89f9"
+				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
@@ -242,7 +242,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
@@ -265,7 +265,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "56855c89f9"
+				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
@@ -303,7 +303,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
@@ -325,7 +325,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "56855c89f9"
+				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
@@ -359,7 +359,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
@@ -374,7 +374,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "56855c89f9"
+				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
@@ -422,7 +422,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
@@ -436,7 +436,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "5d48f79ff8"
+				s.CanaryStatus.CanaryRevision = "695c6d8498"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
@@ -479,7 +479,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
@@ -493,7 +493,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "5d48f79ff8"
+				s.CanaryStatus.CanaryRevision = "695c6d8498"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
@@ -536,7 +536,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				obj.Status.CanaryStatus.CanaryRevision = "56855c89f9"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.CurrentStepIndex = 3
 				obj.Status.CanaryStatus.CanaryReplicas = 5
 				obj.Status.CanaryStatus.CanaryReadyReplicas = 3
