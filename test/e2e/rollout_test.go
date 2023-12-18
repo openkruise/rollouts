@@ -881,6 +881,36 @@ var _ = SIGDescribe("Rollout", func() {
 			By("Creating Rollout...")
 			rollout := &v1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
+			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
+				{
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(20),
+					},
+				},
+				{
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(40),
+					},
+				},
+				{
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(60),
+					},
+					Pause: v1alpha1.RolloutPause{Duration: utilpointer.Int32(10)},
+				},
+				{
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(80),
+					},
+					Pause: v1alpha1.RolloutPause{Duration: utilpointer.Int32(10)},
+				},
+				{
+					TrafficRoutingStrategy: v1alpha1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32(100),
+					},
+					Pause: v1alpha1.RolloutPause{Duration: utilpointer.Int32(1)},
+				},
+			}
 			CreateObject(rollout)
 
 			By("Creating workload and waiting for all pods ready...")
@@ -942,8 +972,8 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// resume rollout canary
 			ResumeRolloutCanary(rollout.Name)
-			By("check rollout canary status success, resume rollout, and wait rollout canary complete")
-			time.Sleep(time.Second * 15)
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
 
 			// v1 -> v2 -> v3, continuous release
 			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version3"})
@@ -993,6 +1023,9 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 
 			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
 			ResumeRolloutCanary(rollout.Name)
 			By("check rollout canary status success, resume rollout, and wait rollout canary complete")
 			WaitRolloutStatusPhase(rollout.Name, v1alpha1.RolloutPhaseHealthy)
