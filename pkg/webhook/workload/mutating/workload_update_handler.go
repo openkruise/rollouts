@@ -285,6 +285,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 				modified = true
 				strategy.Paused = true
 			}
+			appsv1alpha1.SetDefaultDeploymentStrategy(&strategy)
 			setDeploymentStrategyAnnotation(strategy, newObj)
 		default:
 			// Do not allow to modify strategy as Recreate during rolling
