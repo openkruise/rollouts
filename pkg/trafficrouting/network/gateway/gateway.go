@@ -19,6 +19,7 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
+	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -89,7 +90,7 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *v1beta1.
 		klog.Errorf("update %s httpRoute(%s) failed: %s", r.conf.Key, httpRoute.Name, err.Error())
 		return false, err
 	}
-	klog.Infof("%s set HTTPRoute(name:%s weight:%d) success", r.conf.Key, *r.conf.TrafficConf.HTTPRouteName, *weight)
+	klog.Infof("%s set HTTPRoute(%s) desiredRule(%s) success", r.conf.Key, *r.conf.TrafficConf.HTTPRouteName, util.DumpJSON(desiredRule))
 	return false, nil
 }
 
