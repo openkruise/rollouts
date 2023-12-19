@@ -243,7 +243,10 @@ func TestDoTrafficRouting(t *testing.T) {
 				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
 			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
-				return demoRollout.DeepCopy(), &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+				rollout := demoRollout.DeepCopy()
+				workload := &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+				rollout.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-time.Hour)}
+				return rollout, workload
 			},
 			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
 				s1 := demoService.DeepCopy()
@@ -471,6 +474,7 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				obj := demoRollout.DeepCopy()
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-time.Hour)}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
 			onlyRestoreStableService: true,
