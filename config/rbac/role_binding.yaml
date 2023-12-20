@@ -19,7 +19,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: manager-rolebinding
+  name: manager-role
 subjects:
 - kind: ServiceAccount
   name: controller-manager

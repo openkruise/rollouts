@@ -42,5 +42,6 @@ RUN set -eux; \
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY lua_configuration /lua_configuration
+USER 65534
 
 ENTRYPOINT ["/manager"]
