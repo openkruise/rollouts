@@ -82,7 +82,7 @@ type CanaryStrategy struct {
 	// Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%)
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
-	// TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
+	// TrafficRoutings support ingress, gateway api and custom network resource(e.g. istio, apisix) to enable more fine-grained traffic routing
 	// and current only support one TrafficRouting
 	TrafficRoutings []TrafficRoutingRef `json:"trafficRoutings,omitempty"`
 	// FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
@@ -123,6 +123,7 @@ type CanaryStep struct {
 
 type TrafficRoutingStrategy struct {
 	// Traffic indicate how many percentage of traffic the canary pods should receive
+	// Value is of string type and is a percentage, e.g. 5%.
 	// +optional
 	Traffic *string `json:"traffic,omitempty"`
 	// Set overwrites the request with the given header (name, value)

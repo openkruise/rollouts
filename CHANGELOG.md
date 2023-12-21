@@ -1,5 +1,41 @@
 # Change Log
 
+## v0.5.0
+### Resources Graduating to BETA
+
+After more than a year of development, we have now decided to upgrade the following resources to v1beta1, as follows:
+- Rollout
+- BatchRelease
+
+Please refer to the [community documentation](https://openkruise.io/rollouts/user-manuals/api-specifications) for detailed api definitions.
+
+**Note:** The v1alpha1 api is still available, and you can still use the v1alpha1 api in v0.5.0.
+But we still recommend that you migrate to v1beta1 gradually, as some of the new features will only be available in v1beta1,
+e.g., [Extensible Traffic Routing Based on Lua Script](https://openkruise.io/rollouts/developer-manuals/custom-network-provider/).
+
+### Bump To V1beta1 Gateway API
+Support for GatewayAPI from v1alpha2 to v1beta1, you can use v1beta1 gateway API.
+
+### Extensible Traffic Routing Based on Lua Script
+
+The Gateway API is a standard gateway resource given by the K8S community, but there are still a large number of users in the community who are still using some customized gateway resources, such as VirtualService, Apisix, and so on.
+In order to adapt to this behavior and meet the diverse demands of the community for gateway resources, we support a traffic routing scheme based on Lua scripts.
+
+Kruise Rollout utilizes a Lua-script-based customization approach for API Gateway resources (Istio VirtualService, Apisix ApisixRoute, Kuma TrafficRoute and etc.).
+Kruise Rollout involves invoking Lua scripts to retrieve and update the desired configurations of resources based on release strategies and the original configurations of API Gateway resources (including spec, labels, and annotations).
+It enables users to easily adapt and integrate various types of API Gateway resources without modifying existing code and configurations.
+
+By using Kruise Rollout, users can:
+- Customize Lua scripts for handling API Gateway resources, allowing for flexible implementation of resource processing and providing support for a wider range of resources.
+- Utilize a common Rollout configuration template to configure different resources, reducing configuration complexity and facilitating user configuration.
+
+### Traffic Routing with Istio
+Based on the lua script approach, now we add built-in support for Istio resources VirtualService,
+you can directly use Kruise Rollout to achieve Istio scenarios Canary, A/B Testing release.
+
+### Others
+- Bug fix: wait grace period seconds after pod creation/upgrade. ([#185](https://github.com/openkruise/rollouts/pull/185), [@veophi](https://github.com/veophi))
+
 ## v0.4.0
 ### Kruise-Rollout-Controller
 - Rollout Support Kruise Advanced DaemonSet. ([#134](https://github.com/openkruise/rollouts/pull/134), [@Yadan-Wei](https://github.com/Yadan-Wei))

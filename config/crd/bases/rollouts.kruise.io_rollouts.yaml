@@ -808,7 +808,8 @@ spec:
                               type: object
                             traffic:
                               description: Traffic indicate how many percentage of
-                                traffic the canary pods should receive
+                                traffic the canary pods should receive Value is of
+                                string type and is a percentage, e.g. 5%.
                               type: string
                           type: object
                         type: array
@@ -816,9 +817,10 @@ spec:
                         description: TrafficRoutingRef is TrafficRouting's Name
                         type: string
                       trafficRoutings:
-                        description: TrafficRoutings hosts all the supported service
-                          meshes supported to enable more fine-grained traffic routing
-                          and current only support one TrafficRouting
+                        description: TrafficRoutings support ingress, gateway api
+                          and custom network resource(e.g. istio, apisix) to enable
+                          more fine-grained traffic routing and current only support
+                          one TrafficRouting
                         items:
                           description: TrafficRoutingRef hosts all the different configuration
                             for supported service meshes to enable more fine-grained
