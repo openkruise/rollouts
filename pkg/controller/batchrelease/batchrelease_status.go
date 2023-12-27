@@ -155,6 +155,7 @@ func refreshStatus(release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleas
 	if len(newStatus.ObservedReleasePlanHash) == 0 {
 		newStatus.ObservedReleasePlanHash = util.HashReleasePlanBatches(&release.Spec.ReleasePlan)
 	}
+	newStatus.ObservedRolloutID = release.Spec.ReleasePlan.RolloutID
 }
 
 func isPlanFinalizing(release *v1beta1.BatchRelease) bool {
