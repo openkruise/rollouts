@@ -23,12 +23,10 @@ function GetRulesToPatch(spec, stableService, protocol)
             if #retries == 0 then
                 rule.retries = nil
             end
-            -- skip routes contain matches
-            if (rule.match == nil) then
-                for _, route in ipairs(rule.route) do
-                    if GetHost(route) == stableService then
-                        table.insert(matchedRoutes, rule)
-                    end
+
+            for _, route in ipairs(rule.route) do
+                if GetHost(route) == stableService then
+                    table.insert(matchedRoutes, rule)
                 end
             end
         end
