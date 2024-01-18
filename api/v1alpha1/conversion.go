@@ -19,6 +19,8 @@ package v1alpha1
 import (
 	"fmt"
 
+	"strings"
+
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilpointer "k8s.io/utils/pointer"
@@ -74,7 +76,7 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 				obj.Spec.Strategy.Canary.PatchPodTemplateMetadata.Labels[k] = v
 			}
 		}
-		if src.Annotations[RolloutStyleAnnotation] != string(PartitionRollingStyle) {
+		if !strings.EqualFold(src.Annotations[RolloutStyleAnnotation], string(PartitionRollingStyle)) {
 			obj.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
 		}
 		if src.Annotations[TrafficRoutingAnnotation] != "" {
@@ -211,9 +213,9 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 			dst.Annotations = map[string]string{}
 		}
 		if srcV1beta1.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
-			dst.Annotations[RolloutStyleAnnotation] = string(CanaryRollingStyle)
+			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(CanaryRollingStyle))
 		} else {
-			dst.Annotations[RolloutStyleAnnotation] = string(PartitionRollingStyle)
+			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(PartitionRollingStyle))
 		}
 		if srcV1beta1.Spec.Strategy.Canary.TrafficRoutingRef != "" {
 			dst.Annotations[TrafficRoutingAnnotation] = srcV1beta1.Spec.Strategy.Canary.TrafficRoutingRef
@@ -336,7 +338,7 @@ func (src *BatchRelease) ConvertTo(dst conversion.Hub) error {
 				obj.Spec.ReleasePlan.PatchPodTemplateMetadata.Labels[k] = v
 			}
 		}
-		if src.Annotations[RolloutStyleAnnotation] != string(PartitionRollingStyle) {
+		if !strings.EqualFold(src.Annotations[RolloutStyleAnnotation], string(PartitionRollingStyle)) {
 			obj.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
 		}
 
@@ -416,9 +418,9 @@ func (dst *BatchRelease) ConvertFrom(src conversion.Hub) error {
 			dst.Annotations = map[string]string{}
 		}
 		if srcV1beta1.Spec.ReleasePlan.EnableExtraWorkloadForCanary {
-			dst.Annotations[RolloutStyleAnnotation] = string(CanaryRollingStyle)
+			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(CanaryRollingStyle))
 		} else {
-			dst.Annotations[RolloutStyleAnnotation] = string(PartitionRollingStyle)
+			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(PartitionRollingStyle))
 		}
 
 		// status
