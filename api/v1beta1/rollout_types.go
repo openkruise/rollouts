@@ -101,6 +101,8 @@ type CanaryStrategy struct {
 	EnableExtraWorkloadForCanary bool `json:"enableExtraWorkloadForCanary,omitempty"`
 	// TrafficRoutingRef is TrafficRouting's Name
 	TrafficRoutingRef string `json:"trafficRoutingRef,omitempty"`
+	// canary service will not be generated if DisableGenerateCanaryService is true
+	DisableGenerateCanaryService bool `json:"disableGenerateCanaryService,omitempty"`
 }
 
 type PatchPodTemplateMetadata struct {

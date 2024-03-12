@@ -72,8 +72,9 @@ type Config struct {
 	CanaryService string
 	StableService string
 	// network providers need to be created
-	TrafficConf []v1beta1.ObjectRef
-	OwnerRef    metav1.OwnerReference
+	TrafficConf                  []v1beta1.ObjectRef
+	OwnerRef                     metav1.OwnerReference
+	DisableGenerateCanaryService bool
 }
 
 func NewCustomController(client client.Client, conf Config) (network.NetworkProvider, error) {
