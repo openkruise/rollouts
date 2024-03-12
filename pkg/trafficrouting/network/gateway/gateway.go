@@ -153,7 +153,7 @@ func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1beta1.HTTPRou
 	return r.buildCanaryWeightHttpRoutes(rules, weight)
 }
 
-func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1beta1.HTTPRouteRule, matchs []v1beta1.HttpRouteMatch) []gatewayv1beta1.HTTPRouteRule {
+func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1beta1.HTTPRouteRule, matches []v1beta1.HttpRouteMatch) []gatewayv1beta1.HTTPRouteRule {
 	var desired []gatewayv1beta1.HTTPRouteRule
 	var canarys []gatewayv1beta1.HTTPRouteRule
 	for i := range rules {
@@ -174,9 +174,16 @@ func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1beta1.H
 		var newMatches []gatewayv1beta1.HTTPRouteMatch
 		for j := range canaryRule.Matches {
 			canaryRuleMatch := &canaryRule.Matches[j]
-			for k := range matchs {
+			for k := range matches {
 				canaryRuleMatchBase := *canaryRuleMatch
-				canaryRuleMatchBase.Headers = append(canaryRuleMatchBase.Headers, matchs[k].Headers...)
+				// TODO: shall we check Path equality?
+				if len(matches[k].Headers) > 0 {
+					canaryRuleMatchBase.Headers = append(canaryRuleMatchBase.Headers, matches[k].Headers...)
+				} else if matches[k].Path != nil {
+					canaryRuleMatchBase.Path = matches[k].Path
+				} else if len(matches[k].QueryParams) > 0 {
+					canaryRuleMatchBase.QueryParams = append(canaryRuleMatchBase.QueryParams, matches[k].QueryParams...)
+				}
 				newMatches = append(newMatches, canaryRuleMatchBase)
 			}
 		}

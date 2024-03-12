@@ -146,17 +146,47 @@ type TrafficRoutingStrategy struct {
 	RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter `json:"requestHeaderModifier,omitempty"`
 	// Matches define conditions used for matching the incoming HTTP requests to canary service.
 	// Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
-	// If Gateway API, current only support one match.
+	//
+	// For Gateway API, only a single match rule will be applied since Gateway API use ANDed rules if multiple
+	// ones are defined, i.e. the match will evaluate to true only if all conditions are satisfied.
+	// Header (for backwards-compatibility) > QueryParams
 	// And cannot support both weight and matches, if both are configured, then matches takes precedence.
 	Matches []HttpRouteMatch `json:"matches,omitempty"`
 }
 
 type HttpRouteMatch struct {
+	// Path specifies a HTTP request path matcher. If this field is not
+	// specified, a default prefix match on the "/" path is provided.
+	// Supported list
+	// - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+	//
+	// +optional
+	// +kubebuilder:default={type: "PathPrefix", value: "/"}
+	Path *gatewayv1beta1.HTTPPathMatch `json:"path,omitempty"`
+
 	// Headers specifies HTTP request header matchers. Multiple match values are
 	// ANDed together, meaning, a request must match all the specified headers
 	// to select the route.
+	//
+	// +listType=map
+	// +listMapKey=name
+	// +optional
 	// +kubebuilder:validation:MaxItems=16
 	Headers []gatewayv1beta1.HTTPHeaderMatch `json:"headers,omitempty"`
+
+	// QueryParams specifies HTTP query parameter matchers. Multiple match
+	// values are ANDed together, meaning, a request must match all the
+	// specified query parameters to select the route.
+	// Supported list:
+	// - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+	// - MSE Ingress: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/annotations-supported-by-mse-ingress-gateways-1
+	// - Gateway API
+	//
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	QueryParams []gatewayv1beta1.HTTPQueryParamMatch `json:"queryParams,omitempty"`
 }
 
 // RolloutPause defines a pause stage for a rollout
