@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 	"strings"
 	"testing"
 
@@ -245,7 +246,7 @@ func TestEnsureRoutes(t *testing.T) {
 		expectUnstructureds func() []*unstructured.Unstructured
 	}{
 		{
-			name: "test1, do traffic routing for VirtualService and DestinationRule",
+			name: "Do weight-based traffic routing for VirtualService and DestinationRule",
 			getRoutes: func() *v1beta1.TrafficRoutingStrategy {
 				return &v1beta1.TrafficRoutingStrategy{
 					Traffic: utilpointer.String("5%"),
@@ -293,6 +294,102 @@ func TestEnsureRoutes(t *testing.T) {
 				}
 				u.SetAnnotations(annotations)
 				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}]}]}`
+				var spec interface{}
+				_ = json.Unmarshal([]byte(specStr), &spec)
+				u.Object["spec"] = spec
+				objects = append(objects, u)
+
+				u = &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				annotations = map[string]string{
+					OriginalSpecAnnotation: `{"spec":{"host":"mockb","subsets":[{"labels":{"version":"base"},"name":"version-base"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`,
+				}
+				u.SetAnnotations(annotations)
+				specStr = `{"host":"mockb","subsets":[{"labels":{"version":"base"},"name":"version-base"},{"labels":{"istio.service.tag":"gray"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
+				_ = json.Unmarshal([]byte(specStr), &spec)
+				u.Object["spec"] = spec
+				objects = append(objects, u)
+				return objects
+			},
+			expectState: func() (bool, bool) {
+				done := false
+				hasError := false
+				return done, hasError
+			},
+		},
+		{
+			name: "Do header/queryParam-based traffic routing for VirtualService and DestinationRule",
+			getRoutes: func() *v1beta1.TrafficRoutingStrategy {
+				pathTypePrefix := gatewayv1beta1.PathMatchPathPrefix
+				headerTypeExact := gatewayv1beta1.HeaderMatchExact
+				queryParamRegex := gatewayv1beta1.QueryParamMatchRegularExpression
+				return &v1beta1.TrafficRoutingStrategy{
+					Matches: []v1beta1.HttpRouteMatch{
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Type:  &pathTypePrefix,
+								Value: utilpointer.String("/api/v2"),
+							},
+							Headers: []gatewayv1beta1.HTTPHeaderMatch{
+								{
+									Type:  &headerTypeExact,
+									Name:  "user_id",
+									Value: "123456",
+								},
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Type:  &queryParamRegex,
+									Name:  "user_id",
+									Value: "123*",
+								},
+							},
+						},
+					},
+				}
+			},
+			getUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
+				objects = append(objects, u)
+
+				u = &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
+				objects = append(objects, u)
+				return objects
+			},
+			getConfig: func() Config {
+				return Config{
+					Key:           "rollout-demo",
+					StableService: "echoserver",
+					CanaryService: "echoserver-canary",
+					TrafficConf: []v1beta1.ObjectRef{
+						{
+							APIVersion: "networking.istio.io/v1alpha3",
+							Kind:       "VirtualService",
+							Name:       "echoserver",
+						},
+						{
+							APIVersion: "networking.istio.io/v1alpha3",
+							Kind:       "DestinationRule",
+							Name:       "dr-demo",
+						},
+					},
+				}
+			},
+			expectUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				annotations := map[string]string{
+					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
+					"virtual":              "test",
+				}
+				u.SetAnnotations(annotations)
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"match":[{"uri":{"prefix":"/api/v2"}},{"headers":{"user_id":{"exact":"123456"}}},{"queryParams":{"user_id":{"regex":"123*"}}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
