@@ -23,7 +23,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 	"strings"
 	"testing"
 
@@ -46,6 +45,7 @@ import (
 	luajson "layeh.com/gopher-json"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 	"sigs.k8s.io/yaml"
 )
 
