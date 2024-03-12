@@ -57,6 +57,8 @@ type TrafficRoutingContext struct {
 	CanaryRevision string
 	// newStatus.canaryStatus.LastUpdateTime
 	LastUpdateTime *metav1.Time
+	// won't work for Ingress and Gateway
+	DisableGenerateCanaryService bool
 }
 
 // Manager responsible for adjusting network resources
@@ -82,7 +84,7 @@ func (m *Manager) InitializeTrafficRouting(c *TrafficRoutingContext) error {
 	if err := m.Get(context.TODO(), types.NamespacedName{Namespace: c.Namespace, Name: sService}, service); err != nil {
 		return err
 	}
-	cService := getCanaryServiceName(sService, c.OnlyTrafficRouting)
+	cService := getCanaryServiceName(sService, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
 	// new network provider, ingress or gateway
 	trController, err := newNetworkProvider(m.Client, c, sService, cService)
 	if err != nil {
@@ -116,7 +118,7 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 		return false, err
 	}
 	// canary service name
-	canaryServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting)
+	canaryServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
 	canaryService := &corev1.Service{}
 	canaryService.Namespace = stableService.Namespace
 	canaryService.Name = canaryServiceName
@@ -131,7 +133,7 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 
 	// end-to-end canary deployment scenario(a -> b -> c), if only b or c is released,
 	//and a is not released in this scenario, then the canary service is not needed.
-	if !c.OnlyTrafficRouting {
+	if !c.OnlyTrafficRouting && !c.DisableGenerateCanaryService {
 		if c.StableRevision == "" || c.CanaryRevision == "" {
 			klog.Warningf("%s stableRevision or podTemplateHash can not be empty, and wait a moment", c.Key)
 			return false, nil
@@ -206,7 +208,7 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
 	}
 
-	cServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting)
+	cServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
 	trController, err := newNetworkProvider(m.Client, c, trafficRouting.Service, cServiceName)
 	if err != nil {
 		klog.Errorf("%s newTrafficRoutingController failed: %s", c.Key, err.Error())
@@ -215,6 +217,7 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 
 	cService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: c.Namespace, Name: cServiceName}}
 	// if canary svc has been already cleaned up, just return
+	// even DisableGenerateCanaryService is true, canary svc still exists, because canary service is stable service
 	if err = m.Get(context.TODO(), client.ObjectKeyFromObject(cService), cService); err != nil {
 		if !errors.IsNotFound(err) {
 			klog.Errorf("%s get canary service(%s) failed: %s", c.Key, cServiceName, err.Error())
@@ -259,7 +262,7 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 	}
 	// end to end deployment, don't remove the canary service;
 	// because canary service is stable service
-	if !c.OnlyTrafficRouting {
+	if !c.OnlyTrafficRouting && !c.DisableGenerateCanaryService {
 		// remove canary service
 		err = m.Delete(context.TODO(), cService)
 		if err != nil && !errors.IsNotFound(err) {
@@ -281,6 +284,8 @@ func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, c
 			StableService: sService,
 			TrafficConf:   trafficRouting.CustomNetworkRefs,
 			OwnerRef:      con.OwnerRef,
+			//only set for CustomController, never work for Ingress and Gateway
+			DisableGenerateCanaryService: con.DisableGenerateCanaryService,
 		})
 	}
 	if trafficRouting.Ingress != nil {
@@ -375,8 +380,8 @@ func (m *Manager) restoreStableService(c *TrafficRoutingContext) (bool, error) {
 	return true, nil
 }
 
-func getCanaryServiceName(sService string, onlyTrafficRouting bool) string {
-	if onlyTrafficRouting {
+func getCanaryServiceName(sService string, onlyTrafficRouting bool, disableGenerateCanaryService bool) string {
+	if onlyTrafficRouting || disableGenerateCanaryService {
 		return sService
 	}
 	return fmt.Sprintf("%s-canary", sService)

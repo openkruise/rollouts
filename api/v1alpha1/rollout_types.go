@@ -121,6 +121,8 @@ type CanaryStrategy struct {
 	// only support for canary deployment
 	// +optional
 	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
+	// canary service will not be generated if DisableGenerateCanaryService is true
+	DisableGenerateCanaryService bool `json:"disableGenerateCanaryService,omitempty"`
 }
 
 type PatchPodTemplateMetadata struct {
