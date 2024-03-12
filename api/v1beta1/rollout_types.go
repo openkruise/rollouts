@@ -157,7 +157,7 @@ type TrafficRoutingStrategy struct {
 type HttpRouteMatch struct {
 	// Path specifies a HTTP request path matcher. If this field is not
 	// specified, a default prefix match on the "/" path is provided.
-	// Supported list
+	// Supported list:
 	// - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
 	//
 	// +optional
@@ -180,6 +180,7 @@ type HttpRouteMatch struct {
 	// Supported list:
 	// - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
 	// - MSE Ingress: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/annotations-supported-by-mse-ingress-gateways-1
+	//   Header/Cookie > QueryParams
 	// - Gateway API
 	//
 	// +listType=map
