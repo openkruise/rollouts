@@ -103,8 +103,8 @@ function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stab
         local route = {}
         route["match"] = {}
 
+        local vsMatch = {}
         for key, value in pairs(match) do
-            local vsMatch = {}
             if key == "path" then
                 vsMatch["uri"] = {}
                 local rule = value
@@ -134,8 +134,8 @@ function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stab
                     end
                 end
             end
-            table.insert(route["match"], vsMatch)
         end
+        table.insert(route["match"], vsMatch)
         route.route = {
             {
                 destination = {}

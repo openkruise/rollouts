@@ -32,6 +32,7 @@ import (
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
 	"github.com/openkruise/rollouts/pkg/util/luamanager"
+	"github.com/stretchr/testify/assert"
 	lua "github.com/yuin/gopher-lua"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -230,7 +231,7 @@ func checkEqual(cli client.Client, t *testing.T, expect *unstructured.Unstructur
 		fmt.Println(util.DumpJSON(obj.GetAnnotations()), util.DumpJSON(expect.GetAnnotations()))
 		t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expect.GetAnnotations()), util.DumpJSON(obj.GetAnnotations()))
 	}
-	if util.DumpJSON(expect.Object["spec"]) != util.DumpJSON(obj.Object["spec"]) {
+	if !assert.JSONEq(t, util.DumpJSON(expect.Object["spec"]), util.DumpJSON(obj.Object["spec"])) {
 		t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expect.Object["spec"]), util.DumpJSON(obj.Object["spec"]))
 	}
 }
@@ -389,7 +390,7 @@ func TestEnsureRoutes(t *testing.T) {
 					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"match":[{"uri":{"prefix":"/api/v2"}},{"headers":{"user_id":{"exact":"123456"}}},{"queryParams":{"user_id":{"regex":"123*"}}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"match":[{"headers":{"user_id":{"exact":"123456"}},"queryParams":{"user_id":{"regex":"123*"}},"uri":{"prefix":"/api/v2"}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
