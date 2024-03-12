@@ -19,14 +19,6 @@ package deployment
 import (
 	"context"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
-	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
-	"github.com/openkruise/rollouts/pkg/util"
-	"github.com/openkruise/rollouts/pkg/util/patch"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,6 +27,15 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
+	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
+	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/patch"
 )
 
 type realController struct {
@@ -130,7 +131,11 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 }
 
 func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
-	if rc.object == nil || !deploymentutil.IsUnderRolloutControl(rc.object) {
+	if rc.object == nil {
+		return nil // No need to finalize again.
+	}
+	isUnderRolloutControl := rc.object.Annotations[util.BatchReleaseControlAnnotation] != "" && rc.object.Spec.Paused
+	if !isUnderRolloutControl {
 		return nil // No need to finalize again.
 	}
 
@@ -138,7 +143,9 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	if release.Spec.ReleasePlan.BatchPartition == nil {
 		strategy := util.GetDeploymentStrategy(rc.object)
 		patchData.UpdatePaused(false)
-		patchData.UpdateStrategy(apps.DeploymentStrategy{Type: apps.RollingUpdateDeploymentStrategyType, RollingUpdate: strategy.RollingUpdate})
+		if rc.object.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
+			patchData.UpdateStrategy(apps.DeploymentStrategy{Type: apps.RollingUpdateDeploymentStrategyType, RollingUpdate: strategy.RollingUpdate})
+		}
 		patchData.DeleteAnnotation(v1alpha1.DeploymentStrategyAnnotation)
 		patchData.DeleteAnnotation(v1alpha1.DeploymentExtraStatusAnnotation)
 		patchData.DeleteLabel(v1alpha1.DeploymentStableRevisionLabel)
