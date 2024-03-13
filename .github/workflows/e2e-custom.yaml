@@ -70,7 +70,7 @@ jobs:
           kubectl apply -f ./test/e2e/test_data/customNetworkProvider/lua_script_configmap.yaml
           make ginkgo
           set +e
-          ./bin/ginkgo -timeout 60m -v --focus='Canary rollout with custon network provider' test/e2e
+          ./bin/ginkgo -timeout 60m -v --focus='Canary rollout with custom network provider' test/e2e
           retVal=$?
           # kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
           restartCount=$(kubectl get pod -n kruise-rollout --no-headers | awk '{print $4}')

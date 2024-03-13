@@ -690,13 +690,8 @@ spec:
                                     - name
                                     x-kubernetes-list-type: map
                                   path:
-                                    default:
-                                      type: PathPrefix
-                                      value: /
                                     description: 'Path specifies a HTTP request path
-                                      matcher. If this field is not specified, a default
-                                      prefix match on the "/" path is provided. Supported
-                                      list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest'
+                                      matcher. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest'
                                     properties:
                                       type:
                                         default: PathPrefix

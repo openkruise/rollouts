@@ -155,13 +155,11 @@ type TrafficRoutingStrategy struct {
 }
 
 type HttpRouteMatch struct {
-	// Path specifies a HTTP request path matcher. If this field is not
-	// specified, a default prefix match on the "/" path is provided.
+	// Path specifies a HTTP request path matcher.
 	// Supported list:
 	// - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
 	//
 	// +optional
-	// +kubebuilder:default={type: "PathPrefix", value: "/"}
 	Path *gatewayv1beta1.HTTPPathMatch `json:"path,omitempty"`
 
 	// Headers specifies HTTP request header matchers. Multiple match values are

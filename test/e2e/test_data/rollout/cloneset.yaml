@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: echoserver
-          image: cilium/echoserver:latest
+          image: kicbase/echo-server:latest
           # imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
