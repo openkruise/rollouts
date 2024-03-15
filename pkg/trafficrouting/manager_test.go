@@ -18,6 +18,7 @@ package trafficrouting
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
@@ -32,8 +33,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	utilpointer "k8s.io/utils/pointer"
@@ -180,6 +183,92 @@ var (
 		},
 	}
 
+	demoIstioRollout = &v1beta1.Rollout{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "rollout-demo",
+			Labels: map[string]string{},
+			Annotations: map[string]string{
+				util.RolloutHashAnnotation: "rollout-hash-v1",
+			},
+		},
+		Spec: v1beta1.RolloutSpec{
+			WorkloadRef: v1beta1.ObjectRef{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Name:       "echoserver",
+			},
+			Strategy: v1beta1.RolloutStrategy{
+				Canary: &v1beta1.CanaryStrategy{
+					DisableGenerateCanaryService: false,
+					Steps: []v1beta1.CanaryStep{
+						{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("5%"),
+							},
+							Replicas: &intstr.IntOrString{IntVal: 1},
+						},
+						{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("20%"),
+							},
+							Replicas: &intstr.IntOrString{IntVal: 2},
+						},
+						{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("60%"),
+							},
+							Replicas: &intstr.IntOrString{IntVal: 6},
+						},
+						{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("100%"),
+							},
+							Replicas: &intstr.IntOrString{IntVal: 10},
+						},
+					},
+					TrafficRoutings: []v1beta1.TrafficRoutingRef{
+						{
+							Service: "echoserver",
+							CustomNetworkRefs: []v1beta1.ObjectRef{
+								{
+									APIVersion: "networking.istio.io/v1alpha3",
+									Kind:       "VirtualService",
+									Name:       "echoserver",
+								},
+								{
+									APIVersion: "networking.istio.io/v1alpha3",
+									Kind:       "DestinationRule",
+									Name:       "dr-demo",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Status: v1beta1.RolloutStatus{
+			Phase: v1beta1.RolloutPhaseProgressing,
+			CanaryStatus: &v1beta1.CanaryStatus{
+				ObservedWorkloadGeneration: 1,
+				RolloutHash:                "rollout-hash-v1",
+				ObservedRolloutID:          "rollout-id-1",
+				StableRevision:             "podtemplatehash-v1",
+				CanaryRevision:             "revision-v2",
+				CurrentStepIndex:           1,
+				CurrentStepState:           v1beta1.CanaryStepStateTrafficRouting,
+				PodTemplateHash:            "podtemplatehash-v2",
+				LastUpdateTime:             &metav1.Time{Time: time.Now()},
+			},
+			Conditions: []v1beta1.RolloutCondition{
+				{
+					Type:   v1beta1.RolloutConditionProgressing,
+					Reason: v1alpha1.ProgressingReasonInRolling,
+					Status: corev1.ConditionFalse,
+				},
+			},
+		},
+	}
+
 	demoConf = corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      configuration.RolloutConfigurationName,
@@ -221,6 +310,207 @@ var (
  			`,
 		},
 	}
+
+	istioLuaConfig = corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configuration.RolloutConfigurationName,
+			Namespace: util.GetRolloutNamespace(),
+		},
+		Data: map[string]string{
+			"lua.traffic.routing.VirtualService.networking.istio.io": `
+			spec = obj.data.spec
+
+			if obj.canaryWeight == -1 then
+				obj.canaryWeight = 100
+				obj.stableWeight = 0
+			end
+			
+			function GetHost(destination)
+				local host = destination.destination.host
+				dot_position = string.find(host, ".", 1, true)
+				if (dot_position) then
+					host = string.sub(host, 1, dot_position - 1)
+				end
+				return host
+			end
+			
+			-- find routes of VirtualService with stableService
+			function GetRulesToPatch(spec, stableService, protocol)
+				local matchedRoutes = {}
+				if (spec[protocol] ~= nil) then
+					for _, rule in ipairs(spec[protocol]) do
+						-- skip routes contain matches
+						if (rule.match == nil) then
+							for _, route in ipairs(rule.route) do
+								if GetHost(route) == stableService then
+									table.insert(matchedRoutes, rule)
+								end
+							end
+						end
+					end
+				end
+				return matchedRoutes
+			end
+			
+			function CalculateWeight(route, stableWeight, n)
+				local weight
+				if (route.weight) then
+					weight = math.floor(route.weight * stableWeight / 100)
+				else
+					weight = math.floor(stableWeight / n)
+				end
+				return weight
+			end
+			
+			-- generate routes with matches, insert a rule before other rules, only support http headers, cookies etc.
+			function GenerateRoutesWithMatches(spec, matches, stableService, canaryService)
+				for _, match in ipairs(matches) do
+					local route = {}
+					route["match"] = {}
+					for key, value in pairs(match) do
+						local vsMatch = {}
+						vsMatch[key] = {}
+						for _, rule in ipairs(value) do
+							if rule["type"] == "RegularExpression" then
+								matchType = "regex"
+							elseif rule["type"] == "Exact" then
+								matchType = "exact"
+							elseif rule["type"] == "Prefix" then
+								matchType = "prefix"
+							end
+							if key == "headers" then
+								vsMatch[key][rule["name"]] = {}
+								vsMatch[key][rule["name"]][matchType] = rule.value
+							else
+								vsMatch[key][matchType] = rule.value
+							end
+						end
+						table.insert(route["match"], vsMatch)
+					end
+					route.route = {
+						{
+							destination = {}
+						}
+					}
+					-- stableService == canaryService indicates DestinationRule exists and subset is set to be canary by default
+					if stableService == canaryService then
+						route.route[1].destination.host = stableService
+						route.route[1].destination.subset = "canary"
+					else
+						route.route[1].destination.host = canaryService
+					end
+					table.insert(spec.http, 1, route)
+				end
+			end
+			
+			-- generate routes without matches, change every rule whose host is stableService
+			function GenerateRoutes(spec, stableService, canaryService, stableWeight, canaryWeight, protocol)
+				local matchedRules = GetRulesToPatch(spec, stableService, protocol)
+				for _, rule in ipairs(matchedRules) do
+					local canary
+					if stableService ~= canaryService then
+						canary = {
+							destination = {
+								host = canaryService,
+							},
+							weight = canaryWeight,
+						}
+					else
+						canary = {
+							destination = {
+								host = stableService,
+								subset = "canary",
+							},
+							weight = canaryWeight,
+						}
+					end
+			
+					-- incase there are multiple versions traffic already, do a for-loop
+					for _, route in ipairs(rule.route) do
+						-- update stable service weight
+						route.weight = CalculateWeight(route, stableWeight, #rule.route)
+					end
+					table.insert(rule.route, canary)
+				end
+			end
+			
+			if (obj.matches and next(obj.matches) ~= nil)
+			then
+				GenerateRoutesWithMatches(spec, obj.matches, obj.stableService, obj.canaryService)
+			else
+				GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "http")
+				GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tcp")
+				GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tls")
+			end
+			return obj.data
+			
+ 			`,
+			"lua.traffic.routing.DestinationRule.networking.istio.io": `
+			local spec = obj.data.spec
+			local canary = {}
+			canary.labels = {}
+			canary.name = "canary"
+			local podLabelKey = "istio.service.tag"
+			canary.labels[podLabelKey] = "gray"
+			table.insert(spec.subsets, canary)
+			return obj.data
+			`,
+		},
+	}
+
+	virtualServiceDemo = `
+						{
+							"apiVersion": "networking.istio.io/v1alpha3",
+							"kind": "VirtualService",
+							"metadata": {
+								"name": "echoserver",
+								"annotations": {
+									"virtual": "test"
+								}
+							},
+							"spec": {
+								"hosts": [
+									"echoserver.example.com"
+								],
+								"http": [
+									{
+										"route": [
+											{
+												"destination": {
+													"host": "echoserver"
+												}
+											}
+										]
+									}
+								]
+							}
+						}
+						`
+	destinationRuleDemo = `
+						{
+							"apiVersion": "networking.istio.io/v1alpha3",
+							"kind": "DestinationRule",
+							"metadata": {
+								"name": "dr-demo"
+							},
+							"spec": {
+								"host": "echoserver",
+								"subsets": [
+									{
+										"labels": {
+											"version": "base"
+										},
+										"name": "version-base"
+									}
+								],
+								"trafficPolicy": {
+									"loadBalancer": {
+										"simple": "ROUND_ROBIN"
+									}
+								}
+							}
+						}
+						`
 )
 
 func init() {
@@ -443,6 +733,185 @@ func TestDoTrafficRouting(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDoTrafficRoutingWithIstio(t *testing.T) {
+	const (
+		OriginalSpecAnnotation = "rollouts.kruise.io/original-spec-configuration"
+	)
+	cases := []struct {
+		name                string
+		getService          func() []*corev1.Service
+		getUnstructureds    func() []*unstructured.Unstructured
+		getRollout          func() (*v1beta1.Rollout, *util.Workload)
+		expectUnstructureds func() []*unstructured.Unstructured
+		expectDone          bool
+	}{
+		{
+			name: "Test with DisableGenerateCanaryService: false",
+			getService: func() []*corev1.Service {
+				s1 := demoService.DeepCopy()
+				s1.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v1"
+				return []*corev1.Service{s1}
+			},
+			getUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
+				objects = append(objects, u)
+
+				u = &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
+				objects = append(objects, u)
+				return objects
+			},
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
+				obj := demoIstioRollout.DeepCopy()
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
+				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+			},
+			expectUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				annotations := map[string]string{
+					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
+					"virtual":              "test",
+				}
+				u.SetAnnotations(annotations)
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver-canary"},"weight":5}]}]}`
+				var spec interface{}
+				_ = json.Unmarshal([]byte(specStr), &spec)
+				u.Object["spec"] = spec
+				objects = append(objects, u)
+
+				u = &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				annotations = map[string]string{
+					OriginalSpecAnnotation: `{"spec":{"host":"echoserver","subsets":[{"labels":{"version":"base"},"name":"version-base"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`,
+				}
+				u.SetAnnotations(annotations)
+				specStr = `{"host":"echoserver","subsets":[{"labels":{"version":"base"},"name":"version-base"},{"labels":{"istio.service.tag":"gray"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
+				_ = json.Unmarshal([]byte(specStr), &spec)
+				u.Object["spec"] = spec
+				objects = append(objects, u)
+				return objects
+			},
+			// Rollout(/rollout-demo) is doing trafficRouting({"traffic":"5%"}), and wait a moment
+			expectDone: true,
+		},
+		{
+			name: "Test with DisableGenerateCanaryService: true",
+			getService: func() []*corev1.Service {
+				s1 := demoService.DeepCopy()
+				s1.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v1"
+				// s2 := demoService.DeepCopy()
+				// s2.Name = "echoserver-canary"
+				// s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
+				return []*corev1.Service{s1}
+			},
+			getUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
+				objects = append(objects, u)
+
+				u = &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
+				objects = append(objects, u)
+				return objects
+			},
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
+				obj := demoIstioRollout.DeepCopy()
+				// set DisableGenerateCanaryService as true
+				obj.Spec.Strategy.Canary.DisableGenerateCanaryService = true
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
+				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+			},
+			expectUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				annotations := map[string]string{
+					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
+					"virtual":              "test",
+				}
+				u.SetAnnotations(annotations)
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver","subset":"canary"},"weight":5}]}]}`
+				var spec interface{}
+				_ = json.Unmarshal([]byte(specStr), &spec)
+				u.Object["spec"] = spec
+				objects = append(objects, u)
+
+				u = &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				annotations = map[string]string{
+					OriginalSpecAnnotation: `{"spec":{"host":"echoserver","subsets":[{"labels":{"version":"base"},"name":"version-base"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`,
+				}
+				u.SetAnnotations(annotations)
+				specStr = `{"host":"echoserver","subsets":[{"labels":{"version":"base"},"name":"version-base"},{"labels":{"istio.service.tag":"gray"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
+				_ = json.Unmarshal([]byte(specStr), &spec)
+				u.Object["spec"] = spec
+				objects = append(objects, u)
+				return objects
+			},
+			// Rollout(/rollout-demo) is doing trafficRouting({"traffic":"5%"}), and wait a moment
+			expectDone: true,
+		},
+	}
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			ss := cs.getService()
+			client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ss[0], istioLuaConfig.DeepCopy()).Build()
+			for _, obj := range cs.getUnstructureds() {
+				err := client.Create(context.TODO(), obj)
+				if err != nil {
+					t.Fatalf("failed to create objects: %s", err.Error())
+				}
+			}
+			rollout, workload := cs.getRollout()
+			newStatus := rollout.Status.DeepCopy()
+			currentStep := rollout.Spec.Strategy.Canary.Steps[newStatus.CanaryStatus.CurrentStepIndex-1]
+			c := &TrafficRoutingContext{
+				Key:                          fmt.Sprintf("Rollout(%s/%s)", rollout.Namespace, rollout.Name),
+				Namespace:                    rollout.Namespace,
+				ObjectRef:                    rollout.Spec.Strategy.Canary.TrafficRoutings,
+				Strategy:                     currentStep.TrafficRoutingStrategy,
+				OwnerRef:                     *metav1.NewControllerRef(rollout, v1beta1.SchemeGroupVersion.WithKind("Rollout")),
+				RevisionLabelKey:             workload.RevisionLabelKey,
+				StableRevision:               newStatus.CanaryStatus.StableRevision,
+				CanaryRevision:               newStatus.CanaryStatus.PodTemplateHash,
+				LastUpdateTime:               newStatus.CanaryStatus.LastUpdateTime,
+				DisableGenerateCanaryService: rollout.Spec.Strategy.Canary.DisableGenerateCanaryService,
+			}
+			manager := NewTrafficRoutingManager(client)
+			err := manager.InitializeTrafficRouting(c)
+			if err != nil {
+				t.Fatalf("InitializeTrafficRouting failed: %s", err)
+			}
+			_, err = manager.DoTrafficRouting(c)
+			if err != nil {
+				t.Fatalf("DoTrafficRouting failed: %s", err)
+			}
+			// may return false due to in the course of doing trafficRouting, let's do it again
+			done, err := manager.DoTrafficRouting(c)
+			if err != nil {
+				t.Fatalf("DoTrafficRouting failed: %s", err)
+			}
+			if cs.expectDone != done {
+				t.Fatalf("DoTrafficRouting expect(%v), but get(%v)", cs.expectDone, done)
+			}
+			unst := cs.expectUnstructureds()
+			for _, obj := range unst {
+				checkUnstructureEqual(client, t, obj)
+			}
+		})
+	}
+
 }
 
 func TestFinalisingTrafficRouting(t *testing.T) {
@@ -712,4 +1181,20 @@ func getEmptyObject(gvk schema.GroupVersionKind) client.Object {
 		return &netv1.Ingress{}
 	}
 	return nil
+}
+
+func checkUnstructureEqual(cli client.Client, t *testing.T, expect *unstructured.Unstructured) {
+	obj := &unstructured.Unstructured{}
+	obj.SetAPIVersion(expect.GetAPIVersion())
+	obj.SetKind(expect.GetKind())
+	if err := cli.Get(context.TODO(), types.NamespacedName{Namespace: expect.GetNamespace(), Name: expect.GetName()}, obj); err != nil {
+		t.Fatalf("Get object failed: %s", err.Error())
+	}
+	if !reflect.DeepEqual(obj.GetAnnotations(), expect.GetAnnotations()) {
+		fmt.Println(util.DumpJSON(obj.GetAnnotations()), util.DumpJSON(expect.GetAnnotations()))
+		t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expect.GetAnnotations()), util.DumpJSON(obj.GetAnnotations()))
+	}
+	if util.DumpJSON(expect.Object["spec"]) != util.DumpJSON(obj.Object["spec"]) {
+		t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expect.Object["spec"]), util.DumpJSON(obj.Object["spec"]))
+	}
 }
