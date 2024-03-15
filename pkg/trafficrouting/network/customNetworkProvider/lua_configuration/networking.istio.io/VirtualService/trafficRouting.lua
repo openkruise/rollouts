@@ -103,26 +103,39 @@ function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stab
         local route = {}
         route["match"] = {}
 
+        local vsMatch = {}
         for key, value in pairs(match) do
-            local vsMatch = {}
-            vsMatch[key] = {}
-            for _, rule in ipairs(value) do
+            if key == "path" then
+                vsMatch["uri"] = {}
+                local rule = value
                 if rule["type"] == "RegularExpression" then
                     matchType = "regex"
                 elseif rule["type"] == "Exact" then
                     matchType = "exact"
-                elseif rule["type"] == "Prefix" then
+                elseif rule["type"] == "PathPrefix" then
                     matchType = "prefix"
                 end
-                if key == "headers" then
-                    vsMatch[key][rule["name"]] = {}
-                    vsMatch[key][rule["name"]][matchType] = rule.value
-                else
-                    vsMatch[key][matchType] = rule.value
+                vsMatch["uri"][matchType] = rule.value
+            else
+                vsMatch[key] = {}
+                for _, rule in ipairs(value) do
+                    if rule["type"] == "RegularExpression" then
+                        matchType = "regex"
+                    elseif rule["type"] == "Exact" then
+                        matchType = "exact"
+                    elseif rule["type"] == "Prefix" then
+                        matchType = "prefix"
+                    end
+                    if key == "headers" or key == "queryParams" then
+                        vsMatch[key][rule["name"]] = {}
+                        vsMatch[key][rule["name"]][matchType] = rule.value
+                    else
+                        vsMatch[key][matchType] = rule.value
+                    end
                 end
             end
-            table.insert(route["match"], vsMatch)
         end
+        table.insert(route["match"], vsMatch)
         route.route = {
             {
                 destination = {}

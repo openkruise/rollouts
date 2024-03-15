@@ -57,6 +57,10 @@ var (
 				annotations["nginx.ingress.kubernetes.io/canary-by-header"] = nil
 				annotations["nginx.ingress.kubernetes.io/canary-by-header-pattern"] = nil
 				annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = nil
+				-- MSE extended annotations
+				annotations["mse.ingress.kubernetes.io/canary-by-query"] = nil
+				annotations["mse.ingress.kubernetes.io/canary-by-query-pattern"] = nil
+				annotations["mse.ingress.kubernetes.io/canary-by-query-value"] = nil
 				annotations["nginx.ingress.kubernetes.io/canary-weight"] = nil
 				if ( obj.weight ~= "-1" )
 				then
@@ -79,17 +83,28 @@ var (
 					return annotations
 				end
 				for _,match in ipairs(obj.matches) do
-					header = match.headers[1]
-					if ( header.name == "canary-by-cookie" )
-					then
-						annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = header.value
-					else
-						annotations["nginx.ingress.kubernetes.io/canary-by-header"] = header.name
-						if ( header.type == "RegularExpression" )
+					if match.headers and next(match.headers) ~= nil then
+						header = match.headers[1]
+						if ( header.name == "canary-by-cookie" )
 						then
-							annotations["nginx.ingress.kubernetes.io/canary-by-header-pattern"] = header.value
+							annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = header.value
 						else
-							annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = header.value
+							annotations["nginx.ingress.kubernetes.io/canary-by-header"] = header.name
+							if ( header.type == "RegularExpression" )
+							then
+								annotations["nginx.ingress.kubernetes.io/canary-by-header-pattern"] = header.value
+							else
+								annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = header.value
+							end
+						end
+					else
+						queryParam = match.queryParams[1]
+						annotations["nginx.ingress.kubernetes.io/canary-by-query"] = queryParam.name
+						if ( queryParam.type == "RegularExpression" )
+						then
+							annotations["nginx.ingress.kubernetes.io/canary-by-query-pattern"] = queryParam.value
+						else
+							annotations["nginx.ingress.kubernetes.io/canary-by-query-value"] = queryParam.value
 						end
 					end
 				end
@@ -513,6 +528,128 @@ func TestEnsureRoutes(t *testing.T) {
 				expect.Annotations["alb.ingress.kubernetes.io/canary"] = "true"
 				expect.Annotations["alb.ingress.kubernetes.io/backend-svcs-protocols"] = `{"echoserver-canary":"http"}`
 				expect.Annotations["alb.ingress.kubernetes.io/conditions.echoserver-canary"] = `[{"cookieConfig":{"values":[{"key":"demo1","value":"value1"},{"key":"demo2","value":"value2"}]},"type":"Cookie"},{"sourceIpConfig":{"values":["192.168.0.0/16","172.16.0.0/16"]},"type":"SourceIp"},{"headerConfig":{"key":"headername","values":["headervalue1","headervalue2"]},"type":"Header"}]`
+				expect.Spec.Rules[0].HTTP.Paths = expect.Spec.Rules[0].HTTP.Paths[:1]
+				expect.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				expect.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return expect
+			},
+		},
+		{
+			name: "ensure routes test5",
+			getConfigmap: func() *corev1.ConfigMap {
+				return demoConf.DeepCopy()
+			},
+			getIngress: func() []*netv1.Ingress {
+				canary := demoIngress.DeepCopy()
+				canary.Name = "echoserver-canary"
+				canary.Annotations["nginx.ingress.kubernetes.io/canary"] = "true"
+				canary.Annotations["nginx.ingress.kubernetes.io/canary-weight"] = "0"
+				canary.Annotations["mse.ingress.kubernetes.io/service-subset"] = ""
+				canary.Spec.Rules[0].HTTP.Paths = canary.Spec.Rules[0].HTTP.Paths[:1]
+				canary.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
+			},
+			getRoutes: func() *v1beta1.CanaryStep {
+				return &v1beta1.CanaryStep{
+					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+						Traffic: nil,
+						Matches: []v1beta1.HttpRouteMatch{
+							// querystring
+							{
+								QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+									{
+										Name:  "user_id",
+										Value: "123456",
+									},
+								},
+							},
+						},
+						RequestHeaderModifier: &gatewayv1beta1.HTTPRequestHeaderFilter{
+							Set: []gatewayv1beta1.HTTPHeader{
+								{
+									Name:  "gray",
+									Value: "blue",
+								},
+								{
+									Name:  "gray",
+									Value: "green",
+								},
+							},
+						},
+					},
+				}
+			},
+			expectIngress: func() *netv1.Ingress {
+				expect := demoIngress.DeepCopy()
+				expect.Name = "echoserver-canary"
+				expect.Annotations["nginx.ingress.kubernetes.io/canary"] = "true"
+				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-query"] = "user_id"
+				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-query-value"] = "123456"
+				expect.Annotations["mse.ingress.kubernetes.io/request-header-control-update"] = "gray blue\ngray green\n"
+				expect.Annotations["mse.ingress.kubernetes.io/service-subset"] = "gray"
+				expect.Spec.Rules[0].HTTP.Paths = expect.Spec.Rules[0].HTTP.Paths[:1]
+				expect.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				expect.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return expect
+			},
+		},
+		{
+			name: "ensure routes test5",
+			getConfigmap: func() *corev1.ConfigMap {
+				return demoConf.DeepCopy()
+			},
+			getIngress: func() []*netv1.Ingress {
+				canary := demoIngress.DeepCopy()
+				canary.Name = "echoserver-canary"
+				canary.Annotations["nginx.ingress.kubernetes.io/canary"] = "true"
+				canary.Annotations["nginx.ingress.kubernetes.io/canary-weight"] = "0"
+				canary.Annotations["mse.ingress.kubernetes.io/service-subset"] = ""
+				canary.Spec.Rules[0].HTTP.Paths = canary.Spec.Rules[0].HTTP.Paths[:1]
+				canary.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				canary.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
+			},
+			getRoutes: func() *v1beta1.CanaryStep {
+				iType := gatewayv1beta1.QueryParamMatchRegularExpression
+				return &v1beta1.CanaryStep{
+					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+						Traffic: nil,
+						Matches: []v1beta1.HttpRouteMatch{
+							// querystring
+							{
+								QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+									{
+										Name:  "user_id",
+										Value: "123*",
+										Type:  &iType,
+									},
+								},
+							},
+						},
+						RequestHeaderModifier: &gatewayv1beta1.HTTPRequestHeaderFilter{
+							Set: []gatewayv1beta1.HTTPHeader{
+								{
+									Name:  "gray",
+									Value: "blue",
+								},
+								{
+									Name:  "gray",
+									Value: "green",
+								},
+							},
+						},
+					},
+				}
+			},
+			expectIngress: func() *netv1.Ingress {
+				expect := demoIngress.DeepCopy()
+				expect.Name = "echoserver-canary"
+				expect.Annotations["nginx.ingress.kubernetes.io/canary"] = "true"
+				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-query"] = "user_id"
+				expect.Annotations["nginx.ingress.kubernetes.io/canary-by-query-pattern"] = "123*"
+				expect.Annotations["mse.ingress.kubernetes.io/request-header-control-update"] = "gray blue\ngray green\n"
+				expect.Annotations["mse.ingress.kubernetes.io/service-subset"] = "gray"
 				expect.Spec.Rules[0].HTTP.Paths = expect.Spec.Rules[0].HTTP.Paths[:1]
 				expect.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				expect.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
