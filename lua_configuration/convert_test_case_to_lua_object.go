@@ -100,11 +100,14 @@ func objectToTable(path string) error {
 					Annotations: testCase.Original.GetAnnotations(),
 					Spec:        testCase.Original.Object["spec"],
 				},
-				Matches:       step.TrafficRoutingStrategy.Matches,
-				CanaryWeight:  *weight,
-				StableWeight:  100 - *weight,
-				CanaryService: canaryService,
-				StableService: stableService,
+				Matches:          step.TrafficRoutingStrategy.Matches,
+				CanaryWeight:     *weight,
+				StableWeight:     100 - *weight,
+				CanaryService:    canaryService,
+				StableService:    stableService,
+				StableRevision:   "podtemplatehash-v1",
+				CanaryRevision:   "podtemplatehash-v2",
+				RevisionLabelKey: "pod-template-hash",
 			}
 			uList[fmt.Sprintf("step_%d", i)] = data
 		}
@@ -128,11 +131,14 @@ func objectToTable(path string) error {
 				Annotations: testCase.Original.GetAnnotations(),
 				Spec:        testCase.Original.Object["spec"],
 			},
-			Matches:       matches,
-			CanaryWeight:  *weight,
-			StableWeight:  100 - *weight,
-			CanaryService: canaryService,
-			StableService: stableService,
+			Matches:          matches,
+			CanaryWeight:     *weight,
+			StableWeight:     100 - *weight,
+			CanaryService:    canaryService,
+			StableService:    stableService,
+			StableRevision:   "podtemplatehash-v1",
+			CanaryRevision:   "podtemplatehash-v2",
+			RevisionLabelKey: "pod-template-hash",
 		}
 		uList["steps_0"] = data
 	} else {

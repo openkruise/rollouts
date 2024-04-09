@@ -159,7 +159,7 @@ function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stab
         -- if stableService == canaryService, then do e2e release
         if stableService == canaryService then
             route.route[1].destination.host = stableService
-            route.route[1].destination.subset = "canary"
+            route.route[1].destination.subset = obj.canaryName
         else
             route.route[1].destination.host = canaryService
         end
@@ -189,7 +189,7 @@ function GenerateRoutes(spec, stableService, canaryService, stableWeight, canary
             canary = {
                 destination = {
                     host = stableService,
-                    subset = "canary",
+                    subset = obj.canaryName,
                 },
                 weight = canaryWeight,
             }

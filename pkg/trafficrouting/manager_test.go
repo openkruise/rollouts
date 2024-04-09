@@ -319,12 +319,12 @@ var (
 		Data: map[string]string{
 			"lua.traffic.routing.VirtualService.networking.istio.io": `
 			spec = obj.data.spec
-
+			
 			if obj.canaryWeight == -1 then
 				obj.canaryWeight = 100
 				obj.stableWeight = 0
 			end
-			
+
 			function GetHost(destination)
 				local host = destination.destination.host
 				dot_position = string.find(host, ".", 1, true)
@@ -333,7 +333,7 @@ var (
 				end
 				return host
 			end
-			
+
 			-- find routes of VirtualService with stableService
 			function GetRulesToPatch(spec, stableService, protocol)
 				local matchedRoutes = {}
@@ -351,7 +351,7 @@ var (
 				end
 				return matchedRoutes
 			end
-			
+
 			function CalculateWeight(route, stableWeight, n)
 				local weight
 				if (route.weight) then
@@ -361,7 +361,7 @@ var (
 				end
 				return weight
 			end
-			
+
 			-- generate routes with matches, insert a rule before other rules, only support http headers, cookies etc.
 			function GenerateRoutesWithMatches(spec, matches, stableService, canaryService)
 				for _, match in ipairs(matches) do
@@ -395,14 +395,14 @@ var (
 					-- stableService == canaryService indicates DestinationRule exists and subset is set to be canary by default
 					if stableService == canaryService then
 						route.route[1].destination.host = stableService
-						route.route[1].destination.subset = "canary"
+						route.route[1].destination.subset = obj.canaryName
 					else
 						route.route[1].destination.host = canaryService
 					end
 					table.insert(spec.http, 1, route)
 				end
 			end
-			
+
 			-- generate routes without matches, change every rule whose host is stableService
 			function GenerateRoutes(spec, stableService, canaryService, stableWeight, canaryWeight, protocol)
 				local matchedRules = GetRulesToPatch(spec, stableService, protocol)
@@ -419,12 +419,12 @@ var (
 						canary = {
 							destination = {
 								host = stableService,
-								subset = "canary",
+								subset = obj.canaryName,
 							},
 							weight = canaryWeight,
 						}
 					end
-			
+
 					-- incase there are multiple versions traffic already, do a for-loop
 					for _, route in ipairs(rule.route) do
 						-- update stable service weight
@@ -433,7 +433,7 @@ var (
 					table.insert(rule.route, canary)
 				end
 			end
-			
+
 			if (obj.matches and next(obj.matches) ~= nil)
 			then
 				GenerateRoutesWithMatches(spec, obj.matches, obj.stableService, obj.canaryService)
@@ -443,22 +443,66 @@ var (
 				GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tls")
 			end
 			return obj.data
+
 			
  			`,
 			"lua.traffic.routing.DestinationRule.networking.istio.io": `
 			local spec = obj.data.spec
+			local podLabelKey = obj.revisionLabelKey
+
+			if spec.subsets == nil then
+				spec.subsets = {}
+			end
+
+			-- selector lables might come from pod-template-hash and patchPodTemplateMetadata
+			-- now we only support pod-template-hash
+			local stableLabels = {}
+			if obj.stableRevision ~= nil and obj.stableRevision ~= "" then
+				stableLabels[podLabelKey] = obj.stableRevision
+			end
+			local canaryLabels = {}
+			if obj.canaryRevision ~= nil and obj.canaryRevision ~= "" then
+				canaryLabels[podLabelKey] = obj.canaryRevision
+			end
+			local StableNameAlreadyExist = false
+
+			-- if stableName already exists, just appened the lables
+			for _, subset in ipairs(spec.subsets) do
+				if subset.name == obj.stableName then
+					StableNameAlreadyExist = true
+					if next(stableLabels) ~= nil then
+						subset.labels = subset.labels or {}
+						for key, value in pairs(stableLabels) do
+							subset.labels[key] = value
+						end
+					end
+				end
+			end
+			-- if stableName doesn't exist, create it and its labels
+			if not StableNameAlreadyExist then
+				local stable = {}
+				stable.name = obj.stableName
+				if next(stableLabels) ~= nil then
+					stable.labels = stableLabels
+				end
+				table.insert(spec.subsets, stable)
+			end
+
+			-- Aussue the canaryName never exist, create it and its labels
 			local canary = {}
-			canary.labels = {}
-			canary.name = "canary"
-			local podLabelKey = "istio.service.tag"
-			canary.labels[podLabelKey] = "gray"
+			canary.name = obj.canaryName
+			if next(canaryLabels) ~= nil then
+				canary.labels = canaryLabels
+			end
 			table.insert(spec.subsets, canary)
+
+
 			return obj.data
 			`,
 		},
 	}
 
-	virtualServiceDemo = `
+	virtualServiceDemo1 = `
 						{
 							"apiVersion": "networking.istio.io/v1alpha3",
 							"kind": "VirtualService",
@@ -486,7 +530,54 @@ var (
 							}
 						}
 						`
-	destinationRuleDemo = `
+	destinationRuleDemo1 = `
+						{
+							"apiVersion": "networking.istio.io/v1alpha3",
+							"kind": "DestinationRule",
+							"metadata": {
+								"name": "dr-demo"
+							},
+							"spec": {
+								"host": "echoserver",
+								"trafficPolicy": {
+									"loadBalancer": {
+										"simple": "ROUND_ROBIN"
+									}
+								}
+							}
+						}
+						`
+
+	virtualServiceDemo2 = `
+						{
+							"apiVersion": "networking.istio.io/v1alpha3",
+							"kind": "VirtualService",
+							"metadata": {
+								"name": "echoserver",
+								"annotations": {
+									"virtual": "test"
+								}
+							},
+							"spec": {
+								"hosts": [
+									"echoserver.example.com"
+								],
+								"http": [
+									{
+										"route": [
+											{
+												"destination": {
+													"host": "echoserver",
+													"subset": "hello"
+												}
+											}
+										]
+									}
+								]
+							}
+						}
+						`
+	destinationRuleDemo2 = `
 						{
 							"apiVersion": "networking.istio.io/v1alpha3",
 							"kind": "DestinationRule",
@@ -497,10 +588,7 @@ var (
 								"host": "echoserver",
 								"subsets": [
 									{
-										"labels": {
-											"version": "base"
-										},
-										"name": "version-base"
+										"name":"hello"
 									}
 								],
 								"trafficPolicy": {
@@ -757,12 +845,12 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 			getUnstructureds: func() []*unstructured.Unstructured {
 				objects := make([]*unstructured.Unstructured, 0)
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo1))
 				u.SetAPIVersion("networking.istio.io/v1alpha3")
 				objects = append(objects, u)
 
 				u = &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo1))
 				u.SetAPIVersion("networking.istio.io/v1alpha3")
 				objects = append(objects, u)
 				return objects
@@ -770,12 +858,17 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoIstioRollout.DeepCopy()
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
+				obj.Spec.Strategy.Canary.TrafficRoutings[0].AdditionalParams = map[string]string{
+					// map is empty, thus the subset names will be default value: stable and canary
+					// v1beta1.IstioStableSubsetName: "version-base",
+					// v1beta1.IstioCanarySubsetName: "canary",
+				}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
 			expectUnstructureds: func() []*unstructured.Unstructured {
 				objects := make([]*unstructured.Unstructured, 0)
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo1))
 				annotations := map[string]string{
 					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
 					"virtual":              "test",
@@ -788,12 +881,12 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 				objects = append(objects, u)
 
 				u = &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo1))
 				annotations = map[string]string{
-					OriginalSpecAnnotation: `{"spec":{"host":"echoserver","subsets":[{"labels":{"version":"base"},"name":"version-base"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`,
+					OriginalSpecAnnotation: `{"spec":{"host":"echoserver","trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`,
 				}
 				u.SetAnnotations(annotations)
-				specStr = `{"host":"echoserver","subsets":[{"labels":{"version":"base"},"name":"version-base"},{"labels":{"istio.service.tag":"gray"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
+				specStr = `{"host":"echoserver","subsets":[{"labels":{"pod-template-hash":"podtemplatehash-v1"},"name":"stable"},{"labels":{"pod-template-hash":"podtemplatehash-v2"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
 				objects = append(objects, u)
@@ -815,12 +908,12 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 			getUnstructureds: func() []*unstructured.Unstructured {
 				objects := make([]*unstructured.Unstructured, 0)
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo2))
 				u.SetAPIVersion("networking.istio.io/v1alpha3")
 				objects = append(objects, u)
 
 				u = &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo2))
 				u.SetAPIVersion("networking.istio.io/v1alpha3")
 				objects = append(objects, u)
 				return objects
@@ -830,30 +923,34 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 				// set DisableGenerateCanaryService as true
 				obj.Spec.Strategy.Canary.DisableGenerateCanaryService = true
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
+				obj.Spec.Strategy.Canary.TrafficRoutings[0].AdditionalParams = map[string]string{
+					v1beta1.IstioStableSubsetName: "hello",
+					v1beta1.IstioCanarySubsetName: "world",
+				}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
 			expectUnstructureds: func() []*unstructured.Unstructured {
 				objects := make([]*unstructured.Unstructured, 0)
 				u := &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo2))
 				annotations := map[string]string{
-					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
+					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver","subset":"hello"}}]}]},"annotations":{"virtual":"test"}}`,
 					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":95},{"destination":{"host":"echoserver","subset":"canary"},"weight":5}]}]}`
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver","subset":"hello"},"weight":95},{"destination":{"host":"echoserver","subset":"world"},"weight":5}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
 				objects = append(objects, u)
 
 				u = &unstructured.Unstructured{}
-				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
+				_ = u.UnmarshalJSON([]byte(destinationRuleDemo2))
 				annotations = map[string]string{
-					OriginalSpecAnnotation: `{"spec":{"host":"echoserver","subsets":[{"labels":{"version":"base"},"name":"version-base"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`,
+					OriginalSpecAnnotation: `{"spec":{"host":"echoserver","subsets":[{"name":"hello"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`,
 				}
 				u.SetAnnotations(annotations)
-				specStr = `{"host":"echoserver","subsets":[{"labels":{"version":"base"},"name":"version-base"},{"labels":{"istio.service.tag":"gray"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
+				specStr = `{"host":"echoserver","subsets":[{"labels":{"pod-template-hash":"podtemplatehash-v1"},"name":"hello"},{"labels":{"pod-template-hash":"podtemplatehash-v2"},"name":"world"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
 				objects = append(objects, u)

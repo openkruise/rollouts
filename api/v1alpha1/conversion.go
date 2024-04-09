@@ -126,6 +126,7 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 func ConversionToV1beta1TrafficRoutingRef(src TrafficRoutingRef) (dst v1beta1.TrafficRoutingRef) {
 	dst.Service = src.Service
 	dst.GracePeriodSeconds = src.GracePeriodSeconds
+	dst.AdditionalParams = src.AdditionalParams
 	if src.Ingress != nil {
 		dst.Ingress = &v1beta1.IngressTrafficRouting{
 			ClassType: src.Ingress.ClassType,

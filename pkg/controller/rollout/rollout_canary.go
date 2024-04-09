@@ -250,14 +250,14 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, erro
 	if err != nil || !done {
 		return done, err
 	}
-	// 3. set workload.pause=false; set workload.partition=0
-	done, err = m.finalizingBatchRelease(c)
+	// 3. modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods.
+	done, err = m.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
+	c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
 	if err != nil || !done {
 		return done, err
 	}
-	// 4. modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods.
-	done, err = m.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
-	c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
+	// 4. set workload.pause=false; set workload.partition=0
+	done, err = m.finalizingBatchRelease(c)
 	if err != nil || !done {
 		return done, err
 	}

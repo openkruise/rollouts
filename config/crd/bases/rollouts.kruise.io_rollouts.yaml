@@ -344,6 +344,11 @@ spec:
                             for supported service meshes to enable more fine-grained
                             traffic routing
                           properties:
+                            additionalParams:
+                              additionalProperties:
+                                type: string
+                              description: 'vaild keys:'
+                              type: object
                             customNetworkRefs:
                               description: CustomNetworkRefs hold a list of custom
                                 providers to route traffic
@@ -834,6 +839,11 @@ spec:
                             for supported service meshes to enable more fine-grained
                             traffic routing
                           properties:
+                            additionalParams:
+                              additionalProperties:
+                                type: string
+                              description: 'vaild keys:'
+                              type: object
                             customNetworkRefs:
                               description: CustomNetworkRefs hold a list of custom
                                 providers to route traffic
