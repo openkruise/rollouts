@@ -97,7 +97,8 @@ var (
 								annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = header.value
 							end
 						end
-					else
+					end
+					if match.queryParams and next(match.queryParams) ~= nil then
 						queryParam = match.queryParams[1]
 						annotations["nginx.ingress.kubernetes.io/canary-by-query"] = queryParam.name
 						if ( queryParam.type == "RegularExpression" )

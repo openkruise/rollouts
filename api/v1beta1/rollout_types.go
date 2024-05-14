@@ -149,9 +149,8 @@ type TrafficRoutingStrategy struct {
 	// Matches define conditions used for matching incoming HTTP requests to the canary service.
 	// Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
 	//
-	// For Gateway API, only a single match rule will be applied since Gateway API use ANDed rules if multiple
-	// ones are defined, i.e. the match will evaluate to true only if all conditions are satisfied.
-	// And cannot support both weight and matches, if both are configured, then matches takes precedence.
+	// It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured.
+	// In such cases, Matches takes precedence.
 	Matches []HttpRouteMatch `json:"matches,omitempty"`
 }
 
