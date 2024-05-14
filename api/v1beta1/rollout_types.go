@@ -146,12 +146,11 @@ type TrafficRoutingStrategy struct {
 	//
 	// +optional
 	RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter `json:"requestHeaderModifier,omitempty"`
-	// Matches define conditions used for matching the incoming HTTP requests to canary service.
-	// Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
+	// Matches define conditions used for matching incoming HTTP requests to the canary service.
+	// Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
 	//
 	// For Gateway API, only a single match rule will be applied since Gateway API use ANDed rules if multiple
 	// ones are defined, i.e. the match will evaluate to true only if all conditions are satisfied.
-	// Header (for backwards-compatibility) > QueryParams
 	// And cannot support both weight and matches, if both are configured, then matches takes precedence.
 	Matches []HttpRouteMatch `json:"matches,omitempty"`
 }
