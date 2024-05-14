@@ -626,12 +626,9 @@ spec:
                                 incoming HTTP requests to the canary service. Each
                                 match is independent, i.e. this rule will be matched
                                 as long as **any** one of the matches is satisfied.
-                                \n For Gateway API, only a single match rule will
-                                be applied since Gateway API use ANDed rules if multiple
-                                ones are defined, i.e. the match will evaluate to
-                                true only if all conditions are satisfied. And cannot
-                                support both weight and matches, if both are configured,
-                                then matches takes precedence."
+                                \n It cannot support Traffic (weight-based routing)
+                                and Matches simultaneously, if both are configured.
+                                In such cases, Matches takes precedence."
                               items:
                                 properties:
                                   headers:
@@ -698,7 +695,10 @@ spec:
                                     x-kubernetes-list-type: map
                                   path:
                                     description: 'Path specifies a HTTP request path
-                                      matcher. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest'
+                                      matcher. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+                                      - GatewayAPI: If path is defined, the whole
+                                      HttpRouteMatch will be used as a standalone
+                                      matcher'
                                     properties:
                                       type:
                                         default: PathPrefix
