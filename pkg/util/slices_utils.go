@@ -13,8 +13,12 @@ limitations under the License.
 
 package util
 
-func Filter[E any](s []E, f func(E) bool) []E {
-	s2 := make([]E, 0, len(s))
+import (
+	"github.com/openkruise/rollouts/api/v1beta1"
+)
+
+func FilterHttpRouteMatch(s []v1beta1.HttpRouteMatch, f func(v1beta1.HttpRouteMatch) bool) []v1beta1.HttpRouteMatch {
+	s2 := make([]v1beta1.HttpRouteMatch, 0, len(s))
 	for _, e := range s {
 		if f(e) {
 			s2 = append(s2, e)

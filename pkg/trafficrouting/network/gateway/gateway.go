@@ -156,10 +156,10 @@ func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1beta1.HTTPRou
 func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1beta1.HTTPRouteRule, matches []v1beta1.HttpRouteMatch) []gatewayv1beta1.HTTPRouteRule {
 	var desired []gatewayv1beta1.HTTPRouteRule
 	var canaries []gatewayv1beta1.HTTPRouteRule
-	pathMatches := util.Filter(matches, func(match v1beta1.HttpRouteMatch) bool {
+	pathMatches := util.FilterHttpRouteMatch(matches, func(match v1beta1.HttpRouteMatch) bool {
 		return match.Path != nil
 	})
-	nonPathMatches := util.Filter(matches, func(match v1beta1.HttpRouteMatch) bool {
+	nonPathMatches := util.FilterHttpRouteMatch(matches, func(match v1beta1.HttpRouteMatch) bool {
 		return match.Path == nil
 	})
 	for i := range rules {
