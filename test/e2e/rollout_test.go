@@ -434,25 +434,45 @@ var _ = SIGDescribe("Rollout", func() {
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("20%"),
 					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "20%",
+					},
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("40%"),
+					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "40%",
 					},
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("60%"),
 					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "60%",
+					},
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("80%"),
 					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "80%",
+					},
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("90%"),
+					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "90%",
 					},
 				},
 			}
@@ -608,6 +628,10 @@ var _ = SIGDescribe("Rollout", func() {
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("60%"),
+					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "60%",
 					},
 					Pause: v1beta1.RolloutPause{},
 				},
@@ -887,15 +911,27 @@ var _ = SIGDescribe("Rollout", func() {
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("20%"),
 					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "20%",
+					},
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("40%"),
 					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "40%",
+					},
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("60%"),
+					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "60%",
 					},
 					Pause: v1beta1.RolloutPause{Duration: utilpointer.Int32(10)},
 				},
@@ -903,11 +939,19 @@ var _ = SIGDescribe("Rollout", func() {
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("80%"),
 					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "80%",
+					},
 					Pause: v1beta1.RolloutPause{Duration: utilpointer.Int32(10)},
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("100%"),
+					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "100%",
 					},
 					Pause: v1beta1.RolloutPause{Duration: utilpointer.Int32(1)},
 				},
@@ -1074,6 +1118,10 @@ var _ = SIGDescribe("Rollout", func() {
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("20%"),
 					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "20%",
+					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
@@ -1082,11 +1130,19 @@ var _ = SIGDescribe("Rollout", func() {
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("40%"),
 					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "40%",
+					},
 					Pause: v1beta1.RolloutPause{},
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("60%"),
+					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "60%",
 					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(10),
@@ -1095,6 +1151,10 @@ var _ = SIGDescribe("Rollout", func() {
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("100%"),
+					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "100%",
 					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(0),
@@ -1215,6 +1275,10 @@ var _ = SIGDescribe("Rollout", func() {
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("20%"),
 					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "20%",
+					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(10),
 					},
@@ -1222,6 +1286,10 @@ var _ = SIGDescribe("Rollout", func() {
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("40%"),
+					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "40%",
 					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(10),
@@ -1231,11 +1299,19 @@ var _ = SIGDescribe("Rollout", func() {
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("60%"),
 					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "60%",
+					},
 					Pause: v1beta1.RolloutPause{},
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: utilpointer.String("100%"),
+					},
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "100%",
 					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(0),
@@ -1349,40 +1425,45 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
-					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.String("20%"),
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "20%",
 					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.String("40%"),
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "40%",
 					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.String("60%"),
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "60%",
 					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.String("80%"),
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "80%",
 					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(5),
 					},
 				},
 				{
-					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.String("100%"),
+					Replicas: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "100%",
 					},
 					Pause: v1beta1.RolloutPause{
 						Duration: utilpointer.Int32(0),
