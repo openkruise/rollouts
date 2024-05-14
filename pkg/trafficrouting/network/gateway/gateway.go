@@ -155,7 +155,13 @@ func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1beta1.HTTPRou
 
 func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1beta1.HTTPRouteRule, matches []v1beta1.HttpRouteMatch) []gatewayv1beta1.HTTPRouteRule {
 	var desired []gatewayv1beta1.HTTPRouteRule
-	var canarys []gatewayv1beta1.HTTPRouteRule
+	var canaries []gatewayv1beta1.HTTPRouteRule
+	pathMatches := util.Filter(matches, func(match v1beta1.HttpRouteMatch) bool {
+		return match.Path != nil
+	})
+	nonPathMatches := util.Filter(matches, func(match v1beta1.HttpRouteMatch) bool {
+		return match.Path == nil
+	})
 	for i := range rules {
 		rule := rules[i]
 		if _, canaryRef := getServiceBackendRef(rule, r.conf.CanaryService); canaryRef != nil {
@@ -172,25 +178,35 @@ func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1beta1.H
 		canaryRule.BackendRefs = []gatewayv1beta1.HTTPBackendRef{*canaryRef}
 		// set canary headers in httpRoute
 		var newMatches []gatewayv1beta1.HTTPRouteMatch
+		for _, pathMatch := range pathMatches {
+			newMatches = append(newMatches, gatewayv1beta1.HTTPRouteMatch{
+				Path:        pathMatch.Path,
+				Headers:     pathMatch.Headers,
+				QueryParams: pathMatch.QueryParams,
+			})
+		}
+		// reset pathMatches
+		pathMatches = nil
+		if len(nonPathMatches) == 0 && len(newMatches) == 0 {
+			continue
+		}
 		for j := range canaryRule.Matches {
 			canaryRuleMatch := &canaryRule.Matches[j]
-			for k := range matches {
+			for k := range nonPathMatches {
 				canaryRuleMatchBase := *canaryRuleMatch
-				// TODO: shall we check Path equality?
 				if len(matches[k].Headers) > 0 {
 					canaryRuleMatchBase.Headers = append(canaryRuleMatchBase.Headers, matches[k].Headers...)
-				} else if matches[k].Path != nil {
-					canaryRuleMatchBase.Path = matches[k].Path
-				} else if len(matches[k].QueryParams) > 0 {
+				}
+				if len(matches[k].QueryParams) > 0 {
 					canaryRuleMatchBase.QueryParams = append(canaryRuleMatchBase.QueryParams, matches[k].QueryParams...)
 				}
 				newMatches = append(newMatches, canaryRuleMatchBase)
 			}
 		}
 		canaryRule.Matches = newMatches
-		canarys = append(canarys, *canaryRule)
+		canaries = append(canaries, *canaryRule)
 	}
-	desired = append(desired, canarys...)
+	desired = append(desired, canaries...)
 	return desired
 }
 

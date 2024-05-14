@@ -159,6 +159,7 @@ type HttpRouteMatch struct {
 	// Path specifies a HTTP request path matcher.
 	// Supported list:
 	// - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+	// - GatewayAPI: If path is defined, the whole HttpRouteMatch will be used as a standalone matcher
 	//
 	// +optional
 	Path *gatewayv1beta1.HTTPPathMatch `json:"path,omitempty"`
