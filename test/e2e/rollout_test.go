@@ -1690,7 +1690,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// update success image, v3
 			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version3"})
-			workload.Spec.Template.Spec.Containers[0].Image = "jmalloc/echo-server:latest"
+			workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:latest"
 			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
 			UpdateDeployment(workload)
 			By("Update deployment image from(v2) -> to(v3)")
@@ -3121,7 +3121,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// rollback -> v1
 			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
-			workload.Spec.Template.Spec.Containers[0].Image = "jmalloc/echo-server:latest"
+			workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:latest"
 			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
 			UpdateCloneSet(workload)
 			By("Rollback deployment env NODE_NAME from(version2) -> to(version1)")
@@ -3447,7 +3447,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// v1 -> v2, start rollout action
 			//newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
-			workload.Spec.Template.Spec.Containers[0].Image = "jmalloc/echo-server:0.3.5"
+			workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:1.10.2"
 			UpdateCloneSet(workload)
 			By("Update cloneSet env NODE_NAME from(version1) -> to(version2)")
 			// wait step 1 complete
@@ -3877,7 +3877,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 				// rollback -> v1
 				newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
-				workload.Spec.Template.Spec.Containers[0].Image = "jmalloc/echo-server:latest"
+				workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:latest"
 				workload.Spec.Template.Spec.Containers[0].Env = newEnvs
 				UpdateNativeStatefulSet(workload)
 				By("Rollback deployment env NODE_NAME from(version2) -> to(version1)")
@@ -3964,7 +3964,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 				// v1 -> v2, start rollout action
 				//newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
-				workload.Spec.Template.Spec.Containers[0].Image = "jmalloc/echo-server:0.3.5"
+				workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:1.10.2"
 				UpdateNativeStatefulSet(workload)
 				By("Update cloneSet env NODE_NAME from(version1) -> to(version2)")
 				// wait step 1 complete
@@ -4388,7 +4388,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 				// rollback -> v1
 				newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
-				workload.Spec.Template.Spec.Containers[0].Image = "jmalloc/echo-server:latest"
+				workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:latest"
 				workload.Spec.Template.Spec.Containers[0].Env = newEnvs
 				UpdateAdvancedStatefulSet(workload)
 				By("Rollback deployment env NODE_NAME from(version2) -> to(version1)")
@@ -4475,7 +4475,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 				// v1 -> v2, start rollout action
 				//newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
-				workload.Spec.Template.Spec.Containers[0].Image = "jmalloc/echo-server:0.3.5"
+				workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:1.10.2"
 				UpdateAdvancedStatefulSet(workload)
 				By("Update cloneSet env NODE_NAME from(version1) -> to(version2)")
 				// wait step 1 complete
