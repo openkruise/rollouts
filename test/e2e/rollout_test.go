@@ -3444,7 +3444,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
 			stableRevision := rollout.Status.CanaryStatus.StableRevision
 			By("check rollout status & paused success")
-			g
+
 			// v1 -> v2, start rollout action
 			//newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
 			workload.Spec.Template.Spec.Containers[0].Image = "jmalloc/echo-server:0.3.5"
