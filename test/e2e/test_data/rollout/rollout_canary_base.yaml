@@ -1,29 +1,25 @@
-apiVersion: rollouts.kruise.io/v1beta1
+apiVersion: rollouts.kruise.io/v1alpha1
 kind: Rollout
 metadata:
   name: rollouts-demo
 spec:
-  workloadRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: echoserver
+  objectRef:
+    workloadRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: echoserver
   strategy:
     canary:
       steps:
-      - replicas: "20%"
-        weight: "20%"
+      - weight: 20
         pause: {}
-      - replicas: "40%"
-        weight: "40%"
+      - weight: 40
         pause: {duration: 10}
-      - replicas: "60%"
-        weight: "60%"
+      - weight: 60
         pause: {duration: 10}
-      - replicas: "80%"
-        weight: "80%"
+      - weight: 80
         pause: {duration: 10}
-      - replicas: "100%"
-        weight: "100%"
+      - weight: 100
         pause: {duration: 0}
       trafficRoutings:
       - service: echoserver

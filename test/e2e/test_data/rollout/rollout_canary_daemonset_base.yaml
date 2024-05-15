@@ -1,4 +1,4 @@
-apiVersion: rollouts.kruise.io/v1beta1
+apiVersion: rollouts.kruise.io/v1alpha1
 kind: Rollout
 metadata:
   name: rollouts-test
@@ -8,13 +8,14 @@ metadata:
   annotations:
     rollouts.kruise.io/rolling-style: partition
 spec:
-  # rollout of published workloads, currently only supports Deployment, CloneSet, StatefulSet, Advanced StatefulSet
-  workloadRef:
-    apiVersion: apps.kruise.io/v1alpha1
-    kind: DaemonSet
-    name: fluentd-elasticsearch
+  objectRef:
+    # rollout of published workloads, currently only supports Deployment, CloneSet, StatefulSet, Advanced StatefulSet
+    workloadRef:
+      apiVersion: apps.kruise.io/v1alpha1
+      kind: DaemonSet
+      name: fluentd-elasticsearch
   strategy:
     canary:
       steps:
       - replicas: 1
-      - replicas: "100%"
+      - replicas: 100%
