@@ -108,7 +108,7 @@ ginkgo: ## Download ginkgo locally if necessary.
 
 HELM = $(shell pwd)/bin/helm
 helm: ## Download helm locally if necessary.
-	$(call go-get-tool,$(HELM),helm.sh/helm/v3/cmd/helm@latest)
+	$(call go-get-tool,$(HELM),helm.sh/helm/v3/cmd/helm@v3.14.0)
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
