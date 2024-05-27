@@ -47,7 +47,7 @@ type RolloutState struct {
 
 func IsRollbackInBatchPolicy(rollout *rolloutv1beta1.Rollout, labels map[string]string) bool {
 	// currently, only support the case of no traffic routing
-	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
+	if rollout.Spec.Strategy.HasTrafficRoutings() {
 		return false
 	}
 	workloadRef := rollout.Spec.WorkloadRef
@@ -175,4 +175,18 @@ func NextBatchIndex(rollout *rolloutv1beta1.Rollout, CurrentStepIndex int32) int
 		return -1
 	}
 	return CurrentStepIndex + 1
+}
+
+// check if NextStepIndex is legal, if not, correct it
+func CheckNextBatchIndexWithCorrect(rollout *rolloutv1beta1.Rollout) {
+	if rollout == nil {
+		return
+	}
+	nextStep := rollout.Status.GetSubStatus().NextStepIndex
+	if nextStep <= 0 || nextStep > int32(len(rollout.Spec.Strategy.GetSteps())) {
+		rollout.Status.GetSubStatus().NextStepIndex = NextBatchIndex(rollout, rollout.Status.GetSubStatus().CurrentStepIndex)
+		if nextStep != rollout.Status.GetSubStatus().NextStepIndex {
+			klog.Infof("rollout(%s/%s) invalid nextStepIndex(%d), reset to %d", rollout.Namespace, rollout.Name, nextStep, rollout.Status.GetSubStatus().NextStepIndex)
+		}
+	}
 }

@@ -81,7 +81,7 @@ func objectToTable(path string) error {
 	rollout := testCase.Rollout
 	trafficRouting := testCase.TrafficRouting
 	if rollout != nil {
-		steps := rollout.Spec.Strategy.Canary.Steps
+		steps := rollout.Spec.Strategy.GetSteps()
 		for i, step := range steps {
 			var weight *int32
 			if step.TrafficRoutingStrategy.Traffic != nil {
@@ -92,7 +92,7 @@ func objectToTable(path string) error {
 				weight = utilpointer.Int32(-1)
 			}
 			var canaryService string
-			stableService := rollout.Spec.Strategy.Canary.TrafficRoutings[0].Service
+			stableService := rollout.Spec.Strategy.GetTrafficRouting()[0].Service
 			canaryService = fmt.Sprintf("%s-canary", stableService)
 			data := &custom.LuaData{
 				Data: custom.Data{

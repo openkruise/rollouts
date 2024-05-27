@@ -87,6 +87,13 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 		}
 	}
 	switch canaryStatus.CurrentStepState {
+	// before CanaryStepStateUpgrade, handle some special cases, to prevent traffic loss
+	case v1beta1.CanaryStepStateInit:
+		// placeholder for the later traffic modification Pull Request
+		canaryStatus.NextStepIndex = util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex)
+		canaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+		fallthrough
+
 	case v1beta1.CanaryStepStateUpgrade:
 		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1beta1.CanaryStepStateUpgrade)
 		done, err := m.doCanaryUpgrade(c)
@@ -144,7 +151,8 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 		if len(c.Rollout.Spec.Strategy.Canary.Steps) > int(canaryStatus.CurrentStepIndex) {
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			canaryStatus.CurrentStepIndex++
-			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+			canaryStatus.NextStepIndex = util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex)
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
 			klog.Infof("rollout(%s/%s) canary step from(%d) -> to(%d)", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.CurrentStepIndex-1, canaryStatus.CurrentStepIndex)
 		} else {
 			klog.Infof("rollout(%s/%s) canary run all steps, and completed", c.Rollout.Namespace, c.Rollout.Name)
@@ -201,15 +209,13 @@ func (m *canaryReleaseManager) doCanaryMetricsAnalysis(c *RolloutContext) (bool,
 }
 
 func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
+	if m.doCanaryJump(c) {
+		klog.Infof("rollout(%s/%s) canary step jumped", c.Rollout.Namespace, c.Rollout.Name)
+		return false, nil
+	}
 	canaryStatus := c.NewStatus.CanaryStatus
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	steps := len(c.Rollout.Spec.Strategy.Canary.Steps)
-	// If it is the last step, and 100% of pods, then return true
-	if int32(steps) == canaryStatus.CurrentStepIndex {
-		if currentStep.Replicas != nil && currentStep.Replicas.StrVal == "100%" {
-			return true, nil
-		}
-	}
 	cond := util.GetRolloutCondition(*c.NewStatus, v1beta1.RolloutConditionProgressing)
 	// need manual confirmation
 	if currentStep.Pause.Duration == nil {
@@ -230,6 +236,34 @@ func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 	}
 	c.RecheckTime = &expectedTime
 	return false, nil
+}
+
+func (m *canaryReleaseManager) doCanaryJump(c *RolloutContext) (jumped bool) {
+	canaryStatus := c.NewStatus.CanaryStatus
+	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
+	nextIndex := canaryStatus.NextStepIndex
+	if nextIndex != util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex) && nextIndex > 0 {
+		currentIndexBackup := canaryStatus.CurrentStepIndex
+		canaryStatus.CurrentStepIndex = nextIndex
+		canaryStatus.NextStepIndex = util.NextBatchIndex(c.Rollout, nextIndex)
+		nextStep := c.Rollout.Spec.Strategy.Canary.Steps[nextIndex-1]
+		// if the Replicas between currentStep and nextStep is same, we can jump to
+		// the TrafficRouting step; otherwise, we should start from the Init step
+		if reflect.DeepEqual(nextStep.Replicas, currentStep.Replicas) {
+			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
+			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
+				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStatePaused, canaryStatus.CurrentStepState)
+		} else {
+			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
+			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
+				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStatePaused, v1beta1.CanaryStepStateInit)
+		}
+		klog.Infof("rollout(%s/%s) canary step from(%d) -> to(%d)", c.Rollout.Namespace, c.Rollout.Name, currentIndexBackup, canaryStatus.CurrentStepIndex)
+		return true
+	}
+	return false
 }
 
 // cleanup after rollout is completed or finished

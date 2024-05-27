@@ -2684,7 +2684,7 @@ var _ = SIGDescribe("Rollout", func() {
 		})
 	})
 
-	KruiseDescribe("Canary rollout with custon network provider", func() {
+	KruiseDescribe("Canary rollout with custom network provider", func() {
 		It("V1->V2: Route traffic with header/queryParams/path matches and weight using rollout for VirtualService", func() {
 			By("Creating Rollout...")
 			rollout := &v1beta1.Rollout{}

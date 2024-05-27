@@ -242,7 +242,7 @@ func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstruct
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
 		return false, err
-	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
+	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
 		return false, nil
 	}
 
@@ -310,7 +310,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
 		return false, err
-	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
+	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
 		return false, nil
 	}
 	rss, err := h.Finder.GetReplicaSetsForDeployment(newObj)
@@ -319,7 +319,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		return false, nil
 	}
 	// if traffic routing, workload must only be one version of Pods
-	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
+	if rollout.Spec.Strategy.HasTrafficRoutings() {
 		if len(rss) != 1 {
 			klog.Warningf("Because deployment(%s/%s) have multiple versions of Pods, so can not enter rollout progressing", newObj.Namespace, newObj.Name)
 			return false, nil
@@ -334,6 +334,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		if newObj.Labels == nil {
 			newObj.Labels = map[string]string{}
 		}
+		// blueGreen also need the stable revision label
 		newObj.Labels[appsv1alpha1.DeploymentStableRevisionLabel] = stableRS.Labels[apps.DefaultDeploymentUniqueLabelKey]
 	}
 
@@ -365,11 +366,11 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
 		return false, err
-	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
+	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
 		return false, nil
 	}
 	// if traffic routing, there must only be one version of Pods
-	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 && newObj.Status.Replicas != newObj.Status.UpdatedReplicas {
+	if rollout.Spec.Strategy.HasTrafficRoutings() && newObj.Status.Replicas != newObj.Status.UpdatedReplicas {
 		klog.Warningf("Because cloneSet(%s/%s) have multiple versions of Pods, so can not enter rollout progressing", newObj.Namespace, newObj.Name)
 		return false, nil
 	}
@@ -398,7 +399,7 @@ func (h *WorkloadHandler) handleDaemonSet(newObj, oldObj *kruiseappsv1alpha1.Dae
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
 		return false, err
-	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
+	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
 		return false, nil
 	}
 
