@@ -26,6 +26,16 @@ import (
 
 var _ = SIGDescribe("Advanced Deployment", func() {
 	var namespace string
+
+	DumpAllResources := func() {
+		deploy := &apps.DeploymentList{}
+		k8sClient.List(context.TODO(), deploy, client.InNamespace(namespace))
+		fmt.Println(util.DumpJSON(deploy))
+		rs := &apps.ReplicaSetList{}
+		k8sClient.List(context.TODO(), rs, client.InNamespace(namespace))
+		fmt.Println(util.DumpJSON(rs))
+	}
+
 	defaultRetry := wait.Backoff{
 		Steps:    10,
 		Duration: 10 * time.Millisecond,
@@ -132,7 +142,12 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 
 	CheckReplicas := func(deployment *apps.Deployment, replicas, available, updated int32) {
 		var clone *apps.Deployment
+		start := time.Now()
 		Eventually(func() bool {
+			if start.Add(time.Minute * 2).Before(time.Now()) {
+				DumpAllResources()
+				Expect(true).Should(BeFalse())
+			}
 			clone = &apps.Deployment{}
 			err := GetObject(deployment.Namespace, deployment.Name, clone)
 			Expect(err).NotTo(HaveOccurred())
@@ -239,6 +254,7 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 			deployment.Namespace = namespace
 			Expect(ReadYamlToObject("./test_data/deployment/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			CreateObject(deployment)
+			CheckReplicas(deployment, 5, 5, 5)
 			UpdateDeployment(deployment, "version2")
 			UpdatePartitionWithCheck(deployment, intstr.FromInt(0))
 			UpdatePartitionWithCheck(deployment, intstr.FromInt(1))
@@ -255,6 +271,7 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 			Expect(ReadYamlToObject("./test_data/deployment/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Spec.Replicas = pointer.Int32(10)
 			CreateObject(deployment)
+			CheckReplicas(deployment, 10, 10, 10)
 			UpdateDeployment(deployment, "version2")
 			UpdatePartitionWithCheck(deployment, intstr.FromString("0%"))
 			UpdatePartitionWithCheck(deployment, intstr.FromString("40%"))
@@ -287,6 +304,7 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 				`{"rollingStyle":"Partition","rollingUpdate":{"maxUnavailable":1,"maxSurge":0}}`
 			deployment.Spec.MinReadySeconds = 10
 			CreateObject(deployment)
+			CheckReplicas(deployment, 5, 5, 5)
 			UpdateDeployment(deployment, "version2")
 			UpdatePartitionWithCheck(deployment, intstr.FromInt(0))
 			UpdatePartitionWithoutCheck(deployment, intstr.FromInt(3))
@@ -303,6 +321,7 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 			deployment.Namespace = namespace
 			Expect(ReadYamlToObject("./test_data/deployment/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			CreateObject(deployment)
+			CheckReplicas(deployment, 5, 5, 5)
 			UpdateDeployment(deployment, "version2")
 			UpdatePartitionWithCheck(deployment, intstr.FromInt(0))
 			UpdatePartitionWithCheck(deployment, intstr.FromInt(2))
@@ -317,6 +336,7 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 			deployment.Namespace = namespace
 			Expect(ReadYamlToObject("./test_data/deployment/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			CreateObject(deployment)
+			CheckReplicas(deployment, 5, 5, 5)
 			UpdateDeployment(deployment, "version2")
 			UpdatePartitionWithCheck(deployment, intstr.FromInt(0))
 			UpdatePartitionWithCheck(deployment, intstr.FromInt(2))
@@ -335,6 +355,7 @@ var _ = SIGDescribe("Advanced Deployment", func() {
 			Expect(ReadYamlToObject("./test_data/deployment/deployment.yaml", deployment)).ToNot(HaveOccurred())
 			deployment.Annotations["rollouts.kruise.io/deployment-strategy"] = `{"rollingUpdate":{"maxUnavailable":0,"maxSurge":1}}`
 			CreateObject(deployment)
+			CheckReplicas(deployment, 5, 5, 5)
 			UpdateDeployment(deployment, "version2", "busybox:not-exists")
 			UpdatePartitionWithoutCheck(deployment, intstr.FromInt(1))
 			CheckReplicas(deployment, 6, 5, 1)

@@ -204,18 +204,25 @@ var _ = SIGDescribe("Rollout", func() {
 	}
 
 	ResumeRolloutCanary := func(name string) {
+		clone := &v1alpha1.Rollout{}
+		Expect(GetObject(name, clone)).NotTo(HaveOccurred())
+		currentIndex := clone.Status.CanaryStatus.CurrentStepIndex
 		Eventually(func() bool {
 			clone := &v1alpha1.Rollout{}
 			Expect(GetObject(name, clone)).NotTo(HaveOccurred())
-			if clone.Status.CanaryStatus.CurrentStepState != v1alpha1.CanaryStepStatePaused {
+			if clone.Status.CanaryStatus.CurrentStepIndex == currentIndex && clone.Status.CanaryStatus.CurrentStepState == v1alpha1.CanaryStepStatePaused {
+				klog.Info("patch to stepReady")
+				body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, v1alpha1.CanaryStepStateReady)
+				Expect(k8sClient.Status().Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))).NotTo(HaveOccurred())
+				return false
+			} else {
 				fmt.Println("resume rollout success, and CurrentStepState", util.DumpJSON(clone.Status))
 				return true
 			}
-
-			body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, v1alpha1.CanaryStepStateReady)
-			Expect(k8sClient.Status().Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))).NotTo(HaveOccurred())
-			return false
-		}, 10*time.Second, time.Second).Should(BeTrue())
+			// interval was critical before:
+			// too small: StepReady could be overidden by StepPaused
+			// too big: StepReady could progress to StepPaused of next Step
+		}, 10*time.Second, 2*time.Second).Should(BeTrue())
 	}
 
 	WaitDeploymentAllPodsReady := func(deployment *apps.Deployment) {
