@@ -198,27 +198,40 @@ func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus
 		Name:      targetRef.Name,
 	}
 
-	switch targetRef.APIVersion {
-	case appsv1alpha1.GroupVersion.String():
-		if targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
+	rollingStyle := release.Spec.ReleasePlan.RollingStyle
+	klog.Infof("BatchRelease(%v) using %s-style release controller for this batch release", klog.KObj(release), rollingStyle)
+	switch rollingStyle {
+	case v1beta1.BlueGreenRollingStyle:
+		// if targetRef.APIVersion == appsv1alpha1.GroupVersion.String() && targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
+		// 	klog.InfoS("Using CloneSet bluegreen-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+		// 	return partitionstyle.NewControlPlane(cloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+		// }
+		// if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
+		// 	klog.InfoS("Using Deployment bluegreen-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+		// 	return bluegreenstyle.NewControlPlane(deployment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+		// }
+
+	case v1beta1.CanaryRollingStyle:
+		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
+			klog.InfoS("Using Deployment canary-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+			return canarystyle.NewControlPlane(canarydeployment.NewController, r.client, r.recorder, release, newStatus, targetKey), nil
+		}
+		fallthrough
+
+	case v1beta1.PartitionRollingStyle, "":
+		if targetRef.APIVersion == appsv1alpha1.GroupVersion.String() && targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
 			klog.InfoS("Using CloneSet partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
 			return partitionstyle.NewControlPlane(cloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
-		if targetRef.Kind == reflect.TypeOf(appsv1alpha1.DaemonSet{}).Name() {
+		if targetRef.APIVersion == appsv1alpha1.GroupVersion.String() && targetRef.Kind == reflect.TypeOf(appsv1alpha1.DaemonSet{}).Name() {
 			klog.InfoS("Using DaemonSet partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
 			return partitionstyle.NewControlPlane(daemonset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
-
-	case apps.SchemeGroupVersion.String():
-		if targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
-			if !release.Spec.ReleasePlan.EnableExtraWorkloadForCanary {
-				klog.InfoS("Using Deployment partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-				return partitionstyle.NewControlPlane(partitiondeployment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
-			} else {
-				klog.InfoS("Using Deployment canary-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-				return canarystyle.NewControlPlane(canarydeployment.NewController, r.client, r.recorder, release, newStatus, targetKey), nil
-			}
+		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
+			klog.InfoS("Using Deployment partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+			return partitionstyle.NewControlPlane(partitiondeployment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
+		klog.Info("Partition, but use StatefulSet-Like partition-style release controller for this batch release")
 	}
 
 	// try to use StatefulSet-like rollout controller by default

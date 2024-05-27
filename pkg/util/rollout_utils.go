@@ -164,3 +164,18 @@ func DumpJSON(o interface{}) string {
 func EncodeHash(data string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(data)))
 }
+
+func NextBatchIndex(rollout *rolloutv1beta1.Rollout, CurrentStepIndex int32) int32 {
+	if rollout == nil {
+		return 0
+	}
+	allSteps := int32(len(rollout.Spec.Strategy.GetSteps()))
+	// In initilization, CurrentStep is set to Completed, and NextStepIndex is set to 0
+	// when Current Step is the last step (Progeessing or Completed), we set NextStepIndex to 0
+	// Patching NextStepIndex to 0 is meaningless for user, if doing so, nothing happen
+	// and step jump won't happen
+	if CurrentStepIndex >= allSteps {
+		return 0
+	}
+	return CurrentStepIndex + 1
+}

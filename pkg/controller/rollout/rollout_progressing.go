@@ -66,17 +66,38 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 	switch cond.Reason {
 	case v1alpha1.ProgressingReasonInitializing:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
-		// new canaryStatus
-		newStatus.CanaryStatus = &v1beta1.CanaryStatus{
-			ObservedWorkloadGeneration: rolloutContext.Workload.Generation,
-			RolloutHash:                rolloutContext.Rollout.Annotations[util.RolloutHashAnnotation],
-			ObservedRolloutID:          getRolloutID(rolloutContext.Workload),
-			StableRevision:             rolloutContext.Workload.StableRevision,
-			CanaryRevision:             rolloutContext.Workload.CanaryRevision,
-			CurrentStepIndex:           1,
-			CurrentStepState:           v1beta1.CanaryStepStateUpgrade,
-			LastUpdateTime:             &metav1.Time{Time: time.Now()},
+		// clear and create
+		newStatus.Clear()
+		if rollout.Spec.Strategy.IsBlueGreenRelease() {
+			newStatus.BlueGreenStatus = &v1beta1.BlueGreenStatus{
+				CommonStatus: v1beta1.CommonStatus{
+					ObservedWorkloadGeneration: rolloutContext.Workload.Generation,
+					RolloutHash:                rolloutContext.Rollout.Annotations[util.RolloutHashAnnotation],
+					ObservedRolloutID:          getRolloutID(rolloutContext.Workload),
+					StableRevision:             rolloutContext.Workload.StableRevision,
+					CurrentStepIndex:           1,
+					NextStepIndex:              util.NextBatchIndex(rollout, 1),
+					CurrentStepState:           v1beta1.CanaryStepStateInit,
+					LastUpdateTime:             &metav1.Time{Time: time.Now()},
+				},
+				CanaryRevision: rolloutContext.Workload.CanaryRevision,
+			}
+		} else {
+			newStatus.CanaryStatus = &v1beta1.CanaryStatus{
+				CommonStatus: v1beta1.CommonStatus{
+					ObservedWorkloadGeneration: rolloutContext.Workload.Generation,
+					RolloutHash:                rolloutContext.Rollout.Annotations[util.RolloutHashAnnotation],
+					ObservedRolloutID:          getRolloutID(rolloutContext.Workload),
+					StableRevision:             rolloutContext.Workload.StableRevision,
+					CurrentStepIndex:           1,
+					NextStepIndex:              util.NextBatchIndex(rollout, 1),
+					CurrentStepState:           v1beta1.CanaryStepStateUpgrade,
+					LastUpdateTime:             &metav1.Time{Time: time.Now()},
+				},
+				CanaryRevision: rolloutContext.Workload.CanaryRevision,
+			}
 		}
+
 		done, err := r.doProgressingInitializing(rolloutContext)
 		if err != nil {
 			klog.Errorf("rollout(%s/%s) doProgressingInitializing error(%s)", rollout.Namespace, rollout.Name, err.Error())

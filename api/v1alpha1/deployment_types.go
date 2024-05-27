@@ -59,6 +59,10 @@ const (
 	PartitionRollingStyle RollingStyleType = "Partition"
 	// CanaryRollingStyle means rolling in canary way, and will create a canary Deployment.
 	CanaryRollingStyle RollingStyleType = "Canary"
+	// BlueGreenRollingStyle means rolling in blue-green way, and will NOT create a canary Deployment.
+	BlueGreenRollingStyle RollingStyleType = "BlueGreen"
+	// Empty means both Canary and BlueGreen are empty
+	EmptyRollingStyle RollingStyleType = "Empty"
 )
 
 // DeploymentExtraStatus is extra status field for Advanced Deployment
@@ -74,7 +78,7 @@ type DeploymentExtraStatus struct {
 }
 
 func SetDefaultDeploymentStrategy(strategy *DeploymentStrategy) {
-	if strategy.RollingStyle == CanaryRollingStyle {
+	if strategy.RollingStyle != PartitionRollingStyle {
 		return
 	}
 	if strategy.RollingUpdate == nil {
