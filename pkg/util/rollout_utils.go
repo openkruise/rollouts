@@ -47,7 +47,7 @@ type RolloutState struct {
 
 func IsRollbackInBatchPolicy(rollout *rolloutv1beta1.Rollout, labels map[string]string) bool {
 	// currently, only support the case of no traffic routing
-	if len(rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
+	if rollout.Spec.Strategy.HasTrafficRoutings() {
 		return false
 	}
 	workloadRef := rollout.Spec.WorkloadRef

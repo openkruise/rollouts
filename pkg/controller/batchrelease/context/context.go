@@ -73,20 +73,20 @@ func (bc *BatchContext) Log() string {
 // IsBatchReady return nil if the batch is ready
 func (bc *BatchContext) IsBatchReady() error {
 	if bc.UpdatedReplicas < bc.DesiredUpdatedReplicas {
-		return fmt.Errorf("current batch not ready: updated replicas not satified")
+		return fmt.Errorf("current batch not ready: updated replicas not satisfied, UpdatedReplicas %d < DesiredUpdatedReplicas %d", bc.UpdatedReplicas, bc.DesiredUpdatedReplicas)
 	}
 
 	unavailableToleration := allowedUnavailable(bc.FailureThreshold, bc.UpdatedReplicas)
 	if unavailableToleration+bc.UpdatedReadyReplicas < bc.DesiredUpdatedReplicas {
-		return fmt.Errorf("current batch not ready: updated ready replicas not satified")
+		return fmt.Errorf("current batch not ready: updated ready replicas not satisfied, allowedUnavailable + UpdatedReadyReplicas %d < DesiredUpdatedReplicas %d", unavailableToleration+bc.UpdatedReadyReplicas, bc.DesiredUpdatedReplicas)
 	}
 
 	if bc.DesiredUpdatedReplicas > 0 && bc.UpdatedReadyReplicas == 0 {
-		return fmt.Errorf("current batch not ready: no updated ready replicas")
+		return fmt.Errorf("current batch not ready: no updated ready replicas, DesiredUpdatedReplicas %d > 0 and UpdatedReadyReplicas %d = 0", bc.DesiredUpdatedReplicas, bc.UpdatedReadyReplicas)
 	}
 
 	if !batchLabelSatisfied(bc.Pods, bc.RolloutID, bc.PlannedUpdatedReplicas) {
-		return fmt.Errorf("current batch not ready: pods with batch label not satified")
+		return fmt.Errorf("current batch not ready: pods with batch label not satisfied, RolloutID %s, PlannedUpdatedReplicas %d", bc.RolloutID, bc.PlannedUpdatedReplicas)
 	}
 	return nil
 }
