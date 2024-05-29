@@ -114,6 +114,8 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 				CurrentStepState:           v1beta1.CanaryStepState(src.Status.CanaryStatus.CurrentStepState),
 				Message:                    src.Status.CanaryStatus.Message,
 				LastUpdateTime:             src.Status.CanaryStatus.LastUpdateTime,
+				FinalisingStep:             v1beta1.FinalisingStepType(src.Status.CanaryStatus.FinalisingStep),
+				NextStepIndex:              src.Status.CanaryStatus.NextStepIndex,
 			},
 			CanaryRevision:      src.Status.CanaryStatus.CanaryRevision,
 			CanaryReplicas:      src.Status.CanaryStatus.CanaryReplicas,
@@ -258,6 +260,8 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 			CurrentStepState:           CanaryStepState(srcV1beta1.Status.CanaryStatus.CurrentStepState),
 			Message:                    srcV1beta1.Status.CanaryStatus.Message,
 			LastUpdateTime:             srcV1beta1.Status.CanaryStatus.LastUpdateTime,
+			FinalisingStep:             FinalizeStateType(srcV1beta1.Status.CanaryStatus.FinalisingStep),
+			NextStepIndex:              srcV1beta1.Status.CanaryStatus.NextStepIndex,
 		}
 		return nil
 	default:

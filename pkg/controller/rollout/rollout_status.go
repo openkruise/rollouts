@@ -135,7 +135,7 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1beta1.Rollout) (re
 						CurrentStepState:           v1beta1.CanaryStepStateCompleted,
 						RolloutHash:                rollout.Annotations[util.RolloutHashAnnotation],
 					},
-					CanaryRevision: workload.CanaryRevision,
+					UpdatedRevision: workload.CanaryRevision,
 				}
 			} else {
 				newStatus.CanaryStatus = &v1beta1.CanaryStatus{

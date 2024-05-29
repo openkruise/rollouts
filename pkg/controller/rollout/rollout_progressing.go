@@ -80,7 +80,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 					CurrentStepState:           v1beta1.CanaryStepStateInit,
 					LastUpdateTime:             &metav1.Time{Time: time.Now()},
 				},
-				CanaryRevision: rolloutContext.Workload.CanaryRevision,
+				UpdatedRevision: rolloutContext.Workload.CanaryRevision,
 			}
 		} else {
 			newStatus.CanaryStatus = &v1beta1.CanaryStatus{

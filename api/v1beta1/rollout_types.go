@@ -369,10 +369,12 @@ type CommonStatus struct {
 	// It is allowed to modify NextStepIndex by design,
 	// e.g. if CurrentStepIndex is 2, user can patch NextStepIndex to 3 (if exists) to
 	// achieve batch jump, or patch NextStepIndex to 1 to implement a re-execution of step 1
-	NextStepIndex    int32           `json:"nextStepIndex"`
-	CurrentStepState CanaryStepState `json:"currentStepState"`
-	Message          string          `json:"message,omitempty"`
-	LastUpdateTime   *metav1.Time    `json:"lastUpdateTime,omitempty"`
+	NextStepIndex int32 `json:"nextStepIndex"`
+	// FinalisingStep the step of finalising
+	FinalisingStep   FinalisingStepType `json:"finalisingStep"`
+	CurrentStepState CanaryStepState    `json:"currentStepState"`
+	Message          string             `json:"message,omitempty"`
+	LastUpdateTime   *metav1.Time       `json:"lastUpdateTime,omitempty"`
 }
 
 // CanaryStatus status fields that only pertain to the canary rollout
@@ -386,8 +388,6 @@ type CanaryStatus struct {
 	CanaryReplicas int32 `json:"canaryReplicas"`
 	// CanaryReadyReplicas the numbers of ready canary revision pods
 	CanaryReadyReplicas int32 `json:"canaryReadyReplicas"`
-	// FinalisingStep the step of finalising
-	FinalisingStep FinalisingStepType `json:"finalisingStep"`
 }
 
 // BlueGreenStatus status fields that only pertain to the blueGreen rollout
@@ -395,13 +395,11 @@ type BlueGreenStatus struct {
 	CommonStatus `json:",inline"`
 	// CanaryRevision is calculated by rollout based on podTemplateHash, and the internal logic flow uses
 	// It may be different from rs podTemplateHash in different k8s versions, so it cannot be used as service selector label
-	CanaryRevision string `json:"updatedRevision"`
+	UpdatedRevision string `json:"updatedRevision"`
 	// UpdatedReplicas the numbers of updated pods
 	UpdatedReplicas int32 `json:"updatedReplicas"`
 	// UpdatedReadyReplicas the numbers of updated ready pods
 	UpdatedReadyReplicas int32 `json:"updatedReadyReplicas"`
-	// FinalisingStep the step of finalising
-	FinalisingStep FinalisingStepType `json:"finalisingStep"`
 }
 
 // GetSubStatus returns the ethier canary or bluegreen status
@@ -427,7 +425,7 @@ func (r *RolloutStatus) GetCanaryRevision() string {
 	if r.CanaryStatus != nil {
 		return r.CanaryStatus.CanaryRevision
 	}
-	return r.BlueGreenStatus.CanaryRevision
+	return r.BlueGreenStatus.UpdatedRevision
 }
 
 func (r *RolloutStatus) SetCanaryRevision(revision string) {
@@ -435,7 +433,7 @@ func (r *RolloutStatus) SetCanaryRevision(revision string) {
 		r.CanaryStatus.CanaryRevision = revision
 	}
 	if r.BlueGreenStatus != nil {
-		r.BlueGreenStatus.CanaryRevision = revision
+		r.BlueGreenStatus.UpdatedRevision = revision
 	}
 }
 

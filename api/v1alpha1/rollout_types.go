@@ -242,6 +242,14 @@ type CanaryStatus struct {
 	CanaryReplicas int32 `json:"canaryReplicas"`
 	// CanaryReadyReplicas the numbers of ready canary revision pods
 	CanaryReadyReplicas int32 `json:"canaryReadyReplicas"`
+	// NextStepIndex defines the next step of the rollout is on.
+	// In normal case, NextStepIndex is equal to CurrentStepIndex + 1
+	// If the current step is the last step, NextStepIndex is equal to 0
+	// Before the release, NextStepIndex is also equal to 0
+	// It is allowed to modify NextStepIndex by design,
+	// e.g. if CurrentStepIndex is 2, user can patch NextStepIndex to 3 (if exists) to
+	// achieve batch jump, or patch NextStepIndex to 1 to implement a re-execution of step 1
+	NextStepIndex int32 `json:"nextStepIndex"`
 	// +optional
 	CurrentStepIndex int32             `json:"currentStepIndex"`
 	CurrentStepState CanaryStepState   `json:"currentStepState"`
