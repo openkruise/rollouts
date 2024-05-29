@@ -518,7 +518,17 @@ func setRolloutSucceededCondition(status *v1beta1.RolloutStatus, condStatus core
 }
 
 func newTrafficRoutingContext(c *RolloutContext) *trafficrouting.TrafficRoutingContext {
-	currentStep := c.Rollout.Spec.Strategy.GetSteps()[c.NewStatus.GetSubStatus().CurrentStepIndex-1]
+	currentIndex := c.NewStatus.GetSubStatus().CurrentStepIndex - 1
+	var currentStep v1beta1.CanaryStep
+	//TODO - need better designed logic
+	if currentIndex < 0 || int(currentIndex) >= len(c.Rollout.Spec.Strategy.GetSteps()) {
+		klog.Warningf("Rollout(%s/%s) encounters a special case when constructing newTrafficRoutingContext", c.Rollout.Namespace, c.Rollout.Name)
+		// usually this only happens when deleting the rollout or rolling back
+		// in this situation, it's no matter which step the current is
+		currentStep = c.Rollout.Spec.Strategy.GetSteps()[0]
+	} else {
+		currentStep = c.Rollout.Spec.Strategy.GetSteps()[currentIndex]
+	}
 	var revisionLabelKey string
 	if c.Workload != nil {
 		revisionLabelKey = c.Workload.RevisionLabelKey
