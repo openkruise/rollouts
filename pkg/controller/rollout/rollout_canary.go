@@ -210,6 +210,7 @@ func (m *canaryReleaseManager) doCanaryMetricsAnalysis(c *RolloutContext) (bool,
 
 func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 	if m.doCanaryJump(c) {
+		klog.Infof("rollout(%s/%s) canary step jumped", c.Rollout.Namespace, c.Rollout.Name)
 		return false, nil
 	}
 	canaryStatus := c.NewStatus.CanaryStatus
