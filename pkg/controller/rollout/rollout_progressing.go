@@ -276,14 +276,19 @@ func (r *RolloutReconciler) handleRolloutPlanChanged(c *RolloutContext) error {
 		klog.Errorf("rollout(%s/%s) reCalculate Canary StepIndex failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 		return err
 	}
-	// canary step configuration change causes current step index change
-	// if not changed, we should use a special value to notify jump
+	// if the target step index is the same as the NextStepIndex
+	// we simply set the CurrentStepState to Ready
 	if c.NewStatus.GetSubStatus().NextStepIndex == newStepIndex {
-		c.NewStatus.GetSubStatus().NextStepIndex = -1
-	} else {
-		c.NewStatus.GetSubStatus().NextStepIndex = newStepIndex
+		c.NewStatus.GetSubStatus().CurrentStepState = v1beta1.CanaryStepStateReady
+		c.NewStatus.GetSubStatus().LastUpdateTime = &metav1.Time{Time: time.Now()}
+		c.NewStatus.GetSubStatus().RolloutHash = c.Rollout.Annotations[util.RolloutHashAnnotation]
+		klog.Infof("rollout(%s/%s) canary step configuration change, and NextStepIndex(%d) state(%s)",
+			c.Rollout.Namespace, c.Rollout.Name, c.NewStatus.GetSubStatus().NextStepIndex, c.NewStatus.GetSubStatus().CurrentStepState)
+		return nil
 	}
-	// directly jump to step paused to process jump
+
+	// otherwise, we jump to step paused, where the "jump" logic exists
+	c.NewStatus.GetSubStatus().NextStepIndex = newStepIndex
 	c.NewStatus.GetSubStatus().CurrentStepState = v1beta1.CanaryStepStatePaused
 	c.NewStatus.GetSubStatus().LastUpdateTime = &metav1.Time{Time: time.Now()}
 	c.NewStatus.GetSubStatus().RolloutHash = c.Rollout.Annotations[util.RolloutHashAnnotation]
@@ -299,10 +304,9 @@ func (r *RolloutReconciler) handleNormalRolling(c *RolloutContext) error {
 		progressingStateTransition(c.NewStatus, corev1.ConditionTrue, v1alpha1.ProgressingReasonFinalising, "Rollout has been completed and some closing work is being done")
 		return nil
 	}
-	// modifying NextStepIndex to 0 is not allowed
-	if c.NewStatus.GetSubStatus().NextStepIndex == 0 {
-		c.NewStatus.GetSubStatus().NextStepIndex = util.NextBatchIndex(c.Rollout, c.Rollout.Status.GetSubStatus().CurrentStepIndex)
-	}
+	// in case user modifies it with inappropriate value
+	util.CheckNextBatchIndexWithCorrect(c.Rollout)
+
 	releaseManager, err := r.getReleaseManager(c.Rollout)
 	if err != nil {
 		return err

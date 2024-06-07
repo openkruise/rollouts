@@ -242,19 +242,7 @@ func (m *canaryReleaseManager) doCanaryJump(c *RolloutContext) (jumped bool) {
 	canaryStatus := c.NewStatus.CanaryStatus
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	nextIndex := canaryStatus.NextStepIndex
-	if nextIndex != util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex) && nextIndex != 0 || nextIndex < 0 {
-		/*
-		 * The NextStepIndex should typically be assigned a non-negative integer.
-		 * However, assigning it a negative value acts as a sentinel to trigger an APPROVE.
-		 * For instance, if currentStepIndex is 2 and nextStepIndex is 3,
-		 * directly jumping to step 3 by patching nextStepIndex should not be possible since the value remains unchanged.
-		 * By permitting the assignment of a negative value, such as -1, we can jump to step 3, which essentially
-		 * means to approve current batch.
-		 * Might be useful someday in the future.
-		 */
-		if nextIndex < 0 {
-			nextIndex = util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex)
-		}
+	if nextIndex != util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex) && nextIndex > 0 {
 		currentIndexBackup := canaryStatus.CurrentStepIndex
 		canaryStatus.CurrentStepIndex = nextIndex
 		canaryStatus.NextStepIndex = util.NextBatchIndex(c.Rollout, nextIndex)

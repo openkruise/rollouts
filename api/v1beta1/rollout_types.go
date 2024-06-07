@@ -102,6 +102,10 @@ func (r *RolloutStrategy) IsCanaryStragegy() bool {
 	return r.GetRollingStyle() == CanaryRollingStyle || r.GetRollingStyle() == PartitionRollingStyle
 }
 
+func (r *RolloutStrategy) IsEmptyRelease() bool {
+	return r.BlueGreen == nil && r.Canary == nil
+}
+
 // Get the steps based on the rolling style
 func (r *RolloutStrategy) GetSteps() []CanaryStep {
 	switch r.GetRollingStyle() {

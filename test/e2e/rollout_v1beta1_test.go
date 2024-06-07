@@ -726,7 +726,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			klog.Infof("rollout(%s) completed, and check", namespace)
 			// rollout
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			Expect(rollout.Status.CanaryStatus.NextStepIndex).Should(BeNumerically("==", 0))
+			Expect(rollout.Status.CanaryStatus.NextStepIndex).Should(BeNumerically("==", -1))
 			// check service & ingress & deployment
 			// ingress
 			Expect(GetObject(ingress.Name, ingress)).NotTo(HaveOccurred())
@@ -1182,7 +1182,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			klog.Infof("rollout(%s) completed, and check", namespace)
 			// rollout
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			Expect(rollout.Status.CanaryStatus.NextStepIndex).Should(BeNumerically("==", 0))
+			Expect(rollout.Status.CanaryStatus.NextStepIndex).Should(BeNumerically("==", -1))
 			// check service & ingress & deployment
 			// ingress
 			Expect(GetObject(ingress.Name, ingress)).NotTo(HaveOccurred())
@@ -1587,7 +1587,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			klog.Infof("rollout(%s) completed, and check", namespace)
 			// rollout
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			Expect(rollout.Status.CanaryStatus.NextStepIndex).Should(BeNumerically("==", 0))
+			Expect(rollout.Status.CanaryStatus.NextStepIndex).Should(BeNumerically("==", -1))
 			// check service & ingress
 			// ingress
 			Expect(GetObject(ingress.Name, ingress)).NotTo(HaveOccurred())
