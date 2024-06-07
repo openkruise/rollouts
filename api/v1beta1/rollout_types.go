@@ -99,8 +99,11 @@ func (r *RolloutStrategy) GetRollingStyle() RollingStyleType {
 // can be converted to v1beta1 Rollout with EnableExtraWorkloadForCanary set as true, even the
 // objectRef is cloneset (which doesn't support canary release)
 func IsRealPartition(rollout *Rollout) bool {
+	if rollout.Spec.Strategy.IsEmptyRelease() {
+		return false
+	}
 	estimation := rollout.Spec.Strategy.GetRollingStyle()
-	if estimation == EmptyRollingStyle || estimation == BlueGreenRollingStyle {
+	if estimation == BlueGreenRollingStyle {
 		return false
 	}
 	targetRef := rollout.Spec.WorkloadRef
