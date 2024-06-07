@@ -17,6 +17,9 @@ limitations under the License.
 package v1beta1
 
 import (
+	"reflect"
+
+	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -90,6 +93,22 @@ func (r *RolloutStrategy) GetRollingStyle() RollingStyleType {
 		return CanaryRollingStyle
 	}
 	return PartitionRollingStyle
+}
+
+// simply using EnableExtraWorkloadForCanary is not enough, for example, a v1alaph1 Rollout
+// can be converted to v1beta1 Rollout with EnableExtraWorkloadForCanary set as true, even the
+// objectRef is cloneset (which doesn't support canary release)
+func IsRealPartition(rollout *Rollout) bool {
+	estimation := rollout.Spec.Strategy.GetRollingStyle()
+	if estimation == EmptyRollingStyle || estimation == BlueGreenRollingStyle {
+		return false
+	}
+	targetRef := rollout.Spec.WorkloadRef
+	if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() &&
+		estimation == CanaryRollingStyle {
+		return false
+	}
+	return true
 }
 
 // r.GetRollingStyle() == BlueGreenRollingStyle

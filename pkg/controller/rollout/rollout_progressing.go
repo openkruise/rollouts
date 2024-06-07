@@ -45,6 +45,8 @@ type RolloutContext struct {
 	RecheckTime *time.Time
 	// wait stable workload pods ready
 	WaitReady bool
+	// finalising reason
+	FinalizeReason string
 }
 
 // parameter1 retryReconcile, parameter2 error
@@ -122,6 +124,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		var done bool
 		rolloutContext.WaitReady = true
+		rolloutContext.FinalizeReason = v1beta1.FinaliseReasonSuccess
 		done, err = r.doFinalising(rolloutContext)
 		if err != nil {
 			return nil, err
@@ -146,6 +149,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 	case v1alpha1.ProgressingReasonCancelling:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		var done bool
+		rolloutContext.FinalizeReason = v1beta1.FinaliseReasonRollback
 		done, err = r.doFinalising(rolloutContext)
 		if err != nil {
 			return nil, err
@@ -411,21 +415,35 @@ func isRollingBackInBatches(rollout *v1beta1.Rollout, workload *util.Workload) b
 // 1. modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods
 // 2. remove batchRelease CR.
 func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) {
-	if len(c.Rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
+	if c.Rollout.Spec.Strategy.HasTrafficRoutings() {
 		// modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods
 		tr := newTrafficRoutingContext(c)
-		done, err := r.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
-		c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
+		done, err := r.trafficRoutingManager.RouteAllTrafficToCanaryORStable(tr, v1beta1.FinaliseReasonContinuous)
 		if err != nil || !done {
+			c.NewStatus.GetSubStatus().LastUpdateTime = tr.LastUpdateTime
 			return done, err
 		}
 	}
-	done, err := r.canaryManager.removeBatchRelease(c)
+
+	releaseManager, err := r.getReleaseManager(c.Rollout)
+	if err != nil {
+		return false, err
+	}
+	done, err := releaseManager.removeBatchRelease(c)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 		return false, err
 	} else if !done {
 		return false, nil
+	}
+	// restore Service and network api
+	if c.Rollout.Spec.Strategy.HasTrafficRoutings() {
+		tr := newTrafficRoutingContext(c)
+		done, err = r.trafficRoutingManager.FinalisingTrafficRouting(tr)
+		c.NewStatus.GetSubStatus().LastUpdateTime = tr.LastUpdateTime
+		if err != nil || !done {
+			return done, err
+		}
 	}
 	return true, nil
 }

@@ -75,7 +75,7 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	if currentStep.Traffic == nil && len(currentStep.Matches) == 0 {
 		tr := newTrafficRoutingContext(c)
-		done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
+		done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr)
 		c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
 		if err != nil {
 			return err
@@ -89,10 +89,59 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 	switch canaryStatus.CurrentStepState {
 	// before CanaryStepStateUpgrade, handle some special cases, to prevent traffic loss
 	case v1beta1.CanaryStepStateInit:
-		// placeholder for the later traffic modification Pull Request
-		canaryStatus.NextStepIndex = util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex)
+		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1beta1.CanaryStepStateInit)
+		tr := newTrafficRoutingContext(c)
+		if currentStep.Traffic == nil && len(currentStep.Matches) == 0 {
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
+				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateInit, canaryStatus.CurrentStepState)
+			return nil
+		}
+
+		/*
+			The next check is used to bypass the bug in ingress-nginx controller https://github.com/kubernetes/ingress-nginx/issues/9635
+			for partition release, if the currentStep replicas is "100%", we can assume that all traffic should be routed to canary pods
+		*/
+		if currentStep.Replicas.StrVal == "100%" && v1beta1.IsRealPartition(c.Rollout) {
+			klog.Infof("special case detected: rollout(%s/%s) restore stable Service", c.Rollout.Namespace, c.Rollout.Name)
+			done, err := m.trafficRoutingManager.RestoreStableService(tr)
+			if err != nil {
+				return err
+			} else if !done {
+				expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
+				c.RecheckTime = &expectedTime
+				return nil
+			}
+		}
+
+		/*
+			The next check is used to solve the following scenario:
+			steps:
+			- replicas: 1 # frist batch
+				matches:
+				- headers:
+				- name: user-agent
+					type: Exact
+					value: pc
+			we should patch selector to stable Service before CanaryStepStateUpgrade when in the first batch
+			otherwise, some traffic will loss between CanaryStepStateUpgrade and CanaryStepStateTrafficRouting
+		*/
+		if canaryStatus.CurrentStepIndex == 1 {
+			klog.Infof("special case detected: rollout(%s/%s) patch stable Service", c.Rollout.Namespace, c.Rollout.Name)
+			done, err := m.trafficRoutingManager.PatchStableService(tr)
+			if err != nil {
+				return err
+			} else if !done {
+				expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
+				c.RecheckTime = &expectedTime
+				return nil
+			}
+		}
+
+		canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 		canaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
-		fallthrough
+		klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
+			canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateInit, canaryStatus.CurrentStepState)
 
 	case v1beta1.CanaryStepStateUpgrade:
 		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1beta1.CanaryStepStateUpgrade)
@@ -101,6 +150,9 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 			return err
 		} else if done {
 			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
+			if currentStep.Replicas.StrVal == "100%" && v1beta1.IsRealPartition(c.Rollout) {
+				canaryStatus.CurrentStepState = v1beta1.CanaryStepStateMetricsAnalysis
+			}
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
 				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateUpgrade, canaryStatus.CurrentStepState)
@@ -216,6 +268,12 @@ func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 	canaryStatus := c.NewStatus.CanaryStatus
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	steps := len(c.Rollout.Spec.Strategy.Canary.Steps)
+	// If it is the last step, and 100% of pods, then return true
+	if int32(steps) == canaryStatus.CurrentStepIndex {
+		if currentStep.Replicas != nil && currentStep.Replicas.StrVal == "100%" {
+			return true, nil
+		}
+	}
 	cond := util.GetRolloutCondition(*c.NewStatus, v1beta1.RolloutConditionProgressing)
 	// need manual confirmation
 	if currentStep.Pause.Duration == nil {
@@ -268,8 +326,9 @@ func (m *canaryReleaseManager) doCanaryJump(c *RolloutContext) (jumped bool) {
 
 // cleanup after rollout is completed or finished
 func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, error) {
+	canaryStatus := c.NewStatus.CanaryStatus
 	// when CanaryStatus is nil, which means canary action hasn't started yet, don't need doing cleanup
-	if c.NewStatus.CanaryStatus == nil {
+	if canaryStatus == nil {
 		return true, nil
 	}
 	// 1. rollout progressing complete, remove rollout progressing annotation in workload
@@ -278,33 +337,73 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, erro
 		return false, err
 	}
 	tr := newTrafficRoutingContext(c)
-	// 2. remove stable service the pod revision selector, so stable service will be selector all version pods.
-	done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr, true)
-	c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
-	if err != nil || !done {
-		return done, err
+	klog.Infof("rollout(%s/%s) Finalising Step is %s", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.FinalisingStep)
+	switch canaryStatus.FinalisingStep {
+	default:
+		canaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeStableService
+		fallthrough
+
+	case v1beta1.FinalisingStepTypeStableService:
+		// restore stable service selector to select all pods [with grace time]
+		done, err := m.trafficRoutingManager.RestoreStableService(tr)
+		if err != nil || !done {
+			canaryStatus.LastUpdateTime = tr.LastUpdateTime
+			return done, err
+		}
+		canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+		canaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeGateway
+
+	case v1beta1.FinalisingStepTypeGateway:
+		// modify network api(ingress or gateway api) configuration
+		done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr)
+		if err != nil || !done {
+			canaryStatus.LastUpdateTime = tr.LastUpdateTime
+			return done, err
+		}
+		canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+		canaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeCanaryService
+
+	/*
+		//TODO - As mentioned in FinalisingTrafficRouting function,
+		we should wait grace time between FinalisingStepTypeGateway and FinalisingStepTypeCanaryService
+		to avoid a very rare case which could cause minor traffic loss (espically, Istio), but it's difficult
+		to implement now.
+		However, we still reserve the FinalisingStepTypeCanaryService step here, but instead of removing the
+		canary Service as expected (which has been done in FinalisingStepTypeGateway), FinalisingStepTypeCanaryService
+		simply wait a gracetime between FinalisingStepTypeCanaryService and FinalisingStepTypeDeleteBR now
+	*/
+	case v1beta1.FinalisingStepTypeCanaryService:
+		// wait a gracetime for safety
+		if canaryStatus.LastUpdateTime != nil {
+			if verifyTime := canaryStatus.LastUpdateTime.Add(time.Second * time.Duration(3)); verifyTime.After(time.Now()) {
+				klog.Infof("restoring network configuration, but we need to wait %d seconds", 3)
+				return false, nil
+			}
+		}
+		canaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeBatchRelease
+
+	case v1beta1.FinalisingStepTypeBatchRelease:
+		// set workload.pause=false; set workload.partition=0
+		done, err := m.finalizingBatchRelease(c)
+		if err != nil || !done {
+			return done, err
+		}
+		canaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteBR
+
+	case v1beta1.FinalisingStepTypeDeleteBR:
+		// delete batchRelease crd
+		done, err := m.removeBatchRelease(c)
+		if err != nil {
+			klog.Errorf("rollout(%s/%s) Finalize batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
+			return false, err
+		} else if !done {
+			return false, nil
+		}
+		klog.Infof("rollout(%s/%s) doCanaryFinalising success", c.Rollout.Namespace, c.Rollout.Name)
+		return true, nil
 	}
-	// 3. set workload.pause=false; set workload.partition=0
-	done, err = m.finalizingBatchRelease(c)
-	if err != nil || !done {
-		return done, err
-	}
-	// 4. modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods.
-	done, err = m.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
-	c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
-	if err != nil || !done {
-		return done, err
-	}
-	// 5. delete batchRelease crd
-	done, err = m.removeBatchRelease(c)
-	if err != nil {
-		klog.Errorf("rollout(%s/%s) Finalize batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
-		return false, err
-	} else if !done {
-		return false, nil
-	}
-	klog.Infof("rollout(%s/%s) doCanaryFinalising success", c.Rollout.Namespace, c.Rollout.Name)
-	return true, nil
+
+	return false, nil
 }
 
 func (m *canaryReleaseManager) removeRolloutProgressingAnnotation(c *RolloutContext) error {
