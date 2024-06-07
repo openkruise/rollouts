@@ -175,7 +175,7 @@ func NextBatchIndex(rollout *rolloutv1beta1.Rollout, CurrentStepIndex int32) int
 	// Patching NextStepIndex to 0 is meaningless for user, if doing so, nothing happen
 	// and step jump won't happen
 	if CurrentStepIndex >= allSteps {
-		return 0
+		return -1
 	}
 	return CurrentStepIndex + 1
 }

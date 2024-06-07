@@ -38,9 +38,9 @@ const (
 	// which labels whether the deployment is controlled by advanced-deployment-controller.
 	AdvancedDeploymentControlLabel = "rollouts.kruise.io/controlled-by-advanced-deployment-controller"
 
-	// OriginalSettingAnnotation is annotation for workload in BlueGreen Release,
-	// it will storage the original setting of the workload, which will be used to restore the workload
-	OriginalSettingAnnotation = "rollouts.kruise.io/original-setting"
+	// OriginalDeploymentStrategyAnnotation is annotation for workload in BlueGreen Release,
+	// it will store the original setting of the workload, which will be used to restore the workload
+	OriginalDeploymentStrategyAnnotation = "rollouts.kruise.io/original-deployment-strategy"
 
 	// MaxProgressSeconds is the value we set for ProgressDeadlineSeconds
 	// MaxReadySeconds is the value we set for MinReadySeconds, which is one less than ProgressDeadlineSeconds
@@ -62,12 +62,12 @@ type DeploymentStrategy struct {
 	Partition intstr.IntOrString `json:"partition,omitempty"`
 }
 
-// OriginalSetting storages part of the fileds of a workload,
+// OriginalDeploymentStrategy stores part of the fileds of a workload,
 // so that it can be restored when finalizing.
 // It is only used for BlueGreen Release
-// Similar to DeploymentStrategy, it is stored in workload annotation
-// However, unlike DeploymentStrategy, it is only used to storage and restore
-type OriginalSetting struct {
+// Similar to DeploymentStrategy, it is an annotation used in workload
+// However, unlike DeploymentStrategy, it is only used to store and restore the user's strategy
+type OriginalDeploymentStrategy struct {
 	// The deployment strategy to use to replace existing pods with new ones.
 	// +optional
 	// +patchStrategy=retainKeys
@@ -96,8 +96,6 @@ const (
 	CanaryRollingStyle RollingStyleType = "Canary"
 	// BlueGreenRollingStyle means rolling in blue-green way, and will NOT create a extra Deployment.
 	BlueGreenRollingStyle RollingStyleType = "BlueGreen"
-	// Empty means both Canary and BlueGreen are empty
-	EmptyRollingStyle RollingStyleType = "Empty"
 )
 
 // DeploymentExtraStatus is extra status field for Advanced Deployment
@@ -141,7 +139,7 @@ func SetDefaultDeploymentStrategy(strategy *DeploymentStrategy) {
 	}
 }
 
-func SetDefaultSetting(setting *OriginalSetting) {
+func SetDefaultSetting(setting *OriginalDeploymentStrategy) {
 	if setting.ProgressDeadlineSeconds == nil {
 		setting.ProgressDeadlineSeconds = new(int32)
 		*setting.ProgressDeadlineSeconds = 600

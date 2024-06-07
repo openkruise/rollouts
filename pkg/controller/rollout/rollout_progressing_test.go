@@ -67,10 +67,6 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.CurrentStepIndex = 1
-				// s.CanaryStatus.NextStepIndex will be initialized as 0 in ReconcileRolloutProgressing
-				// util.NextBatchIndex(rollout, s.CanaryStatus.CurrentStepIndex), which is 2 here.
-				// However the ReconcileRolloutProgressing won't update it, and thus expected value of it
-				// in the next cases will be 0 (zero in zero out), without update. This is as expected
 				s.CanaryStatus.NextStepIndex = 2
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				return s

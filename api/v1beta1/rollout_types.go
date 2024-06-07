@@ -81,9 +81,6 @@ type RolloutStrategy struct {
 
 // Get the rolling style based on the strategy
 func (r *RolloutStrategy) GetRollingStyle() RollingStyleType {
-	if r.BlueGreen == nil && r.Canary == nil {
-		return EmptyRollingStyle
-	}
 	if r.BlueGreen != nil {
 		return BlueGreenRollingStyle
 	}
@@ -103,11 +100,6 @@ func (r *RolloutStrategy) IsBlueGreenRelease() bool {
 // r.GetRollingStyle() == CanaryRollingStyle || r.GetRollingStyle() == PartitionRollingStyle
 func (r *RolloutStrategy) IsCanaryStragegy() bool {
 	return r.GetRollingStyle() == CanaryRollingStyle || r.GetRollingStyle() == PartitionRollingStyle
-}
-
-// r.GetRollingStyle() == EmptyRollingStyle
-func (r *RolloutStrategy) IsEmptyRelease() bool {
-	return r.GetRollingStyle() == EmptyRollingStyle
 }
 
 // Get the steps based on the rolling style
