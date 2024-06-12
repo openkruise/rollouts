@@ -66,17 +66,31 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 	switch cond.Reason {
 	case v1alpha1.ProgressingReasonInitializing:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
-		// new canaryStatus
-		newStatus.CanaryStatus = &v1beta1.CanaryStatus{
+		// clear and create
+		newStatus.Clear()
+		commonStatus := v1beta1.CommonStatus{
 			ObservedWorkloadGeneration: rolloutContext.Workload.Generation,
 			RolloutHash:                rolloutContext.Rollout.Annotations[util.RolloutHashAnnotation],
 			ObservedRolloutID:          getRolloutID(rolloutContext.Workload),
 			StableRevision:             rolloutContext.Workload.StableRevision,
-			CanaryRevision:             rolloutContext.Workload.CanaryRevision,
 			CurrentStepIndex:           1,
-			CurrentStepState:           v1beta1.CanaryStepStateUpgrade,
+			NextStepIndex:              util.NextBatchIndex(rollout, 1),
+			CurrentStepState:           v1beta1.CanaryStepStateInit,
 			LastUpdateTime:             &metav1.Time{Time: time.Now()},
 		}
+		if rollout.Spec.Strategy.IsBlueGreenRelease() {
+			newStatus.BlueGreenStatus = &v1beta1.BlueGreenStatus{
+				CommonStatus:    commonStatus,
+				UpdatedRevision: rolloutContext.Workload.CanaryRevision,
+			}
+		} else {
+			commonStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+			newStatus.CanaryStatus = &v1beta1.CanaryStatus{
+				CommonStatus:   commonStatus,
+				CanaryRevision: rolloutContext.Workload.CanaryRevision,
+			}
+		}
+
 		done, err := r.doProgressingInitializing(rolloutContext)
 		if err != nil {
 			klog.Errorf("rollout(%s/%s) doProgressingInitializing error(%s)", rollout.Namespace, rollout.Name, err.Error())

@@ -54,9 +54,15 @@ type ReleasePlan struct {
 	// only support for canary deployment
 	// +optional
 	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
-	// If true, then it will create new deployment for canary, such as: workload-demo-canary.
-	// When user verifies that the canary version is ready, we will remove the canary deployment and release the deployment workload-demo in full.
-	// Current only support k8s native deployment
+	// RollingStyle can be "Canary", "Partiton" or "BlueGreen"
+	RollingStyle RollingStyleType `json:"rollingStyle,omitempty"`
+	// EnableExtraWorkloadForCanary indicates whether to create extra workload for canary
+	// True corresponds to RollingStyle "Canary".
+	// False corresponds to RollingStyle "Partiton".
+	// Ignored in BlueGreen-style.
+	// This field is about to deprecate, use RollingStyle instead.
+	// If both of them are set, controller will only consider this
+	// filed when RollingStyle is empty
 	EnableExtraWorkloadForCanary bool `json:"enableExtraWorkloadForCanary"`
 }
 

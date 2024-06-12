@@ -104,18 +104,22 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 			return nil
 		}
 		obj.Status.CanaryStatus = &v1beta1.CanaryStatus{
-			ObservedWorkloadGeneration: src.Status.CanaryStatus.ObservedWorkloadGeneration,
-			ObservedRolloutID:          src.Status.CanaryStatus.ObservedRolloutID,
-			RolloutHash:                src.Status.CanaryStatus.RolloutHash,
-			StableRevision:             src.Status.CanaryStatus.StableRevision,
-			CanaryRevision:             src.Status.CanaryStatus.CanaryRevision,
-			PodTemplateHash:            src.Status.CanaryStatus.PodTemplateHash,
-			CanaryReplicas:             src.Status.CanaryStatus.CanaryReplicas,
-			CanaryReadyReplicas:        src.Status.CanaryStatus.CanaryReadyReplicas,
-			CurrentStepIndex:           src.Status.CanaryStatus.CurrentStepIndex,
-			CurrentStepState:           v1beta1.CanaryStepState(src.Status.CanaryStatus.CurrentStepState),
-			Message:                    src.Status.CanaryStatus.Message,
-			LastUpdateTime:             src.Status.CanaryStatus.LastUpdateTime,
+			CommonStatus: v1beta1.CommonStatus{
+				ObservedWorkloadGeneration: src.Status.CanaryStatus.ObservedWorkloadGeneration,
+				ObservedRolloutID:          src.Status.CanaryStatus.ObservedRolloutID,
+				RolloutHash:                src.Status.CanaryStatus.RolloutHash,
+				StableRevision:             src.Status.CanaryStatus.StableRevision,
+				PodTemplateHash:            src.Status.CanaryStatus.PodTemplateHash,
+				CurrentStepIndex:           src.Status.CanaryStatus.CurrentStepIndex,
+				CurrentStepState:           v1beta1.CanaryStepState(src.Status.CanaryStatus.CurrentStepState),
+				Message:                    src.Status.CanaryStatus.Message,
+				LastUpdateTime:             src.Status.CanaryStatus.LastUpdateTime,
+				FinalisingStep:             v1beta1.FinalisingStepType(src.Status.CanaryStatus.FinalisingStep),
+				NextStepIndex:              src.Status.CanaryStatus.NextStepIndex,
+			},
+			CanaryRevision:      src.Status.CanaryStatus.CanaryRevision,
+			CanaryReplicas:      src.Status.CanaryStatus.CanaryReplicas,
+			CanaryReadyReplicas: src.Status.CanaryStatus.CanaryReadyReplicas,
 		}
 		return nil
 	default:
@@ -167,7 +171,9 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 	case *v1beta1.Rollout:
 		srcV1beta1 := src.(*v1beta1.Rollout)
 		dst.ObjectMeta = srcV1beta1.ObjectMeta
-
+		if !srcV1beta1.Spec.Strategy.IsCanaryStragegy() {
+			return fmt.Errorf("v1beta1 Rollout with %s strategy cannot be converted to v1alpha1", srcV1beta1.Spec.Strategy.GetRollingStyle())
+		}
 		// spec
 		dst.Spec = RolloutSpec{
 			ObjectRef: ObjectRef{
@@ -254,6 +260,8 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 			CurrentStepState:           CanaryStepState(srcV1beta1.Status.CanaryStatus.CurrentStepState),
 			Message:                    srcV1beta1.Status.CanaryStatus.Message,
 			LastUpdateTime:             srcV1beta1.Status.CanaryStatus.LastUpdateTime,
+			FinalisingStep:             FinalizeStateType(srcV1beta1.Status.CanaryStatus.FinalisingStep),
+			NextStepIndex:              srcV1beta1.Status.CanaryStatus.NextStepIndex,
 		}
 		return nil
 	default:
@@ -338,9 +346,18 @@ func (src *BatchRelease) ConvertTo(dst conversion.Hub) error {
 				obj.Spec.ReleasePlan.PatchPodTemplateMetadata.Labels[k] = v
 			}
 		}
-		if !strings.EqualFold(src.Annotations[RolloutStyleAnnotation], string(PartitionRollingStyle)) {
-			obj.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
+
+		if strings.EqualFold(src.Annotations[RolloutStyleAnnotation], string(PartitionRollingStyle)) {
+			obj.Spec.ReleasePlan.RollingStyle = v1beta1.PartitionRollingStyle
 		}
+		if strings.EqualFold(src.Annotations[RolloutStyleAnnotation], string(CanaryRollingStyle)) {
+			obj.Spec.ReleasePlan.RollingStyle = v1beta1.CanaryRollingStyle
+		}
+		if strings.EqualFold(src.Annotations[RolloutStyleAnnotation], string(BlueGreenRollingStyle)) {
+			obj.Spec.ReleasePlan.RollingStyle = v1beta1.BlueGreenRollingStyle
+		}
+
+		obj.Spec.ReleasePlan.EnableExtraWorkloadForCanary = srcSpec.ReleasePlan.EnableExtraWorkloadForCanary
 
 		// status
 		obj.Status = v1beta1.BatchReleaseStatus{
@@ -417,11 +434,9 @@ func (dst *BatchRelease) ConvertFrom(src conversion.Hub) error {
 		if dst.Annotations == nil {
 			dst.Annotations = map[string]string{}
 		}
-		if srcV1beta1.Spec.ReleasePlan.EnableExtraWorkloadForCanary {
-			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(CanaryRollingStyle))
-		} else {
-			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(PartitionRollingStyle))
-		}
+		dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(srcV1beta1.Spec.ReleasePlan.RollingStyle))
+		dst.Spec.ReleasePlan.RollingStyle = RollingStyleType(srcV1beta1.Spec.ReleasePlan.RollingStyle)
+		dst.Spec.ReleasePlan.EnableExtraWorkloadForCanary = srcV1beta1.Spec.ReleasePlan.EnableExtraWorkloadForCanary
 
 		// status
 		dst.Status = BatchReleaseStatus{

@@ -54,6 +54,16 @@ type ReleasePlan struct {
 	// only support for canary deployment
 	// +optional
 	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
+	// RollingStyle can be "Canary", "Partiton" or "BlueGreen"
+	RollingStyle RollingStyleType `json:"rollingStyle,omitempty"`
+	// EnableExtraWorkloadForCanary indicates whether to create extra workload for canary
+	// True corresponds to RollingStyle "Canary".
+	// False corresponds to RollingStyle "Partiton".
+	// Ignored in BlueGreen-style.
+	// This field is about to deprecate, use RollingStyle instead.
+	// If both of them are set, controller will only consider this
+	// filed when RollingStyle is empty
+	EnableExtraWorkloadForCanary bool `json:"enableExtraWorkloadForCanary"`
 }
 
 type FinalizingPolicyType string
