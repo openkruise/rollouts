@@ -100,6 +100,7 @@ func TestRunCanary(t *testing.T) {
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
+				br.Spec.ReleasePlan.RollingStyle = v1beta1.CanaryRollingStyle
 				return br
 			},
 		},
@@ -159,9 +160,12 @@ func TestRunCanary(t *testing.T) {
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
+				br.Spec.ReleasePlan.RollingStyle = v1beta1.CanaryRollingStyle
 				br.Status = v1beta1.BatchReleaseStatus{
-					ObservedGeneration:      1,
-					ObservedReleasePlanHash: "d444a1007776da957d7d8549e3375c96179621b85670ad1e2bb0fc5fea16446a",
+					ObservedGeneration: 1,
+					// since we use RollingStyle over EnableExtraWorkloadForCanary now, former hardcoded hash
+					// should be re-calculated
+					ObservedReleasePlanHash: util.HashReleasePlanBatches(&br.Spec.ReleasePlan),
 					CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
 						CurrentBatchState:    v1beta1.ReadyBatchState,
 						CurrentBatch:         0,
@@ -205,6 +209,7 @@ func TestRunCanary(t *testing.T) {
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
+				br.Spec.ReleasePlan.RollingStyle = v1beta1.CanaryRollingStyle
 				return br
 			},
 		},

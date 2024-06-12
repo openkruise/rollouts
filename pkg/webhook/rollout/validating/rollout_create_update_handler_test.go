@@ -96,7 +96,9 @@ var (
 		},
 		Status: appsv1beta1.RolloutStatus{
 			CanaryStatus: &appsv1beta1.CanaryStatus{
-				CurrentStepState: appsv1beta1.CanaryStepStateCompleted,
+				CommonStatus: appsv1beta1.CommonStatus{
+					CurrentStepState: appsv1beta1.CanaryStepStateCompleted,
+				},
 			},
 		},
 	}

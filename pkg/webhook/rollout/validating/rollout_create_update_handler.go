@@ -133,12 +133,11 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 		if !reflect.DeepEqual(oldObj.Spec.WorkloadRef, newObj.Spec.WorkloadRef) {
 			return field.ErrorList{field.Forbidden(field.NewPath("Spec.ObjectRef"), "Rollout 'ObjectRef' field is immutable")}
 		}
-		// canary strategy
-		if !reflect.DeepEqual(oldObj.Spec.Strategy.Canary.TrafficRoutings, newObj.Spec.Strategy.Canary.TrafficRoutings) {
-			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary.TrafficRoutings"), "Rollout 'Strategy.Canary.TrafficRoutings' field is immutable")}
+		if !reflect.DeepEqual(oldObj.Spec.Strategy.GetTrafficRouting(), newObj.Spec.Strategy.GetTrafficRouting()) {
+			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary|BlueGreen.TrafficRoutings"), "Rollout 'Strategy.Canary|BlueGreen.TrafficRoutings' field is immutable")}
 		}
-		if oldObj.Spec.Strategy.Canary.EnableExtraWorkloadForCanary != newObj.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
-			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary"), "Rollout enableExtraWorkloadForCanary is immutable")}
+		if oldObj.Spec.Strategy.GetRollingStyle() != newObj.Spec.Strategy.GetRollingStyle() {
+			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary|BlueGreen"), "Rollout style and enableExtraWorkloadForCanary are immutable")}
 		}
 	}
 
@@ -198,19 +197,51 @@ func validateRolloutSpecObjectRef(workloadRef *appsv1beta1.ObjectRef, fldPath *f
 }
 
 func validateRolloutSpecStrategy(strategy *appsv1beta1.RolloutStrategy, fldPath *field.Path) field.ErrorList {
+	if strategy.Canary == nil && strategy.BlueGreen == nil {
+		return field.ErrorList{field.Invalid(fldPath, nil, "Canary and BlueGreen cannot both be empty")}
+	}
+	if strategy.Canary != nil && strategy.BlueGreen != nil {
+		return field.ErrorList{field.Invalid(fldPath, nil, "Canary and BlueGreen cannot both be set")}
+	}
+	if strategy.BlueGreen != nil {
+		return validateRolloutSpecBlueGreenStrategy(strategy.BlueGreen, fldPath.Child("BlueGreen"))
+	}
 	return validateRolloutSpecCanaryStrategy(strategy.Canary, fldPath.Child("Canary"))
 }
 
-func validateRolloutSpecCanaryStrategy(canary *appsv1beta1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
-	if canary == nil {
-		return field.ErrorList{field.Invalid(fldPath, nil, "Canary cannot be empty")}
-	}
+type TrafficRule string
 
-	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"), len(canary.TrafficRoutings) > 0)
+const (
+	TrafficRuleCanary    TrafficRule = "Canary"
+	TrafficRuleBlueGreen TrafficRule = "BlueGreen"
+	NoTraffic            TrafficRule = "NoTraffic"
+)
+
+func validateRolloutSpecCanaryStrategy(canary *appsv1beta1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
+	trafficRule := NoTraffic
+	if len(canary.TrafficRoutings) > 0 {
+		trafficRule = TrafficRuleCanary
+	}
+	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"), trafficRule)
 	if len(canary.TrafficRoutings) > 1 {
 		errList = append(errList, field.Invalid(fldPath, canary.TrafficRoutings, "Rollout currently only support single TrafficRouting."))
 	}
 	for _, traffic := range canary.TrafficRoutings {
+		errList = append(errList, validateRolloutSpecCanaryTraffic(traffic, fldPath.Child("TrafficRouting"))...)
+	}
+	return errList
+}
+
+func validateRolloutSpecBlueGreenStrategy(blueGreen *appsv1beta1.BlueGreenStrategy, fldPath *field.Path) field.ErrorList {
+	trafficRule := NoTraffic
+	if len(blueGreen.TrafficRoutings) > 0 {
+		trafficRule = TrafficRuleBlueGreen
+	}
+	errList := validateRolloutSpecCanarySteps(blueGreen.Steps, fldPath.Child("Steps"), trafficRule)
+	if len(blueGreen.TrafficRoutings) > 1 {
+		errList = append(errList, field.Invalid(fldPath, blueGreen.TrafficRoutings, "Rollout currently only support single TrafficRouting."))
+	}
+	for _, traffic := range blueGreen.TrafficRoutings {
 		errList = append(errList, validateRolloutSpecCanaryTraffic(traffic, fldPath.Child("TrafficRouting"))...)
 	}
 	return errList
@@ -240,7 +271,7 @@ func validateRolloutSpecCanaryTraffic(traffic appsv1beta1.TrafficRoutingRef, fld
 	return errList
 }
 
-func validateRolloutSpecCanarySteps(steps []appsv1beta1.CanaryStep, fldPath *field.Path, isTraffic bool) field.ErrorList {
+func validateRolloutSpecCanarySteps(steps []appsv1beta1.CanaryStep, fldPath *field.Path, trafficRule TrafficRule) field.ErrorList {
 	stepCount := len(steps)
 	if stepCount == 0 {
 		return field.ErrorList{field.Invalid(fldPath, steps, "The number of Canary.Steps cannot be empty")}
@@ -258,14 +289,21 @@ func validateRolloutSpecCanarySteps(steps []appsv1beta1.CanaryStep, fldPath *fie
 			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Replicas"),
 				s.Replicas, `replicas must be positive number, or a percentage with "0%" < canaryReplicas <= "100%"`)}
 		}
-		if !isTraffic {
+		if trafficRule == NoTraffic || s.Traffic == nil {
 			continue
 		}
-		if s.Traffic != nil {
-			is := intstr.FromString(*s.Traffic)
-			weight, err := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
+		is := intstr.FromString(*s.Traffic)
+		weight, err := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
+		switch trafficRule {
+		case TrafficRuleBlueGreen:
+			// traffic "0%" is allowed in blueGreen strategy
+			if err != nil || weight < 0 || weight > 100 {
+				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic must be percentage with "0%" <= traffic <= "100%" in blueGreen strategy`)}
+			}
+		default:
+			// traffic "0%" is not allowed in canary strategy
 			if err != nil || weight <= 0 || weight > 100 {
-				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic must be percentage with "0%" < traffic <= "100%"`)}
+				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic must be percentage with "0%" < traffic <= "100%" in canary strategy`)}
 			}
 		}
 	}

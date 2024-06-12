@@ -88,6 +88,14 @@ spec:
                       - canaryReplicas
                       type: object
                     type: array
+                  enableExtraWorkloadForCanary:
+                    description: EnableExtraWorkloadForCanary indicates whether to
+                      create extra workload for canary True corresponds to RollingStyle
+                      "Canary". False corresponds to RollingStyle "Partiton". Ignored
+                      in BlueGreen-style. This field is about to deprecate, use RollingStyle
+                      instead. If both of them are set, controller will only consider
+                      this filed when RollingStyle is empty
+                    type: boolean
                   failureThreshold:
                     anyOf:
                     - type: integer
@@ -118,9 +126,14 @@ spec:
                         description: labels
                         type: object
                     type: object
+                  rollingStyle:
+                    description: RollingStyle can be "Canary", "Partiton" or "BlueGreen"
+                    type: string
                   rolloutID:
                     description: RolloutID indicates an id for each rollout progress
                     type: string
+                required:
+                - enableExtraWorkloadForCanary
                 type: object
               targetReference:
                 description: TargetRef contains the GVK and name of the workload that
@@ -346,11 +359,12 @@ spec:
                       type: object
                     type: array
                   enableExtraWorkloadForCanary:
-                    description: 'If true, then it will create new deployment for
-                      canary, such as: workload-demo-canary. When user verifies that
-                      the canary version is ready, we will remove the canary deployment
-                      and release the deployment workload-demo in full. Current only
-                      support k8s native deployment'
+                    description: EnableExtraWorkloadForCanary indicates whether to
+                      create extra workload for canary True corresponds to RollingStyle
+                      "Canary". False corresponds to RollingStyle "Partiton". Ignored
+                      in BlueGreen-style. This field is about to deprecate, use RollingStyle
+                      instead. If both of them are set, controller will only consider
+                      this filed when RollingStyle is empty
                     type: boolean
                   failureThreshold:
                     anyOf:
@@ -382,6 +396,9 @@ spec:
                         description: labels
                         type: object
                     type: object
+                  rollingStyle:
+                    description: RollingStyle can be "Canary", "Partiton" or "BlueGreen"
+                    type: string
                   rolloutID:
                     description: RolloutID indicates an id for each rollout progress
                     type: string

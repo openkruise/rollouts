@@ -11,7 +11,7 @@ on:
 env:
   # Common versions
   GO_VERSION: '1.19'
-  GOLANGCI_VERSION: 'v1.42'
+  GOLANGCI_VERSION: 'v1.52'
 
 jobs:
 
@@ -36,7 +36,7 @@ jobs:
         run: |
           make generate
       - name: Lint golang code
-        uses: golangci/golangci-lint-action@v2
+        uses: golangci/golangci-lint-action@v6
         with:
           version: ${{ env.GOLANGCI_VERSION }}
           args: --verbose

@@ -10,6 +10,10 @@ annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = nil
 annotations["nginx.ingress.kubernetes.io/canary-by-header"] = nil
 annotations["nginx.ingress.kubernetes.io/canary-by-header-pattern"] = nil
 annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = nil
+-- MSE extended annotations
+annotations["mse.ingress.kubernetes.io/canary-by-query"] = nil
+annotations["mse.ingress.kubernetes.io/canary-by-query-pattern"] = nil
+annotations["mse.ingress.kubernetes.io/canary-by-query-value"] = nil
 annotations["nginx.ingress.kubernetes.io/canary-weight"] = nil
 if ( obj.weight ~= "-1" )
 then
@@ -33,17 +37,29 @@ then
     return annotations
 end
 for _,match in ipairs(obj.matches) do
-    header = match.headers[1]
-    if ( header.name == "canary-by-cookie" )
-    then
-        annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = header.value
-    else
-        annotations["nginx.ingress.kubernetes.io/canary-by-header"] = header.name
-        if ( header.type == "RegularExpression" )
+    if match.headers and next(match.headers) ~= nil then
+        header = match.headers[1]
+        if ( header.name == "canary-by-cookie" )
         then
-            annotations["nginx.ingress.kubernetes.io/canary-by-header-pattern"] = header.value
+            annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = header.value
         else
-            annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = header.value
+            annotations["nginx.ingress.kubernetes.io/canary-by-header"] = header.name
+            if ( header.type == "RegularExpression" )
+            then
+                annotations["nginx.ingress.kubernetes.io/canary-by-header-pattern"] = header.value
+            else
+                annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = header.value
+            end
+        end
+    end
+    if match.queryParams and next(match.queryParams) ~= nil then
+        queryParam = match.queryParams[1]
+        annotations["nginx.ingress.kubernetes.io/canary-by-query"] = queryParam.name
+        if ( queryParam.type == "RegularExpression" )
+        then
+            annotations["nginx.ingress.kubernetes.io/canary-by-query-pattern"] = queryParam.value
+        else
+            annotations["nginx.ingress.kubernetes.io/canary-by-query-value"] = queryParam.value
         end
     end
 end

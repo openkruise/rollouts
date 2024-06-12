@@ -163,15 +163,17 @@ var (
 		Status: v1beta1.RolloutStatus{
 			Phase: v1beta1.RolloutPhaseProgressing,
 			CanaryStatus: &v1beta1.CanaryStatus{
-				ObservedWorkloadGeneration: 1,
-				RolloutHash:                "rollout-hash-v1",
-				ObservedRolloutID:          "rollout-id-1",
-				StableRevision:             "podtemplatehash-v1",
-				CanaryRevision:             "revision-v2",
-				CurrentStepIndex:           1,
-				CurrentStepState:           v1beta1.CanaryStepStateTrafficRouting,
-				PodTemplateHash:            "podtemplatehash-v2",
-				LastUpdateTime:             &metav1.Time{Time: time.Now()},
+				CommonStatus: v1beta1.CommonStatus{
+					ObservedWorkloadGeneration: 1,
+					RolloutHash:                "rollout-hash-v1",
+					ObservedRolloutID:          "rollout-id-1",
+					StableRevision:             "podtemplatehash-v1",
+					CurrentStepIndex:           1,
+					CurrentStepState:           v1beta1.CanaryStepStateTrafficRouting,
+					PodTemplateHash:            "podtemplatehash-v2",
+					LastUpdateTime:             &metav1.Time{Time: time.Now()},
+				},
+				CanaryRevision: "revision-v2",
 			},
 			Conditions: []v1beta1.RolloutCondition{
 				{
@@ -249,15 +251,17 @@ var (
 		Status: v1beta1.RolloutStatus{
 			Phase: v1beta1.RolloutPhaseProgressing,
 			CanaryStatus: &v1beta1.CanaryStatus{
-				ObservedWorkloadGeneration: 1,
-				RolloutHash:                "rollout-hash-v1",
-				ObservedRolloutID:          "rollout-id-1",
-				StableRevision:             "podtemplatehash-v1",
-				CanaryRevision:             "revision-v2",
-				CurrentStepIndex:           1,
-				CurrentStepState:           v1beta1.CanaryStepStateTrafficRouting,
-				PodTemplateHash:            "podtemplatehash-v2",
-				LastUpdateTime:             &metav1.Time{Time: time.Now()},
+				CommonStatus: v1beta1.CommonStatus{
+					ObservedWorkloadGeneration: 1,
+					RolloutHash:                "rollout-hash-v1",
+					ObservedRolloutID:          "rollout-id-1",
+					StableRevision:             "podtemplatehash-v1",
+					CurrentStepIndex:           1,
+					CurrentStepState:           v1beta1.CanaryStepStateTrafficRouting,
+					PodTemplateHash:            "podtemplatehash-v2",
+					LastUpdateTime:             &metav1.Time{Time: time.Now()},
+				},
+				CanaryRevision: "revision-v2",
 			},
 			Conditions: []v1beta1.RolloutCondition{
 				{

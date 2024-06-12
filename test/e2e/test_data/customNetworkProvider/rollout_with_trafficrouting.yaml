@@ -1,18 +1,16 @@
-  apiVersion: rollouts.kruise.io/v1alpha1
+  apiVersion: rollouts.kruise.io/v1beta1
   kind: Rollout
   metadata:
     name: rollouts-demo
-    annotations:
-      rollouts.kruise.io/rolling-style: canary
   spec:
     disabled: false
-    objectRef:
-      workloadRef:
-        apiVersion: apps/v1
-        kind: Deployment
-        name: echoserver
+    workloadRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: echoserver
     strategy:
       canary:
+        enableExtraWorkloadForCanary: true
         steps:
         - replicas: 1
           matches:
@@ -20,7 +18,14 @@
             - type: Exact
               name: user-agent
               value: pc
-        - weight: 50
+          - queryParams:
+            - type: Exact
+              name: user-agent
+              value: pc
+          - path:
+              value: /pc
+        - replicas: "50%"
+          traffic: "50%"
         trafficRoutings:
         - service: echoserver
           customNetworkRefs:

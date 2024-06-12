@@ -123,17 +123,28 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1beta1.Rollout) (re
 			// But at the first deployment of Rollout/Workload, CanaryStatus isn't set due to no rollout progression,
 			// and PaaS platform cannot judge whether the deployment is completed base on the code above. So we have
 			// to update the status just like the rollout was completed.
-
-			newStatus.CanaryStatus = &v1beta1.CanaryStatus{
+			commonStatus := v1beta1.CommonStatus{
 				ObservedRolloutID:          getRolloutID(workload),
 				ObservedWorkloadGeneration: workload.Generation,
 				PodTemplateHash:            workload.PodTemplateHash,
-				CanaryRevision:             workload.CanaryRevision,
 				StableRevision:             workload.StableRevision,
-				CurrentStepIndex:           int32(len(rollout.Spec.Strategy.Canary.Steps)),
+				CurrentStepIndex:           int32(len(rollout.Spec.Strategy.GetSteps())),
+				NextStepIndex:              util.NextBatchIndex(rollout, int32(len(rollout.Spec.Strategy.GetSteps()))),
 				CurrentStepState:           v1beta1.CanaryStepStateCompleted,
 				RolloutHash:                rollout.Annotations[util.RolloutHashAnnotation],
 			}
+			if rollout.Spec.Strategy.IsBlueGreenRelease() {
+				newStatus.BlueGreenStatus = &v1beta1.BlueGreenStatus{
+					CommonStatus:    commonStatus,
+					UpdatedRevision: workload.CanaryRevision,
+				}
+			} else {
+				newStatus.CanaryStatus = &v1beta1.CanaryStatus{
+					CommonStatus:   commonStatus,
+					CanaryRevision: workload.CanaryRevision,
+				}
+			}
+
 			newStatus.Message = "workload deployment is completed"
 		}
 	case v1beta1.RolloutPhaseDisabled:

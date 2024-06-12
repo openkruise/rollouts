@@ -164,3 +164,15 @@ func DumpJSON(o interface{}) string {
 func EncodeHash(data string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(data)))
 }
+
+// calculate the next batch index
+func NextBatchIndex(rollout *rolloutv1beta1.Rollout, CurrentStepIndex int32) int32 {
+	if rollout == nil {
+		return -1
+	}
+	allSteps := int32(len(rollout.Spec.Strategy.GetSteps()))
+	if CurrentStepIndex >= allSteps {
+		return -1
+	}
+	return CurrentStepIndex + 1
+}

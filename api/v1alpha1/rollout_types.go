@@ -242,16 +242,28 @@ type CanaryStatus struct {
 	CanaryReplicas int32 `json:"canaryReplicas"`
 	// CanaryReadyReplicas the numbers of ready canary revision pods
 	CanaryReadyReplicas int32 `json:"canaryReadyReplicas"`
-	// CurrentStepIndex defines the current step of the rollout is on. If the current step index is null, the
-	// controller will execute the rollout.
+	// NextStepIndex defines the next step of the rollout is on.
+	// In normal case, NextStepIndex is equal to CurrentStepIndex + 1
+	// If the current step is the last step, NextStepIndex is equal to -1
+	// Before the release, NextStepIndex is also equal to -1
+	// 0 is not used and won't appear in any case
+	// It is allowed to patch NextStepIndex by design,
+	// e.g. if CurrentStepIndex is 2, user can patch NextStepIndex to 3 (if exists) to
+	// achieve batch jump, or patch NextStepIndex to 1 to implement a re-execution of step 1
+	// Patching it with a non-positive value is meaningless, which will be corrected
+	// in the next reconciliation
+	// achieve batch jump, or patch NextStepIndex to 1 to implement a re-execution of step 1
+	NextStepIndex int32 `json:"nextStepIndex"`
 	// +optional
-	CurrentStepIndex int32           `json:"currentStepIndex"`
-	CurrentStepState CanaryStepState `json:"currentStepState"`
-	Message          string          `json:"message,omitempty"`
-	LastUpdateTime   *metav1.Time    `json:"lastUpdateTime,omitempty"`
+	CurrentStepIndex int32             `json:"currentStepIndex"`
+	CurrentStepState CanaryStepState   `json:"currentStepState"`
+	Message          string            `json:"message,omitempty"`
+	LastUpdateTime   *metav1.Time      `json:"lastUpdateTime,omitempty"`
+	FinalisingStep   FinalizeStateType `json:"finalisingStep"`
 }
 
 type CanaryStepState string
+type FinalizeStateType string
 
 const (
 	CanaryStepStateUpgrade         CanaryStepState = "StepUpgrade"
