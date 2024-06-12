@@ -146,19 +146,47 @@ type TrafficRoutingStrategy struct {
 	//
 	// +optional
 	RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter `json:"requestHeaderModifier,omitempty"`
-	// Matches define conditions used for matching the incoming HTTP requests to canary service.
-	// Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
-	// If Gateway API, current only support one match.
-	// And cannot support both weight and matches, if both are configured, then matches takes precedence.
+	// Matches define conditions used for matching incoming HTTP requests to the canary service.
+	// Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
+	//
+	// It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured.
+	// In such cases, Matches takes precedence.
 	Matches []HttpRouteMatch `json:"matches,omitempty"`
 }
 
 type HttpRouteMatch struct {
+	// Path specifies a HTTP request path matcher.
+	// Supported list:
+	// - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+	// - GatewayAPI: If path is defined, the whole HttpRouteMatch will be used as a standalone matcher
+	//
+	// +optional
+	Path *gatewayv1beta1.HTTPPathMatch `json:"path,omitempty"`
+
 	// Headers specifies HTTP request header matchers. Multiple match values are
 	// ANDed together, meaning, a request must match all the specified headers
 	// to select the route.
+	//
+	// +listType=map
+	// +listMapKey=name
+	// +optional
 	// +kubebuilder:validation:MaxItems=16
 	Headers []gatewayv1beta1.HTTPHeaderMatch `json:"headers,omitempty"`
+
+	// QueryParams specifies HTTP query parameter matchers. Multiple match
+	// values are ANDed together, meaning, a request must match all the
+	// specified query parameters to select the route.
+	// Supported list:
+	// - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+	// - MSE Ingress: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/annotations-supported-by-mse-ingress-gateways-1
+	//   Header/Cookie > QueryParams
+	// - Gateway API
+	//
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	QueryParams []gatewayv1beta1.HTTPQueryParamMatch `json:"queryParams,omitempty"`
 }
 
 // RolloutPause defines a pause stage for a rollout

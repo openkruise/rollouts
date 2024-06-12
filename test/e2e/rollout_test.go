@@ -28,6 +28,7 @@ import (
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -50,6 +51,16 @@ const (
 )
 
 func getRolloutCondition(status v1alpha1.RolloutStatus, condType v1alpha1.RolloutConditionType) *v1alpha1.RolloutCondition {
+	for i := range status.Conditions {
+		c := status.Conditions[i]
+		if c.Type == condType {
+			return &c
+		}
+	}
+	return nil
+}
+
+func getRolloutConditionV1beta1(status v1beta1.RolloutStatus, condType v1beta1.RolloutConditionType) *v1beta1.RolloutCondition {
 	for i := range status.Conditions {
 		c := status.Conditions[i]
 		if c.Type == condType {
@@ -213,6 +224,21 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 
 			body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, v1alpha1.CanaryStepStateReady)
+			Expect(k8sClient.Status().Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))).NotTo(HaveOccurred())
+			return false
+		}, 10*time.Second, time.Second).Should(BeTrue())
+	}
+
+	ResumeRolloutCanaryV1beta1 := func(name string) {
+		Eventually(func() bool {
+			clone := &v1beta1.Rollout{}
+			Expect(GetObject(name, clone)).NotTo(HaveOccurred())
+			if clone.Status.CanaryStatus.CurrentStepState != v1beta1.CanaryStepStatePaused {
+				fmt.Println("resume rollout success, and CurrentStepState", util.DumpJSON(clone.Status))
+				return true
+			}
+
+			body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, v1beta1.CanaryStepStateReady)
 			Expect(k8sClient.Status().Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))).NotTo(HaveOccurred())
 			return false
 		}, 10*time.Second, time.Second).Should(BeTrue())
@@ -2652,9 +2678,9 @@ var _ = SIGDescribe("Rollout", func() {
 	})
 
 	KruiseDescribe("Canary rollout with custon network provider", func() {
-		It("V1->V2: Route traffic with header matches and weight using rollout for VirtualService", func() {
+		It("V1->V2: Route traffic with header/queryParams/path matches and weight using rollout for VirtualService", func() {
 			By("Creating Rollout...")
-			rollout := &v1alpha1.Rollout{}
+			rollout := &v1beta1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/customNetworkProvider/rollout_with_trafficrouting.yaml", rollout)).ToNot(HaveOccurred())
 			CreateObject(rollout)
 
@@ -2678,7 +2704,7 @@ var _ = SIGDescribe("Rollout", func() {
 
 			// check rollout status
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseHealthy))
+			Expect(rollout.Status.Phase).Should(Equal(v1beta1.RolloutPhaseHealthy))
 			By("check rollout status & paused success")
 
 			// v1 -> v2, start rollout action
@@ -2698,14 +2724,14 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 1))
 			// check virtualservice spec
 			Expect(GetObject(vs.GetName(), vs)).NotTo(HaveOccurred())
-			expectedSpec := `{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"match":[{"headers":{"user-agent":{"exact":"pc"}}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
+			expectedSpec := `{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"match":[{"uri":{"prefix":"/pc"}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"match":[{"queryParams":{"user-agent":{"exact":"pc"}}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"match":[{"headers":{"user-agent":{"exact":"pc"}}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
 			Expect(util.DumpJSON(vs.Object["spec"])).Should(Equal(expectedSpec))
 			// check original spec annotation
 			expectedAnno := `{"spec":{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}}`
 			Expect(vs.GetAnnotations()[OriginalSpecAnnotation]).Should(Equal(expectedAnno))
 
 			// resume rollout canary
-			ResumeRolloutCanary(rollout.Name)
+			ResumeRolloutCanaryV1beta1(rollout.Name)
 			By("Resume rollout, and wait next step(2), routing 50% traffic to new version pods")
 			WaitRolloutCanaryStepPaused(rollout.Name, 2)
 			// check rollout status
@@ -2720,7 +2746,7 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(vs.GetAnnotations()[OriginalSpecAnnotation]).Should(Equal(expectedAnno))
 
 			// resume rollout
-			ResumeRolloutCanary(rollout.Name)
+			ResumeRolloutCanaryV1beta1(rollout.Name)
 			WaitRolloutStatusPhase(rollout.Name, v1alpha1.RolloutPhaseHealthy)
 			By("rollout completed, and check")
 			// check service & virtualservice & deployment
@@ -2747,10 +2773,10 @@ var _ = SIGDescribe("Rollout", func() {
 			}
 			// check progressing succeed
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
-			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
+			cond := getRolloutConditionV1beta1(rollout.Status, v1beta1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(v1beta1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
+			cond = getRolloutConditionV1beta1(rollout.Status, v1beta1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)

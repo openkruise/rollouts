@@ -134,7 +134,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 		desiredRules  func() []gatewayv1beta1.HTTPRouteRule
 	}{
 		{
-			name: "test1 headers",
+			name: "test headers",
 			getRouteRules: func() []gatewayv1beta1.HTTPRouteRule {
 				rules := routeDemo.DeepCopy().Spec.Rules
 				return rules
@@ -287,6 +287,435 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 									Name:  "user_id",
 									Value: "234*",
 									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+					},
+					BackendRefs: []gatewayv1beta1.HTTPBackendRef{
+						{
+							BackendRef: gatewayv1beta1.BackendRef{
+								BackendObjectReference: gatewayv1beta1.BackendObjectReference{
+									Kind: &kindSvc,
+									Name: "store-svc-canary",
+									Port: &portNum,
+								},
+							},
+						},
+					},
+				})
+				return rules
+			},
+		},
+		{
+			name: "test query params",
+			getRouteRules: func() []gatewayv1beta1.HTTPRouteRule {
+				rules := routeDemo.DeepCopy().Spec.Rules
+				return rules
+			},
+			getRoutes: func() (*int32, []v1beta1.HttpRouteMatch) {
+				iType := gatewayv1beta1.QueryParamMatchRegularExpression
+				return nil, []v1beta1.HttpRouteMatch{
+					// queryparams
+					{
+						QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+							{
+								Name:  "user_id",
+								Value: "123*",
+								Type:  &iType,
+							},
+							{
+								Name:  "canary",
+								Value: "true",
+							},
+						},
+					}, {
+						QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+							{
+								Name:  "user_id",
+								Value: "234*",
+								Type:  &iType,
+							},
+							{
+								Name:  "canary",
+								Value: "true",
+							},
+						},
+					},
+				}
+			},
+			desiredRules: func() []gatewayv1beta1.HTTPRouteRule {
+				rules := routeDemo.DeepCopy().Spec.Rules
+				iType := gatewayv1beta1.QueryParamMatchRegularExpression
+				rules = append(rules, gatewayv1beta1.HTTPRouteRule{
+					Matches: []gatewayv1beta1.HTTPRouteMatch{
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Value: utilpointer.String("/store"),
+							},
+							Headers: []gatewayv1beta1.HTTPHeaderMatch{
+								{
+									Name:  "version",
+									Value: "v2",
+								},
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Value: utilpointer.String("/store"),
+							},
+							Headers: []gatewayv1beta1.HTTPHeaderMatch{
+								{
+									Name:  "version",
+									Value: "v2",
+								},
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Name:  "user_id",
+									Value: "234*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Value: utilpointer.String("/v2/store"),
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Value: utilpointer.String("/v2/store"),
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Name:  "user_id",
+									Value: "234*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+					},
+					BackendRefs: []gatewayv1beta1.HTTPBackendRef{
+						{
+							BackendRef: gatewayv1beta1.BackendRef{
+								BackendObjectReference: gatewayv1beta1.BackendObjectReference{
+									Kind: &kindSvc,
+									Name: "store-svc-canary",
+									Port: &portNum,
+								},
+							},
+						},
+					},
+				})
+				rules = append(rules, gatewayv1beta1.HTTPRouteRule{
+					Matches: []gatewayv1beta1.HTTPRouteMatch{
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Value: utilpointer.String("/storage"),
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Value: utilpointer.String("/storage"),
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Name:  "user_id",
+									Value: "234*",
+									Type:  &iType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+					},
+					BackendRefs: []gatewayv1beta1.HTTPBackendRef{
+						{
+							BackendRef: gatewayv1beta1.BackendRef{
+								BackendObjectReference: gatewayv1beta1.BackendObjectReference{
+									Kind: &kindSvc,
+									Name: "store-svc-canary",
+									Port: &portNum,
+								},
+							},
+						},
+					},
+				})
+				return rules
+			},
+		},
+		{
+			name: "test query params and headers",
+			getRouteRules: func() []gatewayv1beta1.HTTPRouteRule {
+				rules := routeDemo.DeepCopy().Spec.Rules
+				return rules
+			},
+			getRoutes: func() (*int32, []v1beta1.HttpRouteMatch) {
+				iQueryParamType := gatewayv1beta1.QueryParamMatchRegularExpression
+				iHeaderType := gatewayv1beta1.HeaderMatchRegularExpression
+				return nil, []v1beta1.HttpRouteMatch{
+					// queryParams + headers
+					{
+						QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+							{
+								Name:  "user_id",
+								Value: "123*",
+								Type:  &iQueryParamType,
+							},
+							{
+								Name:  "canary",
+								Value: "true",
+							},
+						},
+						Headers: []gatewayv1beta1.HTTPHeaderMatch{
+							{
+								Name:  "user_id",
+								Value: "123*",
+								Type:  &iHeaderType,
+							},
+							{
+								Name:  "canary",
+								Value: "true",
+							},
+						},
+					},
+				}
+			},
+			desiredRules: func() []gatewayv1beta1.HTTPRouteRule {
+				rules := routeDemo.DeepCopy().Spec.Rules
+				iQueryParamType := gatewayv1beta1.QueryParamMatchRegularExpression
+				iHeaderType := gatewayv1beta1.HeaderMatchRegularExpression
+				rules = append(rules, gatewayv1beta1.HTTPRouteRule{
+					Matches: []gatewayv1beta1.HTTPRouteMatch{
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Value: utilpointer.String("/store"),
+							},
+							Headers: []gatewayv1beta1.HTTPHeaderMatch{
+								{
+									Name:  "version",
+									Value: "v2",
+								},
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iHeaderType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iQueryParamType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Value: utilpointer.String("/v2/store"),
+							},
+							Headers: []gatewayv1beta1.HTTPHeaderMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iHeaderType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iQueryParamType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+					},
+					BackendRefs: []gatewayv1beta1.HTTPBackendRef{
+						{
+							BackendRef: gatewayv1beta1.BackendRef{
+								BackendObjectReference: gatewayv1beta1.BackendObjectReference{
+									Kind: &kindSvc,
+									Name: "store-svc-canary",
+									Port: &portNum,
+								},
+							},
+						},
+					},
+				})
+				rules = append(rules, gatewayv1beta1.HTTPRouteRule{
+					Matches: []gatewayv1beta1.HTTPRouteMatch{
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Value: utilpointer.String("/storage"),
+							},
+							Headers: []gatewayv1beta1.HTTPHeaderMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iHeaderType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iQueryParamType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+						},
+					},
+					BackendRefs: []gatewayv1beta1.HTTPBackendRef{
+						{
+							BackendRef: gatewayv1beta1.BackendRef{
+								BackendObjectReference: gatewayv1beta1.BackendObjectReference{
+									Kind: &kindSvc,
+									Name: "store-svc-canary",
+									Port: &portNum,
+								},
+							},
+						},
+					},
+				})
+				return rules
+			},
+		},
+		{
+			name: "test path replace",
+			getRouteRules: func() []gatewayv1beta1.HTTPRouteRule {
+				rules := routeDemo.DeepCopy().Spec.Rules
+				return rules
+			},
+			getRoutes: func() (*int32, []v1beta1.HttpRouteMatch) {
+				iQueryParamType := gatewayv1beta1.QueryParamMatchRegularExpression
+				iHeaderType := gatewayv1beta1.HeaderMatchRegularExpression
+				return nil, []v1beta1.HttpRouteMatch{
+					// queryParams + headers + path
+					{
+						QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+							{
+								Name:  "user_id",
+								Value: "123*",
+								Type:  &iQueryParamType,
+							},
+							{
+								Name:  "canary",
+								Value: "true",
+							},
+						},
+						Headers: []gatewayv1beta1.HTTPHeaderMatch{
+							{
+								Name:  "user_id",
+								Value: "123*",
+								Type:  &iHeaderType,
+							},
+							{
+								Name:  "canary",
+								Value: "true",
+							},
+						},
+						Path: &gatewayv1beta1.HTTPPathMatch{
+							Value: utilpointer.String("/storage/v2"),
+						},
+					},
+				}
+			},
+			desiredRules: func() []gatewayv1beta1.HTTPRouteRule {
+				rules := routeDemo.DeepCopy().Spec.Rules
+				iQueryParamType := gatewayv1beta1.QueryParamMatchRegularExpression
+				iHeaderType := gatewayv1beta1.HeaderMatchRegularExpression
+				rules = append(rules, gatewayv1beta1.HTTPRouteRule{
+					Matches: []gatewayv1beta1.HTTPRouteMatch{
+						{
+							Path: &gatewayv1beta1.HTTPPathMatch{
+								Value: utilpointer.String("/storage/v2"),
+							},
+							Headers: []gatewayv1beta1.HTTPHeaderMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iHeaderType,
+								},
+								{
+									Name:  "canary",
+									Value: "true",
+								},
+							},
+							QueryParams: []gatewayv1beta1.HTTPQueryParamMatch{
+								{
+									Name:  "user_id",
+									Value: "123*",
+									Type:  &iQueryParamType,
 								},
 								{
 									Name:  "canary",
