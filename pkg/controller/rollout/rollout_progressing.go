@@ -279,11 +279,15 @@ func (r *RolloutReconciler) handleRolloutPlanChanged(c *RolloutContext) error {
 		return nil
 	}
 
-	// otherwise, we jump to step paused, where the "jump" logic exists
+	// otherwise, execute the "jump" logic
 	c.NewStatus.GetSubStatus().NextStepIndex = newStepIndex
-	c.NewStatus.GetSubStatus().CurrentStepState = v1beta1.CanaryStepStatePaused
 	c.NewStatus.GetSubStatus().LastUpdateTime = &metav1.Time{Time: time.Now()}
 	c.NewStatus.GetSubStatus().RolloutHash = c.Rollout.Annotations[util.RolloutHashAnnotation]
+	releaseManager, err := r.getReleaseManager(c.Rollout)
+	if err != nil {
+		return err
+	}
+	releaseManager.doCanaryJump(c)
 	klog.Infof("rollout(%s/%s) canary step configuration change, and NextStepIndex(%d) state(%s)",
 		c.Rollout.Namespace, c.Rollout.Name, c.NewStatus.GetSubStatus().NextStepIndex, c.NewStatus.GetSubStatus().CurrentStepState)
 	return nil
@@ -516,11 +520,10 @@ func setRolloutSucceededCondition(status *v1beta1.RolloutStatus, condStatus core
 func newTrafficRoutingContext(c *RolloutContext) *trafficrouting.TrafficRoutingContext {
 	currentIndex := c.NewStatus.GetSubStatus().CurrentStepIndex - 1
 	var currentStep v1beta1.CanaryStep
-	//TODO - need better designed logic
 	if currentIndex < 0 || int(currentIndex) >= len(c.Rollout.Spec.Strategy.GetSteps()) {
 		klog.Warningf("Rollout(%s/%s) encounters a special case when constructing newTrafficRoutingContext", c.Rollout.Namespace, c.Rollout.Name)
-		// usually this only happens when deleting the rollout or rolling back
-		// in this situation, it's no matter which step the current is
+		// usually this only happens when deleting the rollout or rolling back (ie. Finalising)
+		// in these scenarios, it's not important which step the current is
 		currentStep = c.Rollout.Spec.Strategy.GetSteps()[0]
 	} else {
 		currentStep = c.Rollout.Spec.Strategy.GetSteps()[currentIndex]

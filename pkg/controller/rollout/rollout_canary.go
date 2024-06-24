@@ -70,6 +70,11 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 	if canaryStatus.PodTemplateHash == "" {
 		canaryStatus.PodTemplateHash = c.Workload.PodTemplateHash
 	}
+
+	if m.doCanaryJump(c) {
+		klog.Infof("rollout(%s/%s) canary step jumped", c.Rollout.Namespace, c.Rollout.Name)
+		return nil
+	}
 	// When the first batch is trafficRouting rolling and the next steps are rolling release,
 	// We need to clean up the canary-related resources first and then rollout the rest of the batch.
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
@@ -209,10 +214,6 @@ func (m *canaryReleaseManager) doCanaryMetricsAnalysis(c *RolloutContext) (bool,
 }
 
 func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
-	if m.doCanaryJump(c) {
-		klog.Infof("rollout(%s/%s) canary step jumped", c.Rollout.Namespace, c.Rollout.Name)
-		return false, nil
-	}
 	canaryStatus := c.NewStatus.CanaryStatus
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	steps := len(c.Rollout.Spec.Strategy.Canary.Steps)
@@ -240,25 +241,37 @@ func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 
 func (m *canaryReleaseManager) doCanaryJump(c *RolloutContext) (jumped bool) {
 	canaryStatus := c.NewStatus.CanaryStatus
-	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	nextIndex := canaryStatus.NextStepIndex
-	if nextIndex != util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex) && nextIndex > 0 {
+	/*
+		we set the CurrentStepIndex same as NextStepIndex to prevent currentStepIndex from out of range
+		for example, if we had a rollout with 4 steps and CurrentStepIndex was 2
+		then, the user removed 3 steps from the plan, we can calculate NextStepIndex is 1 correctly,
+		but CurrentStepIndex remains 2, which could cause out of range.
+	*/
+	resetCurrentIndex := false
+	if int(canaryStatus.CurrentStepIndex) > len(c.Rollout.Spec.Strategy.Canary.Steps) {
+		canaryStatus.CurrentStepIndex = nextIndex
+		resetCurrentIndex = true
+	}
+	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
+	if resetCurrentIndex || nextIndex != util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex) && nextIndex > 0 {
 		currentIndexBackup := canaryStatus.CurrentStepIndex
+		currentStepStateBackup := canaryStatus.CurrentStepState
 		canaryStatus.CurrentStepIndex = nextIndex
 		canaryStatus.NextStepIndex = util.NextBatchIndex(c.Rollout, nextIndex)
 		nextStep := c.Rollout.Spec.Strategy.Canary.Steps[nextIndex-1]
 		// if the Replicas between currentStep and nextStep is same, we can jump to
 		// the TrafficRouting step; otherwise, we should start from the Init step
-		if reflect.DeepEqual(nextStep.Replicas, currentStep.Replicas) {
+		if reflect.DeepEqual(nextStep.Replicas, currentStep.Replicas) && !resetCurrentIndex {
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
 			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
-				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStatePaused, canaryStatus.CurrentStepState)
+				canaryStatus.CurrentStepIndex, currentStepStateBackup, canaryStatus.CurrentStepState)
 		} else {
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
 			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
-				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStatePaused, v1beta1.CanaryStepStateInit)
+				canaryStatus.CurrentStepIndex, currentStepStateBackup, v1beta1.CanaryStepStateInit)
 		}
 		klog.Infof("rollout(%s/%s) canary step from(%d) -> to(%d)", c.Rollout.Namespace, c.Rollout.Name, currentIndexBackup, canaryStatus.CurrentStepIndex)
 		return true
