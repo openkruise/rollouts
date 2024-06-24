@@ -615,13 +615,13 @@ spec:
                           description: CanaryStep defines a step of a canary workload.
                           properties:
                             matches:
-                              description: Matches define conditions used for matching
-                                the incoming HTTP requests to canary service. Each
+                              description: "Matches define conditions used for matching
+                                incoming HTTP requests to the canary service. Each
                                 match is independent, i.e. this rule will be matched
-                                if **any** one of the matches is satisfied. If Gateway
-                                API, current only support one match. And cannot support
-                                both weight and matches, if both are configured, then
-                                matches takes precedence.
+                                as long as **any** one of the matches is satisfied.
+                                \n It cannot support Traffic (weight-based routing)
+                                and Matches simultaneously, if both are configured.
+                                In such cases, Matches takes precedence."
                               items:
                                 properties:
                                   headers:
@@ -683,6 +683,88 @@ spec:
                                       type: object
                                     maxItems: 16
                                     type: array
+                                    x-kubernetes-list-map-keys:
+                                    - name
+                                    x-kubernetes-list-type: map
+                                  path:
+                                    description: 'Path specifies a HTTP request path
+                                      matcher. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+                                      - GatewayAPI: If path is defined, the whole
+                                      HttpRouteMatch will be used as a standalone
+                                      matcher'
+                                    properties:
+                                      type:
+                                        default: PathPrefix
+                                        description: "Type specifies how to match
+                                          against the path Value. \n Support: Core
+                                          (Exact, PathPrefix) \n Support: Custom (RegularExpression)"
+                                        enum:
+                                        - Exact
+                                        - PathPrefix
+                                        - RegularExpression
+                                        type: string
+                                      value:
+                                        default: /
+                                        description: Value of the HTTP path to match
+                                          against.
+                                        maxLength: 1024
+                                        type: string
+                                    type: object
+                                  queryParams:
+                                    description: 'QueryParams specifies HTTP query
+                                      parameter matchers. Multiple match values are
+                                      ANDed together, meaning, a request must match
+                                      all the specified query parameters to select
+                                      the route. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+                                      - MSE Ingress: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/annotations-supported-by-mse-ingress-gateways-1   Header/Cookie
+                                      > QueryParams - Gateway API'
+                                    items:
+                                      description: HTTPQueryParamMatch describes how
+                                        to select a HTTP route by matching HTTP query
+                                        parameters.
+                                      properties:
+                                        name:
+                                          description: "Name is the name of the HTTP
+                                            query param to be matched. This must be
+                                            an exact string match. (See https://tools.ietf.org/html/rfc7230#section-2.7.3).
+                                            \n If multiple entries specify equivalent
+                                            query param names, only the first entry
+                                            with an equivalent name MUST be considered
+                                            for a match. Subsequent entries with an
+                                            equivalent query param name MUST be ignored."
+                                          maxLength: 256
+                                          minLength: 1
+                                          type: string
+                                        type:
+                                          default: Exact
+                                          description: "Type specifies how to match
+                                            against the value of the query parameter.
+                                            \n Support: Extended (Exact) \n Support:
+                                            Custom (RegularExpression) \n Since RegularExpression
+                                            QueryParamMatchType has custom conformance,
+                                            implementations can support POSIX, PCRE
+                                            or any other dialects of regular expressions.
+                                            Please read the implementation's documentation
+                                            to determine the supported dialect."
+                                          enum:
+                                          - Exact
+                                          - RegularExpression
+                                          type: string
+                                        value:
+                                          description: Value is the value of HTTP
+                                            query param to be matched.
+                                          maxLength: 1024
+                                          minLength: 1
+                                          type: string
+                                      required:
+                                      - name
+                                      - value
+                                      type: object
+                                    maxItems: 16
+                                    type: array
+                                    x-kubernetes-list-map-keys:
+                                    - name
+                                    x-kubernetes-list-type: map
                                 type: object
                               type: array
                             pause:

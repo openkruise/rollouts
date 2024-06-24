@@ -17,6 +17,9 @@ limitations under the License.
 package v1beta1
 
 import (
+	"reflect"
+
+	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -92,6 +95,25 @@ func (r *RolloutStrategy) GetRollingStyle() RollingStyleType {
 	return PartitionRollingStyle
 }
 
+// simply using EnableExtraWorkloadForCanary is not enough, for example, a v1alaph1 Rollout
+// can be converted to v1beta1 Rollout with EnableExtraWorkloadForCanary set as true, even the
+// objectRef is cloneset (which doesn't support canary release)
+func IsRealPartition(rollout *Rollout) bool {
+	if rollout.Spec.Strategy.IsEmptyRelease() {
+		return false
+	}
+	estimation := rollout.Spec.Strategy.GetRollingStyle()
+	if estimation == BlueGreenRollingStyle {
+		return false
+	}
+	targetRef := rollout.Spec.WorkloadRef
+	if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() &&
+		estimation == CanaryRollingStyle {
+		return false
+	}
+	return true
+}
+
 // r.GetRollingStyle() == BlueGreenRollingStyle
 func (r *RolloutStrategy) IsBlueGreenRelease() bool {
 	return r.GetRollingStyle() == BlueGreenRollingStyle
@@ -100,6 +122,10 @@ func (r *RolloutStrategy) IsBlueGreenRelease() bool {
 // r.GetRollingStyle() == CanaryRollingStyle || r.GetRollingStyle() == PartitionRollingStyle
 func (r *RolloutStrategy) IsCanaryStragegy() bool {
 	return r.GetRollingStyle() == CanaryRollingStyle || r.GetRollingStyle() == PartitionRollingStyle
+}
+
+func (r *RolloutStrategy) IsEmptyRelease() bool {
+	return r.BlueGreen == nil && r.Canary == nil
 }
 
 // Get the steps based on the rolling style
@@ -544,8 +570,6 @@ const (
 	FinalisingStepTypeStableService FinalisingStepType = "RestoreStableService"
 	// Restore the GatewayAPI/Ingress/Istio
 	FinalisingStepTypeGateway FinalisingStepType = "RestoreGateway"
-	// Delete Canary Service
-	FinalisingStepTypeCanaryService FinalisingStepType = "DeleteCanayService"
 	// Delete Batch Release
 	FinalisingStepTypeDeleteBR FinalisingStepType = "DeleteBatchRelease"
 )

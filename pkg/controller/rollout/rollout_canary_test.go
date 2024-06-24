@@ -63,6 +63,7 @@ func TestRunCanary(t *testing.T) {
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
+				obj.Status.CanaryStatus.NextStepIndex = 2
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
@@ -76,6 +77,7 @@ func TestRunCanary(t *testing.T) {
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.CurrentStepIndex = 1
+				s.CanaryStatus.NextStepIndex = 2
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
@@ -139,6 +141,7 @@ func TestRunCanary(t *testing.T) {
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
+				obj.Status.CanaryStatus.NextStepIndex = 2
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
@@ -185,6 +188,7 @@ func TestRunCanary(t *testing.T) {
 				s.CanaryStatus.CanaryReplicas = 1
 				s.CanaryStatus.CanaryReadyReplicas = 1
 				s.CanaryStatus.CurrentStepIndex = 1
+				s.CanaryStatus.NextStepIndex = 2
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
@@ -290,6 +294,7 @@ func TestRunCanaryPaused(t *testing.T) {
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.CurrentStepIndex = 3
+				obj.Status.CanaryStatus.NextStepIndex = 4
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStatePaused
 				return obj
@@ -301,6 +306,7 @@ func TestRunCanaryPaused(t *testing.T) {
 				obj.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				obj.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.CanaryStatus.CurrentStepIndex = 3
+				obj.CanaryStatus.NextStepIndex = 4
 				obj.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStatePaused
 				return obj

@@ -27,7 +27,8 @@ const (
 	// BatchReleaseControlAnnotation is controller info about batchRelease when rollout
 	BatchReleaseControlAnnotation = "batchrelease.rollouts.kruise.io/control-info"
 	// InRolloutProgressingAnnotation marks workload as entering the rollout progressing process
-	//and does not allow paused=false during this process
+	// and does not allow paused=false during this process. However, blueGreen is an exception,
+	// which allows paused=false during progressing.
 	InRolloutProgressingAnnotation = "rollouts.kruise.io/in-progressing"
 	// RolloutHashAnnotation record observed rollout spec hash
 	RolloutHashAnnotation = "rollouts.kruise.io/hash"
