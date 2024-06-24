@@ -548,11 +548,11 @@ spec:
       name: STATUS
       type: string
     - description: The rollout canary status step
-      jsonPath: .status.canaryStatus.currentStepIndex
+      jsonPath: .status.currentStepIndex
       name: CANARY_STEP
       type: integer
     - description: The rollout canary status step state
-      jsonPath: .status.canaryStatus.currentStepState
+      jsonPath: .status.currentStepState
       name: CANARY_STATE
       type: string
     - description: The rollout canary status message
@@ -1594,6 +1594,14 @@ spec:
                   - type
                   type: object
                 type: array
+              currentStepIndex:
+                description: These two values will be synchronized with the same fileds
+                  in CanaryStatus or BlueGreeenStatus mainly used to provide info
+                  for kubectl get command
+                format: int32
+                type: integer
+              currentStepState:
+                type: string
               message:
                 description: Message provides details on why the rollout is in its
                   current phase
@@ -1607,6 +1615,9 @@ spec:
                 description: BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
                   Phase is the rollout phase.
                 type: string
+            required:
+            - currentStepIndex
+            - currentStepState
             type: object
         type: object
     served: true

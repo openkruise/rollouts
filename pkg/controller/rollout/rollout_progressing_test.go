@@ -72,6 +72,8 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.NextStepIndex = 2
 				// now the first step is no longer StepStateUpgrade, it is StepStateInit now
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
 				return s
 			},
 			expectTr: func() *v1alpha1.TrafficRouting {
@@ -108,6 +110,8 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
 				return s
 			},
 		},
@@ -165,6 +169,8 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
 				return s
 			},
 		},
@@ -223,6 +229,8 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(s, *cond)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
 				return s
 			},
 		},
@@ -282,6 +290,8 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(s, *cond)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
 				return s
 			},
 			expectTr: func() *v1alpha1.TrafficRouting {
@@ -343,6 +353,8 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond2.Reason = v1alpha1.ProgressingReasonFinalising
 				cond2.Status = corev1.ConditionTrue
 				util.SetRolloutCondition(s, *cond2)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
 				return s
 			},
 		},
@@ -397,6 +409,8 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond1.LastUpdateTime = metav1.Time{}
 				cond1.LastTransitionTime = metav1.Time{}
 				util.SetRolloutCondition(s, *cond1)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
 				return s
 			},
 		},
@@ -454,6 +468,8 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonCancelling
 				util.SetRolloutCondition(s, *cond)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
 				return s
 			},
 		},
@@ -511,6 +527,8 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonCancelling
 				util.SetRolloutCondition(s, *cond)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
 				return s
 			},
 		},

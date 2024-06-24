@@ -308,6 +308,10 @@ type RolloutStatus struct {
 	Phase RolloutPhase `json:"phase,omitempty"`
 	// Message provides details on why the rollout is in its current phase
 	Message string `json:"message,omitempty"`
+	// These two values will be synchronized with the same fileds in CanaryStatus or BlueGreeenStatus
+	// mainly used to provide info for kubectl get command
+	CurrentStepIndex int32           `json:"currentStepIndex"`
+	CurrentStepState CanaryStepState `json:"currentStepState"`
 }
 
 // RolloutCondition describes the state of a rollout at a certain point.
@@ -430,6 +434,9 @@ type BlueGreenStatus struct {
 
 // GetSubStatus returns the ethier canary or bluegreen status
 func (r *RolloutStatus) GetSubStatus() *CommonStatus {
+	if r.CanaryStatus == nil && r.BlueGreenStatus == nil {
+		return nil
+	}
 	if r.CanaryStatus != nil {
 		return &(r.CanaryStatus.CommonStatus)
 	}
@@ -559,8 +566,8 @@ const (
 //+kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="STATUS",type="string",JSONPath=".status.phase",description="The rollout status phase"
-// +kubebuilder:printcolumn:name="CANARY_STEP",type="integer",JSONPath=".status.canaryStatus.currentStepIndex",description="The rollout canary status step"
-// +kubebuilder:printcolumn:name="CANARY_STATE",type="string",JSONPath=".status.canaryStatus.currentStepState",description="The rollout canary status step state"
+// +kubebuilder:printcolumn:name="CANARY_STEP",type="integer",JSONPath=".status.currentStepIndex",description="The rollout canary status step"
+// +kubebuilder:printcolumn:name="CANARY_STATE",type="string",JSONPath=".status.currentStepState",description="The rollout canary status step state"
 // +kubebuilder:printcolumn:name="MESSAGE",type="string",JSONPath=".status.message",description="The rollout canary status message"
 // +kubebuilder:printcolumn:name="AGE",type=date,JSONPath=".metadata.creationTimestamp"
 
