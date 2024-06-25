@@ -89,7 +89,7 @@ function GenerateRoutesWithMatches(spec, matches, stableService, canaryService)
         -- stableService == canaryService indicates DestinationRule exists and subset is set to be canary by default
         if stableService == canaryService then
             route.route[1].destination.host = stableService
-            route.route[1].destination.subset = "canary"
+            route.route[1].destination.subset = obj.canaryName
         else
             route.route[1].destination.host = canaryService
         end
@@ -113,7 +113,7 @@ function GenerateRoutes(spec, stableService, canaryService, stableWeight, canary
             canary = {
                 destination = {
                     host = stableService,
-                    subset = "canary",
+                    subset = obj.canaryName,
                 },
                 weight = canaryWeight,
             }

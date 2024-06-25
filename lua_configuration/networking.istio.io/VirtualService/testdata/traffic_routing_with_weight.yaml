@@ -12,6 +12,9 @@ trafficRouting:
       - apiVersion: networking.istio.io/v1alpha3
         kind: VirtualService
         name: vs-demo
+      additionalParams:
+        istio.destinationRule.stableSubsetName: "base"
+        istio.destinationRule.canarySubsetName: "canary"
 original:
   apiVersion: networking.istio.io/v1alpha3
   kind: VirtualService

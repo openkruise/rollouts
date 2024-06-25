@@ -53,6 +53,16 @@ type LuaData struct {
 	Matches       []v1beta1.HttpRouteMatch
 	CanaryService string
 	StableService string
+	// workload.RevisionLabelKey
+	RevisionLabelKey string
+	// status.CanaryStatus.StableRevision
+	StableRevision string
+	// status.CanaryStatus.PodTemplateHash
+	CanaryRevision string
+	// specify the name of subset used as stable subset, default 'stable'; if not found, create a subset named stable
+	StableName string
+	// sepcify the name of canary subset that will be created, default 'canary'
+	CanaryName string
 }
 type Data struct {
 	Spec        interface{}       `json:"spec,omitempty"`
@@ -72,9 +82,16 @@ type Config struct {
 	CanaryService string
 	StableService string
 	// network providers need to be created
-	TrafficConf                  []v1beta1.ObjectRef
-	OwnerRef                     metav1.OwnerReference
-	DisableGenerateCanaryService bool
+	TrafficConf []v1beta1.ObjectRef
+	OwnerRef    metav1.OwnerReference
+	// DisableGenerateCanaryService bool
+	AdditionalParams map[string]string
+	// workload.RevisionLabelKey
+	RevisionLabelKey string
+	// status.CanaryStatus.StableRevision
+	StableRevision string
+	// status.CanaryStatus.PodTemplateHash
+	CanaryRevision string
 }
 
 func NewCustomController(client client.Client, conf Config) (network.NetworkProvider, error) {
@@ -268,13 +285,27 @@ func (r *customController) executeLuaForCanary(spec Data, strategy *v1beta1.Traf
 		// so we need to pass weight=-1 to indicate the case where weight is nil.
 		weight = utilpointer.Int32(-1)
 	}
+	// default value
+	stableSubsetName, ok := r.conf.AdditionalParams[v1beta1.IstioStableSubsetName]
+	if !ok {
+		stableSubsetName = "stable" //default value
+	}
+	canarySubsetName, ok := r.conf.AdditionalParams[v1beta1.IstioCanarySubsetName]
+	if !ok {
+		canarySubsetName = "canary" //default value
+	}
 	data := &LuaData{
-		Data:          spec,
-		CanaryWeight:  *weight,
-		StableWeight:  100 - *weight,
-		Matches:       matches,
-		CanaryService: r.conf.CanaryService,
-		StableService: r.conf.StableService,
+		Data:             spec,
+		CanaryWeight:     *weight,
+		StableWeight:     100 - *weight,
+		Matches:          matches,
+		CanaryService:    r.conf.CanaryService,
+		StableService:    r.conf.StableService,
+		RevisionLabelKey: r.conf.RevisionLabelKey,
+		StableRevision:   r.conf.StableRevision,
+		CanaryRevision:   r.conf.CanaryRevision,
+		StableName:       stableSubsetName,
+		CanaryName:       canarySubsetName,
 	}
 
 	unObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(data)

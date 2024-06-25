@@ -12,11 +12,25 @@ data:
         obj.stableWeight = 0
     end
 
-    function FindAllRules(spec, protocol)
+    function FindRules(spec, protocol)
         local rules = {}
-        if (spec[protocol] ~= nil) then
-            for _, proto in ipairs(spec[protocol]) do
-                table.insert(rules, proto)
+        if (protocol == "http") then
+            if (spec.http ~= nil) then
+                for _, http in ipairs(spec.http) do
+                    table.insert(rules, http)
+                end
+            end
+        elseif (protocol == "tcp") then
+            if (spec.tcp ~= nil) then
+                for _, http in ipairs(spec.tcp) do
+                    table.insert(rules, http)
+                end
+            end
+        elseif (protocol == "tls") then
+            if (spec.tls ~= nil) then
+                for _, http in ipairs(spec.tls) do
+                    table.insert(rules, http)
+                end
             end
         end
         return rules
@@ -25,33 +39,42 @@ data:
     -- find matched route of VirtualService spec with stable svc
     function FindMatchedRules(spec, stableService, protocol)
         local matchedRoutes = {}
-        local rules = FindAllRules(spec, protocol)
+        local rules = FindRules(spec, protocol)
         -- a rule contains 'match' and 'route'
         for _, rule in ipairs(rules) do
-            -- skip routes with matches
-            if (rule.match == nil) then
-                for _, route in ipairs(rule.route) do
-                    if route.destination.host == stableService then
-                        table.insert(matchedRoutes, rule)
-                        break
-                    end
+            for _, route in ipairs(rule.route) do
+                if route.destination.host == stableService then
+                    table.insert(matchedRoutes, rule)
+                    break
                 end
             end
         end
         return matchedRoutes
     end
 
-    function HasMatchedRule(spec, stableService, protocol)
-        local rules = FindAllRules(spec, protocol)
+    function FindStableServiceSubsets(spec, stableService, protocol)
+        local stableSubsets = {}
+        local rules = FindRules(spec, protocol)
+        local hasRule = false
         -- a rule contains 'match' and 'route'
         for _, rule in ipairs(rules) do
             for _, route in ipairs(rule.route) do
                 if route.destination.host == stableService then
-                    return true
+                    hasRule = true
+                    local contains = false
+                    for _, v in ipairs(stableSubsets) do
+                        if v == route.destination.subset then
+                            contains = true
+                            break
+                        end
+                    end
+                    if not contains and route.destination.subset ~= nil then
+                        table.insert(stableSubsets, route.destination.subset)
+                    end
                 end
             end
         end
-        return false
+        return hasRule, stableSubsets
     end
 
     function DeepCopy(original)
@@ -79,12 +102,14 @@ data:
 
     -- generate routes with matches, insert a rule before other rules
     function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stableWeight, canaryWeight, protocol)
+        local hasRule, stableServiceSubsets = FindStableServiceSubsets(spec, stableService, protocol)
+        if (not hasRule) then
+            return
+        end
         for _, match in ipairs(matches) do
             local route = {}
             route["match"] = {}
-            if (not HasMatchedRule(spec, stableService, protocol)) then
-                return
-            end
+
             for key, value in pairs(match) do
                 local vsMatch = {}
                 vsMatch[key] = {}
@@ -110,10 +135,38 @@ data:
                     destination = {}
                 }
             }
+            -- if stableWeight != 0, then add stable service destinations
+            -- incase there are multiple subsets in stable service
+            if stableWeight ~= 0 then
+                local nRoute = {}
+                if #stableServiceSubsets ~= 0 then
+                    local weight = CalculateWeight(nRoute, stableWeight, #stableServiceSubsets)
+                    for _, r in ipairs(stableServiceSubsets) do
+                        nRoute = {
+                            destination = {
+                                host = stableService,
+                                subset = r
+                            },
+                            weight = weight
+                        }
+                        table.insert(route.route, nRoute)
+                    end
+                else
+                    nRoute = {
+                        destination = {
+                            host = stableService
+                        },
+                        weight = stableWeight
+                    }
+                    table.insert(route.route, nRoute)
+                end
+                -- update every matched route
+                route.route[1].weight = canaryWeight
+            end
             -- if stableService == canaryService, then do e2e release
             if stableService == canaryService then
                 route.route[1].destination.host = stableService
-                route.route[1].destination.subset = "canary"
+                route.route[1].destination.subset = obj.canaryName
             else
                 route.route[1].destination.host = canaryService
             end
@@ -143,7 +196,7 @@ data:
                 canary = {
                     destination = {
                         host = stableService,
-                        subset = "canary",
+                        subset = obj.canaryName,
                     },
                     weight = canaryWeight,
                 }
@@ -158,8 +211,7 @@ data:
         end
     end
 
-    if (obj.matches)
-    then
+    if (obj.matches) then
         GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "http")
         GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tcp")
         GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tls")
@@ -170,12 +222,46 @@ data:
     end
     return obj.data
 
+
   lua.traffic.routing.DestinationRule.networking.istio.io: |
+    local function updateOrCreateSubset(subsets, name, labels)
+        for _, subset in ipairs(subsets) do
+            if subset.name == name then
+                if next(labels) ~= nil then
+                    subset.labels = subset.labels or {}
+                    for key, value in pairs(labels) do
+                        subset.labels[key] = value
+                    end
+                end
+                return -- Do not need to continue if name exists,as we update the first occurrence
+            end
+        end
+        table.insert(subsets, {
+            name = name,
+            labels = next(labels) ~= nil and labels or nil
+        })
+    end
+
     local spec = obj.data.spec
-    local canary = {}
-    canary.labels = {}
-    canary.name = "canary"
-    local podLabelKey = "istio.service.tag"
-    canary.labels[podLabelKey] = "gray"
-    table.insert(spec.subsets, canary)
+    local pod_label_key = obj.revisionLabelKey
+    if spec.subsets == nil then
+        spec.subsets = {}
+    end
+
+    local stable_labels = {}
+    if obj.stableRevision ~= nil and obj.stableRevision ~= "" then
+        stable_labels[pod_label_key] = obj.stableRevision
+    end
+
+    local canary_labels = {}
+    if obj.canaryRevision ~= nil and obj.canaryRevision ~= "" then
+        canary_labels[pod_label_key] = obj.canaryRevision
+    end
+
+    -- Process stable subset
+    updateOrCreateSubset(spec.subsets, obj.stableName, stable_labels)
+
+    -- Process canary subset
+    updateOrCreateSubset(spec.subsets, obj.canaryName, canary_labels)
+
     return obj.data
