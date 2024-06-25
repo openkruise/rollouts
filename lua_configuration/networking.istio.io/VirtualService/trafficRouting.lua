@@ -19,6 +19,10 @@ function GetRulesToPatch(spec, stableService, protocol)
     local matchedRoutes = {}
     if (spec[protocol] ~= nil) then
         for _, rule in ipairs(spec[protocol]) do
+            local retries = rule.retries or {}
+            if #retries == 0 then
+                rule.retries = nil
+            end
             -- skip routes contain matches
             if (rule.match == nil) then
                 for _, route in ipairs(rule.route) do
@@ -44,6 +48,14 @@ end
 
 -- generate routes with matches, insert a rule before other rules, only support http headers, cookies etc.
 function GenerateRoutesWithMatches(spec, matches, stableService, canaryService)
+    local http = spec.http
+    for _, rule in ipairs(http) do
+        local retries = rule.retries or {}
+        if #retries == 0 then
+            rule.retries = nil
+        end
+    end
+
     for _, match in ipairs(matches) do
         local route = {}
         route["match"] = {}
@@ -93,7 +105,7 @@ function GenerateRoutesWithMatches(spec, matches, stableService, canaryService)
         else
             route.route[1].destination.host = canaryService
         end
-        table.insert(spec.http, 1, route)
+        table.insert(http, 1, route)
     end
 end
 
