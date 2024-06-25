@@ -19,11 +19,13 @@ package luamanager
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	lua "github.com/yuin/gopher-lua"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	luajson "layeh.com/gopher-json"
@@ -150,5 +152,44 @@ func TestRunLuaScript(t *testing.T) {
 				t.Fatalf("expect(%s), but get (%s)", cs.expectResult(), util.DumpJSON(newObj))
 			}
 		})
+	}
+}
+func TestEmptyMetadata(t *testing.T) {
+	script := `
+local x = obj
+return x `
+	pod := v1.Pod{
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name:  "centos",
+					Image: "centos:7",
+				},
+			},
+		},
+	}
+	unObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&pod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := &unstructured.Unstructured{Object: unObj}
+	l, err := new(LuaManager).RunLuaScript(u, script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	returnValue := l.Get(-1)
+	if returnValue.Type() == lua.LTTable {
+		jsonBytes, err := Encode(returnValue)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := v1.Pod{}
+		err = json.Unmarshal(jsonBytes, &p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(pod, p) {
+			t.Fatal("return not equal before call")
+		}
 	}
 }
