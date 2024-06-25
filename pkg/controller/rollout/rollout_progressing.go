@@ -78,6 +78,8 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 			CurrentStepState:           v1beta1.CanaryStepStateInit,
 			LastUpdateTime:             &metav1.Time{Time: time.Now()},
 		}
+		newStatus.CurrentStepIndex = commonStatus.CurrentStepIndex
+		newStatus.CurrentStepState = commonStatus.CurrentStepState
 		if rollout.Spec.Strategy.IsBlueGreenRelease() {
 			newStatus.BlueGreenStatus = &v1beta1.BlueGreenStatus{
 				CommonStatus:    commonStatus,

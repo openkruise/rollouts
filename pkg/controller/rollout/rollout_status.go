@@ -204,6 +204,10 @@ func (r *RolloutReconciler) calculateRolloutHash(rollout *v1beta1.Rollout) error
 }
 
 func (r *RolloutReconciler) updateRolloutStatusInternal(rollout *v1beta1.Rollout, newStatus v1beta1.RolloutStatus) error {
+	if newStatus.GetSubStatus() != nil {
+		newStatus.CurrentStepIndex = newStatus.GetSubStatus().CurrentStepIndex
+		newStatus.CurrentStepState = newStatus.GetSubStatus().CurrentStepState
+	}
 	if reflect.DeepEqual(rollout.Status, newStatus) {
 		return nil
 	}
