@@ -67,8 +67,11 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.CurrentStepIndex = 1
+				// s.CanaryStatus.NextStepIndex will be initialized as 0 in ReconcileRolloutProgressing.
+				// util.NextBatchIndex(rollout, s.CanaryStatus.CurrentStepIndex), which is 2 here.
 				s.CanaryStatus.NextStepIndex = 2
-				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				// now the first step is no longer StepStateUpgrade, it is StepStateInit now
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
 				return s
 			},
 			expectTr: func() *v1alpha1.TrafficRouting {
@@ -101,7 +104,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.NextStepIndex = 2
-				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
@@ -142,6 +145,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
 				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
+				obj.Status.CanaryStatus.NextStepIndex = 2
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
@@ -156,6 +160,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 1
+				s.CanaryStatus.NextStepIndex = 2
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
@@ -212,6 +217,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
+				s.CanaryStatus.NextStepIndex = 0
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
@@ -270,6 +276,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
+				s.CanaryStatus.NextStepIndex = 0
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
@@ -330,6 +337,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
+				s.CanaryStatus.NextStepIndex = 0
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				cond2 := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond2.Reason = v1alpha1.ProgressingReasonFinalising
@@ -379,6 +387,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CanaryRevision = "6f8cc56547"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
+				s.CanaryStatus.NextStepIndex = 0
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				cond2 := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond2.Reason = v1alpha1.ProgressingReasonCompleted

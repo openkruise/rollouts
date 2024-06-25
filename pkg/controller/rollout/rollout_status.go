@@ -91,10 +91,10 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1beta1.Rollout) (re
 	// update workload generation to canaryStatus.ObservedWorkloadGeneration
 	// rollout is a target ref bypass, so there needs to be a field to identify the rollout execution process or results,
 	// which version of deployment is targeted, ObservedWorkloadGeneration that is to compare with the workload generation
-	if newStatus.CanaryStatus != nil && newStatus.CanaryStatus.CanaryRevision != "" &&
-		newStatus.CanaryStatus.CanaryRevision == workload.CanaryRevision {
-		newStatus.CanaryStatus.ObservedRolloutID = getRolloutID(workload)
-		newStatus.CanaryStatus.ObservedWorkloadGeneration = workload.Generation
+	if !newStatus.IsSubStatusEmpty() && newStatus.GetCanaryRevision() != "" &&
+		newStatus.GetCanaryRevision() == workload.CanaryRevision {
+		newStatus.GetSubStatus().ObservedRolloutID = getRolloutID(workload)
+		newStatus.GetSubStatus().ObservedWorkloadGeneration = workload.Generation
 	}
 
 	switch newStatus.Phase {
@@ -110,7 +110,7 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1beta1.Rollout) (re
 			cond := util.NewRolloutCondition(v1beta1.RolloutConditionProgressing, corev1.ConditionTrue, v1alpha1.ProgressingReasonInitializing, "Rollout is in Progressing")
 			util.SetRolloutCondition(newStatus, *cond)
 			util.RemoveRolloutCondition(newStatus, v1beta1.RolloutConditionSucceeded)
-		} else if newStatus.CanaryStatus == nil {
+		} else if newStatus.IsSubStatusEmpty() {
 			// The following logic is to make PaaS be able to judge whether the rollout is ready
 			// at the first deployment of the Rollout/Workload. For example: generally, a PaaS
 			// platform can use the following code to judge whether the rollout progression is completed:
@@ -159,15 +159,30 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1beta1.Rollout) (re
 // rolloutHash mainly records the step batch information, when the user step changes,
 // the current batch can be recalculated
 func (r *RolloutReconciler) calculateRolloutHash(rollout *v1beta1.Rollout) error {
-	canary := rollout.Spec.Strategy.Canary.DeepCopy()
-	canary.FailureThreshold = nil
-	canary.Steps = nil
-	for i := range rollout.Spec.Strategy.Canary.Steps {
-		step := rollout.Spec.Strategy.Canary.Steps[i].DeepCopy()
-		step.Pause = v1beta1.RolloutPause{}
-		canary.Steps = append(canary.Steps, *step)
+	var data string
+	if rollout.Spec.Strategy.IsCanaryStragegy() {
+		canary := rollout.Spec.Strategy.Canary.DeepCopy()
+		canary.FailureThreshold = nil
+		canary.Steps = nil
+		for i := range rollout.Spec.Strategy.Canary.Steps {
+			step := rollout.Spec.Strategy.Canary.Steps[i].DeepCopy()
+			step.Pause = v1beta1.RolloutPause{}
+			canary.Steps = append(canary.Steps, *step)
+		}
+		data = util.DumpJSON(canary)
+	} else if rollout.Spec.Strategy.IsBlueGreenRelease() {
+		blueGreen := rollout.Spec.Strategy.BlueGreen.DeepCopy()
+		blueGreen.FailureThreshold = nil
+		blueGreen.Steps = nil
+		for i := range rollout.Spec.Strategy.BlueGreen.Steps {
+			step := rollout.Spec.Strategy.BlueGreen.Steps[i].DeepCopy()
+			step.Pause = v1beta1.RolloutPause{}
+			blueGreen.Steps = append(blueGreen.Steps, *step)
+		}
+		data = util.DumpJSON(blueGreen)
+	} else {
+		return fmt.Errorf("unknown rolling style: %s", rollout.Spec.Strategy.GetRollingStyle())
 	}
-	data := util.DumpJSON(canary)
 	hash := rand.SafeEncodeString(util.EncodeHash(data))
 	if rollout.Annotations[util.RolloutHashAnnotation] == hash {
 		return nil
