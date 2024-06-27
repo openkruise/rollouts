@@ -143,9 +143,7 @@ function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stab
                 if action == "set" or action == "add" then
                     route["headers"]["request"][action] = {}
                     for _, header in ipairs(headers) do
-                        local h = {}
-                        h[header["name"]] = header["value"]
-                        table.insert(route["headers"]["request"][action], h)
+                        route["headers"]["request"][action][header["name"]] = header["value"]
                     end
                 elseif action == "remove" then
                     route["headers"]["request"]["remove"] = {}

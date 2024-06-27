@@ -472,7 +472,7 @@ func TestEnsureRoutes(t *testing.T) {
 					"virtual":              "test",
 				}
 				u.SetAnnotations(annotations)
-				specStr := `{"hosts":["echoserver.example.com"],"http":[{"match":[{"headers":{"user_id":{"exact":"123456"}}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"headers":{"request":{"set":{"x-env-flag":"canary"}}},"match":[{"headers":{"user_id":{"exact":"123456"}}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
 				var spec interface{}
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
