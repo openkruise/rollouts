@@ -54,7 +54,7 @@ type LuaData struct {
 	Matches               []v1beta1.HttpRouteMatch
 	CanaryService         string
 	StableService         string
-	RequestHeaderModifier gatewayv1beta1.HTTPRequestHeaderFilter
+	RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter
 }
 type Data struct {
 	Spec        interface{}       `json:"spec,omitempty"`
@@ -270,10 +270,7 @@ func (r *customController) executeLuaForCanary(spec Data, strategy *v1beta1.Traf
 		// so we need to pass weight=-1 to indicate the case where weight is nil.
 		weight = utilpointer.Int32(-1)
 	}
-	var reqHeaderModifier gatewayv1beta1.HTTPRequestHeaderFilter
-	if strategy.RequestHeaderModifier != nil {
-		reqHeaderModifier = *strategy.RequestHeaderModifier
-	}
+
 	data := &LuaData{
 		Data:                  spec,
 		CanaryWeight:          *weight,
@@ -281,7 +278,7 @@ func (r *customController) executeLuaForCanary(spec Data, strategy *v1beta1.Traf
 		Matches:               matches,
 		CanaryService:         r.conf.CanaryService,
 		StableService:         r.conf.StableService,
-		RequestHeaderModifier: reqHeaderModifier,
+		RequestHeaderModifier: strategy.RequestHeaderModifier,
 	}
 
 	unObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(data)
