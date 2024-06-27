@@ -39,6 +39,7 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 const (
@@ -47,12 +48,13 @@ const (
 )
 
 type LuaData struct {
-	Data          Data
-	CanaryWeight  int32
-	StableWeight  int32
-	Matches       []v1beta1.HttpRouteMatch
-	CanaryService string
-	StableService string
+	Data                  Data
+	CanaryWeight          int32
+	StableWeight          int32
+	Matches               []v1beta1.HttpRouteMatch
+	CanaryService         string
+	StableService         string
+	RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter
 }
 type Data struct {
 	Spec        interface{}       `json:"spec,omitempty"`
@@ -268,13 +270,15 @@ func (r *customController) executeLuaForCanary(spec Data, strategy *v1beta1.Traf
 		// so we need to pass weight=-1 to indicate the case where weight is nil.
 		weight = utilpointer.Int32(-1)
 	}
+
 	data := &LuaData{
-		Data:          spec,
-		CanaryWeight:  *weight,
-		StableWeight:  100 - *weight,
-		Matches:       matches,
-		CanaryService: r.conf.CanaryService,
-		StableService: r.conf.StableService,
+		Data:                  spec,
+		CanaryWeight:          *weight,
+		StableWeight:          100 - *weight,
+		Matches:               matches,
+		CanaryService:         r.conf.CanaryService,
+		StableService:         r.conf.StableService,
+		RequestHeaderModifier: strategy.RequestHeaderModifier,
 	}
 
 	unObj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(data)
