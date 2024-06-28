@@ -276,8 +276,9 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 
 func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, cService string) (network.NetworkProvider, error) {
 	trafficRouting := con.ObjectRef[0]
+	networkProviders := make([]network.NetworkProvider, 0, 3)
 	if trafficRouting.CustomNetworkRefs != nil {
-		return custom.NewCustomController(c, custom.Config{
+		np, innerErr := custom.NewCustomController(c, custom.Config{
 			Key:           con.Key,
 			RolloutNs:     con.Namespace,
 			CanaryService: cService,
@@ -287,9 +288,13 @@ func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, c
 			//only set for CustomController, never work for Ingress and Gateway
 			DisableGenerateCanaryService: con.DisableGenerateCanaryService,
 		})
+		if innerErr != nil {
+			return nil, innerErr
+		}
+		networkProviders = append(networkProviders, np)
 	}
 	if trafficRouting.Ingress != nil {
-		return ingress.NewIngressTrafficRouting(c, ingress.Config{
+		np, innerErr := ingress.NewIngressTrafficRouting(c, ingress.Config{
 			Key:           con.Key,
 			Namespace:     con.Namespace,
 			CanaryService: cService,
@@ -297,17 +302,30 @@ func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, c
 			TrafficConf:   trafficRouting.Ingress,
 			OwnerRef:      con.OwnerRef,
 		})
+		if innerErr != nil {
+			return nil, innerErr
+		}
+		networkProviders = append(networkProviders, np)
 	}
 	if trafficRouting.Gateway != nil {
-		return gateway.NewGatewayTrafficRouting(c, gateway.Config{
+		np, innerErr := gateway.NewGatewayTrafficRouting(c, gateway.Config{
 			Key:           con.Key,
 			Namespace:     con.Namespace,
 			CanaryService: cService,
 			StableService: sService,
 			TrafficConf:   trafficRouting.Gateway,
 		})
+		if innerErr != nil {
+			return nil, innerErr
+		}
+		networkProviders = append(networkProviders, np)
 	}
-	return nil, fmt.Errorf("TrafficRouting current only support Ingress or Gateway API")
+	if len(networkProviders) == 0 {
+		return nil, fmt.Errorf("TrafficRouting current only supports Ingress, Gateway API and CustomNetworkRefs")
+	} else if len(networkProviders) == 1 {
+		return networkProviders[0], nil
+	}
+	return network.CompositeController(networkProviders), nil
 }
 
 func (m *Manager) createCanaryService(c *TrafficRoutingContext, cService string, spec corev1.ServiceSpec) (*corev1.Service, error) {
