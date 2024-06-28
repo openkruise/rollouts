@@ -26,19 +26,21 @@ end
 -- headers & cookie apis
 -- traverse matches
 for _,match in ipairs(obj.matches) do
-    local header = match.headers[1]
-    -- cookie
-    if ( header.name == "canary-by-cookie" )
-    then
-        annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = header.value
-    else
-        annotations["nginx.ingress.kubernetes.io/canary-by-header"] = header.name
-        -- if regular expression
-        if ( header.type == "RegularExpression" )
+    if match.headers and next(match.headers) ~= nil then
+        local header = match.headers[1]
+        -- cookie
+        if ( header.name == "canary-by-cookie" )
         then
-            annotations["nginx.ingress.kubernetes.io/canary-by-header-pattern"] = header.value
+            annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = header.value
         else
-            annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = header.value
+            annotations["nginx.ingress.kubernetes.io/canary-by-header"] = header.name
+            -- if regular expression
+            if ( header.type == "RegularExpression" )
+            then
+                annotations["nginx.ingress.kubernetes.io/canary-by-header-pattern"] = header.value
+            else
+                annotations["nginx.ingress.kubernetes.io/canary-by-header-value"] = header.value
+            end
         end
     end
 end
