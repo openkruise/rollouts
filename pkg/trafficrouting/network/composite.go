@@ -28,6 +28,7 @@ var (
 	_ NetworkProvider = (CompositeController)(nil)
 )
 
+// CompositeController is a set of NetworkProvider
 type CompositeController []NetworkProvider
 
 func (c CompositeController) Initialize(ctx context.Context) error {
@@ -44,8 +45,9 @@ func (c CompositeController) EnsureRoutes(ctx context.Context, strategy *v1beta1
 		innerDone, innerErr := provider.EnsureRoutes(ctx, strategy)
 		if innerErr != nil {
 			return false, innerErr
+		} else if !innerDone {
+			done = false
 		}
-		done = done && !innerDone
 	}
 	return done, nil
 }
