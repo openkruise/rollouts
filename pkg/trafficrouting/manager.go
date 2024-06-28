@@ -274,6 +274,119 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestore
 	return true, nil
 }
 
+// RestoreGateway can be seen as route all traffic to stable service
+func (m *Manager) RestoreGateway(c *TrafficRoutingContext) (bool, error) {
+	if len(c.ObjectRef) == 0 {
+		return true, nil
+	}
+	trafficRouting := c.ObjectRef[0]
+	if trafficRouting.GracePeriodSeconds <= 0 {
+		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
+	}
+
+	cServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
+	trController, err := newNetworkProvider(m.Client, c, trafficRouting.Service, cServiceName)
+	if err != nil {
+		klog.Errorf("%s newTrafficRoutingController failed: %s", c.Key, err.Error())
+		return false, err
+	}
+	if err = trController.Finalise(context.TODO()); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// RemoveCanaryService find and delete canary Service. stable Service won't be modified
+func (m *Manager) RemoveCanaryService(c *TrafficRoutingContext) (bool, error) {
+	if len(c.ObjectRef) == 0 {
+		return true, nil
+	}
+	trafficRouting := c.ObjectRef[0]
+	if trafficRouting.GracePeriodSeconds <= 0 {
+		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
+	}
+
+	cServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
+	cService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: c.Namespace, Name: cServiceName}}
+	// end to end deployment, don't remove the canary service;
+	// because canary service is stable service
+	if !c.OnlyTrafficRouting && !c.DisableGenerateCanaryService {
+		// remove canary service
+		err := m.Delete(context.TODO(), cService)
+		if err != nil && !errors.IsNotFound(err) {
+			klog.Errorf("%s remove canary service(%s) failed: %s", c.Key, cService.Name, err.Error())
+			return false, err
+		}
+		klog.Infof("%s remove canary service(%s) success", c.Key, cService.Name)
+	}
+
+	return true, nil
+}
+
+func (m *Manager) PatchStableService(c *TrafficRoutingContext) (bool, error) {
+	if len(c.ObjectRef) == 0 {
+		return true, nil
+	}
+	trafficRouting := c.ObjectRef[0]
+	if trafficRouting.GracePeriodSeconds <= 0 {
+		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
+	}
+	if c.OnlyTrafficRouting {
+		return true, nil
+	}
+
+	//fetch stable service
+	stableService := &corev1.Service{}
+	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Namespace, Name: trafficRouting.Service}, stableService)
+	if err != nil {
+		klog.Errorf("%s get stable service(%s) failed: %s", c.Key, trafficRouting.Service, err.Error())
+		// not found, wait a moment, retry
+		if errors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	if stableService.Spec.Selector[c.RevisionLabelKey] == c.StableRevision {
+		return true, nil
+	}
+
+	// patch stable service to only select the stable pods
+	body := fmt.Sprintf(`{"spec":{"selector":{"%s":"%s"}}}`, c.RevisionLabelKey, c.StableRevision)
+	if err = m.Patch(context.TODO(), stableService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+		klog.Errorf("%s patch stable service(%s) selector failed: %s", c.Key, stableService.Name, err.Error())
+		return false, err
+	}
+	klog.Infof("%s do something special:  add stable service(%s) selector(%s=%s) success", c.Key, stableService.Name, c.RevisionLabelKey, c.StableRevision)
+	return true, nil
+}
+
+func (m *Manager) RestoreStableService(c *TrafficRoutingContext) (bool, error) {
+	if len(c.ObjectRef) == 0 {
+		return true, nil
+	}
+	trafficRouting := c.ObjectRef[0]
+	if trafficRouting.GracePeriodSeconds <= 0 {
+		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
+	}
+	//fetch stable service
+	stableService := &corev1.Service{}
+	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Namespace, Name: trafficRouting.Service}, stableService)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return true, nil
+		}
+		klog.Errorf("%s get stable service(%s) failed: %s", c.Key, trafficRouting.Service, err.Error())
+		return false, err
+	}
+	// restore stable Service
+	verify, err := m.restoreStableService(c)
+	if err != nil || !verify {
+		return false, err
+	}
+	return true, nil
+}
+
 func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, cService string) (network.NetworkProvider, error) {
 	trafficRouting := con.ObjectRef[0]
 	if trafficRouting.CustomNetworkRefs != nil {

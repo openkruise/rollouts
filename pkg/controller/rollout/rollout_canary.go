@@ -320,6 +320,79 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, erro
 	return true, nil
 }
 
+// do Canary Reset for continuous release, eg, v1->v2(not complete)->v3
+func (m *canaryReleaseManager) doCanaryReset(c *RolloutContext) (bool, error) {
+	canaryStatus := c.NewStatus.CanaryStatus
+	// when CanaryStatus is nil, which means canary action hasn't started yet, don't need doing cleanup
+	if canaryStatus == nil {
+		return true, nil
+	}
+	// To ensure respect for grace time between finalising steps, we set start time before the first step
+	if len(canaryStatus.FinalisingStep) == 0 {
+		canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+	}
+	tr := newTrafficRoutingContext(c)
+	klog.Infof("rollout(%s/%s) Finalising Step is %s", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.FinalisingStep)
+	switch canaryStatus.FinalisingStep {
+	default:
+		// start from FinalisingStepTypeGateway
+		canaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeGateway
+		fallthrough
+	// firstly, restore the gateway resources (ingress/gatewayAPI/Istio), that means
+	// only stable Service will accept the traffic
+	case v1beta1.FinalisingStepTypeGateway:
+		done, err := m.trafficRoutingManager.RestoreGateway(tr)
+		if err != nil || !done {
+			canaryStatus.LastUpdateTime = tr.LastUpdateTime
+			return done, err
+		}
+		if canaryStatus.LastUpdateTime != nil && canaryStatus.LastUpdateTime.Add(time.Second*time.Duration(3)).After(time.Now()) {
+			klog.Infof("rollout(%s/%s) in step (%s), and wait 3 seconds", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.FinalisingStep)
+		} else {
+			klog.Infof("rollout(%s/%s) in step (%s), and success", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.FinalisingStep)
+			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+			canaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteBR
+		}
+	// secondly, remove the batchRelease. For canary release, it means the immediate deletion of
+	// canary deployment, however, for partial style, the v2 pods won't be deleted right away
+	// in both cases, only the stable pods (v1) accept the traffic
+	case v1beta1.FinalisingStepTypeDeleteBR:
+		done, err := m.removeBatchRelease(c)
+		if err != nil {
+			klog.Errorf("rollout(%s/%s) Finalize batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
+			return false, err
+		} else if !done {
+			return false, nil
+		}
+		if canaryStatus.LastUpdateTime != nil && canaryStatus.LastUpdateTime.Add(time.Second*time.Duration(3)).After(time.Now()) {
+			klog.Infof("rollout(%s/%s) in step (%s), and wait 3 seconds", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.FinalisingStep)
+		} else {
+			klog.Infof("rollout(%s/%s) in step (%s), and success", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.FinalisingStep)
+			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+			canaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteCanaryService
+		}
+	// finally, remove the canary service. This step can swap with the last step.
+	/*
+		NOTE: we only remove the canary service, with stable service unchanged, that means the
+		stable service may still has the selector of stable pods, which is intended. Consider
+		this senario: continuous release v1->v2->3, and currently we are in step x, which expects
+		to route 0% traffic to v2 (or simply A/B test), if we release v3 in step x and remove the
+		stable service selector, then the traffic will route to both v1 and v2 before executing the
+		first step of v3 release.
+	*/
+	case v1beta1.FinalisingStepTypeDeleteCanaryService:
+		done, err := m.trafficRoutingManager.RemoveCanaryService(tr)
+		if err != nil || !done {
+			canaryStatus.LastUpdateTime = tr.LastUpdateTime
+			return done, err
+		}
+		klog.Infof("rollout(%s/%s) in step (%s), and success", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.FinalisingStep)
+		return true, nil
+	}
+
+	return false, nil
+}
+
 func (m *canaryReleaseManager) removeRolloutProgressingAnnotation(c *RolloutContext) error {
 	if c.Workload == nil {
 		return nil

@@ -409,23 +409,22 @@ func isRollingBackInBatches(rollout *v1beta1.Rollout, workload *util.Workload) b
 // 1. modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods
 // 2. remove batchRelease CR.
 func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) {
-	if len(c.Rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
-		// modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods
-		tr := newTrafficRoutingContext(c)
-		done, err := r.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
-		c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
-		if err != nil || !done {
-			return done, err
-		}
-	}
-	done, err := r.canaryManager.removeBatchRelease(c)
+	releaseManager, err := r.getReleaseManager(c.Rollout)
 	if err != nil {
-		klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 		return false, err
-	} else if !done {
-		return false, nil
 	}
-	return true, nil
+	// if no trafficRouting exists, simply remove batchRelease
+	if !c.Rollout.Spec.Strategy.HasTrafficRoutings() {
+		done, err := releaseManager.removeBatchRelease(c)
+		if err != nil {
+			klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
+			return false, err
+		} else if !done {
+			return false, nil
+		}
+		return true, nil
+	}
+	return releaseManager.doCanaryReset(c)
 }
 
 func (r *RolloutReconciler) recalculateCanaryStep(c *RolloutContext) (int32, error) {

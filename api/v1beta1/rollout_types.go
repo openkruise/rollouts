@@ -555,10 +555,10 @@ const (
 	FinalisingStepTypeStableService FinalisingStepType = "RestoreStableService"
 	// Restore the GatewayAPI/Ingress/Istio
 	FinalisingStepTypeGateway FinalisingStepType = "RestoreGateway"
-	// Delete Canary Service
-	FinalisingStepTypeCanaryService FinalisingStepType = "DeleteCanayService"
 	// Delete Batch Release
 	FinalisingStepTypeDeleteBR FinalisingStepType = "DeleteBatchRelease"
+	// Delete Canary Service
+	FinalisingStepTypeDeleteCanaryService FinalisingStepType = "DeleteCanaryService"
 )
 
 // +genclient

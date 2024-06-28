@@ -533,7 +533,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 		},
 		{
-			name: "ReconcileRolloutProgressing rolling -> continueRelease",
+			name: "ReconcileRolloutProgressing rolling -> continueRelease1",
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				dep1.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
@@ -578,10 +578,72 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 			expectStatus: func() *v1beta1.RolloutStatus {
 				s := rolloutDemo.Status.DeepCopy()
-				s.CanaryStatus = nil
+				s.CanaryStatus.ObservedWorkloadGeneration = 2
+				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
+				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
+				s.CanaryStatus.CanaryRevision = "6f8cc56547"
+				s.CanaryStatus.CurrentStepIndex = 3
+				s.CanaryStatus.CanaryReplicas = 5
+				s.CanaryStatus.CanaryReadyReplicas = 3
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeGateway
+				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
-				cond.Reason = v1alpha1.ProgressingReasonInitializing
+				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
+				return s
+			},
+		},
+		{
+			name: "ReconcileRolloutProgressing rolling -> continueRelease2",
+			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
+				dep1 := deploymentDemo.DeepCopy()
+				dep1.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
+				dep2 := deploymentDemo.DeepCopy()
+				dep2.UID = "1ca4d850-9ec3-48bd-84cb-19f2e8cf4180"
+				dep2.Name = dep1.Name + "-canary"
+				dep2.Labels[util.CanaryDeploymentLabel] = dep1.Name
+				rs1 := rsDemo.DeepCopy()
+				rs2 := rsDemo.DeepCopy()
+				rs2.Name = "echoserver-canary-2"
+				rs2.OwnerReferences = []metav1.OwnerReference{
+					{
+						APIVersion: "apps/v1",
+						Kind:       "Deployment",
+						Name:       dep2.Name,
+						UID:        "1ca4d850-9ec3-48bd-84cb-19f2e8cf4180",
+						Controller: utilpointer.BoolPtr(true),
+					},
+				}
+				rs2.Labels["pod-template-hash"] = "pod-template-hash-v2"
+				rs2.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return []*apps.Deployment{dep1, dep2}, []*apps.ReplicaSet{rs1, rs2}
+			},
+			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
+				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
+			},
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1alpha1.TrafficRouting) {
+				obj := rolloutDemo.DeepCopy()
+				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
+				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
+				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
+				obj.Status.CanaryStatus.CurrentStepIndex = 3
+				obj.Status.CanaryStatus.CanaryReplicas = 5
+				obj.Status.CanaryStatus.CanaryReadyReplicas = 3
+				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteCanaryService
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1alpha1.ProgressingReasonInRolling
+				util.SetRolloutCondition(&obj.Status, *cond)
+				return obj, nil, nil
+			},
+			expectStatus: func() *v1beta1.RolloutStatus {
+				s := rolloutDemo.Status.DeepCopy()
+				s.Clear()
 				return s
 			},
 		},
