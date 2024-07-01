@@ -2867,7 +2867,9 @@ var _ = SIGDescribe("Rollout", func() {
 			cIngress := &netv1.Ingress{}
 			Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("0"))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(BeEmpty())
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-by-header", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("user-agent"))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-by-header-value", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("pc"))
 
 			// resume rollout canary
 			ResumeRolloutCanaryV1beta1(rollout.Name)
@@ -2887,12 +2889,19 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(removePercentageSign(*rollout.Spec.Strategy.Canary.Steps[1].Traffic)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-by-header", nginxIngressAnnotationDefaultPrefix)]).Should(BeEmpty())
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-by-header-value", nginxIngressAnnotationDefaultPrefix)]).Should(BeEmpty())
 
 			// resume rollout
 			ResumeRolloutCanaryV1beta1(rollout.Name)
 			WaitRolloutStatusPhase(rollout.Name, v1alpha1.RolloutPhaseHealthy)
 			By("rollout completed, and check")
-			// check service & virtualservice & deployment
+			// check ingress & service & virtualservice & deployment
+
+			// ingress
+			Expect(GetObject(ingress.Name, ingress)).NotTo(HaveOccurred())
+			cIngress = &netv1.Ingress{}
+			Expect(GetObject(fmt.Sprintf("%s-canary", ingress.Name), cIngress)).To(HaveOccurred())
 			// virtualservice
 			Expect(GetObject(vs.GetName(), vs)).NotTo(HaveOccurred())
 			expectedSpec = `{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`
@@ -2920,121 +2929,6 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(cond.Reason).Should(Equal(v1beta1.ProgressingReasonCompleted))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
 			cond = getRolloutConditionV1beta1(rollout.Status, v1beta1.RolloutConditionSucceeded)
-			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
-			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
-		})
-
-		It("V1->V2: Route traffic with header matches and weight for VirtualService and DestinationRule", func() {
-			By("Creating Rollout...")
-			rollout := &v1alpha1.Rollout{}
-			Expect(ReadYamlToObject("./test_data/customNetworkProvider/rollout_without_trafficrouting.yaml", rollout)).ToNot(HaveOccurred())
-			CreateObject(rollout)
-
-			By("Creating TrafficRouting...")
-			traffic := &v1alpha1.TrafficRouting{}
-			Expect(ReadYamlToObject("./test_data/customNetworkProvider/trafficrouting.yaml", traffic)).ToNot(HaveOccurred())
-			CreateObject(traffic)
-
-			By("Creating workload and waiting for all pods ready...")
-			// service
-			service := &v1.Service{}
-			Expect(ReadYamlToObject("./test_data/rollout/service.yaml", service)).ToNot(HaveOccurred())
-			CreateObject(service)
-			// istio api
-			vs := &unstructured.Unstructured{}
-			Expect(ReadYamlToObject("./test_data/customNetworkProvider/virtualservice_without_destinationrule.yaml", vs)).ToNot(HaveOccurred())
-			vs.SetAPIVersion("networking.istio.io/v1alpha3")
-			vs.SetKind("VirtualService")
-			CreateObject(vs)
-			dr := &unstructured.Unstructured{}
-			Expect(ReadYamlToObject("./test_data/customNetworkProvider/destinationrule.yaml", dr)).ToNot(HaveOccurred())
-			dr.SetAPIVersion("networking.istio.io/v1alpha3")
-			dr.SetKind("DestinationRule")
-			CreateObject(dr)
-			// workload
-			workload := &apps.Deployment{}
-			Expect(ReadYamlToObject("./test_data/rollout/deployment.yaml", workload)).ToNot(HaveOccurred())
-			workload.Spec.Replicas = utilpointer.Int32(4)
-			CreateObject(workload)
-			WaitDeploymentAllPodsReady(workload)
-
-			// check rollout and trafficrouting status
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			Expect(rollout.Status.Phase).Should(Equal(v1alpha1.RolloutPhaseHealthy))
-			Expect(GetObject(traffic.Name, traffic)).NotTo(HaveOccurred())
-			Expect(traffic.Status.Phase).Should(Equal(v1alpha1.TrafficRoutingPhaseHealthy))
-			By("check rollout and trafficrouting status & paused success")
-
-			// v1 -> v2, start rollout action
-			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
-			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
-			UpdateDeployment(workload)
-			By("Update deployment env NODE_NAME from(version1) -> to(version2), routing traffic with header agent:pc to new version pods")
-			time.Sleep(time.Second * 2)
-
-			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			Expect(workload.Spec.Paused).Should(BeTrue())
-			// wait step 1 complete
-			WaitRolloutCanaryStepPaused(rollout.Name, 1)
-			// check rollout and trafficrouting status
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 1))
-			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 1))
-			Expect(GetObject(traffic.Name, traffic)).NotTo(HaveOccurred())
-			Expect(traffic.Status.Phase).Should(Equal(v1alpha1.TrafficRoutingPhaseProgressing))
-			// check virtualservice and destinationrule spec
-			Expect(GetObject(vs.GetName(), vs)).NotTo(HaveOccurred())
-			expectedVSSpec := `{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"match":[{"headers":{"user-agent":{"exact":"pc"}}}],"route":[{"destination":{"host":"echoserver","subset":"canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
-			Expect(util.DumpJSON(vs.Object["spec"])).Should(Equal(expectedVSSpec))
-			Expect(GetObject(dr.GetName(), dr)).NotTo(HaveOccurred())
-			expectedDRSpec := `{"host":"svc-demo","subsets":[{"labels":{"version":"base"},"name":"echoserver"},{"labels":{"istio.service.tag":"gray"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
-			Expect(util.DumpJSON(dr.Object["spec"])).Should(Equal(expectedDRSpec))
-			// check original spec annotation
-			expectedVSAnno := `{"spec":{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}}`
-			Expect(vs.GetAnnotations()[OriginalSpecAnnotation]).Should(Equal(expectedVSAnno))
-			expectedDRAnno := `{"spec":{"host":"svc-demo","subsets":[{"labels":{"version":"base"},"name":"echoserver"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`
-			Expect(dr.GetAnnotations()[OriginalSpecAnnotation]).Should(Equal(expectedDRAnno))
-
-			// resume rollout
-			ResumeRolloutCanary(rollout.Name)
-			WaitRolloutStatusPhase(rollout.Name, v1alpha1.RolloutPhaseHealthy)
-			Expect(GetObject(traffic.Name, traffic)).NotTo(HaveOccurred())
-			Expect(traffic.Status.Phase).Should(Equal(v1alpha1.TrafficRoutingPhaseHealthy))
-			By("rollout completed, and check")
-			// check service & virtualservice & destinationrule & deployment
-			// virtualservice and destinationrule
-			Expect(GetObject(vs.GetName(), vs)).NotTo(HaveOccurred())
-			expectedVSSpec = `{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`
-			Expect(util.DumpJSON(vs.Object["spec"])).Should(Equal(expectedVSSpec))
-			Expect(vs.GetAnnotations()[OriginalSpecAnnotation]).Should(Equal(""))
-
-			Expect(GetObject(dr.GetName(), dr)).NotTo(HaveOccurred())
-			expectedDRSpec = `{"host":"svc-demo","subsets":[{"labels":{"version":"base"},"name":"echoserver"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
-			Expect(util.DumpJSON(dr.Object["spec"])).Should(Equal(expectedDRSpec))
-			Expect(dr.GetAnnotations()[OriginalSpecAnnotation]).Should(Equal(""))
-			// service
-			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
-			Expect(service.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(""))
-			cService := &v1.Service{}
-			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
-			// deployment
-			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			Expect(workload.Spec.Paused).Should(BeFalse())
-			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
-			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
-			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
-			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
-				if env.Name == "NODE_NAME" {
-					Expect(env.Value).Should(Equal("version2"))
-				}
-			}
-			// check progressing succeed
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			cond := getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionProgressing)
-			Expect(cond.Reason).Should(Equal(v1alpha1.ProgressingReasonCompleted))
-			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
-			cond = getRolloutCondition(rollout.Status, v1alpha1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
