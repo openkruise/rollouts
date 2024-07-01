@@ -19,9 +19,9 @@
               name: user-agent
               value: pc
           - queryParams:
-              - type: Exact
-                name: user-agent
-                value: pc
+            - type: Exact
+              name: user-agent
+              value: pc
           - path:
               value: /pc
         - replicas: "50%"
