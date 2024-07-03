@@ -30,6 +30,7 @@ type TrafficRoutingRef struct {
 	// Service holds the name of a service which selects pods with stable version and don't select any pods with canary version.
 	Service string `json:"service"`
 	// Optional duration in seconds the traffic provider(e.g. nginx ingress controller) consumes the service, ingress configuration changes gracefully.
+	// +kubebuilder:default=3
 	GracePeriodSeconds int32 `json:"gracePeriodSeconds,omitempty"`
 	// Ingress holds Ingress specific configuration to route traffic, e.g. Nginx, Alb.
 	Ingress *IngressTrafficRouting `json:"ingress,omitempty"`

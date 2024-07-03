@@ -249,6 +249,10 @@ func validateRolloutSpecBlueGreenStrategy(blueGreen *appsv1beta1.BlueGreenStrate
 
 func validateRolloutSpecCanaryTraffic(traffic appsv1beta1.TrafficRoutingRef, fldPath *field.Path) field.ErrorList {
 	errList := field.ErrorList{}
+	if traffic.GracePeriodSeconds < 0 {
+		errList = append(errList, field.Invalid(fldPath.Child("GracePeriodSeconds"), traffic.Service, "TrafficRouting.GracePeriodSeconds cannot be negative"))
+	}
+
 	if len(traffic.Service) == 0 {
 		errList = append(errList, field.Invalid(fldPath.Child("Service"), traffic.Service, "TrafficRouting.Service cannot be empty"))
 	}
