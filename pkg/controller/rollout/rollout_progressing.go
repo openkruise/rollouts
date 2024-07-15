@@ -406,26 +406,98 @@ func isRollingBackInBatches(rollout *v1beta1.Rollout, workload *util.Workload) b
 	return workload.IsInRollback && workload.CanaryRevision != status.GetCanaryRevision() && inBatch
 }
 
-// 1. modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods
-// 2. remove batchRelease CR.
+// 1. restore network api(ingress/gatewayAPI/Istio) configuration, potentially route all traffic to stable pods
+// 2. remove batchRelease CR
+// 3. remove canary Service
 func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) {
-	if len(c.Rollout.Spec.Strategy.Canary.TrafficRoutings) > 0 {
-		// modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods
-		tr := newTrafficRoutingContext(c)
-		done, err := r.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
-		c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
-		if err != nil || !done {
-			return done, err
-		}
-	}
-	done, err := r.canaryManager.removeBatchRelease(c)
+	releaseManager, err := r.getReleaseManager(c.Rollout)
 	if err != nil {
-		klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 		return false, err
-	} else if !done {
-		return false, nil
 	}
-	return true, nil
+	// if no trafficRouting exists, simply remove batchRelease
+	if !c.Rollout.Spec.Strategy.HasTrafficRoutings() {
+		done, err := releaseManager.removeBatchRelease(c)
+		if err != nil {
+			klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
+			return false, err
+		} else if !done {
+			return false, nil
+		}
+		return true, nil
+	}
+	// else, do reset logic under next sequence:
+	// restore the gateway -> remove the batchRelease -> remove the canary Service
+	subStatus := c.NewStatus.GetSubStatus()
+	if subStatus == nil {
+		return true, nil
+	}
+	gracePeriodSeconds := c.Rollout.Spec.Strategy.GetTrafficRouting()[0].GracePeriodSeconds
+	// To ensure respect for graceful time between these steps, we set start timer before the first step
+	if len(subStatus.FinalisingStep) == 0 {
+		subStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+	}
+	tr := newTrafficRoutingContext(c)
+	klog.Infof("rollout(%s/%s) Finalising Step is %s", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep)
+	switch subStatus.FinalisingStep {
+	default:
+		// start from FinalisingStepTypeGateway
+		subStatus.FinalisingStep = v1beta1.FinalisingStepTypeGateway
+		fallthrough
+	// firstly, restore the gateway resources (ingress/gatewayAPI/Istio), that means
+	// only stable Service will accept the traffic
+	case v1beta1.FinalisingStepTypeGateway:
+		//TODO - RestoreGateway returns (bool, error) pair instead of error only.
+		// return (fasle, nil): gateway is patched successfully, but we need time to observe; recheck later
+		// return (true, nil): gateway is patched successfully, and accepts the update successfully; go to next step then
+		// return (false, error): gateway encounters error when patched, or the update is not accepted; recheck later
+		err := r.trafficRoutingManager.RestoreGateway(tr)
+		if err != nil {
+			subStatus.LastUpdateTime = tr.LastUpdateTime
+			return false, err
+		}
+		// usually, GracePeriodSeconds means duration to wait after an operation is done,
+		// we use defaultGracePeriodSeconds+1 here because the timer started before the RestoreGateway step
+		if subStatus.LastUpdateTime != nil && time.Since(subStatus.LastUpdateTime.Time) < time.Second*time.Duration(gracePeriodSeconds+1) {
+			klog.Infof("rollout(%s/%s) in step (%s), and wait %d seconds", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep, gracePeriodSeconds+1)
+			return false, nil
+		}
+		klog.Infof("rollout(%s/%s) in step (%s), and success", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep)
+		subStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+		subStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteBR
+		fallthrough
+	// secondly, remove the batchRelease. For canary release, it means the immediate deletion of
+	// canary deployment, for other release, the v2 pods won't be deleted immediately
+	// in both cases, only the stable pods (v1) accept the traffic
+	case v1beta1.FinalisingStepTypeDeleteBR:
+		done, err := releaseManager.removeBatchRelease(c)
+		if err != nil {
+			klog.Errorf("rollout(%s/%s) Finalize batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
+			return false, err
+		} else if !done {
+			return false, nil
+		}
+		klog.Infof("rollout(%s/%s) in step (%s), and success", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep)
+		subStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+		subStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteCanaryService
+		fallthrough
+	// finally, remove the canary service. This step can swap with the last step.
+	/*
+		NOTE: we only remove the canary service, while leaving stable service unchanged, that
+		means the stable service may still has the selector of stable revision. Consider this senario:
+		continuous release v1->v2->3, and currently we are in step x, which expects
+		to route 0% traffic to v2 (or simply A/B test), if we release v3 in step x and remove the
+		stable service selector, then the traffic will route to both v1 and v2 before executing the
+		first step of v3 release.
+	*/
+	case v1beta1.FinalisingStepTypeDeleteCanaryService:
+		err := r.trafficRoutingManager.RemoveCanaryService(tr)
+		if err != nil {
+			subStatus.LastUpdateTime = tr.LastUpdateTime
+			return false, err
+		}
+		klog.Infof("rollout(%s/%s) in step (%s), and success", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep)
+		return true, nil
+	}
 }
 
 func (r *RolloutReconciler) recalculateCanaryStep(c *RolloutContext) (int32, error) {

@@ -82,6 +82,7 @@ spec:
                           type: string
                       type: object
                     gracePeriodSeconds:
+                      default: 3
                       description: Optional duration in seconds the traffic provider(e.g.
                         nginx ingress controller) consumes the service, ingress configuration
                         changes gracefully.
