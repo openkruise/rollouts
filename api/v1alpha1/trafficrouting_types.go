@@ -23,6 +23,8 @@ import (
 
 const (
 	ProgressingRolloutFinalizerPrefix = "progressing.rollouts.kruise.io"
+	IstioStableSubsetName             = "istio.destinationRule.stableSubsetName"
+	IstioCanarySubsetName             = "istio.destinationRule.canarySubsetName"
 )
 
 // TrafficRoutingRef hosts all the different configuration for supported service meshes to enable more fine-grained traffic routing
@@ -39,6 +41,10 @@ type TrafficRoutingRef struct {
 	Gateway *GatewayTrafficRouting `json:"gateway,omitempty"`
 	// CustomNetworkRefs hold a list of custom providers to route traffic
 	CustomNetworkRefs []CustomNetworkRef `json:"customNetworkRefs,omitempty"`
+	// vaild keys:
+	// + IstioStableSubsetName
+	// + IstioCanarySubsetName
+	AdditionalParams map[string]string `json:"additionalParams,omitempty"`
 }
 
 // IngressTrafficRouting configuration for ingress controller to control traffic routing

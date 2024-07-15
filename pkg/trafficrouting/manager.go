@@ -402,14 +402,16 @@ func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, c
 	trafficRouting := con.ObjectRef[0]
 	if trafficRouting.CustomNetworkRefs != nil {
 		return custom.NewCustomController(c, custom.Config{
-			Key:           con.Key,
-			RolloutNs:     con.Namespace,
-			CanaryService: cService,
-			StableService: sService,
-			TrafficConf:   trafficRouting.CustomNetworkRefs,
-			OwnerRef:      con.OwnerRef,
-			//only set for CustomController, never work for Ingress and Gateway
-			DisableGenerateCanaryService: con.DisableGenerateCanaryService,
+			Key:              con.Key,
+			RolloutNs:        con.Namespace,
+			CanaryService:    cService,
+			StableService:    sService,
+			TrafficConf:      trafficRouting.CustomNetworkRefs,
+			OwnerRef:         con.OwnerRef,
+			AdditionalParams: trafficRouting.AdditionalParams,
+			RevisionLabelKey: con.RevisionLabelKey,
+			StableRevision:   con.StableRevision,
+			CanaryRevision:   con.CanaryRevision,
 		})
 	}
 	if trafficRouting.Ingress != nil {

@@ -16,6 +16,9 @@ trafficRouting:
       - apiVersion: networking.istio.io/v1beta1
         kind: DestinationRule
         name: ds-demo
+      additionalParams:
+        istio.destinationRule.stableSubsetName: "version-base"
+        istio.destinationRule.canarySubsetName: "canary"
 original:
   apiVersion: networking.istio.io/v1beta1
   kind: DestinationRule
@@ -27,9 +30,7 @@ original:
       loadBalancer:
         simple: ROUND_ROBIN
     subsets:
-      - labels:
-          version: base
-        name: version-base
+      - name: version-base
 expected:
   - apiVersion: networking.istio.io/v1beta1
     kind: DestinationRule
@@ -42,8 +43,8 @@ expected:
           simple: ROUND_ROBIN
       subsets:
         - labels:
-            version: base
+            pod-template-hash: "podtemplatehash-v1"
           name: version-base
         - labels:
-            istio.service.tag: gray
+            pod-template-hash: "podtemplatehash-v2"
           name: canary

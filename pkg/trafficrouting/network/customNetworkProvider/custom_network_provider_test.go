@@ -91,9 +91,6 @@ var (
 								"host": "mockb",
 								"subsets": [
 									{
-										"labels": {
-											"version": "base"
-										},
 										"name": "version-base"
 									}
 								],
@@ -283,6 +280,13 @@ func TestEnsureRoutes(t *testing.T) {
 							Name:       "dr-demo",
 						},
 					},
+					AdditionalParams: map[string]string{
+						v1beta1.IstioStableSubsetName: "version-base",
+						v1beta1.IstioCanarySubsetName: "canary",
+					},
+					StableRevision:   "podtemplatehash-v1",
+					CanaryRevision:   "podtemplatehash-v2",
+					RevisionLabelKey: "pod-template-hash",
 				}
 			},
 			expectUnstructureds: func() []*unstructured.Unstructured {
@@ -303,10 +307,10 @@ func TestEnsureRoutes(t *testing.T) {
 				u = &unstructured.Unstructured{}
 				_ = u.UnmarshalJSON([]byte(destinationRuleDemo))
 				annotations = map[string]string{
-					OriginalSpecAnnotation: `{"spec":{"host":"mockb","subsets":[{"labels":{"version":"base"},"name":"version-base"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`,
+					OriginalSpecAnnotation: `{"spec":{"host":"mockb","subsets":[{"name":"version-base"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}}`,
 				}
 				u.SetAnnotations(annotations)
-				specStr = `{"host":"mockb","subsets":[{"labels":{"version":"base"},"name":"version-base"},{"labels":{"istio.service.tag":"gray"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
+				specStr = `{"host":"mockb","subsets":[{"labels":{"pod-template-hash":"podtemplatehash-v1"},"name":"version-base"},{"labels":{"pod-template-hash":"podtemplatehash-v2"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
 				_ = json.Unmarshal([]byte(specStr), &spec)
 				u.Object["spec"] = spec
 				objects = append(objects, u)
@@ -638,11 +642,16 @@ func TestLuaScript(t *testing.T) {
 								Annotations: testCase.Original.GetAnnotations(),
 								Spec:        testCase.Original.Object["spec"],
 							},
-							Matches:       step.TrafficRoutingStrategy.Matches,
-							CanaryWeight:  *weight,
-							StableWeight:  100 - *weight,
-							CanaryService: canaryService,
-							StableService: stableService,
+							Matches:          step.TrafficRoutingStrategy.Matches,
+							CanaryWeight:     *weight,
+							StableWeight:     100 - *weight,
+							CanaryService:    canaryService,
+							StableService:    stableService,
+							StableRevision:   "podtemplatehash-v1",
+							CanaryRevision:   "podtemplatehash-v2",
+							RevisionLabelKey: "pod-template-hash",
+							StableName:       rollout.Spec.Strategy.Canary.TrafficRoutings[0].AdditionalParams[v1beta1.IstioStableSubsetName],
+							CanaryName:       rollout.Spec.Strategy.Canary.TrafficRoutings[0].AdditionalParams[v1beta1.IstioCanarySubsetName],
 						}
 						nSpec, err := executeLua(data, script)
 						if err != nil {
@@ -678,11 +687,16 @@ func TestLuaScript(t *testing.T) {
 							Annotations: testCase.Original.GetAnnotations(),
 							Spec:        testCase.Original.Object["spec"],
 						},
-						Matches:       matches,
-						CanaryWeight:  *weight,
-						StableWeight:  100 - *weight,
-						CanaryService: canaryService,
-						StableService: stableService,
+						Matches:          matches,
+						CanaryWeight:     *weight,
+						StableWeight:     100 - *weight,
+						CanaryService:    canaryService,
+						StableService:    stableService,
+						StableRevision:   "podtemplatehash-v1",
+						CanaryRevision:   "podtemplatehash-v2",
+						RevisionLabelKey: "pod-template-hash",
+						StableName:       trafficRouting.Spec.ObjectRef[0].AdditionalParams[v1beta1.IstioStableSubsetName],
+						CanaryName:       trafficRouting.Spec.ObjectRef[0].AdditionalParams[v1beta1.IstioCanarySubsetName],
 					}
 					nSpec, err := executeLua(data, script)
 					if err != nil {

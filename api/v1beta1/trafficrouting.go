@@ -16,6 +16,11 @@ limitations under the License.
 
 package v1beta1
 
+const (
+	IstioStableSubsetName = "istio.destinationRule.stableSubsetName"
+	IstioCanarySubsetName = "istio.destinationRule.canarySubsetName"
+)
+
 // TrafficRoutingRef hosts all the different configuration for supported service meshes to enable more fine-grained traffic routing
 type TrafficRoutingRef struct {
 	// Service holds the name of a service which selects pods with stable version and don't select any pods with canary version.
@@ -30,6 +35,10 @@ type TrafficRoutingRef struct {
 	Gateway *GatewayTrafficRouting `json:"gateway,omitempty"`
 	// CustomNetworkRefs hold a list of custom providers to route traffic
 	CustomNetworkRefs []ObjectRef `json:"customNetworkRefs,omitempty"`
+	// vaild keys:
+	// + IstioStableSubsetName
+	// + IstioCanarySubsetName
+	AdditionalParams map[string]string `json:"additionalParams,omitempty"`
 }
 
 // IngressTrafficRouting configuration for ingress controller to control traffic routing

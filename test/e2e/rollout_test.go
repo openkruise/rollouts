@@ -2852,7 +2852,7 @@ var _ = SIGDescribe("Rollout", func() {
 			expectedVSSpec := `{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"match":[{"headers":{"user-agent":{"exact":"pc"}}}],"route":[{"destination":{"host":"echoserver","subset":"canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
 			Expect(util.DumpJSON(vs.Object["spec"])).Should(Equal(expectedVSSpec))
 			Expect(GetObject(dr.GetName(), dr)).NotTo(HaveOccurred())
-			expectedDRSpec := `{"host":"svc-demo","subsets":[{"labels":{"version":"base"},"name":"echoserver"},{"labels":{"istio.service.tag":"gray"},"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
+			expectedDRSpec := `{"host":"svc-demo","subsets":[{"labels":{"version":"base"},"name":"echoserver"},{"name":"stable"},{"name":"canary"}],"trafficPolicy":{"loadBalancer":{"simple":"ROUND_ROBIN"}}}`
 			Expect(util.DumpJSON(dr.Object["spec"])).Should(Equal(expectedDRSpec))
 			// check original spec annotation
 			expectedVSAnno := `{"spec":{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}}`
