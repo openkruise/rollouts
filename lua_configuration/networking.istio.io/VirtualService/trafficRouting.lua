@@ -43,7 +43,7 @@ function CalculateWeight(route, stableWeight, n)
 end
 
 -- generate routes with matches, insert a rule before other rules, only support http headers, cookies etc.
-function GenerateRoutesWithMatches(spec, matches, stableService, canaryService)
+function GenerateRoutesWithMatches(spec, matches, stableService, canaryService, requestHeaderModifier)
     for _, match in ipairs(matches) do
         local route = {}
         route["match"] = {}
@@ -81,6 +81,23 @@ function GenerateRoutesWithMatches(spec, matches, stableService, canaryService)
             end
         end
         table.insert(route["match"], vsMatch)
+        if requestHeaderModifier then
+            route["headers"] = {}
+            route["headers"]["request"] = {}
+            for action, headers in pairs(requestHeaderModifier) do
+                if action == "set" or action == "add" then
+                    route["headers"]["request"][action] = {}
+                    for _, header in ipairs(headers) do
+                        route["headers"]["request"][action][header["name"]] = header["value"]
+                    end
+                elseif action == "remove" then
+                    route["headers"]["request"]["remove"] = {}
+                    for _, rHeader in ipairs(headers) do
+                        table.insert(route["headers"]["request"]["remove"], rHeader)
+                    end
+                end
+            end
+        end
         route.route = {
             {
                 destination = {}
@@ -130,7 +147,7 @@ end
 
 if (obj.matches and next(obj.matches) ~= nil)
 then
-    GenerateRoutesWithMatches(spec, obj.matches, obj.stableService, obj.canaryService)
+    GenerateRoutesWithMatches(spec, obj.matches, obj.stableService, obj.canaryService, obj.requestHeaderModifier)
 else
     GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "http")
     GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tcp")

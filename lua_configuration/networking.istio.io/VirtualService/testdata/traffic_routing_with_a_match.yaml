@@ -13,6 +13,10 @@ trafficRouting:
         - type: RegularExpression
           name: name
           value: ".*demo"
+      requestHeaderModifier:
+        set:
+        - name: "header-foo"
+          value: "bar"
     objectRef:
     - service: svc-demo
       customNetworkRefs:
@@ -51,6 +55,10 @@ expected:
               exact: pc
             name:
               regex: .*demo
+        headers:
+          request:
+            set:
+              header-foo: bar
         route:
         - destination:
             host: svc-demo

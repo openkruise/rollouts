@@ -100,11 +100,12 @@ func objectToTable(path string) error {
 					Annotations: testCase.Original.GetAnnotations(),
 					Spec:        testCase.Original.Object["spec"],
 				},
-				Matches:       step.TrafficRoutingStrategy.Matches,
-				CanaryWeight:  *weight,
-				StableWeight:  100 - *weight,
-				CanaryService: canaryService,
-				StableService: stableService,
+				Matches:               step.TrafficRoutingStrategy.Matches,
+				CanaryWeight:          *weight,
+				StableWeight:          100 - *weight,
+				CanaryService:         canaryService,
+				StableService:         stableService,
+				RequestHeaderModifier: step.TrafficRoutingStrategy.RequestHeaderModifier,
 			}
 			uList[fmt.Sprintf("step_%d", i)] = data
 		}
@@ -128,11 +129,12 @@ func objectToTable(path string) error {
 				Annotations: testCase.Original.GetAnnotations(),
 				Spec:        testCase.Original.Object["spec"],
 			},
-			Matches:       matches,
-			CanaryWeight:  *weight,
-			StableWeight:  100 - *weight,
-			CanaryService: canaryService,
-			StableService: stableService,
+			Matches:               matches,
+			CanaryWeight:          *weight,
+			StableWeight:          100 - *weight,
+			CanaryService:         canaryService,
+			StableService:         stableService,
+			RequestHeaderModifier: trafficRouting.Spec.Strategy.RequestHeaderModifier,
 		}
 		uList["steps_0"] = data
 	} else {

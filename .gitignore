@@ -29,3 +29,5 @@ test/e2e/generated/bindata.go
 .vscode
 
 .DS_Store
+
+lua_configuration/networking.istio.io/**/testdata/*.lua

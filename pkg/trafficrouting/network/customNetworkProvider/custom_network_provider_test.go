@@ -415,6 +415,78 @@ func TestEnsureRoutes(t *testing.T) {
 			},
 		},
 		{
+			name: "Do header-based traffic routing and set header for VirtualService",
+			getRoutes: func() *v1beta1.TrafficRoutingStrategy {
+				headerTypeExact := gatewayv1beta1.HeaderMatchExact
+				return &v1beta1.TrafficRoutingStrategy{
+					Matches: []v1beta1.HttpRouteMatch{
+						{
+							Headers: []gatewayv1beta1.HTTPHeaderMatch{
+								{
+									Type:  &headerTypeExact,
+									Name:  "user_id",
+									Value: "123456",
+								},
+							},
+						},
+					},
+					RequestHeaderModifier: &gatewayv1beta1.HTTPRequestHeaderFilter{
+						Set: []gatewayv1beta1.HTTPHeader{
+							{
+								Name:  "x-env-flag",
+								Value: "canary",
+							},
+						},
+					},
+				}
+			},
+			getUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				u.SetAPIVersion("networking.istio.io/v1alpha3")
+				objects = append(objects, u)
+
+				return objects
+			},
+			getConfig: func() Config {
+				return Config{
+					Key:           "rollout-demo",
+					StableService: "echoserver",
+					CanaryService: "echoserver-canary",
+					TrafficConf: []v1beta1.ObjectRef{
+						{
+							APIVersion: "networking.istio.io/v1alpha3",
+							Kind:       "VirtualService",
+							Name:       "echoserver",
+						},
+					},
+				}
+			},
+			expectUnstructureds: func() []*unstructured.Unstructured {
+				objects := make([]*unstructured.Unstructured, 0)
+				u := &unstructured.Unstructured{}
+				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
+				annotations := map[string]string{
+					OriginalSpecAnnotation: `{"spec":{"hosts":["echoserver.example.com"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]},"annotations":{"virtual":"test"}}`,
+					"virtual":              "test",
+				}
+				u.SetAnnotations(annotations)
+				specStr := `{"hosts":["echoserver.example.com"],"http":[{"headers":{"request":{"set":{"x-env-flag":"canary"}}},"match":[{"headers":{"user_id":{"exact":"123456"}}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
+				var spec interface{}
+				_ = json.Unmarshal([]byte(specStr), &spec)
+				u.Object["spec"] = spec
+				objects = append(objects, u)
+
+				return objects
+			},
+			expectState: func() (bool, bool) {
+				done := false
+				hasError := false
+				return done, hasError
+			},
+		},
+		{
 			name: "test2, do traffic routing but failed to execute lua",
 			getRoutes: func() *v1beta1.TrafficRoutingStrategy {
 				return &v1beta1.TrafficRoutingStrategy{
@@ -638,11 +710,12 @@ func TestLuaScript(t *testing.T) {
 								Annotations: testCase.Original.GetAnnotations(),
 								Spec:        testCase.Original.Object["spec"],
 							},
-							Matches:       step.TrafficRoutingStrategy.Matches,
-							CanaryWeight:  *weight,
-							StableWeight:  100 - *weight,
-							CanaryService: canaryService,
-							StableService: stableService,
+							Matches:               step.TrafficRoutingStrategy.Matches,
+							CanaryWeight:          *weight,
+							StableWeight:          100 - *weight,
+							CanaryService:         canaryService,
+							StableService:         stableService,
+							RequestHeaderModifier: step.TrafficRoutingStrategy.RequestHeaderModifier,
 						}
 						nSpec, err := executeLua(data, script)
 						if err != nil {
@@ -678,11 +751,12 @@ func TestLuaScript(t *testing.T) {
 							Annotations: testCase.Original.GetAnnotations(),
 							Spec:        testCase.Original.Object["spec"],
 						},
-						Matches:       matches,
-						CanaryWeight:  *weight,
-						StableWeight:  100 - *weight,
-						CanaryService: canaryService,
-						StableService: stableService,
+						Matches:               matches,
+						CanaryWeight:          *weight,
+						StableWeight:          100 - *weight,
+						CanaryService:         canaryService,
+						StableService:         stableService,
+						RequestHeaderModifier: trafficRouting.Spec.Strategy.RequestHeaderModifier,
 					}
 					nSpec, err := executeLua(data, script)
 					if err != nil {

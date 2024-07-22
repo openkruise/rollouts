@@ -94,7 +94,7 @@ function CalculateWeight(route, stableWeight, n)
 end
 
 -- generate routes with matches, insert a rule before other rules
-function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stableWeight, canaryWeight, protocol)
+function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stableWeight, canaryWeight, requestHeaderModifier, protocol)
     local hasRule, stableServiceSubsets = FindStableServiceSubsets(spec, stableService, protocol)
     if (not hasRule) then
         return
@@ -136,6 +136,23 @@ function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stab
             end
         end
         table.insert(route["match"], vsMatch)
+        if requestHeaderModifier then
+            route["headers"] = {}
+            route["headers"]["request"] = {}
+            for action, headers in pairs(requestHeaderModifier) do
+                if action == "set" or action == "add" then
+                    route["headers"]["request"][action] = {}
+                    for _, header in ipairs(headers) do
+                        route["headers"]["request"][action][header["name"]] = header["value"]
+                    end
+                elseif action == "remove" then
+                    route["headers"]["request"]["remove"] = {}
+                    for _, rHeader in ipairs(headers) do
+                        table.insert(route["headers"]["request"]["remove"], rHeader)
+                    end
+                end
+            end
+        end
         route.route = {
             {
                 destination = {}
@@ -187,7 +204,7 @@ function GenerateMatchedRoutes(spec, matches, stableService, canaryService, stab
 end
 
 -- generate routes without matches, change every rule
-function GenerateRoutes(spec, stableService, canaryService, stableWeight, canaryWeight, protocol)
+function GenerateRoutes(spec, stableService, canaryService, stableWeight, canaryWeight, requestHeaderModifier, protocol)
     local matchedRules = FindMatchedRules(spec, stableService, protocol)
     for _, rule in ipairs(matchedRules) do
         local canary
@@ -218,12 +235,12 @@ function GenerateRoutes(spec, stableService, canaryService, stableWeight, canary
 end
 
 if (obj.matches) then
-    GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "http")
-    GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tcp")
-    GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tls")
+    GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, obj.requestHeaderModifier, "http")
+    GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, obj.requestHeaderModifier,"tcp")
+    GenerateMatchedRoutes(spec, obj.matches, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, obj.requestHeaderModifier,"tls")
 else
-    GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "http")
-    GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tcp")
-    GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, "tls")
+    GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, obj.requestHeaderModifier, "http")
+    GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, obj.requestHeaderModifier, "tcp")
+    GenerateRoutes(spec, obj.stableService, obj.canaryService, obj.stableWeight, obj.canaryWeight, obj.requestHeaderModifier, "tls")
 end
 return obj.data
