@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
@@ -75,6 +76,7 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 		klog.Infof("rollout(%s/%s) canary step jumped", c.Rollout.Namespace, c.Rollout.Name)
 		return nil
 	}
+	gracePeriodSeconds := util.GracePeriodSecondsOrDefault(c.Rollout.Spec.Strategy.GetTrafficRouting(), defaultGracePeriodSeconds)
 	// When the first batch is trafficRouting rolling and the next steps are rolling release,
 	// We need to clean up the canary-related resources first and then rollout the rest of the batch.
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
@@ -86,7 +88,7 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 			return err
 		} else if !done {
 			klog.Infof("rollout(%s/%s) cleaning up canary-related resources", c.Rollout.Namespace, c.Rollout.Name)
-			expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
+			expectedTime := time.Now().Add(time.Duration(gracePeriodSeconds) * time.Second)
 			c.RecheckTime = &expectedTime
 			return nil
 		}
@@ -94,9 +96,71 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 	switch canaryStatus.CurrentStepState {
 	// before CanaryStepStateUpgrade, handle some special cases, to prevent traffic loss
 	case v1beta1.CanaryStepStateInit:
-		// placeholder for the later traffic modification Pull Request
-		canaryStatus.NextStepIndex = util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex)
+		klog.Infof("rollout(%s/%s) run canary strategy, and state(%s)", c.Rollout.Namespace, c.Rollout.Name, v1beta1.CanaryStepStateInit)
+		tr := newTrafficRoutingContext(c)
+		if currentStep.Traffic == nil && len(currentStep.Matches) == 0 {
+			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
+				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateInit, canaryStatus.CurrentStepState)
+			return nil
+		}
+
+		/*
+			The following check serves to bypass the bug in ingress-nginx controller https://github.com/kubernetes/ingress-nginx/issues/9635
+			For partition-style: if the expected replicas of the current rollout step is not less than workload.spec.replicas,
+			it indicates that this step will release all stable pods to new version, ie. there will be no stable pods, which will
+			trigger the bug.
+			To avoid this issue, we restore stable Service before scaling the stable pods down to zero.
+			This ensures that the backends behind the stable ingress remain active, preventing the bug from being triggered.
+		*/
+		expectedReplicas, _ := intstr.GetScaledValueFromIntOrPercent(currentStep.Replicas, int(c.Workload.Replicas), true)
+		if expectedReplicas >= int(c.Workload.Replicas) && v1beta1.IsRealPartition(c.Rollout) {
+			klog.Infof("special case detected: rollout(%s/%s) restore stable Service", c.Rollout.Namespace, c.Rollout.Name)
+			done, err := m.trafficRoutingManager.RestoreStableService(tr)
+			if err != nil {
+				return err
+			} else if !done {
+				expectedTime := time.Now().Add(time.Duration(gracePeriodSeconds) * time.Second)
+				c.RecheckTime = &expectedTime
+				return nil
+			}
+		}
+
+		/*
+			The following check is used to solve scenario like this:
+			steps:
+			- replicas: 1 # first batch
+				matches:
+				- headers:
+				- name: user-agent
+					type: Exact
+					value: pc
+			in the first batch, pods with new version will be created in step CanaryStepStateUpgrade, once ready,
+			they will serve as active backends behind the stable service, because the stable service hasn't been
+			modified by rollout (ie. it selects pods of all versions).
+			Thus, requests with or without the header (user-agent: pc) will be routed to pods of all versions evenly, before
+			we arrive the CanaryStepStateTrafficRouting step.
+			To avoid this issue, we
+			- patch selector to stable Service before CanaryStepStateUpgrade step.
+		*/
+		if canaryStatus.CurrentStepIndex == 1 {
+			if !tr.DisableGenerateCanaryService {
+				klog.Infof("special case detected: rollout(%s/%s) patch stable Service", c.Rollout.Namespace, c.Rollout.Name)
+				done, err := m.trafficRoutingManager.PatchStableService(tr)
+				if err != nil {
+					return err
+				} else if !done {
+					expectedTime := time.Now().Add(time.Duration(gracePeriodSeconds) * time.Second)
+					c.RecheckTime = &expectedTime
+					return nil
+				}
+			}
+		}
+
+		canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 		canaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+		klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
+			canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateInit, canaryStatus.CurrentStepState)
 		fallthrough
 
 	case v1beta1.CanaryStepStateUpgrade:
@@ -106,6 +170,13 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 			return err
 		} else if done {
 			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
+			// To correspond with the above explanation wrt. the mentioned bug https://github.com/kubernetes/ingress-nginx/issues/9635
+			// we likewise do this check again to skip the CanaryStepStateTrafficRouting step, since
+			// it has been done in the CanaryStepInit step
+			expectedReplicas, _ := intstr.GetScaledValueFromIntOrPercent(currentStep.Replicas, int(c.Workload.Replicas), true)
+			if expectedReplicas >= int(c.Workload.Replicas) && v1beta1.IsRealPartition(c.Rollout) {
+				canaryStatus.CurrentStepState = v1beta1.CanaryStepStateMetricsAnalysis
+			}
 			canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
 				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateUpgrade, canaryStatus.CurrentStepState)
@@ -124,7 +195,7 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
 				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateTrafficRouting, canaryStatus.CurrentStepState)
 		}
-		expectedTime := time.Now().Add(time.Duration(defaultGracePeriodSeconds) * time.Second)
+		expectedTime := time.Now().Add(time.Duration(gracePeriodSeconds) * time.Second)
 		c.RecheckTime = &expectedTime
 
 	case v1beta1.CanaryStepStateMetricsAnalysis:
@@ -217,6 +288,12 @@ func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 	canaryStatus := c.NewStatus.CanaryStatus
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	steps := len(c.Rollout.Spec.Strategy.Canary.Steps)
+	// If it is the last step, and 100% of pods, then return true
+	if int32(steps) == canaryStatus.CurrentStepIndex {
+		if currentStep.Replicas != nil && currentStep.Replicas.StrVal == "100%" {
+			return true, nil
+		}
+	}
 	cond := util.GetRolloutCondition(*c.NewStatus, v1beta1.RolloutConditionProgressing)
 	// need manual confirmation
 	if currentStep.Pause.Duration == nil {

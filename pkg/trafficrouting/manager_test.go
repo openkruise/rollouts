@@ -775,6 +775,7 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
 				obj := demoIstioRollout.DeepCopy()
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
+				obj.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds = 1
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
 			expectUnstructureds: func() []*unstructured.Unstructured {
@@ -804,7 +805,6 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 				objects = append(objects, u)
 				return objects
 			},
-			// Rollout(/rollout-demo) is doing trafficRouting({"traffic":"5%"}), and wait a moment
 			expectDone: true,
 		},
 		{
@@ -834,6 +834,7 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 				obj := demoIstioRollout.DeepCopy()
 				// set DisableGenerateCanaryService as true
 				obj.Spec.Strategy.Canary.DisableGenerateCanaryService = true
+				obj.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds = 1
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
@@ -864,7 +865,6 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 				objects = append(objects, u)
 				return objects
 			},
-			// Rollout(/rollout-demo) is doing trafficRouting({"traffic":"5%"}), and wait a moment
 			expectDone: true,
 		},
 	}
@@ -898,11 +898,22 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 			if err != nil {
 				t.Fatalf("InitializeTrafficRouting failed: %s", err)
 			}
+			// now we need to wait at least 2x grace time to keep traffic stable:
+			// create the canary service -> grace time -> update the gateway -> grace time
+			// therefore, before both grace times are over, DoTrafficRouting should return false
+			// firstly, create the canary Service, before the grace time over, return false
 			_, err = manager.DoTrafficRouting(c)
 			if err != nil {
 				t.Fatalf("DoTrafficRouting failed: %s", err)
 			}
-			// may return false due to in the course of doing trafficRouting, let's do it again
+			time.Sleep(1 * time.Second)
+			// secondly, update the gateway, before the grace time over, return false
+			_, err = manager.DoTrafficRouting(c)
+			if err != nil {
+				t.Fatalf("DoTrafficRouting failed: %s", err)
+			}
+			time.Sleep(1 * time.Second)
+			// now, both grace times are over, it should be true
 			done, err := manager.DoTrafficRouting(c)
 			if err != nil {
 				t.Fatalf("DoTrafficRouting failed: %s", err)
@@ -986,6 +997,7 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				obj := demoRollout.DeepCopy()
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(time.Hour)}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
 			onlyRestoreStableService: true,
