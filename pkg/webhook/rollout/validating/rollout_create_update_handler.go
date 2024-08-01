@@ -18,6 +18,7 @@ package validating
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -47,7 +48,27 @@ type RolloutCreateUpdateHandler struct {
 	Decoder *admission.Decoder
 }
 
-var _ admission.Handler = &RolloutCreateUpdateHandler{}
+var (
+	_ admission.Handler = &RolloutCreateUpdateHandler{}
+	// PartitionReplicasLimitWithTraffic represents the maximum percentage of replicas
+	// allowed for a step of partition-style release, if traffic/matches specified.
+	// If a step is configured with a number of replicas exceeding this percentage, the traffic strategy for that step
+	// must not be specified. If this rule is violated, the Rollout webhook will block the creation or modification of the Rollout.
+	// The default limit is set to 50%.
+	// Here is why we set this limit for partition style release:
+	// In rollback and continuous scenarios, usually we expect the Rollout to route all traffic to the stable version first.
+	// However, if the stable version's pods are relatively few (less than 1-PartitionReplicasLimitWithTraffic), this might overload the stable version's pods.
+	PartitionReplicasLimitWithTraffic = 50
+)
+
+func init() {
+	flag.IntVar(&PartitionReplicasLimitWithTraffic, "partition-percent-limit", 50, "represents the maximum percentage of replicas allowed for a step of partition-style release, if traffic/matches specified.")
+}
+
+// record upper level information about the rollout
+type validateContext struct {
+	style string
+}
 
 // Handle handles admission requests.
 func (h *RolloutCreateUpdateHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
@@ -155,7 +176,7 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 }
 
 func (h *RolloutCreateUpdateHandler) validateRollout(rollout *appsv1beta1.Rollout) field.ErrorList {
-	errList := validateRolloutSpec(rollout, field.NewPath("Spec"))
+	errList := validateRolloutSpec(GetContextFromv1beta1Rollout(rollout), rollout, field.NewPath("Spec"))
 	errList = append(errList, h.validateRolloutConflict(rollout, field.NewPath("Conflict Checker"))...)
 	return errList
 }
@@ -178,9 +199,9 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1beta
 	return nil
 }
 
-func validateRolloutSpec(rollout *appsv1beta1.Rollout, fldPath *field.Path) field.ErrorList {
+func validateRolloutSpec(c *validateContext, rollout *appsv1beta1.Rollout, fldPath *field.Path) field.ErrorList {
 	errList := validateRolloutSpecObjectRef(&rollout.Spec.WorkloadRef, fldPath.Child("ObjectRef"))
-	errList = append(errList, validateRolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
+	errList = append(errList, validateRolloutSpecStrategy(c, &rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
 	return errList
 }
 
@@ -196,7 +217,7 @@ func validateRolloutSpecObjectRef(workloadRef *appsv1beta1.ObjectRef, fldPath *f
 	return nil
 }
 
-func validateRolloutSpecStrategy(strategy *appsv1beta1.RolloutStrategy, fldPath *field.Path) field.ErrorList {
+func validateRolloutSpecStrategy(c *validateContext, strategy *appsv1beta1.RolloutStrategy, fldPath *field.Path) field.ErrorList {
 	if strategy.Canary == nil && strategy.BlueGreen == nil {
 		return field.ErrorList{field.Invalid(fldPath, nil, "Canary and BlueGreen cannot both be empty")}
 	}
@@ -204,25 +225,13 @@ func validateRolloutSpecStrategy(strategy *appsv1beta1.RolloutStrategy, fldPath 
 		return field.ErrorList{field.Invalid(fldPath, nil, "Canary and BlueGreen cannot both be set")}
 	}
 	if strategy.BlueGreen != nil {
-		return validateRolloutSpecBlueGreenStrategy(strategy.BlueGreen, fldPath.Child("BlueGreen"))
+		return validateRolloutSpecBlueGreenStrategy(c, strategy.BlueGreen, fldPath.Child("BlueGreen"))
 	}
-	return validateRolloutSpecCanaryStrategy(strategy.Canary, fldPath.Child("Canary"))
+	return validateRolloutSpecCanaryStrategy(c, strategy.Canary, fldPath.Child("Canary"))
 }
 
-type TrafficRule string
-
-const (
-	TrafficRuleCanary    TrafficRule = "Canary"
-	TrafficRuleBlueGreen TrafficRule = "BlueGreen"
-	NoTraffic            TrafficRule = "NoTraffic"
-)
-
-func validateRolloutSpecCanaryStrategy(canary *appsv1beta1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
-	trafficRule := NoTraffic
-	if len(canary.TrafficRoutings) > 0 {
-		trafficRule = TrafficRuleCanary
-	}
-	errList := validateRolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"), trafficRule)
+func validateRolloutSpecCanaryStrategy(c *validateContext, canary *appsv1beta1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
+	errList := validateRolloutSpecCanarySteps(c, canary.Steps, fldPath.Child("Steps"))
 	if len(canary.TrafficRoutings) > 1 {
 		errList = append(errList, field.Invalid(fldPath, canary.TrafficRoutings, "Rollout currently only support single TrafficRouting."))
 	}
@@ -232,12 +241,8 @@ func validateRolloutSpecCanaryStrategy(canary *appsv1beta1.CanaryStrategy, fldPa
 	return errList
 }
 
-func validateRolloutSpecBlueGreenStrategy(blueGreen *appsv1beta1.BlueGreenStrategy, fldPath *field.Path) field.ErrorList {
-	trafficRule := NoTraffic
-	if len(blueGreen.TrafficRoutings) > 0 {
-		trafficRule = TrafficRuleBlueGreen
-	}
-	errList := validateRolloutSpecCanarySteps(blueGreen.Steps, fldPath.Child("Steps"), trafficRule)
+func validateRolloutSpecBlueGreenStrategy(c *validateContext, blueGreen *appsv1beta1.BlueGreenStrategy, fldPath *field.Path) field.ErrorList {
+	errList := validateRolloutSpecCanarySteps(c, blueGreen.Steps, fldPath.Child("Steps"))
 	if len(blueGreen.TrafficRoutings) > 1 {
 		errList = append(errList, field.Invalid(fldPath, blueGreen.TrafficRoutings, "Rollout currently only support single TrafficRouting."))
 	}
@@ -275,7 +280,7 @@ func validateRolloutSpecCanaryTraffic(traffic appsv1beta1.TrafficRoutingRef, fld
 	return errList
 }
 
-func validateRolloutSpecCanarySteps(steps []appsv1beta1.CanaryStep, fldPath *field.Path, trafficRule TrafficRule) field.ErrorList {
+func validateRolloutSpecCanarySteps(c *validateContext, steps []appsv1beta1.CanaryStep, fldPath *field.Path) field.ErrorList {
 	stepCount := len(steps)
 	if stepCount == 0 {
 		return field.ErrorList{field.Invalid(fldPath, steps, "The number of Canary.Steps cannot be empty")}
@@ -293,13 +298,24 @@ func validateRolloutSpecCanarySteps(steps []appsv1beta1.CanaryStep, fldPath *fie
 			return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Replicas"),
 				s.Replicas, `replicas must be positive number, or a percentage with "0%" < canaryReplicas <= "100%"`)}
 		}
-		if trafficRule == NoTraffic || s.Traffic == nil {
+		// no traffic strategy is configured for current step
+		if s.Traffic == nil && len(s.Matches) == 0 {
+			continue
+		}
+		// replicas is percentage
+		if c.style == string(appsv1beta1.PartitionRollingStyle) && IsPercentageCanaryReplicasType(s.Replicas) {
+			currCanaryReplicas, _ := intstr.GetScaledValueFromIntOrPercent(s.Replicas, 100, true)
+			if currCanaryReplicas > PartitionReplicasLimitWithTraffic {
+				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `For partition style rollout: step[x].replicas must not greater than partition-percent-limit if traffic specified`)}
+			}
+		}
+		if s.Traffic == nil {
 			continue
 		}
 		is := intstr.FromString(*s.Traffic)
 		weight, err := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
-		switch trafficRule {
-		case TrafficRuleBlueGreen:
+		switch c.style {
+		case string(appsv1beta1.BlueGreenRollingStyle):
 			// traffic "0%" is allowed in blueGreen strategy
 			if err != nil || weight < 0 || weight > 100 {
 				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps, `traffic must be percentage with "0%" <= traffic <= "100%" in blueGreen strategy`)}
@@ -354,4 +370,15 @@ var _ admission.DecoderInjector = &RolloutCreateUpdateHandler{}
 func (h *RolloutCreateUpdateHandler) InjectDecoder(d *admission.Decoder) error {
 	h.Decoder = d
 	return nil
+}
+
+func GetContextFromv1beta1Rollout(rollout *appsv1beta1.Rollout) *validateContext {
+	if rollout.Spec.Strategy.Canary == nil && rollout.Spec.Strategy.BlueGreen == nil {
+		return nil
+	}
+	style := rollout.Spec.Strategy.GetRollingStyle()
+	if appsv1beta1.IsRealPartition(rollout) {
+		style = appsv1beta1.PartitionRollingStyle
+	}
+	return &validateContext{style: string(style)}
 }
