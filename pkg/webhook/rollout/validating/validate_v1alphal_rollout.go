@@ -25,6 +25,7 @@ import (
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -70,7 +71,7 @@ func (h *RolloutCreateUpdateHandler) validateV1alpha1RolloutUpdate(oldObj, newOb
 }
 
 func (h *RolloutCreateUpdateHandler) validateV1alpha1Rollout(rollout *appsv1alpha1.Rollout) field.ErrorList {
-	errList := validateV1alpha1RolloutSpec(rollout, field.NewPath("Spec"))
+	errList := validateV1alpha1RolloutSpec(GetContextFromv1alpha1Rollout(rollout), rollout, field.NewPath("Spec"))
 	errList = append(errList, h.validateV1alpha1RolloutConflict(rollout, field.NewPath("Conflict Checker"))...)
 	return errList
 }
@@ -93,10 +94,10 @@ func (h *RolloutCreateUpdateHandler) validateV1alpha1RolloutConflict(rollout *ap
 	return nil
 }
 
-func validateV1alpha1RolloutSpec(rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
+func validateV1alpha1RolloutSpec(c *validateContext, rollout *appsv1alpha1.Rollout, fldPath *field.Path) field.ErrorList {
 	errList := validateV1alpha1RolloutSpecObjectRef(&rollout.Spec.ObjectRef, fldPath.Child("ObjectRef"))
 	errList = append(errList, validateV1alpha1RolloutRollingStyle(rollout, field.NewPath("RollingStyle"))...)
-	errList = append(errList, validateV1alpha1RolloutSpecStrategy(&rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
+	errList = append(errList, validateV1alpha1RolloutSpecStrategy(c, &rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
 	return errList
 }
 
@@ -122,16 +123,16 @@ func validateV1alpha1RolloutSpecObjectRef(objectRef *appsv1alpha1.ObjectRef, fld
 	return nil
 }
 
-func validateV1alpha1RolloutSpecStrategy(strategy *appsv1alpha1.RolloutStrategy, fldPath *field.Path) field.ErrorList {
-	return validateV1alpha1RolloutSpecCanaryStrategy(strategy.Canary, fldPath.Child("Canary"))
+func validateV1alpha1RolloutSpecStrategy(c *validateContext, strategy *appsv1alpha1.RolloutStrategy, fldPath *field.Path) field.ErrorList {
+	return validateV1alpha1RolloutSpecCanaryStrategy(c, strategy.Canary, fldPath.Child("Canary"))
 }
 
-func validateV1alpha1RolloutSpecCanaryStrategy(canary *appsv1alpha1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
+func validateV1alpha1RolloutSpecCanaryStrategy(c *validateContext, canary *appsv1alpha1.CanaryStrategy, fldPath *field.Path) field.ErrorList {
 	if canary == nil {
 		return field.ErrorList{field.Invalid(fldPath, nil, "Canary cannot be empty")}
 	}
 
-	errList := validateV1alpha1RolloutSpecCanarySteps(canary.Steps, fldPath.Child("Steps"), len(canary.TrafficRoutings) > 0)
+	errList := validateV1alpha1RolloutSpecCanarySteps(c, canary.Steps, fldPath.Child("Steps"), len(canary.TrafficRoutings) > 0)
 	if len(canary.TrafficRoutings) > 1 {
 		errList = append(errList, field.Invalid(fldPath, canary.TrafficRoutings, "Rollout currently only support single TrafficRouting."))
 	}
@@ -169,7 +170,7 @@ func validateV1alpha1RolloutSpecCanaryTraffic(traffic appsv1alpha1.TrafficRoutin
 	return errList
 }
 
-func validateV1alpha1RolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fldPath *field.Path, isTraffic bool) field.ErrorList {
+func validateV1alpha1RolloutSpecCanarySteps(c *validateContext, steps []appsv1alpha1.CanaryStep, fldPath *field.Path, isTraffic bool) field.ErrorList {
 	stepCount := len(steps)
 	if stepCount == 0 {
 		return field.ErrorList{field.Invalid(fldPath, steps, "The number of Canary.Steps cannot be empty")}
@@ -187,6 +188,25 @@ func validateV1alpha1RolloutSpecCanarySteps(steps []appsv1alpha1.CanaryStep, fld
 				(canaryReplicas > 100 && s.Replicas.Type == intstr.String) {
 				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Replicas"),
 					s.Replicas, `replicas must be positive number, or a percentage with "0%" < canaryReplicas <= "100%"`)}
+			}
+			// is partiton-style release
+			// and has traffic strategy for this step
+			// and replicas is in percentage format and greater than replicasLimitWithTraffic
+			if c.style == string(appsv1alpha1.PartitionRollingStyle) &&
+				IsPercentageCanaryReplicasType(s.Replicas) && canaryReplicas > PartitionReplicasLimitWithTraffic &&
+				(s.Matches != nil || s.Weight != nil) {
+				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps,
+					`For patition style rollout: step[x].replicas must not greater than replicasLimitWithTraffic if traffic or matches specified`)}
+			}
+		} else {
+			// replicas is nil, weight is not nil
+			if c.style == string(appsv1alpha1.PartitionRollingStyle) && *s.Weight > int32(PartitionReplicasLimitWithTraffic) {
+				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("steps"), steps,
+					`For patition style rollout: step[x].weight must not greater than replicasLimitWithTraffic if replicas is not specified`)}
+			}
+			if *s.Weight <= 0 || *s.Weight > 100 {
+				return field.ErrorList{field.Invalid(fldPath.Index(i).Child("Weight"), s.Weight,
+					`weight must be positive number, and less than or equal to replicasLimitWithTraffic (defaults to 30)`)}
 			}
 		}
 	}
@@ -224,4 +244,20 @@ func IsSameV1alpha1WorkloadRefGVKName(a, b *appsv1alpha1.WorkloadRef) bool {
 		return false
 	}
 	return reflect.DeepEqual(a, b)
+}
+
+func GetContextFromv1alpha1Rollout(rollout *appsv1alpha1.Rollout) *validateContext {
+	if rollout.Spec.Strategy.Canary == nil {
+		return nil
+	}
+	style := appsv1alpha1.PartitionRollingStyle
+	switch strings.ToLower(rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation]) {
+	case "", strings.ToLower(string(appsv1alpha1.CanaryRollingStyle)):
+		targetRef := rollout.Spec.ObjectRef.WorkloadRef
+		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
+			style = appsv1alpha1.CanaryRollingStyle
+		}
+	}
+
+	return &validateContext{style: string(style)}
 }

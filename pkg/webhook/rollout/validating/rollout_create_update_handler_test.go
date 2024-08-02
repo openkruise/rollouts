@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	rolloutapi "github.com/openkruise/rollouts/api"
+	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -99,6 +100,63 @@ var (
 				CommonStatus: appsv1beta1.CommonStatus{
 					CurrentStepState: appsv1beta1.CanaryStepStateCompleted,
 				},
+			},
+		},
+	}
+	rolloutV1alpha1 = appsv1alpha1.Rollout{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: appsv1alpha1.SchemeGroupVersion.String(),
+			Kind:       "Rollout",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "rollout-demo",
+			Namespace:   "namespace-unit-test",
+			Annotations: map[string]string{},
+		},
+		Spec: appsv1alpha1.RolloutSpec{
+			ObjectRef: appsv1alpha1.ObjectRef{
+				WorkloadRef: &appsv1alpha1.WorkloadRef{
+					APIVersion: apps.SchemeGroupVersion.String(),
+					Kind:       "Deployment",
+					Name:       "deployment-demo",
+				},
+			},
+			Strategy: appsv1alpha1.RolloutStrategy{
+				Canary: &appsv1alpha1.CanaryStrategy{
+					Steps: []appsv1alpha1.CanaryStep{
+						{
+							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(10),
+							},
+							Pause: appsv1alpha1.RolloutPause{},
+						},
+						{
+							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(30),
+							},
+							Pause: appsv1alpha1.RolloutPause{Duration: utilpointer.Int32(1 * 24 * 60 * 60)},
+						},
+						{
+							TrafficRoutingStrategy: appsv1alpha1.TrafficRoutingStrategy{
+								Weight: utilpointer.Int32(100),
+							},
+						},
+					},
+					TrafficRoutings: []appsv1alpha1.TrafficRoutingRef{
+						{
+							Service: "service-demo",
+							Ingress: &appsv1alpha1.IngressTrafficRouting{
+								ClassType: "nginx",
+								Name:      "ingress-nginx-demo",
+							},
+						},
+					},
+				},
+			},
+		},
+		Status: appsv1alpha1.RolloutStatus{
+			CanaryStatus: &appsv1alpha1.CanaryStatus{
+				CurrentStepState: appsv1alpha1.CanaryStepStateCompleted,
 			},
 		},
 	}
@@ -262,6 +320,74 @@ func TestRolloutValidateCreate(t *testing.T) {
 				return []client.Object{object}
 			},
 		},
+		{
+			Name:    "test with replicasLimitWithTraffic - 1",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				n := len(object.Spec.Strategy.Canary.Steps)
+				object.Spec.Strategy.Canary.Steps[n-1].Replicas = &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "test with replicasLimitWithTraffic - 2",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				n := len(object.Spec.Strategy.Canary.Steps)
+				object.Spec.Strategy.Canary.Steps[n-1].Replicas = &intstr.IntOrString{Type: intstr.String, StrVal: "31%"}
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "test with replicasLimitWithTraffic - 2 - canary style",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
+				n := len(object.Spec.Strategy.Canary.Steps)
+				object.Spec.Strategy.Canary.Steps[n-1].Replicas = &intstr.IntOrString{Type: intstr.String, StrVal: "31%"}
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "test with replicasLimitWithTraffic - 2 - cloneset",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				object.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps.kruise.io/v1alpha1",
+					Kind:       "CloneSet",
+					Name:       "whatever",
+				}
+				n := len(object.Spec.Strategy.Canary.Steps)
+				object.Spec.Strategy.Canary.Steps[n-1].Replicas = &intstr.IntOrString{Type: intstr.String, StrVal: "31%"}
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "test with replicasLimitWithTraffic - 3",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				PartitionReplicasLimitWithTraffic = 100
+				n := len(object.Spec.Strategy.Canary.Steps)
+				object.Spec.Strategy.Canary.Steps[n-1].Replicas = &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}
+				return []client.Object{object}
+			},
+		},
+		{
+			Name:    "test with replicasLimitWithTraffic - 4",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				object := rollout.DeepCopy()
+				PartitionReplicasLimitWithTraffic = 50
+				n := len(object.Spec.Strategy.Canary.Steps)
+				object.Spec.Strategy.Canary.Steps[n-1].Replicas = &intstr.IntOrString{Type: intstr.String, StrVal: "51%"}
+				return []client.Object{object}
+			},
+		},
 		//{
 		//	Name:    "The last Steps.Traffic is not 100",
 		//	Succeed: false,
@@ -335,6 +461,133 @@ func TestRolloutValidateCreate(t *testing.T) {
 			errList := handler.validateRollout(objects[0].(*appsv1beta1.Rollout))
 			t.Log(errList)
 			Expect(len(errList) == 0).Should(Equal(cs.Succeed))
+			// restore PartitionReplicasLimitWithTraffic after each case
+			PartitionReplicasLimitWithTraffic = 30
+		})
+	}
+}
+
+func TestRolloutV1alpha1ValidateCreate(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	cases := []struct {
+		Name      string
+		Succeed   bool
+		GetObject func() []client.Object
+	}{
+		{
+			Name:    "Canary style",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				obj := rolloutV1alpha1.DeepCopy()
+				return []client.Object{obj}
+			},
+		},
+		{
+			Name:    "Partition style without replicas - 1",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				obj := rolloutV1alpha1.DeepCopy()
+				obj.Annotations[appsv1alpha1.RolloutStyleAnnotation] = string(appsv1alpha1.PartitionRollingStyle)
+				return []client.Object{obj}
+			},
+		},
+		{
+			Name:    "Partition style without replicas - 2",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				obj := rolloutV1alpha1.DeepCopy()
+				PartitionReplicasLimitWithTraffic = 100
+				obj.Annotations[appsv1alpha1.RolloutStyleAnnotation] = string(appsv1alpha1.PartitionRollingStyle)
+				return []client.Object{obj}
+			},
+		},
+		{
+			Name:    "Partition style without replicas - 3",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				obj := rolloutV1alpha1.DeepCopy()
+				obj.Spec.Strategy.Canary.Steps[len(obj.Spec.Strategy.Canary.Steps)-1].Weight = utilpointer.Int32(32)
+				PartitionReplicasLimitWithTraffic = 31
+				obj.Annotations[appsv1alpha1.RolloutStyleAnnotation] = string(appsv1alpha1.PartitionRollingStyle)
+				return []client.Object{obj}
+			},
+		},
+		{
+			Name:    "Partition style without replicas- 3 - canary style",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				obj := rolloutV1alpha1.DeepCopy()
+				obj.Spec.Strategy.Canary.Steps[len(obj.Spec.Strategy.Canary.Steps)-1].Weight = utilpointer.Int32(32)
+				PartitionReplicasLimitWithTraffic = 31
+				return []client.Object{obj}
+			},
+		},
+		{
+			Name:    "Partition style without replicas - 3 - cloneset",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				obj := rolloutV1alpha1.DeepCopy()
+				obj.Spec.ObjectRef.WorkloadRef = &appsv1alpha1.WorkloadRef{
+					APIVersion: "apps.kruise.io/v1alpha1",
+					Kind:       "CloneSet",
+					Name:       "whatever",
+				}
+				obj.Spec.Strategy.Canary.Steps[len(obj.Spec.Strategy.Canary.Steps)-1].Weight = utilpointer.Int32(32)
+				PartitionReplicasLimitWithTraffic = 31
+				obj.Annotations[appsv1alpha1.RolloutStyleAnnotation] = string(appsv1alpha1.PartitionRollingStyle)
+				return []client.Object{obj}
+			},
+		},
+		{
+			Name:    "Partition style with replicas - 1",
+			Succeed: false,
+			GetObject: func() []client.Object {
+				obj := rolloutV1alpha1.DeepCopy()
+				obj.Spec.Strategy.Canary.Steps[len(obj.Spec.Strategy.Canary.Steps)-1].Weight = utilpointer.Int32(50)
+				obj.Spec.Strategy.Canary.Steps[len(obj.Spec.Strategy.Canary.Steps)-1].Replicas = &intstr.IntOrString{Type: intstr.String, StrVal: "32%"}
+				PartitionReplicasLimitWithTraffic = 31
+				obj.Annotations[appsv1alpha1.RolloutStyleAnnotation] = string(appsv1alpha1.PartitionRollingStyle)
+				return []client.Object{obj}
+			},
+		},
+		{
+			Name:    "Partition style with replicas - 2",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				obj := rolloutV1alpha1.DeepCopy()
+				obj.Spec.Strategy.Canary.Steps[len(obj.Spec.Strategy.Canary.Steps)-1].Weight = utilpointer.Int32(50)
+				obj.Spec.Strategy.Canary.Steps[len(obj.Spec.Strategy.Canary.Steps)-1].Replicas = &intstr.IntOrString{Type: intstr.String, StrVal: "31%"}
+				PartitionReplicasLimitWithTraffic = 31
+				obj.Annotations[appsv1alpha1.RolloutStyleAnnotation] = string(appsv1alpha1.PartitionRollingStyle)
+				return []client.Object{obj}
+			},
+		},
+		{
+			Name:    "Partition style with replicas - 3",
+			Succeed: true,
+			GetObject: func() []client.Object {
+				obj := rolloutV1alpha1.DeepCopy()
+				obj.Spec.Strategy.Canary.Steps[len(obj.Spec.Strategy.Canary.Steps)-1].Weight = nil
+				obj.Spec.Strategy.Canary.Steps[len(obj.Spec.Strategy.Canary.Steps)-1].Replicas = &intstr.IntOrString{Type: intstr.String, StrVal: "50%"}
+				obj.Annotations[appsv1alpha1.RolloutStyleAnnotation] = string(appsv1alpha1.PartitionRollingStyle)
+				return []client.Object{obj}
+			},
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.Name, func(t *testing.T) {
+			objects := cs.GetObject()
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+			handler := RolloutCreateUpdateHandler{
+				Client: cli,
+			}
+			errList := handler.validateV1alpha1Rollout(objects[0].(*appsv1alpha1.Rollout))
+			t.Log(errList)
+			Expect(len(errList) == 0).Should(Equal(cs.Succeed))
+			// restore PartitionReplicasLimitWithTraffic after each case
+			PartitionReplicasLimitWithTraffic = 30
 		})
 	}
 }

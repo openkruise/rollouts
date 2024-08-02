@@ -1,3 +1,5 @@
+# we recommend that new test cases or modifications to existing test cases should
+# use v1beta1 Rollout, eg. use rollout_v1beta1_canary_base.yaml
 apiVersion: rollouts.kruise.io/v1alpha1
 kind: Rollout
 metadata:
