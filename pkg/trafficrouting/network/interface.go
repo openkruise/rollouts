@@ -35,6 +35,6 @@ type NetworkProvider interface {
 	// When the first set weight is returned false, mainly to give the provider some time to process, only when again ensure, will return true
 	EnsureRoutes(ctx context.Context, strategy *v1beta1.TrafficRoutingStrategy) (bool, error)
 	// Finalise will do some cleanup work after the canary rollout complete, such as delete canary ingress.
-	// Finalise is called with a 3-second delay after completing the canary.
-	Finalise(ctx context.Context) error
+	// if error is nil, the return bool value means if the resources are modified
+	Finalise(ctx context.Context) (bool, error)
 }

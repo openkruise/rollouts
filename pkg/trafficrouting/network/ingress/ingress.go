@@ -147,23 +147,23 @@ func (r *ingressController) EnsureRoutes(ctx context.Context, strategy *v1beta1.
 	return false, nil
 }
 
-func (r *ingressController) Finalise(ctx context.Context) error {
+func (r *ingressController) Finalise(ctx context.Context) (bool, error) {
 	canaryIngress := &netv1.Ingress{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: r.canaryIngressName}, canaryIngress)
 	if err != nil && !errors.IsNotFound(err) {
 		klog.Errorf("%s get canary ingress(%s) failed: %s", r.conf.Key, r.canaryIngressName, err.Error())
-		return err
+		return false, err
 	}
 	if errors.IsNotFound(err) || !canaryIngress.DeletionTimestamp.IsZero() {
-		return nil
+		return false, nil
 	}
 	// immediate delete canary ingress
 	if err = r.Delete(ctx, canaryIngress); err != nil {
 		klog.Errorf("%s remove canary ingress(%s) failed: %s", r.conf.Key, canaryIngress.Name, err.Error())
-		return err
+		return false, err
 	}
 	klog.Infof("%s remove canary ingress(%s) success", r.conf.Key, canaryIngress.Name)
-	return nil
+	return true, nil
 }
 
 func (r *ingressController) buildCanaryIngress(stableIngress *netv1.Ingress) *netv1.Ingress {

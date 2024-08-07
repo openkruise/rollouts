@@ -533,7 +533,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 		},
 		{
-			name: "ReconcileRolloutProgressing rolling -> continueRelease1",
+			name: "ReconcileRolloutProgressing rolling -> continueRelease1", // add grace time to test the first step: restoring the gateway
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				dep1.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
@@ -558,10 +558,14 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				return []*apps.Deployment{dep1, dep2}, []*apps.ReplicaSet{rs1, rs2}
 			},
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
-				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
+				c1 := demoIngress.DeepCopy()
+				c2 := demoIngress.DeepCopy()
+				c2.Name = c2.Name + "-canary"
+				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{c1, c2}
 			},
 			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.Canary.TrafficRoutings[0].GracePeriodSeconds = 1 // add grace time to test fine step in continuous logic
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
@@ -635,7 +639,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CanaryReadyReplicas = 3
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
-				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteCanaryService
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteBR
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
