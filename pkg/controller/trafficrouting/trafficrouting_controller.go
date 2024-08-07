@@ -123,13 +123,13 @@ func (r *TrafficRoutingReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			done, err = r.trafficRoutingManager.DoTrafficRouting(newTrafficRoutingContext(tr))
 		}
 	case v1alpha1.TrafficRoutingPhaseFinalizing:
-		done, err = r.trafficRoutingManager.FinalisingTrafficRouting(newTrafficRoutingContext(tr), false)
+		done, err = r.trafficRoutingManager.FinalisingTrafficRouting(newTrafficRoutingContext(tr))
 		if done {
 			newStatus.Phase = v1alpha1.TrafficRoutingPhaseHealthy
 			newStatus.Message = "TrafficRouting is Healthy"
 		}
 	case v1alpha1.TrafficRoutingPhaseTerminating:
-		done, err = r.trafficRoutingManager.FinalisingTrafficRouting(newTrafficRoutingContext(tr), false)
+		done, err = r.trafficRoutingManager.FinalisingTrafficRouting(newTrafficRoutingContext(tr))
 		if done {
 			// remove trafficRouting finalizer
 			err = r.handleFinalizer(tr)

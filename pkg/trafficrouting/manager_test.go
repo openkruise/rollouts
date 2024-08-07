@@ -29,6 +29,7 @@ import (
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
+	"github.com/openkruise/rollouts/pkg/util/grace"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -156,6 +157,8 @@ var (
 							Ingress: &v1beta1.IngressTrafficRouting{
 								Name: "echoserver",
 							},
+							// webhook doesn't work in unit test, we manually set gracePeriodSeconds to 1
+							GracePeriodSeconds: 1,
 						},
 					},
 				},
@@ -932,15 +935,16 @@ func TestDoTrafficRoutingWithIstio(t *testing.T) {
 
 func TestFinalisingTrafficRouting(t *testing.T) {
 	cases := []struct {
-		name                     string
-		getObj                   func() ([]*corev1.Service, []*netv1.Ingress)
-		getRollout               func() (*v1beta1.Rollout, *util.Workload)
-		onlyRestoreStableService bool
-		expectObj                func() ([]*corev1.Service, []*netv1.Ingress)
-		expectDone               bool
+		name               string
+		getObj             func() ([]*corev1.Service, []*netv1.Ingress)
+		getRollout         func() (*v1beta1.Rollout, *util.Workload)
+		onlyTrafficRouting bool
+		expectObj          func() ([]*corev1.Service, []*netv1.Ingress)
+		expectNotFound     func() ([]*corev1.Service, []*netv1.Ingress)
+		expectDone         bool
 	}{
 		{
-			name: "FinalisingTrafficRouting test1",
+			name: "FinalisingTrafficRouting test1", // will restore the stable service
 			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
 				s1 := demoService.DeepCopy()
 				s1.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v1"
@@ -962,7 +966,6 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-time.Hour)}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
-			onlyRestoreStableService: true,
 			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
 				s1 := demoService.DeepCopy()
 				s2 := demoService.DeepCopy()
@@ -975,11 +978,14 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "100"
 				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
+			},
+			expectNotFound: func() ([]*corev1.Service, []*netv1.Ingress) {
+				return nil, nil
 			},
 			expectDone: false,
 		},
 		{
-			name: "FinalisingTrafficRouting test2",
+			name: "stable Service already clear", // will restore the gateway
 			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
 				s1 := demoService.DeepCopy()
 				s2 := demoService.DeepCopy()
@@ -997,128 +1003,136 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 				obj := demoRollout.DeepCopy()
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
-				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(time.Hour)}
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-time.Hour)}
 				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
 			},
-			onlyRestoreStableService: true,
-			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
-				s1 := demoService.DeepCopy()
-				s2 := demoService.DeepCopy()
-				s2.Name = "echoserver-canary"
-				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
-				c1 := demoIngress.DeepCopy()
-				c2 := demoIngress.DeepCopy()
-				c2.Name = "echoserver-canary"
-				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
-				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "100"
-				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
-			},
-			expectDone: false,
-		},
-		{
-			name: "FinalisingTrafficRouting test3",
-			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
-				s1 := demoService.DeepCopy()
-				s2 := demoService.DeepCopy()
-				s2.Name = "echoserver-canary"
-				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
-				c1 := demoIngress.DeepCopy()
-				c2 := demoIngress.DeepCopy()
-				c2.Name = "echoserver-canary"
-				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
-				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "100"
-				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
-			},
-			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
-				obj := demoRollout.DeepCopy()
-				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
-				obj.Status.CanaryStatus.CurrentStepIndex = 4
-				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-10 * time.Second)}
-				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
-			},
-			onlyRestoreStableService: true,
-			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
-				s1 := demoService.DeepCopy()
-				s2 := demoService.DeepCopy()
-				s2.Name = "echoserver-canary"
-				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
-				c1 := demoIngress.DeepCopy()
-				c2 := demoIngress.DeepCopy()
-				c2.Name = "echoserver-canary"
-				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
-				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "100"
-				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
-			},
-			expectDone: true,
-		},
-		{
-			name: "FinalisingTrafficRouting test4",
-			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
-				s1 := demoService.DeepCopy()
-				s2 := demoService.DeepCopy()
-				s2.Name = "echoserver-canary"
-				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
-				c1 := demoIngress.DeepCopy()
-				c2 := demoIngress.DeepCopy()
-				c2.Name = "echoserver-canary"
-				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
-				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "100"
-				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
-			},
-			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
-				obj := demoRollout.DeepCopy()
-				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
-				obj.Status.CanaryStatus.CurrentStepIndex = 4
-				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-3 * time.Second)}
-				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
-			},
-			onlyRestoreStableService: false,
-			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
-				s1 := demoService.DeepCopy()
-				s2 := demoService.DeepCopy()
-				s2.Name = "echoserver-canary"
-				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
-				c1 := demoIngress.DeepCopy()
-				c2 := demoIngress.DeepCopy()
-				c2.Name = "echoserver-canary"
-				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
-				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "0"
-				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
-			},
-			expectDone: false,
-		},
-		{
-			name: "FinalisingTrafficRouting test5",
-			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
-				s1 := demoService.DeepCopy()
-				s2 := demoService.DeepCopy()
-				s2.Name = "echoserver-canary"
-				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
-				c1 := demoIngress.DeepCopy()
-				c2 := demoIngress.DeepCopy()
-				c2.Name = "echoserver-canary"
-				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
-				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "0"
-				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
-				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
-			},
-			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
-				obj := demoRollout.DeepCopy()
-				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
-				obj.Status.CanaryStatus.CurrentStepIndex = 4
-				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-3 * time.Second)}
-				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
-			},
-			onlyRestoreStableService: false,
 			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
 				s1 := demoService.DeepCopy()
 				c1 := demoIngress.DeepCopy()
 				return []*corev1.Service{s1}, []*netv1.Ingress{c1}
+			},
+			expectNotFound: func() ([]*corev1.Service, []*netv1.Ingress) {
+				c2 := demoIngress.DeepCopy()
+				c2.Name = "echoserver-canary"
+				return nil, []*netv1.Ingress{c2}
+			},
+			expectDone: false,
+		},
+		{
+			name: "gateway already restored", // will remove the canary service
+			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s1 := demoService.DeepCopy()
+				s2 := demoService.DeepCopy()
+				s2.Name = "echoserver-canary"
+				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
+				c1 := demoIngress.DeepCopy()
+				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1}
+			},
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
+				obj := demoRollout.DeepCopy()
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-time.Hour)}
+				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+			},
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s1 := demoService.DeepCopy()
+				c1 := demoIngress.DeepCopy()
+				return []*corev1.Service{s1}, []*netv1.Ingress{c1}
+			},
+			expectNotFound: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s2 := demoService.DeepCopy()
+				s2.Name = "echoserver-canary"
+				c2 := demoIngress.DeepCopy()
+				c2.Name = "echoserver-canary"
+				return []*corev1.Service{s2}, []*netv1.Ingress{c2}
+			},
+			expectDone: false,
+		},
+		{
+			name: "canary Service already clear", // all is done
+			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s1 := demoService.DeepCopy()
+				c1 := demoIngress.DeepCopy()
+				return []*corev1.Service{s1}, []*netv1.Ingress{c1}
+			},
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
+				obj := demoRollout.DeepCopy()
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-time.Hour)}
+				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+			},
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s1 := demoService.DeepCopy()
+				c1 := demoIngress.DeepCopy()
+				return []*corev1.Service{s1}, []*netv1.Ingress{c1}
+			},
+			expectNotFound: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s2 := demoService.DeepCopy()
+				s2.Name = "echoserver-canary"
+				c2 := demoIngress.DeepCopy()
+				c2.Name = "echoserver-canary"
+				return []*corev1.Service{s2}, []*netv1.Ingress{c2}
+			},
+			expectDone: true,
+		},
+		{
+			name: "OnlyTrafficRouting true - test 1",
+			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s1 := demoService.DeepCopy()
+				c1 := demoIngress.DeepCopy()
+				c2 := demoIngress.DeepCopy()
+				c2.Name = "echoserver-canary"
+				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
+				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "100"
+				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return []*corev1.Service{s1}, []*netv1.Ingress{c1, c2}
+			},
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
+				obj := demoRollout.DeepCopy()
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-time.Hour)}
+				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+			},
+			onlyTrafficRouting: true,
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s1 := demoService.DeepCopy()
+				c1 := demoIngress.DeepCopy()
+				return []*corev1.Service{s1}, []*netv1.Ingress{c1}
+			},
+			expectNotFound: func() ([]*corev1.Service, []*netv1.Ingress) {
+				c2 := demoIngress.DeepCopy()
+				c2.Name = "echoserver-canary"
+				return nil, []*netv1.Ingress{c2}
+			},
+			expectDone: false,
+		},
+		{
+			name: "OnlyTrafficRouting true - test 2",
+			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s1 := demoService.DeepCopy()
+				c1 := demoIngress.DeepCopy()
+				return []*corev1.Service{s1}, []*netv1.Ingress{c1}
+			},
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
+				obj := demoRollout.DeepCopy()
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-time.Hour)}
+				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+			},
+			onlyTrafficRouting: true,
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s1 := demoService.DeepCopy()
+				c1 := demoIngress.DeepCopy()
+				return []*corev1.Service{s1}, []*netv1.Ingress{c1}
+			},
+			expectNotFound: func() ([]*corev1.Service, []*netv1.Ingress) {
+				c2 := demoIngress.DeepCopy()
+				c2.Name = "echoserver-canary"
+				return nil, []*netv1.Ingress{c2}
 			},
 			expectDone: true,
 		},
@@ -1138,18 +1152,19 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 			newStatus := rollout.Status.DeepCopy()
 			currentStep := rollout.Spec.Strategy.Canary.Steps[newStatus.CanaryStatus.CurrentStepIndex-1]
 			c := &TrafficRoutingContext{
-				Key:              fmt.Sprintf("Rollout(%s/%s)", rollout.Namespace, rollout.Name),
-				Namespace:        rollout.Namespace,
-				ObjectRef:        rollout.Spec.Strategy.Canary.TrafficRoutings,
-				Strategy:         currentStep.TrafficRoutingStrategy,
-				OwnerRef:         *metav1.NewControllerRef(rollout, v1beta1.SchemeGroupVersion.WithKind("Rollout")),
-				RevisionLabelKey: workload.RevisionLabelKey,
-				StableRevision:   newStatus.CanaryStatus.StableRevision,
-				CanaryRevision:   newStatus.CanaryStatus.PodTemplateHash,
-				LastUpdateTime:   newStatus.CanaryStatus.LastUpdateTime,
+				Key:                fmt.Sprintf("Rollout(%s/%s)", rollout.Namespace, rollout.Name),
+				Namespace:          rollout.Namespace,
+				ObjectRef:          rollout.Spec.Strategy.Canary.TrafficRoutings,
+				Strategy:           currentStep.TrafficRoutingStrategy,
+				OwnerRef:           *metav1.NewControllerRef(rollout, v1beta1.SchemeGroupVersion.WithKind("Rollout")),
+				RevisionLabelKey:   workload.RevisionLabelKey,
+				StableRevision:     newStatus.CanaryStatus.StableRevision,
+				CanaryRevision:     newStatus.CanaryStatus.PodTemplateHash,
+				LastUpdateTime:     newStatus.CanaryStatus.LastUpdateTime,
+				OnlyTrafficRouting: cs.onlyTrafficRouting,
 			}
 			manager := NewTrafficRoutingManager(client)
-			done, err := manager.FinalisingTrafficRouting(c, cs.onlyRestoreStableService)
+			done, err := manager.FinalisingTrafficRouting(c)
 			if err != nil {
 				t.Fatalf("DoTrafficRouting failed: %s", err)
 			}
@@ -1163,6 +1178,16 @@ func TestFinalisingTrafficRouting(t *testing.T) {
 			for _, obj := range ig {
 				checkObjEqual(client, t, obj)
 			}
+
+			ss, ig = cs.expectNotFound()
+			for _, obj := range ss {
+				checkNotFound(client, t, obj)
+			}
+			for _, obj := range ig {
+				checkNotFound(client, t, obj)
+			}
+			// empty the grace expectations to avoid making effects on the following test
+			grace.ResetExpectations()
 		})
 	}
 }
@@ -1175,6 +1200,7 @@ func TestRestoreGateway(t *testing.T) {
 		onlyTrafficRouting bool
 		expectObj          func() ([]*corev1.Service, []*netv1.Ingress)
 		expectNotFound     func() ([]*corev1.Service, []*netv1.Ingress)
+		retry              bool
 	}{
 		{
 			name: "Restore Gateway test1",
@@ -1212,6 +1238,7 @@ func TestRestoreGateway(t *testing.T) {
 				c2.Name = "echoserver-canary"
 				return nil, []*netv1.Ingress{c2}
 			},
+			retry: true,
 		},
 	}
 
@@ -1241,9 +1268,12 @@ func TestRestoreGateway(t *testing.T) {
 				OnlyTrafficRouting: cs.onlyTrafficRouting,
 			}
 			manager := NewTrafficRoutingManager(cli)
-			err := manager.RestoreGateway(c)
+			retry, err := manager.RestoreGateway(c)
 			if err != nil {
-				t.Fatalf("DoTrafficRouting failed: %s", err)
+				t.Fatalf("RestoreGateway failed: %s", err)
+			}
+			if retry != cs.retry {
+				t.Fatalf("RestoreGateway expect(%v), but get(%v)", cs.retry, retry)
 			}
 			ss, ig = cs.expectObj()
 			for _, obj := range ss {
@@ -1260,6 +1290,12 @@ func TestRestoreGateway(t *testing.T) {
 			for _, obj := range ig {
 				checkNotFound(cli, t, obj)
 			}
+			// the second call, it should be no error and no retry
+			time.Sleep(1 * time.Second)
+			retry, err = manager.RestoreGateway(c)
+			if err != nil || retry {
+				t.Fatalf("RestoreGateway failed: %s", err)
+			}
 		})
 	}
 }
@@ -1272,6 +1308,7 @@ func TestRemoveCanaryService(t *testing.T) {
 		onlyTrafficRouting bool
 		expectObj          func() ([]*corev1.Service, []*netv1.Ingress)
 		expectNotFound     func() ([]*corev1.Service, []*netv1.Ingress)
+		retry              bool
 	}{
 		{
 			name: "Restore Gateway test1",
@@ -1311,6 +1348,7 @@ func TestRemoveCanaryService(t *testing.T) {
 				s2.Name = "echoserver-canary"
 				return []*corev1.Service{s2}, nil
 			},
+			retry: true,
 		},
 	}
 
@@ -1340,9 +1378,12 @@ func TestRemoveCanaryService(t *testing.T) {
 				OnlyTrafficRouting: cs.onlyTrafficRouting,
 			}
 			manager := NewTrafficRoutingManager(cli)
-			err := manager.RemoveCanaryService(c)
+			retry, err := manager.RemoveCanaryService(c)
 			if err != nil {
-				t.Fatalf("DoTrafficRouting failed: %s", err)
+				t.Fatalf("RemoveCanaryService failed: %s", err)
+			}
+			if retry != cs.retry {
+				t.Fatalf("RemoveCanaryService expect(%v), but get(%v)", false, retry)
 			}
 			ss, ig = cs.expectObj()
 			for _, obj := range ss {
@@ -1358,6 +1399,12 @@ func TestRemoveCanaryService(t *testing.T) {
 			}
 			for _, obj := range ig {
 				checkNotFound(cli, t, obj)
+			}
+			// the second call, it should be no error and no retry
+			time.Sleep(1 * time.Second)
+			retry, err = manager.RemoveCanaryService(c)
+			if err != nil || retry {
+				t.Fatalf("RemoveCanaryService failed: %s", err)
 			}
 		})
 	}

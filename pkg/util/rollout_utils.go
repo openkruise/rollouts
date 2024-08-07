@@ -190,13 +190,3 @@ func CheckNextBatchIndexWithCorrect(rollout *rolloutv1beta1.Rollout) {
 		}
 	}
 }
-
-func GracePeriodSecondsOrDefault(refs []rolloutv1beta1.TrafficRoutingRef, defaultSeconds int32) int32 {
-	if len(refs) == 0 {
-		return defaultSeconds
-	}
-	if refs[0].GracePeriodSeconds < 0 {
-		return defaultSeconds
-	}
-	return refs[0].GracePeriodSeconds
-}

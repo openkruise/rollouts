@@ -94,20 +94,20 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *v1beta1.
 	return false, nil
 }
 
-func (r *gatewayController) Finalise(ctx context.Context) error {
+func (r *gatewayController) Finalise(ctx context.Context) (bool, error) {
 	httpRoute := &gatewayv1beta1.HTTPRoute{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: r.conf.Namespace, Name: *r.conf.TrafficConf.HTTPRouteName}, httpRoute)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return nil
+			return false, nil
 		}
 		klog.Errorf("%s get HTTPRoute failed: %s", r.conf.Key, err.Error())
-		return err
+		return false, err
 	}
 	// desired rule
 	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, utilpointer.Int32(-1), nil, nil)
 	if reflect.DeepEqual(httpRoute.Spec.Rules, desiredRule) {
-		return nil
+		return false, nil
 	}
 	routeClone := &gatewayv1beta1.HTTPRoute{}
 	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
@@ -119,10 +119,10 @@ func (r *gatewayController) Finalise(ctx context.Context) error {
 		return r.Client.Update(context.TODO(), routeClone)
 	}); err != nil {
 		klog.Errorf("update %s httpRoute(%s) failed: %s", r.conf.Key, httpRoute.Name, err.Error())
-		return err
+		return false, err
 	}
 	klog.Infof("%s TrafficRouting Finalise success", r.conf.Key)
-	return nil
+	return true, nil
 }
 
 func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1beta1.HTTPRouteRule, weight *int32, matches []v1beta1.HttpRouteMatch,

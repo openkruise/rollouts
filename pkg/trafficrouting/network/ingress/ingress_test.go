@@ -707,6 +707,7 @@ func TestFinalise(t *testing.T) {
 		getConfigmap  func() *corev1.ConfigMap
 		getIngress    func() []*netv1.Ingress
 		expectIngress func() *netv1.Ingress
+		modified      bool
 	}{
 		{
 			name: "finalise test1",
@@ -726,6 +727,7 @@ func TestFinalise(t *testing.T) {
 			expectIngress: func() *netv1.Ingress {
 				return nil
 			},
+			modified: true,
 		},
 	}
 
@@ -749,10 +751,13 @@ func TestFinalise(t *testing.T) {
 				t.Fatalf("NewIngressTrafficRouting failed: %s", err.Error())
 				return
 			}
-			err = controller.Finalise(context.TODO())
+			modified, err := controller.Finalise(context.TODO())
 			if err != nil {
 				t.Fatalf("EnsureRoutes failed: %s", err.Error())
 				return
+			}
+			if modified != cs.modified {
+				t.Fatalf("expect(%v), but get(%v)", cs.modified, modified)
 			}
 			canaryIngress := &netv1.Ingress{}
 			err = fakeCli.Get(context.TODO(), client.ObjectKey{Name: "echoserver-canary"}, canaryIngress)

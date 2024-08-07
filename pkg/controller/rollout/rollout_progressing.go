@@ -431,11 +431,6 @@ func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) 
 	if subStatus == nil {
 		return true, nil
 	}
-	gracePeriodSeconds := c.Rollout.Spec.Strategy.GetTrafficRouting()[0].GracePeriodSeconds
-	// To ensure respect for graceful time between these steps, we set start timer before the first step
-	if len(subStatus.FinalisingStep) == 0 {
-		subStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-	}
 	tr := newTrafficRoutingContext(c)
 	klog.Infof("rollout(%s/%s) Finalising Step is %s", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep)
 	switch subStatus.FinalisingStep {
@@ -446,20 +441,10 @@ func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) 
 	// firstly, restore the gateway resources (ingress/gatewayAPI/Istio), that means
 	// only stable Service will accept the traffic
 	case v1beta1.FinalisingStepTypeGateway:
-		//TODO - RestoreGateway returns (bool, error) pair instead of error only.
-		// return (fasle, nil): gateway is patched successfully, but we need time to observe; recheck later
-		// return (true, nil): gateway is patched successfully, and accepts the update successfully; go to next step then
-		// return (false, error): gateway encounters error when patched, or the update is not accepted; recheck later
-		err := r.trafficRoutingManager.RestoreGateway(tr)
-		if err != nil {
+		retry, err := r.trafficRoutingManager.RestoreGateway(tr)
+		if err != nil || retry {
 			subStatus.LastUpdateTime = tr.LastUpdateTime
 			return false, err
-		}
-		// usually, GracePeriodSeconds means duration to wait after an operation is done,
-		// we use defaultGracePeriodSeconds+1 here because the timer started before the RestoreGateway step
-		if subStatus.LastUpdateTime != nil && time.Since(subStatus.LastUpdateTime.Time) < time.Second*time.Duration(gracePeriodSeconds+1) {
-			klog.Infof("rollout(%s/%s) in step (%s), and wait %d seconds", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep, gracePeriodSeconds+1)
-			return false, nil
 		}
 		klog.Infof("rollout(%s/%s) in step (%s), and success", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep)
 		subStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
@@ -490,7 +475,8 @@ func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) 
 		first step of v3 release.
 	*/
 	case v1beta1.FinalisingStepTypeDeleteCanaryService:
-		err := r.trafficRoutingManager.RemoveCanaryService(tr)
+		// ignore the grace period because it is the last step
+		_, err := r.trafficRoutingManager.RemoveCanaryService(tr)
 		if err != nil {
 			subStatus.LastUpdateTime = tr.LastUpdateTime
 			return false, err

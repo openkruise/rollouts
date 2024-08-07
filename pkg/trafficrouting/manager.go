@@ -27,12 +27,13 @@ import (
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/gateway"
 	"github.com/openkruise/rollouts/pkg/trafficrouting/network/ingress"
 	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/grace"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	utilpointer "k8s.io/utils/pointer"
+	"k8s.io/utils/integer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -59,6 +60,8 @@ type TrafficRoutingContext struct {
 	LastUpdateTime *metav1.Time
 	// won't work for Ingress and Gateway
 	DisableGenerateCanaryService bool
+	// recheck time
+	RecheckDuration time.Duration
 }
 
 // Manager responsible for adjusting network resources
@@ -158,8 +161,6 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 				klog.Errorf("%s patch canary service(%s) selector failed: %s", c.Key, canaryService.Name, err.Error())
 				return false, err
 			}
-			// update canary service time, and wait 3 seconds, just to be safe
-			c.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			klog.Infof("%s patch canary service(%s) selector(%s=%s) success",
 				c.Key, canaryService.Name, c.RevisionLabelKey, c.CanaryRevision)
 			serviceModified = true
@@ -172,12 +173,12 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 				return false, err
 			}
 			serviceModified = true
-			// update stable service time, and wait 3 seconds, just to be safe
-			c.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			klog.Infof("add %s stable service(%s) selector(%s=%s) success",
 				c.Key, stableService.Name, c.RevisionLabelKey, c.StableRevision)
 		}
 		if serviceModified {
+			// modification occurred, wait a grace period
+			c.LastUpdateTime = &metav1.Time{Time: time.Now()}
 			return false, nil
 		}
 	}
@@ -199,211 +200,139 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 	return true, nil
 }
 
-func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext, onlyRestoreStableService bool) (bool, error) {
+func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 	if len(c.ObjectRef) == 0 {
 		return true, nil
 	}
-	trafficRouting := c.ObjectRef[0]
-	if trafficRouting.GracePeriodSeconds <= 0 {
-		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
-	}
-
-	cServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
-	trController, err := newNetworkProvider(m.Client, c, trafficRouting.Service, cServiceName)
-	if err != nil {
-		klog.Errorf("%s newTrafficRoutingController failed: %s", c.Key, err.Error())
-		return false, err
-	}
-	noCanaryService := c.OnlyTrafficRouting || c.DisableGenerateCanaryService
-	// The "already-finalised" conditions of this FinalisingTrafficRouting function are:
-	// 1. the stable service has no selector
-	// 2. AND canary service has been cleaned up
-	var stableServiceRestored, canaryServiceRemoved bool
-	// check condition 1
-	stableService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: c.Namespace, Name: trafficRouting.Service}}
-	if err := m.Get(context.TODO(), client.ObjectKeyFromObject(stableService), stableService); err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("%s get stable service(%s) failed: %s", c.Key, trafficRouting.Service, err.Error())
-		return false, err
-	} else {
-		stableServiceRestored = errors.IsNotFound(err) || stableService.Spec.Selector[c.RevisionLabelKey] == ""
-	}
-	// check condition 2
-	cService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: c.Namespace, Name: cServiceName}}
-	if err := m.Get(context.TODO(), client.ObjectKeyFromObject(cService), cService); err != nil && !errors.IsNotFound(err) {
-		klog.Errorf("%s get canary service(%s) failed: %s", c.Key, cServiceName, err.Error())
-		return false, err
-	} else {
-		// if noCanaryService is true, we have never created canary service
-		canaryServiceRemoved = errors.IsNotFound(err) || noCanaryService
-	}
-	// only if both conditions are met
-	if canaryServiceRemoved && stableServiceRestored {
-		/*
-			even both of the conditions are met, we call Finalise
-			1. In rollout failure case, this step ensures that the canary-ingress can be deleted in a time.
-			2. For scenario that noCanaryService is true, stable Service is never patched, canary Service is never created,
-			   What we need to do is just to call Finalise
-			note that, calling Finalise even for multiple times is not a big thing:
-			1. it does nothing if it has already called once, since the corresponding annotation has been cleared
-			2. the Finalish won't wait graceful period for now
-		*/
-		if err = trController.Finalise(context.TODO()); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-
 	klog.Infof("%s start finalising traffic routing", c.Key)
 	// remove stable service the pod revision selector, so stable service will be selector all version pods.
-	verify, err := m.restoreStableService(c)
-	if err != nil || !verify {
+	if retry, err := m.RestoreStableService(c); err != nil || retry {
 		return false, err
-	} else if onlyRestoreStableService {
-		return true, nil
 	}
-
-	// First route 100% traffic to stable service
-	c.Strategy.Traffic = utilpointer.StringPtr("0%")
-	verify, err = trController.EnsureRoutes(context.TODO(), &c.Strategy)
-	if err != nil {
-		return false, err
-	} else if !verify {
-		c.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		return false, nil
-	}
-	if c.LastUpdateTime != nil {
-		// After restore the stable service configuration, give network provider 3 seconds to react
-		if verifyTime := c.LastUpdateTime.Add(time.Second * time.Duration(trafficRouting.GracePeriodSeconds)); verifyTime.After(time.Now()) {
-			klog.Infof("%s route 100% traffic to stable service, and wait a moment", c.Key)
-			return false, nil
-		}
-	}
-
+	klog.Infof("%s restore stable service success", c.Key)
 	// modify network(ingress & gateway api) configuration, route all traffic to stable service
-	if err = trController.Finalise(context.TODO()); err != nil {
+	if retry, err := m.RestoreGateway(c); err != nil || retry {
 		return false, err
 	}
-	// end to end deployment scenario OR disableGenerateCanaryService is true, don't remove the canary service;
-	// because canary service is stable service (ie. no external canary service was created at all)
-	if !noCanaryService {
-		// remove canary service
-		err = m.Delete(context.TODO(), cService)
-		if err != nil && !errors.IsNotFound(err) {
-			klog.Errorf("%s remove canary service(%s) failed: %s", c.Key, cService.Name, err.Error())
-			return false, err
-		}
-		klog.Infof("%s remove canary service(%s) success", c.Key, cService.Name)
+	klog.Infof("%s restore gateway success", c.Key)
+	// remove canary service
+	if retry, err := m.RemoveCanaryService(c); err != nil || retry {
+		return false, err
 	}
+	klog.Infof("%s remove canary service success, finalising traffic routing is done", c.Key)
 	return true, nil
 }
 
 // RestoreGateway restore gateway resources without graceful time
-func (m *Manager) RestoreGateway(c *TrafficRoutingContext) error {
+// returns:
+//   - if error is not nil, usually we need to retry later. Only if error is nil, we consider the bool.
+//   - The bool value indicates whether retry is needed. If true, it usually means
+//     gateway resources have been updated and we need to wait for `graceSeconds`.
+//
+// only if error is nil AND retry is false, this calling can be considered as completed
+func (m *Manager) RestoreGateway(c *TrafficRoutingContext) (bool, error) {
 	if len(c.ObjectRef) == 0 {
-		return nil
+		return false, nil
 	}
-	trafficRouting := c.ObjectRef[0]
-	cServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
-	trController, err := newNetworkProvider(m.Client, c, trafficRouting.Service, cServiceName)
+	// build up the network provider
+	stableService := c.ObjectRef[0].Service
+	cServiceName := getCanaryServiceName(stableService, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
+	trController, err := newNetworkProvider(m.Client, c, stableService, cServiceName)
 	if err != nil {
 		klog.Errorf("%s newTrafficRoutingController failed: %s", c.Key, err.Error())
-		return err
+		return false, err
 	}
-	return trController.Finalise(context.TODO())
-}
-
-// RemoveCanaryService find and delete canary Service. stable Service won't be modified
-func (m *Manager) RemoveCanaryService(c *TrafficRoutingContext) error {
-	if len(c.ObjectRef) == 0 {
-		return nil
-	}
-	trafficRouting := c.ObjectRef[0]
-	cServiceName := getCanaryServiceName(trafficRouting.Service, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
-	cService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: c.Namespace, Name: cServiceName}}
-	// end to end deployment scenario OR disableGenerateCanaryService is true, don't remove the canary service;
-	// because canary service is stable service (ie. no external canary service was created at all)
-	if !(c.OnlyTrafficRouting || c.DisableGenerateCanaryService) {
-		// remove canary service
-		err := m.Delete(context.TODO(), cService)
-		if err != nil && !errors.IsNotFound(err) {
-			klog.Errorf("%s remove canary service(%s) failed: %s", c.Key, cService.Name, err.Error())
-			return err
+	// restore Gateway/Ingress/Istio
+	graceSeconds := GetGraceSeconds(c.ObjectRef, defaultGracePeriodSeconds)
+	retry, remaining, err := grace.RunWithGraceSeconds(string(c.OwnerRef.UID), "restoreGateway", graceSeconds, func() (bool, error) {
+		modified, err := trController.Finalise(context.TODO())
+		if modified {
+			c.LastUpdateTime = &metav1.Time{Time: time.Now()}
 		}
-		klog.Infof("%s remove canary service(%s) success", c.Key, cService.Name)
-	}
-
-	return nil
+		return modified, err
+	})
+	UpdateRecheckDuration(c, remaining)
+	return retry, err
 }
 
-// returning (false, nil) means the update has been submitted, and no error occurred
-// but we need to wait graceful time before returning true
+// returns:
+//   - if error is not nil, usually we need to retry later. Only if error is nil, we consider the bool.
+//   - The bool value indicates whether retry is needed. If true, it usually means
+//     canary service has been deleted and we need to wait for `graceSeconds`.
+//
+// only if error is nil AND retry is false, this calling can be considered as completed
+func (m *Manager) RemoveCanaryService(c *TrafficRoutingContext) (bool, error) {
+	if len(c.ObjectRef) == 0 {
+		return false, nil
+	}
+	// end to end deployment scenario OR disableGenerateCanaryService is true, don't remove the canary service;
+	// because canary service is stable service (ie. canary service is never created from the beginning)
+	if c.OnlyTrafficRouting || c.DisableGenerateCanaryService {
+		return false, nil
+	}
+	cServiceName := getCanaryServiceName(c.ObjectRef[0].Service, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
+	cService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Namespace: c.Namespace, Name: cServiceName}}
+	key := types.NamespacedName{
+		Namespace: c.Namespace,
+		Name:      cServiceName,
+	}
+	// remove canary service
+	graceSeconds := GetGraceSeconds(c.ObjectRef, defaultGracePeriodSeconds)
+	retry, remaining, err := grace.RunWithGraceSeconds(key.String(), "removeCanaryService", graceSeconds, func() (bool, error) {
+		err := m.Delete(context.TODO(), cService)
+		if errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			klog.Errorf("%s remove canary service(%s) failed: %s", c.Key, cService.Name, err.Error())
+			return false, err
+		}
+		return true, nil
+	})
+	UpdateRecheckDuration(c, remaining)
+	return retry, err
+}
+
+// returns:
+//   - if error is not nil, usually we need to retry later. Only if error is nil, we consider the bool.
+//   - The bool value indicates whether retry is needed. If true, it usually means
+//     stable service has been updated (ie. patched) and we need to wait for `graceSeconds`.
+//
+// only if error is nil AND retry is false, this calling can be considered as completed
 func (m *Manager) PatchStableService(c *TrafficRoutingContext) (bool, error) {
 	if len(c.ObjectRef) == 0 {
-		return true, nil
+		return false, nil
 	}
 	if c.OnlyTrafficRouting || c.DisableGenerateCanaryService {
 		return true, nil
 	}
-	gracePeriodSeconds := util.GracePeriodSecondsOrDefault(c.ObjectRef, defaultGracePeriodSeconds)
-	trafficRouting := c.ObjectRef[0]
-	//fetch stable service
+
+	// fetch stable service
 	stableService := &corev1.Service{}
-	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Namespace, Name: trafficRouting.Service}, stableService)
+	serviceName := c.ObjectRef[0].Service
+	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Namespace, Name: serviceName}, stableService)
 	if err != nil {
-		klog.Errorf("%s get stable service(%s) failed: %s", c.Key, trafficRouting.Service, err.Error())
-		// not found, wait a moment, retry
-		if errors.IsNotFound(err) {
-			return false, nil
-		}
+		klog.Errorf("%s get stable service(%s) failed: %s", c.Key, serviceName, err.Error())
 		return false, err
 	}
 
-	if stableService.Spec.Selector[c.RevisionLabelKey] == c.StableRevision {
-		if c.LastUpdateTime == nil {
-			return true, nil
-		}
-		if time.Since(c.LastUpdateTime.Time) < time.Second*time.Duration(gracePeriodSeconds) {
-			klog.Infof("%s do something special:  add stable service(%s) selector(%s=%s) success, but we need wait %d seconds", c.Key, stableService.Name, c.RevisionLabelKey, c.StableRevision, gracePeriodSeconds)
-			return false, nil
-		}
-		klog.Infof("%s do something special:  add stable service(%s) selector(%s=%s) success and complete", c.Key, stableService.Name, c.RevisionLabelKey, c.StableRevision)
-		return true, nil
-	}
-
-	// patch stable service to only select the stable pods
-	body := fmt.Sprintf(`{"spec":{"selector":{"%s":"%s"}}}`, c.RevisionLabelKey, c.StableRevision)
-	if err = m.Patch(context.TODO(), stableService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
-		klog.Errorf("%s patch stable service(%s) selector failed: %s", c.Key, stableService.Name, err.Error())
-		return false, err
-	}
-	c.LastUpdateTime = &metav1.Time{Time: time.Now()}
-	klog.Infof("%s do something special:  add stable service(%s) selector(%s=%s) success, but we need wait %d seconds", c.Key, stableService.Name, c.RevisionLabelKey, c.StableRevision, gracePeriodSeconds)
-	return false, nil
-}
-
-// returning (false, nil) means the update has been submitted, and no error occurred
-// but we need to wait graceful time before returning true
-func (m *Manager) RestoreStableService(c *TrafficRoutingContext) (bool, error) {
-	if len(c.ObjectRef) == 0 {
-		return true, nil
-	}
-	trafficRouting := c.ObjectRef[0]
-	//fetch stable service
-	stableService := &corev1.Service{}
-	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Namespace, Name: trafficRouting.Service}, stableService)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return true, nil
-		}
-		klog.Errorf("%s get stable service(%s) failed: %s", c.Key, trafficRouting.Service, err.Error())
-		return false, err
-	}
 	// restore stable Service
-	verify, err := m.restoreStableService(c)
-	if err != nil || !verify {
-		return false, err
-	}
-	return true, nil
+	graceSeconds := GetGraceSeconds(c.ObjectRef, defaultGracePeriodSeconds)
+	retry, remaining, err := grace.RunWithGraceSeconds(string(stableService.UID), "patchService", graceSeconds, func() (bool, error) {
+		modified := false
+		if stableService.Spec.Selector[c.RevisionLabelKey] != c.StableRevision {
+			body := fmt.Sprintf(`{"spec":{"selector":{"%s":"%s"}}}`, c.RevisionLabelKey, c.StableRevision)
+			if err = m.Patch(context.TODO(), stableService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+				klog.Errorf("%s patch stable service(%s) selector failed: %s", c.Key, stableService.Name, err.Error())
+				return false, err
+			}
+			c.LastUpdateTime = &metav1.Time{Time: time.Now()}
+			modified = true
+		}
+		return modified, nil
+	})
+	UpdateRecheckDuration(c, remaining)
+	return retry, err
 }
 
 func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, cService string) (network.NetworkProvider, error) {
@@ -475,41 +404,46 @@ func (m *Manager) createCanaryService(c *TrafficRoutingContext, cService string,
 }
 
 // remove stable service the pod revision selector, so stable service will be selector all version pods.
-func (m *Manager) restoreStableService(c *TrafficRoutingContext) (bool, error) {
-	trafficRouting := c.ObjectRef[0]
-	if trafficRouting.GracePeriodSeconds <= 0 {
-		trafficRouting.GracePeriodSeconds = defaultGracePeriodSeconds
-	}
-	//fetch stable service
-	stableService := &corev1.Service{}
-	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Namespace, Name: trafficRouting.Service}, stableService)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return true, nil
-		}
-		klog.Errorf("%s get stable service(%s) failed: %s", c.Key, trafficRouting.Service, err.Error())
-		return false, err
-	}
-	if stableService.Spec.Selector[c.RevisionLabelKey] != "" {
-		body := fmt.Sprintf(`{"spec":{"selector":{"%s":null}}}`, c.RevisionLabelKey)
-		if err = m.Patch(context.TODO(), stableService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
-			klog.Errorf("%s patch stable service(%s) failed: %s", c.Key, trafficRouting.Service, err.Error())
-			return false, err
-		}
-		klog.Infof("remove %s stable service(%s) pod revision selector, and wait a moment", c.Key, trafficRouting.Service)
-		c.LastUpdateTime = &metav1.Time{Time: time.Now()}
+// returns:
+//   - if error is not nil, usually we need to retry later. Only if error is nil, we consider the bool.
+//   - The bool value indicates whether retry is needed. If true, it usually means
+//     stable service has been updated (ie. restored) and we need to wait for `graceSeconds`.
+//
+// only if error is nil AND retry is false, this calling can be considered as completed
+func (m *Manager) RestoreStableService(c *TrafficRoutingContext) (bool, error) {
+	if len(c.ObjectRef) == 0 {
 		return false, nil
 	}
-	if c.LastUpdateTime == nil {
+
+	// fetch the stable Service
+	stableService := &corev1.Service{}
+	serviceName := c.ObjectRef[0].Service
+	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Namespace, Name: serviceName}, stableService)
+	if errors.IsNotFound(err) {
 		return true, nil
 	}
-	// After restore the stable service configuration, give network provider 3 seconds to react
-	if verifyTime := c.LastUpdateTime.Add(time.Second * time.Duration(trafficRouting.GracePeriodSeconds)); verifyTime.After(time.Now()) {
-		klog.Infof("%s restoring stable service(%s), and wait a moment", c.Key, trafficRouting.Service)
-		return false, nil
+	if err != nil {
+		klog.Errorf("%s get stable service(%s) failed: %s", c.Key, serviceName, err.Error())
+		return false, err
 	}
-	klog.Infof("%s doFinalising stable service(%s) success", c.Key, trafficRouting.Service)
-	return true, nil
+
+	// restore stable Service
+	graceSeconds := GetGraceSeconds(c.ObjectRef, defaultGracePeriodSeconds)
+	retry, remaining, err := grace.RunWithGraceSeconds(string(stableService.UID), "restoreService", graceSeconds, func() (bool, error) {
+		modified := false
+		if stableService.Spec.Selector[c.RevisionLabelKey] != "" {
+			body := fmt.Sprintf(`{"spec":{"selector":{"%s":null}}}`, c.RevisionLabelKey)
+			if err = m.Patch(context.TODO(), stableService, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
+				klog.Errorf("%s patch stable service(%s) failed: %s", c.Key, serviceName, err.Error())
+				return false, err
+			}
+			c.LastUpdateTime = &metav1.Time{Time: time.Now()}
+			modified = true
+		}
+		return modified, nil
+	})
+	UpdateRecheckDuration(c, remaining)
+	return retry, err
 }
 
 func getCanaryServiceName(sService string, onlyTrafficRouting bool, disableGenerateCanaryService bool) string {
@@ -517,4 +451,28 @@ func getCanaryServiceName(sService string, onlyTrafficRouting bool, disableGener
 		return sService
 	}
 	return fmt.Sprintf("%s-canary", sService)
+}
+
+func GetGraceSeconds(refs []v1beta1.TrafficRoutingRef, defaultSeconds int32) (graceSeconds int32) {
+	if len(refs) == 0 {
+		klog.Infof("no trafficRoutingRef, use defaultGracePeriodSeconds(%d)", defaultSeconds)
+		return defaultSeconds
+	}
+	for i := range refs {
+		graceSeconds = integer.Int32Max(graceSeconds, refs[i].GracePeriodSeconds)
+	}
+	// user may intentionally set graceSeconds as 0 (if not provided, defaults to 3)
+	// we respect it
+	if graceSeconds < 0 {
+		klog.Infof("negative graceSeconds(%d), use defaultGracePeriodSeconds(%d)", graceSeconds, defaultSeconds)
+		return defaultSeconds
+	}
+	klog.Infof("use graceSeconds(%d)", graceSeconds)
+	return
+}
+
+func UpdateRecheckDuration(c *TrafficRoutingContext, remaining time.Duration) {
+	if c.RecheckDuration < remaining {
+		c.RecheckDuration = remaining
+	}
 }
