@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -112,11 +113,6 @@ func (r *customController) Initialize(ctx context.Context) error {
 // when ensuring routes, first execute lua for all custom providers, then update
 func (r *customController) EnsureRoutes(ctx context.Context, strategy *v1beta1.TrafficRoutingStrategy) (bool, error) {
 	done := true
-	// *strategy.Weight == 0 indicates traffic routing is doing finalising and tries to route whole traffic to stable service
-	// then directly do finalising
-	if strategy.Traffic != nil && *strategy.Traffic == "0%" {
-		return true, nil
-	}
 	var err error
 	customNetworkRefList := make([]*unstructured.Unstructured, len(r.conf.TrafficConf))
 
@@ -182,8 +178,9 @@ func (r *customController) EnsureRoutes(ctx context.Context, strategy *v1beta1.T
 	return done, nil
 }
 
-func (r *customController) Finalise(ctx context.Context) error {
-	done := true
+func (r *customController) Finalise(ctx context.Context) (bool, error) {
+	modified := false
+	errList := field.ErrorList{}
 	for _, ref := range r.conf.TrafficConf {
 		obj := &unstructured.Unstructured{}
 		obj.SetAPIVersion(ref.APIVersion)
@@ -193,19 +190,19 @@ func (r *customController) Finalise(ctx context.Context) error {
 				klog.Infof("custom network provider %s(%s/%s) not found when finalising", ref.Kind, r.conf.RolloutNs, ref.Name)
 				continue
 			}
+			errList = append(errList, field.InternalError(field.NewPath("GetCustomNetworkProvider"), err))
 			klog.Errorf("failed to get %s(%s/%s) when finalising, process next first", ref.Kind, r.conf.RolloutNs, ref.Name)
-			done = false
 			continue
 		}
-		if err := r.restoreObject(obj); err != nil {
-			done = false
+		if updated, err := r.restoreObject(obj); err != nil {
+			errList = append(errList, field.InternalError(field.NewPath("RestoreCustomNetworkProvider"), err))
 			klog.Errorf("failed to restore %s(%s/%s) when finalising: %s", ref.Kind, r.conf.RolloutNs, ref.Name, err.Error())
+		} else if updated {
+			modified = true
 		}
 	}
-	if !done {
-		return fmt.Errorf("finalising work for %s is not done", r.conf.Key)
-	}
-	return nil
+
+	return modified, errList.ToAggregate()
 }
 
 // store spec of an object in OriginalSpecAnnotation
@@ -237,11 +234,11 @@ func (r *customController) storeObject(obj *unstructured.Unstructured) error {
 }
 
 // restore an object from spec stored in OriginalSpecAnnotation
-func (r *customController) restoreObject(obj *unstructured.Unstructured) error {
+func (r *customController) restoreObject(obj *unstructured.Unstructured) (modified bool, err error) {
 	annotations := obj.GetAnnotations()
 	if annotations == nil || annotations[OriginalSpecAnnotation] == "" {
 		klog.Infof("OriginalSpecAnnotation not found in custom network provider %s(%s/%s)", obj.GetKind(), r.conf.RolloutNs, obj.GetName())
-		return nil
+		return false, nil
 	}
 	oSpecStr := annotations[OriginalSpecAnnotation]
 	var oSpec Data
@@ -251,10 +248,10 @@ func (r *customController) restoreObject(obj *unstructured.Unstructured) error {
 	obj.SetLabels(oSpec.Labels)
 	if err := r.Update(context.TODO(), obj); err != nil {
 		klog.Errorf("failed to restore object %s(%s/%s) from annotation(%s): %s", obj.GetKind(), r.conf.RolloutNs, obj.GetName(), OriginalSpecAnnotation, err.Error())
-		return err
+		return false, err
 	}
 	klog.Infof("restore custom network provider %s(%s/%s) from annotation(%s) success", obj.GetKind(), obj.GetNamespace(), obj.GetName(), OriginalSpecAnnotation)
-	return nil
+	return true, nil
 }
 
 func (r *customController) executeLuaForCanary(spec Data, strategy *v1beta1.TrafficRoutingStrategy, luaScript string) (Data, error) {
