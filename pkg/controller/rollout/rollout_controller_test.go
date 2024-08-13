@@ -88,6 +88,7 @@ var (
 							Ingress: &v1beta1.IngressTrafficRouting{
 								Name: "echoserver",
 							},
+							GracePeriodSeconds: 0, // To facilitate testing, don't wait after traffic routing operation
 						},
 					},
 				},

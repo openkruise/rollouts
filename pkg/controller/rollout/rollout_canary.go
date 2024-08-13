@@ -76,19 +76,18 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 		klog.Infof("rollout(%s/%s) canary step jumped", c.Rollout.Namespace, c.Rollout.Name)
 		return nil
 	}
-	gracePeriodSeconds := util.GracePeriodSecondsOrDefault(c.Rollout.Spec.Strategy.GetTrafficRouting(), defaultGracePeriodSeconds)
 	// When the first batch is trafficRouting rolling and the next steps are rolling release,
 	// We need to clean up the canary-related resources first and then rollout the rest of the batch.
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
 	if currentStep.Traffic == nil && len(currentStep.Matches) == 0 {
 		tr := newTrafficRoutingContext(c)
-		done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
+		done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr)
 		c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
 		if err != nil {
 			return err
 		} else if !done {
 			klog.Infof("rollout(%s/%s) cleaning up canary-related resources", c.Rollout.Namespace, c.Rollout.Name)
-			expectedTime := time.Now().Add(time.Duration(gracePeriodSeconds) * time.Second)
+			expectedTime := time.Now().Add(tr.RecheckDuration)
 			c.RecheckTime = &expectedTime
 			return nil
 		}
@@ -116,11 +115,11 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 		expectedReplicas, _ := intstr.GetScaledValueFromIntOrPercent(currentStep.Replicas, int(c.Workload.Replicas), true)
 		if expectedReplicas >= int(c.Workload.Replicas) && v1beta1.IsRealPartition(c.Rollout) {
 			klog.Infof("special case detected: rollout(%s/%s) restore stable Service", c.Rollout.Namespace, c.Rollout.Name)
-			done, err := m.trafficRoutingManager.RestoreStableService(tr)
+			retry, err := m.trafficRoutingManager.RestoreStableService(tr)
 			if err != nil {
 				return err
-			} else if !done {
-				expectedTime := time.Now().Add(time.Duration(gracePeriodSeconds) * time.Second)
+			} else if retry {
+				expectedTime := time.Now().Add(tr.RecheckDuration)
 				c.RecheckTime = &expectedTime
 				return nil
 			}
@@ -146,11 +145,11 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 		if canaryStatus.CurrentStepIndex == 1 {
 			if !tr.DisableGenerateCanaryService {
 				klog.Infof("special case detected: rollout(%s/%s) patch stable Service", c.Rollout.Namespace, c.Rollout.Name)
-				done, err := m.trafficRoutingManager.PatchStableService(tr)
+				retry, err := m.trafficRoutingManager.PatchStableService(tr)
 				if err != nil {
 					return err
-				} else if !done {
-					expectedTime := time.Now().Add(time.Duration(gracePeriodSeconds) * time.Second)
+				} else if retry {
+					expectedTime := time.Now().Add(tr.RecheckDuration)
 					c.RecheckTime = &expectedTime
 					return nil
 				}
@@ -195,7 +194,13 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 			klog.Infof("rollout(%s/%s) step(%d) state from(%s) -> to(%s)", c.Rollout.Namespace, c.Rollout.Name,
 				canaryStatus.CurrentStepIndex, v1beta1.CanaryStepStateTrafficRouting, canaryStatus.CurrentStepState)
 		}
-		expectedTime := time.Now().Add(time.Duration(gracePeriodSeconds) * time.Second)
+		// in two cases, we should wait the default grace period
+		// - a period after CanaryStepStateUpgrade is just done (https://github.com/openkruise/rollouts/pull/185)
+		// - a period after CanaryStepStateTrafficRouting is just done
+		if tr.RecheckDuration <= 0 {
+			tr.RecheckDuration = time.Duration(trafficrouting.GetGraceSeconds(c.Rollout.Spec.Strategy.GetTrafficRouting(), defaultGracePeriodSeconds)) * time.Second
+		}
+		expectedTime := time.Now().Add(tr.RecheckDuration)
 		c.RecheckTime = &expectedTime
 
 	case v1beta1.CanaryStepStateMetricsAnalysis:
@@ -369,7 +374,7 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, erro
 	}
 	tr := newTrafficRoutingContext(c)
 	// 2. remove stable service the pod revision selector, so stable service will be selector all version pods.
-	done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr, true)
+	done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr)
 	c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
 	if err != nil || !done {
 		return done, err
@@ -380,7 +385,7 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, erro
 		return done, err
 	}
 	// 4. modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods.
-	done, err = m.trafficRoutingManager.FinalisingTrafficRouting(tr, false)
+	done, err = m.trafficRoutingManager.FinalisingTrafficRouting(tr)
 	c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
 	if err != nil || !done {
 		return done, err

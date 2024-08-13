@@ -596,6 +596,7 @@ func TestFinalise(t *testing.T) {
 		getUnstructured    func() *unstructured.Unstructured
 		getConfig          func() Config
 		expectUnstructured func() *unstructured.Unstructured
+		modified           bool
 	}{
 		{
 			name: "test1, finalise VirtualService",
@@ -631,6 +632,7 @@ func TestFinalise(t *testing.T) {
 				_ = u.UnmarshalJSON([]byte(virtualServiceDemo))
 				return u
 			},
+			modified: true,
 		},
 	}
 
@@ -643,9 +645,12 @@ func TestFinalise(t *testing.T) {
 				return
 			}
 			c, _ := NewCustomController(fakeCli, cs.getConfig())
-			err = c.Finalise(context.TODO())
+			modified, err := c.Finalise(context.TODO())
 			if err != nil {
 				t.Fatalf("Initialize failed: %s", err.Error())
+			}
+			if cs.modified != modified {
+				t.Fatalf("is modified: expect(%v), but get(%v)", cs.modified, modified)
 			}
 			checkEqual(fakeCli, t, cs.expectUnstructured())
 		})
