@@ -19,7 +19,7 @@ package network
 import (
 	"context"
 
-	"go.uber.org/multierr"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
 )
@@ -32,18 +32,18 @@ var (
 type CompositeController []NetworkProvider
 
 func (c CompositeController) Initialize(ctx context.Context) error {
-	var err error
 	for _, provider := range c {
-		err = multierr.Append(err, provider.Initialize(ctx))
+		if err := provider.Initialize(ctx); err != nil {
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 func (c CompositeController) EnsureRoutes(ctx context.Context, strategy *v1beta1.TrafficRoutingStrategy) (bool, error) {
 	done := true
 	for _, provider := range c {
-		innerDone, innerErr := provider.EnsureRoutes(ctx, strategy)
-		if innerErr != nil {
+		if innerDone, innerErr := provider.EnsureRoutes(ctx, strategy); innerErr != nil {
 			return false, innerErr
 		} else if !innerDone {
 			done = false
@@ -52,10 +52,15 @@ func (c CompositeController) EnsureRoutes(ctx context.Context, strategy *v1beta1
 	return done, nil
 }
 
-func (c CompositeController) Finalise(ctx context.Context) error {
-	var err error
+func (c CompositeController) Finalise(ctx context.Context) (bool, error) {
+	modified := false
+	errList := field.ErrorList{}
 	for _, provider := range c {
-		err = multierr.Append(err, provider.Finalise(ctx))
+		if updated, innerErr := provider.Finalise(ctx); innerErr != nil {
+			errList = append(errList, field.InternalError(field.NewPath("FinalizeChildNetworkProvider"), innerErr))
+		} else if updated {
+			modified = true
+		}
 	}
-	return err
+	return modified, errList.ToAggregate()
 }
