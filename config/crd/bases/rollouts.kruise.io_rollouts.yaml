@@ -534,8 +534,7 @@ spec:
                 format: int64
                 type: integer
               phase:
-                description: BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
-                  Phase is the rollout phase.
+                description: Phase is the rollout phase.
                 type: string
             type: object
         type: object
@@ -1475,7 +1474,7 @@ spec:
                     format: int32
                     type: integer
                   updatedRevision:
-                    description: CanaryRevision is calculated by rollout based on
+                    description: UpdatedRevision is calculated by rollout based on
                       podTemplateHash, and the internal logic flow uses It may be
                       different from rs podTemplateHash in different k8s versions,
                       so it cannot be used as service selector label

@@ -238,7 +238,7 @@ func (r *RolloutReconciler) reconcileRolloutTerminating(rollout *v1beta1.Rollout
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return nil, err
 	}
-	c := &RolloutContext{Rollout: rollout, NewStatus: newStatus, Workload: workload}
+	c := &RolloutContext{Rollout: rollout, NewStatus: newStatus, Workload: workload, FinalizeReason: v1beta1.FinaliseReasonDelete}
 	done, err := r.doFinalising(c)
 	if err != nil {
 		return nil, err
@@ -262,7 +262,7 @@ func (r *RolloutReconciler) reconcileRolloutDisabling(rollout *v1beta1.Rollout, 
 		klog.Errorf("rollout(%s/%s) get workload failed: %s", rollout.Namespace, rollout.Name, err.Error())
 		return nil, err
 	}
-	c := &RolloutContext{Rollout: rollout, NewStatus: newStatus, Workload: workload}
+	c := &RolloutContext{Rollout: rollout, NewStatus: newStatus, Workload: workload, FinalizeReason: v1beta1.FinaliseReasonDisalbed}
 	done, err := r.doFinalising(c)
 	if err != nil {
 		return nil, err

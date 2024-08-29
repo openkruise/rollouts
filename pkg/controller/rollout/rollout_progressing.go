@@ -45,6 +45,8 @@ type RolloutContext struct {
 	RecheckTime *time.Time
 	// wait stable workload pods ready
 	WaitReady bool
+	// finalising reason
+	FinalizeReason string
 }
 
 // parameter1 retryReconcile, parameter2 error
@@ -116,6 +118,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		var done bool
 		rolloutContext.WaitReady = true
+		rolloutContext.FinalizeReason = v1beta1.FinaliseReasonSuccess
 		done, err = r.doFinalising(rolloutContext)
 		if err != nil {
 			return nil, err
@@ -140,6 +143,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 	case v1alpha1.ProgressingReasonCancelling:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		var done bool
+		rolloutContext.FinalizeReason = v1beta1.FinaliseReasonRollback
 		done, err = r.doFinalising(rolloutContext)
 		if err != nil {
 			return nil, err
@@ -416,11 +420,11 @@ func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) 
 	}
 	// if no trafficRouting exists, simply remove batchRelease
 	if !c.Rollout.Spec.Strategy.HasTrafficRoutings() {
-		done, err := releaseManager.removeBatchRelease(c)
+		retry, err := releaseManager.removeBatchRelease(c)
 		if err != nil {
 			klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 			return false, err
-		} else if !done {
+		} else if retry {
 			return false, nil
 		}
 		return true, nil
@@ -454,11 +458,11 @@ func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) 
 	// canary deployment, for other release, the v2 pods won't be deleted immediately
 	// in both cases, only the stable pods (v1) accept the traffic
 	case v1beta1.FinalisingStepTypeDeleteBR:
-		done, err := releaseManager.removeBatchRelease(c)
+		retry, err := releaseManager.removeBatchRelease(c)
 		if err != nil {
 			klog.Errorf("rollout(%s/%s) Finalize batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 			return false, err
-		} else if !done {
+		} else if retry {
 			return false, nil
 		}
 		klog.Infof("rollout(%s/%s) in step (%s), and success", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep)
