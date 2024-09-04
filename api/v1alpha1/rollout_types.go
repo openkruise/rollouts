@@ -171,8 +171,6 @@ type RolloutStatus struct {
 	// Conditions a list of conditions a rollout can have.
 	// +optional
 	Conditions []RolloutCondition `json:"conditions,omitempty"`
-	// +optional
-	//BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
 	// Phase is the rollout phase.
 	Phase RolloutPhase `json:"phase,omitempty"`
 	// Message provides details on why the rollout is in its current phase

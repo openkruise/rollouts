@@ -445,7 +445,7 @@ type CanaryStatus struct {
 // BlueGreenStatus status fields that only pertain to the blueGreen rollout
 type BlueGreenStatus struct {
 	CommonStatus `json:",inline"`
-	// CanaryRevision is calculated by rollout based on podTemplateHash, and the internal logic flow uses
+	// UpdatedRevision is calculated by rollout based on podTemplateHash, and the internal logic flow uses
 	// It may be different from rs podTemplateHash in different k8s versions, so it cannot be used as service selector label
 	UpdatedRevision string `json:"updatedRevision"`
 	// UpdatedReplicas the numbers of updated pods
@@ -558,29 +558,29 @@ const (
 type FinalisingStepType string
 
 const (
-	// some work that should be done before pod scaling down.
-	// For BlueGreenStrategy:
-	// we rout all traffic to stable or new version based on FinaliseReason
-	// For CanaryStrategy:
-	// we remove the selector of stable service
-	FinalisingStepTypePreparing FinalisingStepType = "Preparing"
+	// Route all traffic to stable or new version based on FinaliseReason (for bluegreen)
+	FinalisingStepTypeRouteAllTraffic FinalisingStepType = "RouteAllTraffic"
+	// Restore the stable Service, i.e. remove corresponding selector
+	FinalisingStepTypeStableService FinalisingStepType = "RestoreStableService"
+	// Remove the canary Service
+	FinalisingStepTypeRemoveCanaryService FinalisingStepType = "RemoveCanaryService"
+
 	// Patch Batch Release to scale down (exception: the canary Deployment will be
 	// scaled down in FinalisingStepTypeDeleteBR step)
 	// For Both BlueGreenStrategy and CanaryStrategy:
 	// set workload.pause=false, set workload.partition=0
 	FinalisingStepTypeBatchRelease FinalisingStepType = "PatchBatchRelease"
-	//TODO - Currently, the next three steps are in the same function, FinalisingTrafficRouting
-	// we should try to separate the FinalisingStepTypeGateway and FinalisingStepTypeCanaryService
-	// with graceful time to prevent some potential issues
 
-	// Restore the stable Service (i.e. remove corresponding selector)
-	FinalisingStepTypeStableService FinalisingStepType = "RestoreStableService"
+	// Execute the FinalisingTrafficRouting function
+	FinalisingStepTypeTrafficRouting FinalisingStepType = "FinalisingTrafficRouting"
 	// Restore the GatewayAPI/Ingress/Istio
 	FinalisingStepTypeGateway FinalisingStepType = "RestoreGateway"
 	// Delete Canary Service
 	FinalisingStepTypeDeleteCanaryService FinalisingStepType = "DeleteCanaryService"
 	// Delete Batch Release
 	FinalisingStepTypeDeleteBR FinalisingStepType = "DeleteBatchRelease"
+	// All needed work done
+	FinalisingStepTypeEnd FinalisingStepType = "END"
 )
 
 // +genclient

@@ -204,26 +204,25 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext) (bool, erro
 	if len(c.ObjectRef) == 0 {
 		return true, nil
 	}
-	klog.Infof("%s start finalising traffic routing", c.Key)
-	// remove stable service the pod revision selector, so stable service will be selector all version pods.
+	klog.InfoS("start finalising traffic routing", "rollout", c.Key)
+	// remove stable service the pod revision selector, so stable service will select pods of all versions.
 	if retry, err := m.RestoreStableService(c); err != nil || retry {
 		return false, err
 	}
-	klog.Infof("%s restore stable service success", c.Key)
+	klog.InfoS("restore stable service success", "rollout", c.Key)
 	// modify network(ingress & gateway api) configuration, route all traffic to stable service
 	if retry, err := m.RestoreGateway(c); err != nil || retry {
 		return false, err
 	}
-	klog.Infof("%s restore gateway success", c.Key)
+	klog.InfoS("restore gateway success", "rollout", c.Key)
 	// remove canary service
 	if retry, err := m.RemoveCanaryService(c); err != nil || retry {
 		return false, err
 	}
-	klog.Infof("%s remove canary service success, finalising traffic routing is done", c.Key)
+	klog.InfoS("remove canary service success, finalising traffic routing is done", "rollout", c.Key)
 	return true, nil
 }
 
-// RestoreGateway restore gateway resources without graceful time
 // returns:
 //   - if error is not nil, usually we need to retry later. Only if error is nil, we consider the bool.
 //   - The bool value indicates whether retry is needed. If true, it usually means

@@ -213,7 +213,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, v1beta1.CanaryStepStateReady)
 			Expect(k8sClient.Status().Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))).NotTo(HaveOccurred())
 			return false
-		}, 10*time.Second, time.Second).Should(BeTrue())
+		}, 10*time.Second, time.Millisecond*500).Should(BeTrue())
 	}
 
 	RolloutJumpCanaryStep := func(name string, target int) {

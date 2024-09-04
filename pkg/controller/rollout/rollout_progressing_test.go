@@ -175,7 +175,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 		},
 		{
-			name: "ReconcileRolloutProgressing rolling -> finalizing",
+			name: "ReconcileRolloutProgressing rolling -> finalizing", // call FinalisingTrafficRouting to restore stable Service
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				dep2 := deploymentDemo.DeepCopy()
@@ -235,7 +235,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 		},
 		{
-			name: "ReconcileRolloutProgressing finalizing1",
+			name: "ReconcileRolloutProgressing finalizing1", // call FinalisingTrafficRouting to remove canary service
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				delete(dep1.Annotations, util.InRolloutProgressingAnnotation)
@@ -250,7 +250,11 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				return []*apps.Deployment{dep1}, []*apps.ReplicaSet{rs1}
 			},
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
-				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
+				s1 := demoService.DeepCopy()
+				s1.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v1"
+				s2 := demoService.DeepCopy()
+				s2.Name = s1.Name + "-canary"
+				return []*corev1.Service{s1, s2}, []*netv1.Ingress{demoIngress.DeepCopy()}
 			},
 			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1alpha1.TrafficRouting) {
 				obj := rolloutDemo.DeepCopy()
@@ -285,6 +289,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.NextStepIndex = 0
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeStableService
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
@@ -300,7 +305,145 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 		},
 		{
-			name: "ReconcileRolloutProgressing finalizing2",
+			name: "ReconcileRolloutProgressing finalizing2", // go to the next finalising step
+			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
+				dep1 := deploymentDemo.DeepCopy()
+				delete(dep1.Annotations, util.InRolloutProgressingAnnotation)
+				dep1.Status = apps.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           10,
+					UpdatedReplicas:    5,
+					ReadyReplicas:      10,
+					AvailableReplicas:  10,
+				}
+				rs1 := rsDemo.DeepCopy()
+				return []*apps.Deployment{dep1}, []*apps.ReplicaSet{rs1}
+			},
+			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
+				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
+			},
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1alpha1.TrafficRouting) {
+				obj := rolloutDemo.DeepCopy()
+				obj.Annotations[v1alpha1.TrafficRoutingAnnotation] = "tr-demo"
+				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
+				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
+				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
+				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
+				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				// given that the selector of stable Service is removed
+				// we will go on it the next step, i.e. patch restoreGateway
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeStableService
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1alpha1.ProgressingReasonFinalising
+				cond.Status = corev1.ConditionTrue
+				util.SetRolloutCondition(&obj.Status, *cond)
+				br := batchDemo.DeepCopy()
+				br.Spec.ReleasePlan.Batches = []v1beta1.ReleaseBatch{
+					{
+						CanaryReplicas: intstr.FromInt(1),
+					},
+				}
+				tr := demoTR.DeepCopy()
+				tr.Finalizers = []string{util.ProgressingRolloutFinalizer(rolloutDemo.Name)}
+				return obj, br, tr
+			},
+			expectStatus: func() *v1beta1.RolloutStatus {
+				s := rolloutDemo.Status.DeepCopy()
+				s.CanaryStatus.ObservedWorkloadGeneration = 2
+				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
+				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
+				s.CanaryStatus.CanaryRevision = "6f8cc56547"
+				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
+				s.CanaryStatus.CurrentStepIndex = 4
+				s.CanaryStatus.NextStepIndex = 0
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeGateway
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1alpha1.ProgressingReasonFinalising
+				cond.Status = corev1.ConditionTrue
+				util.SetRolloutCondition(s, *cond)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
+				return s
+			},
+			expectTr: func() *v1alpha1.TrafficRouting {
+				tr := demoTR.DeepCopy()
+				return tr
+			},
+		},
+		{
+			name: "ReconcileRolloutProgressing finalizing3",
+			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
+				dep1 := deploymentDemo.DeepCopy()
+				delete(dep1.Annotations, util.InRolloutProgressingAnnotation)
+				dep1.Status = apps.DeploymentStatus{
+					ObservedGeneration: 2,
+					Replicas:           10,
+					UpdatedReplicas:    5,
+					ReadyReplicas:      10,
+					AvailableReplicas:  10,
+				}
+				rs1 := rsDemo.DeepCopy()
+				return []*apps.Deployment{dep1}, []*apps.ReplicaSet{rs1}
+			},
+			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
+				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
+			},
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1alpha1.TrafficRouting) {
+				obj := rolloutDemo.DeepCopy()
+				obj.Annotations[v1alpha1.TrafficRoutingAnnotation] = "tr-demo"
+				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
+				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
+				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
+				obj.Status.CanaryStatus.CanaryRevision = "6f8cc56547"
+				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
+				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				// because the batchRelease hasn't completed (ie. br.Status.Phase is not completed),
+				// it will take more than one reconciles to go on to the next step
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeBatchRelease
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1alpha1.ProgressingReasonFinalising
+				cond.Status = corev1.ConditionTrue
+				util.SetRolloutCondition(&obj.Status, *cond)
+				br := batchDemo.DeepCopy()
+				br.Spec.ReleasePlan.Batches = []v1beta1.ReleaseBatch{
+					{
+						CanaryReplicas: intstr.FromInt(1),
+					},
+				}
+				tr := demoTR.DeepCopy()
+				tr.Finalizers = []string{util.ProgressingRolloutFinalizer(rolloutDemo.Name)}
+				return obj, br, tr
+			},
+			expectStatus: func() *v1beta1.RolloutStatus {
+				s := rolloutDemo.Status.DeepCopy()
+				s.CanaryStatus.ObservedWorkloadGeneration = 2
+				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
+				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
+				s.CanaryStatus.CanaryRevision = "6f8cc56547"
+				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
+				s.CanaryStatus.CurrentStepIndex = 4
+				s.CanaryStatus.NextStepIndex = 0
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeBatchRelease
+				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1alpha1.ProgressingReasonFinalising
+				cond.Status = corev1.ConditionTrue
+				util.SetRolloutCondition(s, *cond)
+				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
+				s.CurrentStepState = s.CanaryStatus.CurrentStepState
+				return s
+			},
+			expectTr: func() *v1alpha1.TrafficRouting {
+				tr := demoTR.DeepCopy()
+				return tr
+			},
+		},
+		{
+			name: "ReconcileRolloutProgressing finalizing4",
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				delete(dep1.Annotations, util.InRolloutProgressingAnnotation)
@@ -326,6 +469,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				// the batchRelease has completed (ie. br.Status.Phase is completed),
+				// we expect the finalizing step to be next step, i.e. deleteBatchRelease
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeBatchRelease
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
@@ -348,6 +494,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.NextStepIndex = 0
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteBR
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				cond2 := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond2.Reason = v1alpha1.ProgressingReasonFinalising
@@ -385,6 +532,9 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				// deleteBatchRelease is the last step, and it won't wait a grace time
+				// after this step, this release should be succeeded
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteBR
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
@@ -401,6 +551,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.NextStepIndex = 0
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeEnd
 				cond2 := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond2.Reason = v1alpha1.ProgressingReasonCompleted
 				cond2.Status = corev1.ConditionFalse

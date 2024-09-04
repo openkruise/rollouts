@@ -363,43 +363,66 @@ func (m *canaryReleaseManager) doCanaryJump(c *RolloutContext) (jumped bool) {
 
 // cleanup after rollout is completed or finished
 func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, error) {
+	canaryStatus := c.NewStatus.CanaryStatus
 	// when CanaryStatus is nil, which means canary action hasn't started yet, don't need doing cleanup
-	if c.NewStatus.CanaryStatus == nil {
+	if canaryStatus == nil {
 		return true, nil
 	}
-	// 1. rollout progressing complete, remove rollout progressing annotation in workload
+	// rollout progressing complete, remove rollout progressing annotation in workload
 	err := m.removeRolloutProgressingAnnotation(c)
 	if err != nil {
 		return false, err
 	}
 	tr := newTrafficRoutingContext(c)
-	// 2. remove stable service the pod revision selector, so stable service will be selector all version pods.
-	done, err := m.trafficRoutingManager.FinalisingTrafficRouting(tr)
-	c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
-	if err != nil || !done {
-		return done, err
+	// execute steps based on the predefined order for each reason
+	nextStep := nextTask(c.FinalizeReason, canaryStatus.FinalisingStep)
+	// if current step is empty, set it with the first step
+	// if current step is end, we just return
+	if len(canaryStatus.FinalisingStep) == 0 {
+		canaryStatus.FinalisingStep = nextStep
+		canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+	} else if canaryStatus.FinalisingStep == v1beta1.FinalisingStepTypeEnd {
+		klog.Infof("rollout(%s/%s) finalising process is already completed", c.Rollout.Namespace, c.Rollout.Name)
+		return true, nil
 	}
-	// 3. set workload.pause=false; set workload.partition=0
-	done, err = m.finalizingBatchRelease(c)
-	if err != nil || !done {
-		return done, err
-	}
-	// 4. modify network api(ingress or gateway api) configuration, and route 100% traffic to stable pods.
-	done, err = m.trafficRoutingManager.FinalisingTrafficRouting(tr)
-	c.NewStatus.CanaryStatus.LastUpdateTime = tr.LastUpdateTime
-	if err != nil || !done {
-		return done, err
-	}
-	// 5. delete batchRelease crd
-	done, err = m.removeBatchRelease(c)
-	if err != nil {
-		klog.Errorf("rollout(%s/%s) Finalize batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
-		return false, err
-	} else if !done {
+	klog.Infof("rollout(%s/%s) Finalising Step is %s", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.FinalisingStep)
+
+	var retry bool
+	// the order of steps is maitained by calculating thenextStep
+	switch canaryStatus.FinalisingStep {
+	// set workload.pause=false; set workload.partition=0
+	case v1beta1.FinalisingStepTypeBatchRelease:
+		retry, err = m.finalizingBatchRelease(c)
+	// delete batchRelease
+	case v1beta1.FinalisingStepTypeDeleteBR:
+		retry, err = m.removeBatchRelease(c)
+	// restore the gateway resources (ingress/gatewayAPI/Istio), that means
+	// only stable Service will accept the traffic
+	case v1beta1.FinalisingStepTypeGateway:
+		retry, err = m.trafficRoutingManager.RestoreGateway(tr)
+	// restore the stable service
+	case v1beta1.FinalisingStepTypeStableService:
+		retry, err = m.trafficRoutingManager.RestoreStableService(tr)
+	// remove canary service
+	case v1beta1.FinalisingStepTypeRemoveCanaryService:
+		retry, err = m.trafficRoutingManager.RemoveCanaryService(tr)
+
+	default:
+		nextStep = nextTask(c.FinalizeReason, "")
+		klog.Warningf("unexpected finalising step, current step(%s),  start from the first step(%s)", canaryStatus.FinalisingStep, nextStep)
+		canaryStatus.FinalisingStep = nextStep
 		return false, nil
 	}
-	klog.Infof("rollout(%s/%s) doCanaryFinalising success", c.Rollout.Namespace, c.Rollout.Name)
-	return true, nil
+	if err != nil || retry {
+		return false, err
+	}
+	// current step is done, run the next step
+	canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
+	canaryStatus.FinalisingStep = nextStep
+	if canaryStatus.FinalisingStep == v1beta1.FinalisingStepTypeEnd {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (m *canaryReleaseManager) removeRolloutProgressingAnnotation(c *RolloutContext) error {
@@ -508,37 +531,39 @@ func createBatchRelease(rollout *v1beta1.Rollout, rolloutID string, batch int32,
 	return br
 }
 
+// bool means if we need retry; if error is not nil, always retry
 func (m *canaryReleaseManager) removeBatchRelease(c *RolloutContext) (bool, error) {
 	batch := &v1beta1.BatchRelease{}
 	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Rollout.Namespace, Name: c.Rollout.Name}, batch)
 	if err != nil && errors.IsNotFound(err) {
-		return true, nil
+		return false, nil
 	} else if err != nil {
 		klog.Errorf("rollout(%s/%s) fetch BatchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name)
-		return false, err
+		return true, err
 	}
 	if !batch.DeletionTimestamp.IsZero() {
 		klog.Infof("rollout(%s/%s) BatchRelease is terminating, and wait a moment", c.Rollout.Namespace, c.Rollout.Name)
-		return false, nil
+		return true, nil
 	}
 
 	//delete batchRelease
 	err = m.Delete(context.TODO(), batch)
 	if err != nil {
 		klog.Errorf("rollout(%s/%s) delete BatchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
-		return false, err
+		return true, err
 	}
 	klog.Infof("rollout(%s/%s) deleting BatchRelease, and wait a moment", c.Rollout.Namespace, c.Rollout.Name)
-	return false, nil
+	return true, nil
 }
 
+// bool means if we need retry; if error is not nil, always retry
 func (m *canaryReleaseManager) finalizingBatchRelease(c *RolloutContext) (bool, error) {
 	br, err := m.fetchBatchRelease(c.Rollout.Namespace, c.Rollout.Name)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return true, nil
+			return false, nil
 		}
-		return false, err
+		return true, err
 	}
 	waitReady := c.WaitReady
 	// The Completed phase means batchRelease controller has processed all it
@@ -546,7 +571,7 @@ func (m *canaryReleaseManager) finalizingBatchRelease(c *RolloutContext) (bool, 
 	if br.Spec.ReleasePlan.BatchPartition == nil &&
 		br.Status.Phase == v1beta1.RolloutPhaseCompleted {
 		klog.Infof("rollout(%s/%s) finalizing batchRelease(%s) done", c.Rollout.Namespace, c.Rollout.Name, util.DumpJSON(br.Status))
-		return true, nil
+		return false, nil
 	}
 
 	// If BatchPartition is nil, BatchRelease will directly resume workload via:
@@ -559,11 +584,11 @@ func (m *canaryReleaseManager) finalizingBatchRelease(c *RolloutContext) (bool, 
 		switch br.Spec.ReleasePlan.FinalizingPolicy {
 		case v1beta1.WaitResumeFinalizingPolicyType:
 			if waitReady { // no need to patch again
-				return false, nil
+				return true, nil
 			}
 		default:
 			if !waitReady { // no need to patch again
-				return false, nil
+				return true, nil
 			}
 		}
 	}
@@ -577,10 +602,10 @@ func (m *canaryReleaseManager) finalizingBatchRelease(c *RolloutContext) (bool, 
 	// Patch BatchPartition and FinalizingPolicy, BatchPartition always patch null here.
 	body := fmt.Sprintf(`{"spec":{"releasePlan":{"batchPartition":null,"finalizingPolicy":"%s"}}}`, policy)
 	if err = m.Patch(context.TODO(), br, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
-		return false, err
+		return true, err
 	}
 	klog.Infof("rollout(%s/%s) patch batchRelease(%s) success", c.Rollout.Namespace, c.Rollout.Name, body)
-	return false, nil
+	return true, nil
 }
 
 // syncBatchRelease sync status of br to canaryStatus, and sync rollout-id of canaryStatus to br.
@@ -600,4 +625,43 @@ func (m *canaryReleaseManager) syncBatchRelease(br *v1beta1.BatchRelease, canary
 		return m.Patch(context.TODO(), br, client.RawPatch(types.MergePatchType, []byte(body)))
 	}
 	return nil
+}
+
+// calculate next task
+func nextTask(reason string, currentTask v1beta1.FinalisingStepType) v1beta1.FinalisingStepType {
+	var taskSequence []v1beta1.FinalisingStepType
+	//REVIEW - should we consider more complex scenarios?
+	// like, user rollbacks the workload and disables the Rollout at the same time?
+	switch reason {
+	// in rollback, we cannot remove selector of the stable service in the first step,
+	// which may cause some traffic to problematic new version, so we should route all traffic to stable service
+	// in the first step
+	case v1beta1.FinaliseReasonRollback: // rollback
+		taskSequence = []v1beta1.FinalisingStepType{
+			v1beta1.FinalisingStepTypeGateway,      // route all traffic to stable version
+			v1beta1.FinalisingStepTypeBatchRelease, // scale up old, scale down new
+			v1beta1.FinalisingStepTypeDeleteBR,
+			v1beta1.FinalisingStepTypeStableService,
+			v1beta1.FinalisingStepTypeRemoveCanaryService,
+		}
+	default: // others: success/disabled/deleting rollout
+		taskSequence = []v1beta1.FinalisingStepType{
+			v1beta1.FinalisingStepTypeStableService,
+			v1beta1.FinalisingStepTypeGateway,
+			v1beta1.FinalisingStepTypeRemoveCanaryService,
+			v1beta1.FinalisingStepTypeBatchRelease, // scale up new, scale down old
+			v1beta1.FinalisingStepTypeDeleteBR,
+		}
+	}
+	// if currentTask is empty, return first task
+	if len(currentTask) == 0 {
+		return taskSequence[0]
+	}
+	// find next task
+	for i := range taskSequence {
+		if currentTask == taskSequence[i] && i < len(taskSequence)-1 {
+			return taskSequence[i+1]
+		}
+	}
+	return v1beta1.FinalisingStepTypeEnd
 }
