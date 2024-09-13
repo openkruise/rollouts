@@ -94,6 +94,13 @@ func (r *ControllerFinder) GetWorkloadForRef(rollout *rolloutv1beta1.Rollout) (*
 				return workload, err
 			}
 		}
+	} else if rollout.Spec.Strategy.GetRollingStyle() == rolloutv1beta1.BlueGreenRollingStyle {
+		for _, finder := range r.bluegreenStyleFinders() {
+			workload, err := finder(rollout.Namespace, &workloadRef)
+			if workload != nil || err != nil {
+				return workload, err
+			}
+		}
 	} else {
 		for _, finder := range r.partitionStyleFinders() {
 			workload, err := finder(rollout.Namespace, &workloadRef)
@@ -113,6 +120,10 @@ func (r *ControllerFinder) canaryStyleFinders() []ControllerFinderFunc {
 
 func (r *ControllerFinder) partitionStyleFinders() []ControllerFinderFunc {
 	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment, r.getStatefulSetLikeWorkload, r.getKruiseDaemonSet}
+}
+
+func (r *ControllerFinder) bluegreenStyleFinders() []ControllerFinderFunc {
+	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment}
 }
 
 var (

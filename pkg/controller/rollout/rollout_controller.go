@@ -66,6 +66,7 @@ type RolloutReconciler struct {
 	finder                *util.ControllerFinder
 	trafficRoutingManager *trafficrouting.Manager
 	canaryManager         *canaryReleaseManager
+	blueGreenManager      *blueGreenReleaseManager
 }
 
 //+kubebuilder:rbac:groups=rollouts.kruise.io,resources=rollouts,verbs=get;list;watch;create;update;patch;delete
@@ -194,6 +195,11 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.finder = util.NewControllerFinder(mgr.GetClient())
 	r.trafficRoutingManager = trafficrouting.NewTrafficRoutingManager(mgr.GetClient())
 	r.canaryManager = &canaryReleaseManager{
+		Client:                mgr.GetClient(),
+		trafficRoutingManager: r.trafficRoutingManager,
+		recorder:              r.Recorder,
+	}
+	r.blueGreenManager = &blueGreenReleaseManager{
 		Client:                mgr.GetClient(),
 		trafficRoutingManager: r.trafficRoutingManager,
 		recorder:              r.Recorder,
