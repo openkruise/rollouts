@@ -34,6 +34,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
@@ -3982,6 +3983,133 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 		})
 	})
 
+	KruiseDescribe("Canary rollout with multiple network providers", func() {
+		It("V1->V2: Route traffic with header/queryParams/path matches and weight using rollout for Istio and Ingress", func() {
+			By("Creating Rollout...")
+			rollout := &v1beta1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/customNetworkProvider/rollout_with_multi_trafficrouting.yaml", rollout)).ToNot(HaveOccurred())
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			// service
+			service := &v1.Service{}
+			Expect(ReadYamlToObject("./test_data/rollout/service.yaml", service)).ToNot(HaveOccurred())
+			CreateObject(service)
+			// istio api
+			vs := &unstructured.Unstructured{}
+			Expect(ReadYamlToObject("./test_data/customNetworkProvider/virtualservice_without_destinationrule.yaml", vs)).ToNot(HaveOccurred())
+			vs.SetAPIVersion("networking.istio.io/v1alpha3")
+			vs.SetKind("VirtualService")
+			CreateObject(vs)
+			// ingress
+			ingress := &netv1.Ingress{}
+			Expect(ReadYamlToObject("./test_data/rollout/nginx_ingress.yaml", ingress)).ToNot(HaveOccurred())
+			CreateObject(ingress)
+			// workload
+			workload := &apps.Deployment{}
+			Expect(ReadYamlToObject("./test_data/rollout/deployment.yaml", workload)).ToNot(HaveOccurred())
+			workload.Spec.Replicas = utilpointer.Int32(4)
+			CreateObject(workload)
+			WaitDeploymentAllPodsReady(workload)
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1beta1.RolloutPhaseHealthy))
+			By("check rollout status & paused success")
+
+			// v1 -> v2, start rollout action
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateDeployment(workload)
+			By("Update deployment env NODE_NAME from(version1) -> to(version2), routing traffic with header agent:pc to new version pods")
+			time.Sleep(time.Second * 2)
+
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeTrue())
+			// wait step 1 complete
+			WaitRolloutCanaryStepPaused(rollout.Name, 1)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 1))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 1))
+			// check virtualservice spec
+			Expect(GetObject(vs.GetName(), vs)).NotTo(HaveOccurred())
+			expectedSpec := `{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"match":[{"uri":{"prefix":"/pc"}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"match":[{"queryParams":{"user-agent":{"exact":"pc"}}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"match":[{"headers":{"user-agent":{"exact":"pc"}}}],"route":[{"destination":{"host":"echoserver-canary"}}]},{"route":[{"destination":{"host":"echoserver"}}]}]}`
+			Expect(util.DumpJSON(vs.Object["spec"])).Should(Equal(expectedSpec))
+			// check original spec annotation
+			expectedAnno := `{"spec":{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}}`
+			Expect(vs.GetAnnotations()[OriginalSpecAnnotation]).Should(Equal(expectedAnno))
+			// check canary-ingress spec
+			cIngress := &netv1.Ingress{}
+			Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(BeEmpty())
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-by-header", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("user-agent"))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-by-header-value", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("pc"))
+
+			// resume rollout canary
+			ResumeRolloutCanary(rollout.Name)
+			By("Resume rollout, and wait next step(2), routing 50% traffic to new version pods")
+			WaitRolloutCanaryStepPaused(rollout.Name, 2)
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.CanaryStatus.CanaryReplicas).Should(BeNumerically("==", 2))
+			Expect(rollout.Status.CanaryStatus.CanaryReadyReplicas).Should(BeNumerically("==", 2))
+			// check virtualservice spec
+			Expect(GetObject(vs.GetName(), vs)).NotTo(HaveOccurred())
+			expectedSpec = `{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"route":[{"destination":{"host":"echoserver"},"weight":50},{"destination":{"host":"echoserver-canary"},"weight":50}]}]}`
+			Expect(util.DumpJSON(vs.Object["spec"])).Should(Equal(expectedSpec))
+			// check original spec annotation
+			Expect(vs.GetAnnotations()[OriginalSpecAnnotation]).Should(Equal(expectedAnno))
+			// check canary-ingress spec
+			Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(removePercentageSign(*rollout.Spec.Strategy.Canary.Steps[1].Traffic)))
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-by-header", nginxIngressAnnotationDefaultPrefix)]).Should(BeEmpty())
+			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-by-header-value", nginxIngressAnnotationDefaultPrefix)]).Should(BeEmpty())
+
+			// resume rollout
+			ResumeRolloutCanary(rollout.Name)
+			WaitRolloutStatusPhase(rollout.Name, v1beta1.RolloutPhaseHealthy)
+			By("rollout completed, and check")
+			// check ingress & service & virtualservice & deployment
+
+			// ingress
+			Expect(GetObject(ingress.Name, ingress)).NotTo(HaveOccurred())
+			cIngress = &netv1.Ingress{}
+			Expect(GetObject(fmt.Sprintf("%s-canary", ingress.Name), cIngress)).To(HaveOccurred())
+			// virtualservice
+			Expect(GetObject(vs.GetName(), vs)).NotTo(HaveOccurred())
+			expectedSpec = `{"gateways":["nginx-gateway"],"hosts":["*"],"http":[{"route":[{"destination":{"host":"echoserver"}}]}]}`
+			Expect(util.DumpJSON(vs.Object["spec"])).Should(Equal(expectedSpec))
+			Expect(vs.GetAnnotations()[OriginalSpecAnnotation]).Should(Equal(""))
+			// service
+			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
+			Expect(service.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(""))
+			cService := &v1.Service{}
+			Expect(GetObject(fmt.Sprintf("%s-canary", service.Name), cService)).To(HaveOccurred())
+			// deployment
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Spec.Paused).Should(BeFalse())
+			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.Replicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
+			for _, env := range workload.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == "NODE_NAME" {
+					Expect(env.Value).Should(Equal("version2"))
+				}
+			}
+			// check progressing succeed
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			cond := getRolloutConditionV1beta1(rollout.Status, v1beta1.RolloutConditionProgressing)
+			Expect(cond.Reason).Should(Equal(v1beta1.ProgressingReasonCompleted))
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
+			cond = getRolloutConditionV1beta1(rollout.Status, v1beta1.RolloutConditionSucceeded)
+			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
+		})
+	})
 })
 
 func removePercentageSign(input string) string {
