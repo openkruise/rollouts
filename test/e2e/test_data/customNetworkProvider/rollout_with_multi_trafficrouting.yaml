@@ -1,0 +1,37 @@
+  apiVersion: rollouts.kruise.io/v1beta1
+  kind: Rollout
+  metadata:
+    name: rollouts-demo
+  spec:
+    disabled: false
+    workloadRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: echoserver
+    strategy:
+      canary:
+        enableExtraWorkloadForCanary: true
+        steps:
+        - replicas: 1
+          matches:
+          - headers:
+            - type: Exact
+              name: user-agent
+              value: pc
+          - queryParams:
+            - type: Exact
+              name: user-agent
+              value: pc
+          - path:
+              value: /pc
+        - replicas: "50%"
+          traffic: "50%"
+        trafficRoutings:
+        - service: echoserver
+          ingress:
+            classType: nginx
+            name: echoserver
+          customNetworkRefs:
+          - apiVersion: networking.istio.io/v1alpha3
+            kind: VirtualService
+            name: vs-demo
