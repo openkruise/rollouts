@@ -87,19 +87,19 @@ func NewControllerFinder(c client.Client) *ControllerFinder {
 
 func (r *ControllerFinder) GetWorkloadForRef(rollout *rolloutv1beta1.Rollout) (*Workload, error) {
 	workloadRef := rollout.Spec.WorkloadRef
-	if rollout.Spec.Strategy.GetRollingStyle() == rolloutv1beta1.CanaryRollingStyle {
-		for _, finder := range append(r.canaryStyleFinders(), r.partitionStyleFinders()...) {
-			workload, err := finder(rollout.Namespace, &workloadRef)
-			if workload != nil || err != nil {
-				return workload, err
-			}
-		}
-	} else {
-		for _, finder := range r.partitionStyleFinders() {
-			workload, err := finder(rollout.Namespace, &workloadRef)
-			if workload != nil || err != nil {
-				return workload, err
-			}
+	var finders []ControllerFinderFunc
+	switch rollout.Spec.Strategy.GetRollingStyle() {
+	case rolloutv1beta1.CanaryRollingStyle:
+		finders = append(r.canaryStyleFinders(), r.partitionStyleFinders()...)
+	case rolloutv1beta1.BlueGreenRollingStyle:
+		finders = r.bluegreenStyleFinders()
+	default:
+		finders = r.partitionStyleFinders()
+	}
+	for _, finder := range finders {
+		workload, err := finder(rollout.Namespace, &workloadRef)
+		if workload != nil || err != nil {
+			return workload, err
 		}
 	}
 
@@ -113,6 +113,10 @@ func (r *ControllerFinder) canaryStyleFinders() []ControllerFinderFunc {
 
 func (r *ControllerFinder) partitionStyleFinders() []ControllerFinderFunc {
 	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment, r.getStatefulSetLikeWorkload, r.getKruiseDaemonSet}
+}
+
+func (r *ControllerFinder) bluegreenStyleFinders() []ControllerFinderFunc {
+	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment}
 }
 
 var (

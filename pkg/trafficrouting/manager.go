@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
+	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -221,6 +222,41 @@ func (m *Manager) FinalisingTrafficRouting(c *TrafficRoutingContext) (bool, erro
 	}
 	klog.InfoS("remove canary service success, finalising traffic routing is done", "rollout", c.Key)
 	return true, nil
+}
+
+// returns:
+//   - if error is not nil, usually we need to retry later. Only if error is nil, we consider the bool.
+//   - The bool value indicates whether retry is needed. If true, it usually means
+//     gateway resources have been updated and we need to wait for `graceSeconds`.
+//
+// only if error is nil AND retry is false, this calling can be considered as completed
+func (m *Manager) RouteAllTrafficToNewVersion(c *TrafficRoutingContext) (bool, error) {
+	klog.InfoS("route all traffic to new version", "rollout", c.Key)
+	if len(c.ObjectRef) == 0 {
+		return false, nil
+	}
+	// build up the network provider
+	stableService := c.ObjectRef[0].Service
+	cServiceName := getCanaryServiceName(stableService, c.OnlyTrafficRouting, c.DisableGenerateCanaryService)
+	trController, err := newNetworkProvider(m.Client, c, stableService, cServiceName)
+	if err != nil {
+		klog.Errorf("%s newTrafficRoutingController failed: %s", c.Key, err.Error())
+		return false, err
+	}
+	graceSeconds := GetGraceSeconds(c.ObjectRef, defaultGracePeriodSeconds)
+	retry, remaining, err := grace.RunWithGraceSeconds(string(c.OwnerRef.UID), "updateRoute", graceSeconds, func() (bool, error) {
+		// route all traffic to new version
+		c.Strategy.Matches = nil
+		c.Strategy.Traffic = utilpointer.StringPtr("100%")
+		//NOTE - This return value "verified" has the opposite semantics with "modified"
+		verified, err := trController.EnsureRoutes(context.TODO(), &c.Strategy)
+		if !verified {
+			c.LastUpdateTime = &metav1.Time{Time: time.Now()}
+		}
+		return !verified, err
+	})
+	UpdateRecheckDuration(c, remaining)
+	return retry, err
 }
 
 // returns:
@@ -437,11 +473,11 @@ func (m *Manager) RestoreStableService(c *TrafficRoutingContext) (bool, error) {
 	serviceName := c.ObjectRef[0].Service
 	err := m.Get(context.TODO(), client.ObjectKey{Namespace: c.Namespace, Name: serviceName}, stableService)
 	if errors.IsNotFound(err) {
-		return true, nil
+		return false, nil
 	}
 	if err != nil {
 		klog.Errorf("%s get stable service(%s) failed: %s", c.Key, serviceName, err.Error())
-		return false, err
+		return true, err
 	}
 
 	// restore stable Service

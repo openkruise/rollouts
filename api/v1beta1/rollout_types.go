@@ -558,27 +558,22 @@ const (
 type FinalisingStepType string
 
 const (
-	// Route all traffic to stable or new version based on FinaliseReason (for bluegreen)
-	FinalisingStepTypeRouteAllTraffic FinalisingStepType = "RouteAllTraffic"
+	// Route all traffic to new version (for bluegreen)
+	FinalisingStepRouteTrafficToNew FinalisingStepType = "RouteAllTraffic"
+	// Restore the GatewayAPI/Ingress/Istio
+	FinalisingStepRouteTrafficToStable FinalisingStepType = "RestoreGateway"
 	// Restore the stable Service, i.e. remove corresponding selector
-	FinalisingStepTypeStableService FinalisingStepType = "RestoreStableService"
-	// Remove the canary Service
-	FinalisingStepTypeRemoveCanaryService FinalisingStepType = "RemoveCanaryService"
+	FinalisingStepRestoreStableService FinalisingStepType = "RestoreStableService"
+	// Remove the Canary Service
+	FinalisingStepRemoveCanaryService FinalisingStepType = "RemoveCanaryService"
 
 	// Patch Batch Release to scale down (exception: the canary Deployment will be
 	// scaled down in FinalisingStepTypeDeleteBR step)
 	// For Both BlueGreenStrategy and CanaryStrategy:
 	// set workload.pause=false, set workload.partition=0
-	FinalisingStepTypeBatchRelease FinalisingStepType = "PatchBatchRelease"
-
-	// Execute the FinalisingTrafficRouting function
-	FinalisingStepTypeTrafficRouting FinalisingStepType = "FinalisingTrafficRouting"
-	// Restore the GatewayAPI/Ingress/Istio
-	FinalisingStepTypeGateway FinalisingStepType = "RestoreGateway"
-	// Delete Canary Service
-	FinalisingStepTypeDeleteCanaryService FinalisingStepType = "DeleteCanaryService"
+	FinalisingStepPatchBatchRelease FinalisingStepType = "PatchBatchRelease"
 	// Delete Batch Release
-	FinalisingStepTypeDeleteBR FinalisingStepType = "DeleteBatchRelease"
+	FinalisingStepRemoveBatchRelease FinalisingStepType = "RemoveBatchRelease"
 	// All needed work done
 	FinalisingStepTypeEnd FinalisingStepType = "END"
 )
