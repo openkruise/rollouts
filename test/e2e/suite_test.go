@@ -38,7 +38,6 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
@@ -52,8 +51,7 @@ func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	RunSpecsWithDefaultAndCustomReporters(t,
-		"Kruise Rollout Resource Controller Suite",
-		[]Reporter{printer.NewlineReporter{}})
+		"Kruise Rollout Resource Controller Suite", []Reporter{})
 }
 
 var _ = BeforeSuite(func(done Done) {
@@ -99,6 +97,8 @@ var _ = AfterSuite(func() {
 // Some test cases may fail for timeout to wait a scheduled reconciliation.
 // This is a workaround to avoid long-time wait before next scheduled
 // reconciliation.
+//
+// deprecated: Not used, consider removing it.
 func RequestReconcileNow(ctx context.Context, o client.Object) {
 	oCopy := o.DeepCopyObject()
 	oMeta, ok := oCopy.(metav1.Object)

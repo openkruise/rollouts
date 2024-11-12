@@ -257,7 +257,7 @@ type TrafficRoutingStrategy struct {
 	//   my-header: bar
 	//
 	// +optional
-	RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter `json:"requestHeaderModifier,omitempty"`
+	RequestHeaderModifier *gatewayv1beta1.HTTPHeaderFilter `json:"requestHeaderModifier,omitempty"`
 	// Matches define conditions used for matching incoming HTTP requests to the canary service.
 	// Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
 	//
@@ -356,6 +356,8 @@ type RolloutCondition struct {
 type RolloutConditionType string
 
 // These are valid conditions of a rollout.
+//
+//goland:noinspection GoUnusedConst
 const (
 	// RolloutConditionProgressing means the rollout is progressing. Progress for a rollout is
 	// considered when a new replica set is created or adopted, when pods scale
@@ -557,6 +559,7 @@ const (
 
 type FinalisingStepType string
 
+//goland:noinspection GoUnusedConst
 const (
 	// Route all traffic to stable or new version based on FinaliseReason (for bluegreen)
 	FinalisingStepTypeRouteAllTraffic FinalisingStepType = "RouteAllTraffic"

@@ -55,7 +55,7 @@ type LuaData struct {
 	Matches               []v1beta1.HttpRouteMatch
 	CanaryService         string
 	StableService         string
-	RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter
+	RequestHeaderModifier *gatewayv1beta1.HTTPHeaderFilter
 }
 type Data struct {
 	Spec        interface{}       `json:"spec,omitempty"`
@@ -325,11 +325,10 @@ func (r *customController) getLuaScript(ctx context.Context, ref v1beta1.ObjectR
 		key = fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingCustomTypePrefix, ref.Kind, group)
 		if script, ok := configMap.Data[key]; ok {
 			return script, nil
-		} else if !ok {
+		} else {
 			return "", fmt.Errorf("expected script not found neither locally nor in ConfigMap")
 		}
 	}
-	return "", nil
 }
 
 // compare and update obj, return whether the obj is updated

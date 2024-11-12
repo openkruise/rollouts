@@ -10,8 +10,9 @@ on:
 
 env:
   # Common versions
-  GO_VERSION: '1.17'
-  KIND_IMAGE: 'kindest/node:v1.23.3'
+  GO_VERSION: '1.19'
+  KIND_VERSION: 'v0.18.0'
+  KIND_IMAGE: 'kindest/node:v1.26.3'
   KIND_CLUSTER_NAME: 'ci-testing'
 
 jobs:
@@ -29,6 +30,7 @@ jobs:
       - name: Setup Kind Cluster
         uses: helm/kind-action@v1.2.0
         with:
+          version: ${{ env.KIND_VERSION }}
           node_image: ${{ env.KIND_IMAGE }}
           cluster_name: ${{ env.KIND_CLUSTER_NAME }}
           config: ./test/kind-conf.yaml

@@ -312,10 +312,8 @@ func TestEnsureRoutes(t *testing.T) {
 				objects = append(objects, u)
 				return objects
 			},
-			expectState: func() (bool, bool) {
-				done := false
-				hasError := false
-				return done, hasError
+			expectState: func() (done bool, hasError bool) {
+				return false, false
 			},
 		},
 		{
@@ -408,10 +406,8 @@ func TestEnsureRoutes(t *testing.T) {
 				objects = append(objects, u)
 				return objects
 			},
-			expectState: func() (bool, bool) {
-				done := false
-				hasError := false
-				return done, hasError
+			expectState: func() (done bool, hasError bool) {
+				return false, false
 			},
 		},
 		{
@@ -430,7 +426,7 @@ func TestEnsureRoutes(t *testing.T) {
 							},
 						},
 					},
-					RequestHeaderModifier: &gatewayv1beta1.HTTPRequestHeaderFilter{
+					RequestHeaderModifier: &gatewayv1beta1.HTTPHeaderFilter{
 						Set: []gatewayv1beta1.HTTPHeader{
 							{
 								Name:  "x-env-flag",
@@ -480,10 +476,8 @@ func TestEnsureRoutes(t *testing.T) {
 
 				return objects
 			},
-			expectState: func() (bool, bool) {
-				done := false
-				hasError := false
-				return done, hasError
+			expectState: func() (done bool, hasError bool) {
+				return false, false
 			},
 		},
 		{
@@ -552,10 +546,8 @@ func TestEnsureRoutes(t *testing.T) {
 				objects = append(objects, u)
 				return objects
 			},
-			expectState: func() (bool, bool) {
-				done := false
-				hasError := true
-				return done, hasError
+			expectState: func() (done bool, hasError bool) {
+				return false, true
 			},
 		},
 	}
@@ -674,7 +666,7 @@ func TestLuaScript(t *testing.T) {
 			t.Errorf("failed to walk lua script dir")
 			return err
 		}
-		script, err := readScript(t, path)
+		script, err := readScript(path)
 		if err != nil {
 			t.Errorf("failed to read lua script from: %s", path)
 			return err
@@ -789,7 +781,7 @@ func TestLuaScript(t *testing.T) {
 	}
 }
 
-func readScript(t *testing.T, path string) (string, error) {
+func readScript(path string) (string, error) {
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return "", err

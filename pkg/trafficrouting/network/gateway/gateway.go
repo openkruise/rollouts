@@ -73,7 +73,7 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *v1beta1.
 		return false, err
 	}
 	// desired route
-	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, weight, matches, nil)
+	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, weight, matches)
 	if reflect.DeepEqual(httpRoute.Spec.Rules, desiredRule) {
 		return true, nil
 	}
@@ -105,7 +105,7 @@ func (r *gatewayController) Finalise(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	// desired rule
-	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, utilpointer.Int32(-1), nil, nil)
+	desiredRule := r.buildDesiredHTTPRoute(httpRoute.Spec.Rules, utilpointer.Int32(-1), nil)
 	if reflect.DeepEqual(httpRoute.Spec.Rules, desiredRule) {
 		return false, nil
 	}
@@ -125,8 +125,7 @@ func (r *gatewayController) Finalise(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1beta1.HTTPRouteRule, weight *int32, matches []v1beta1.HttpRouteMatch,
-	rh *gatewayv1beta1.HTTPRequestHeaderFilter) []gatewayv1beta1.HTTPRouteRule {
+func (r *gatewayController) buildDesiredHTTPRoute(rules []gatewayv1beta1.HTTPRouteRule, weight *int32, matches []v1beta1.HttpRouteMatch) []gatewayv1beta1.HTTPRouteRule {
 	var desired []gatewayv1beta1.HTTPRouteRule
 	// Only when finalize method parameter weight=-1,
 	// then we need to remove the canary route policy and restore to the original configuration

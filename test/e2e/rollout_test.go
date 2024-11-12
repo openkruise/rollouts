@@ -79,25 +79,25 @@ var _ = SIGDescribe("Rollout", func() {
 
 	DumpAllResources := func() {
 		rollout := &v1alpha1.RolloutList{}
-		k8sClient.List(context.TODO(), rollout, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), rollout, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(rollout))
 		batch := &v1alpha1.BatchReleaseList{}
-		k8sClient.List(context.TODO(), batch, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), batch, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(batch))
 		deploy := &apps.DeploymentList{}
-		k8sClient.List(context.TODO(), deploy, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), deploy, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(deploy))
 		rs := &apps.ReplicaSetList{}
-		k8sClient.List(context.TODO(), rs, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), rs, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(rs))
 		cloneSet := &appsv1alpha1.CloneSetList{}
-		k8sClient.List(context.TODO(), cloneSet, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), cloneSet, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(cloneSet))
 		sts := &apps.StatefulSetList{}
-		k8sClient.List(context.TODO(), sts, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), sts, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(sts))
 		asts := &appsv1beta1.StatefulSetList{}
-		k8sClient.List(context.TODO(), asts, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), asts, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(asts))
 	}
 
@@ -348,12 +348,12 @@ var _ = SIGDescribe("Rollout", func() {
 
 	AfterEach(func() {
 		By("[TEST] Clean up resources after an integration test")
-		k8sClient.DeleteAllOf(context.TODO(), &apps.Deployment{}, client.InNamespace(namespace))
-		k8sClient.DeleteAllOf(context.TODO(), &appsv1alpha1.CloneSet{}, client.InNamespace(namespace))
-		k8sClient.DeleteAllOf(context.TODO(), &v1alpha1.BatchRelease{}, client.InNamespace(namespace))
-		k8sClient.DeleteAllOf(context.TODO(), &v1alpha1.Rollout{}, client.InNamespace(namespace))
-		k8sClient.DeleteAllOf(context.TODO(), &v1.Service{}, client.InNamespace(namespace))
-		k8sClient.DeleteAllOf(context.TODO(), &netv1.Ingress{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &apps.Deployment{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &appsv1alpha1.CloneSet{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &v1alpha1.BatchRelease{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &v1alpha1.Rollout{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &v1.Service{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &netv1.Ingress{}, client.InNamespace(namespace))
 		Expect(k8sClient.Delete(context.TODO(), &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}, client.PropagationPolicy(metav1.DeletePropagationForeground))).Should(Succeed())
 		time.Sleep(time.Second * 3)
 	})
@@ -1601,6 +1601,7 @@ var _ = SIGDescribe("Rollout", func() {
 			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version3"})
 			workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:latest"
 			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			workload.Spec.Template.Spec.Containers[0].ImagePullPolicy = v1.PullIfNotPresent
 			UpdateDeployment(workload)
 			By("Update deployment image from(v2) -> to(v3)")
 			// wait rollout complete
@@ -1941,7 +1942,9 @@ var _ = SIGDescribe("Rollout", func() {
 			configmap := &v1.ConfigMap{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout-configuration.yaml", configmap)).ToNot(HaveOccurred())
 			Expect(k8sClient.Create(context.TODO(), configmap)).NotTo(HaveOccurred())
-			defer k8sClient.Delete(context.TODO(), configmap)
+			defer func(k8sClient client.Client, ctx context.Context, obj client.Object) {
+				_ = k8sClient.Delete(ctx, obj)
+			}(k8sClient, context.TODO(), configmap)
 
 			By("Creating Rollout...")
 			rollout := &v1alpha1.Rollout{}
@@ -2108,7 +2111,9 @@ var _ = SIGDescribe("Rollout", func() {
 					Expect(err).Should(BeNil())
 				}
 			}
-			defer k8sClient.Delete(context.TODO(), configmap)
+			defer func(k8sClient client.Client, ctx context.Context, obj client.Object) {
+				_ = k8sClient.Delete(ctx, obj)
+			}(k8sClient, context.TODO(), configmap)
 
 			By("Creating Rollout...")
 			rollout := &v1alpha1.Rollout{}
@@ -2814,11 +2819,11 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_daemonset_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32(1)), Type: intstr.Int},
+					Replicas: &intstr.IntOrString{IntVal: *utilpointer.Int32(1), Type: intstr.Int},
 					Pause:    v1alpha1.RolloutPause{},
 				},
 				{
-					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32Ptr(100)), Type: intstr.Int},
+					Replicas: &intstr.IntOrString{IntVal: *utilpointer.Int32(100), Type: intstr.Int},
 					Pause:    v1alpha1.RolloutPause{},
 				},
 			}
@@ -2903,15 +2908,15 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_daemonset_interrupt.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32(1)), Type: intstr.Int},
+					Replicas: &intstr.IntOrString{IntVal: *utilpointer.Int32(1), Type: intstr.Int},
 					Pause:    v1alpha1.RolloutPause{},
 				},
 				{
-					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32Ptr(2)), Type: intstr.Int},
+					Replicas: &intstr.IntOrString{IntVal: *utilpointer.Int32(2), Type: intstr.Int},
 					Pause:    v1alpha1.RolloutPause{},
 				},
 				{
-					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32Ptr(100)), Type: intstr.Int},
+					Replicas: &intstr.IntOrString{IntVal: *utilpointer.Int32(100), Type: intstr.Int},
 					Pause:    v1alpha1.RolloutPause{},
 				},
 			}
@@ -3043,11 +3048,11 @@ var _ = SIGDescribe("Rollout", func() {
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_daemonset_base.yaml", rollout)).ToNot(HaveOccurred())
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{
 				{
-					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32(1)), Type: intstr.Int},
+					Replicas: &intstr.IntOrString{IntVal: *utilpointer.Int32(1), Type: intstr.Int},
 					Pause:    v1alpha1.RolloutPause{},
 				},
 				{
-					Replicas: &intstr.IntOrString{IntVal: int32(*utilpointer.Int32Ptr(100)), Type: intstr.Int},
+					Replicas: &intstr.IntOrString{IntVal: *utilpointer.Int32(100), Type: intstr.Int},
 					Pause:    v1alpha1.RolloutPause{},
 				},
 			}
@@ -3206,8 +3211,8 @@ func mergeEnvVar(original []v1.EnvVar, add v1.EnvVar) []v1.EnvVar {
 }
 
 func mergeMap(dst, patch map[string]string) map[string]string {
-	for k1, v1 := range patch {
-		dst[k1] = v1
+	for key, value := range patch {
+		dst[key] = value
 	}
 	return dst
 }
