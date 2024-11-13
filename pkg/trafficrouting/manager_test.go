@@ -1293,8 +1293,10 @@ func TestRestoreGateway(t *testing.T) {
 			// the second call, it should be no error and no retry
 			time.Sleep(1 * time.Second)
 			retry, err = manager.RestoreGateway(c)
-			if err != nil || retry {
-				t.Fatalf("RestoreGateway failed: %s", err)
+			if err != nil {
+				t.Fatalf("RestoreGateway failed: %s", err.Error())
+			} else if retry {
+				t.Fatalf("RestoreGateway failed: retry should be false")
 			}
 		})
 	}
@@ -1403,8 +1405,175 @@ func TestRemoveCanaryService(t *testing.T) {
 			// the second call, it should be no error and no retry
 			time.Sleep(1 * time.Second)
 			retry, err = manager.RemoveCanaryService(c)
-			if err != nil || retry {
-				t.Fatalf("RemoveCanaryService failed: %s", err)
+			if err != nil {
+				t.Fatalf("RemoveCanaryService failed: %s", err.Error())
+			} else if retry {
+				t.Fatalf("RemoveCanaryService failed: retry should be false")
+			}
+		})
+	}
+}
+
+func TestRouteAllTrafficToNewVersion(t *testing.T) {
+	cases := []struct {
+		name               string
+		getObj             func() ([]*corev1.Service, []*netv1.Ingress)
+		getRollout         func() (*v1beta1.Rollout, *util.Workload)
+		onlyTrafficRouting bool
+		expectObj          func() ([]*corev1.Service, []*netv1.Ingress)
+		expectNotFound     func() ([]*corev1.Service, []*netv1.Ingress)
+		retry              bool
+	}{
+		{
+			name: "Route all traffic test1",
+			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s1 := demoService.DeepCopy()
+				s2 := demoService.DeepCopy()
+				s2.Name = "echoserver-canary"
+				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
+				c1 := demoIngress.DeepCopy()
+				c2 := demoIngress.DeepCopy()
+				c2.Name = "echoserver-canary"
+				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
+				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "100"
+				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
+			},
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
+				obj := demoRollout.DeepCopy()
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-time.Hour)}
+				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+			},
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				// service and ingress remain unchanged
+				s1 := demoService.DeepCopy()
+				s2 := demoService.DeepCopy()
+				s2.Name = "echoserver-canary"
+				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
+				c1 := demoIngress.DeepCopy()
+				c2 := demoIngress.DeepCopy()
+				c2.Name = "echoserver-canary"
+				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
+				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "100"
+				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
+			},
+			expectNotFound: func() ([]*corev1.Service, []*netv1.Ingress) {
+				return nil, nil
+			},
+			retry: false,
+		},
+		{
+			name: "Route all traffic test2",
+			getObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				s1 := demoService.DeepCopy()
+				s2 := demoService.DeepCopy()
+				s2.Name = "echoserver-canary"
+				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
+				c1 := demoIngress.DeepCopy()
+				c2 := demoIngress.DeepCopy()
+				c2.Name = "echoserver-canary"
+				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
+				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "50"
+				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
+			},
+			getRollout: func() (*v1beta1.Rollout, *util.Workload) {
+				obj := demoRollout.DeepCopy()
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
+				obj.Status.CanaryStatus.CurrentStepIndex = 4
+				obj.Status.CanaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now().Add(-time.Hour)}
+				return obj, &util.Workload{RevisionLabelKey: apps.DefaultDeploymentUniqueLabelKey}
+			},
+			expectObj: func() ([]*corev1.Service, []*netv1.Ingress) {
+				// service and ingress remain unchanged
+				s1 := demoService.DeepCopy()
+				s2 := demoService.DeepCopy()
+				s2.Name = "echoserver-canary"
+				s2.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey] = "podtemplatehash-v2"
+				c1 := demoIngress.DeepCopy()
+				c2 := demoIngress.DeepCopy()
+				c2.Name = "echoserver-canary"
+				c2.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)] = "true"
+				c2.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)] = "100"
+				c2.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return []*corev1.Service{s1, s2}, []*netv1.Ingress{c1, c2}
+			},
+			expectNotFound: func() ([]*corev1.Service, []*netv1.Ingress) {
+				return nil, nil
+			},
+			retry: true,
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			ss, ig := cs.getObj()
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ig[0], ss[0], demoConf.DeepCopy()).Build()
+			if len(ss) == 2 {
+				_ = cli.Create(context.TODO(), ss[1])
+			}
+			if len(ig) == 2 {
+				_ = cli.Create(context.TODO(), ig[1])
+			}
+			rollout, workload := cs.getRollout()
+			newStatus := rollout.Status.DeepCopy()
+			currentStep := rollout.Spec.Strategy.Canary.Steps[newStatus.CanaryStatus.CurrentStepIndex-1]
+			c := &TrafficRoutingContext{
+				Key:                fmt.Sprintf("Rollout(%s/%s)", rollout.Namespace, rollout.Name),
+				Namespace:          rollout.Namespace,
+				ObjectRef:          rollout.Spec.Strategy.Canary.TrafficRoutings,
+				Strategy:           currentStep.TrafficRoutingStrategy,
+				OwnerRef:           *metav1.NewControllerRef(rollout, v1beta1.SchemeGroupVersion.WithKind("Rollout")),
+				RevisionLabelKey:   workload.RevisionLabelKey,
+				StableRevision:     newStatus.CanaryStatus.StableRevision,
+				CanaryRevision:     newStatus.CanaryStatus.PodTemplateHash,
+				LastUpdateTime:     newStatus.CanaryStatus.LastUpdateTime,
+				OnlyTrafficRouting: cs.onlyTrafficRouting,
+			}
+			manager := NewTrafficRoutingManager(cli)
+			retry, err := manager.RouteAllTrafficToNewVersion(c)
+			if err != nil {
+				t.Fatalf("RouteAllTrafficToNewVersion first failed: %s", err.Error())
+			}
+			if retry != cs.retry {
+				t.Fatalf("RouteAllTrafficToNewVersion expect(%v), but get(%v)", cs.retry, retry)
+			}
+			ss, ig = cs.expectObj()
+			for _, obj := range ss {
+				checkObjEqual(cli, t, obj)
+			}
+			for _, obj := range ig {
+				checkObjEqual(cli, t, obj)
+			}
+
+			ss, ig = cs.expectNotFound()
+			for _, obj := range ss {
+				checkNotFound(cli, t, obj)
+			}
+			for _, obj := range ig {
+				checkNotFound(cli, t, obj)
+			}
+			// if done, no need check again
+			if !cs.retry {
+				return
+			}
+			// the second call, it should be no error and no retry
+			time.Sleep(1 * time.Second)
+			retry, err = manager.RouteAllTrafficToNewVersion(c)
+			if err != nil {
+				t.Fatalf("RouteAllTrafficToNewVersion failed: %s", err.Error())
+			} else if retry {
+				t.Fatalf("RouteAllTrafficToNewVersion failed: retry should be false")
+			}
+			ss, ig = cs.expectObj()
+			for _, obj := range ss {
+				checkObjEqual(cli, t, obj)
+			}
+			for _, obj := range ig {
+				checkObjEqual(cli, t, obj)
 			}
 		})
 	}

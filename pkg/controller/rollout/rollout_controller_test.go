@@ -106,6 +106,73 @@ var (
 			},
 		},
 	}
+
+	rolloutDemoBlueGreen = &v1beta1.Rollout{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "rollout-demo",
+			Labels: map[string]string{},
+			Annotations: map[string]string{
+				util.RolloutHashAnnotation: "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd",
+			},
+		},
+		Spec: v1beta1.RolloutSpec{
+			WorkloadRef: v1beta1.ObjectRef{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Name:       "echoserver",
+			},
+			Strategy: v1beta1.RolloutStrategy{
+				BlueGreen: &v1beta1.BlueGreenStrategy{
+					Steps: []v1beta1.CanaryStep{
+						{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("0%"),
+							},
+							Replicas: &intstr.IntOrString{StrVal: "50%", Type: intstr.String},
+						},
+						{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("0%"),
+							},
+							Replicas: &intstr.IntOrString{StrVal: "100%", Type: intstr.String},
+						},
+						{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("50%"),
+							},
+							Replicas: &intstr.IntOrString{StrVal: "100%", Type: intstr.String},
+						},
+						{
+							TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+								Traffic: utilpointer.String("100%"),
+							},
+							Replicas: &intstr.IntOrString{StrVal: "100%", Type: intstr.String},
+						},
+					},
+					TrafficRoutings: []v1beta1.TrafficRoutingRef{
+						{
+							Service: "echoserver",
+							Ingress: &v1beta1.IngressTrafficRouting{
+								Name: "echoserver",
+							},
+							GracePeriodSeconds: 0, // To facilitate testing, don't wait after traffic routing operation
+						},
+					},
+				},
+			},
+		},
+		Status: v1beta1.RolloutStatus{
+			Phase:           v1beta1.RolloutPhaseProgressing,
+			BlueGreenStatus: &v1beta1.BlueGreenStatus{},
+			Conditions: []v1beta1.RolloutCondition{
+				{
+					Type:   v1beta1.RolloutConditionProgressing,
+					Reason: v1alpha1.ProgressingReasonInitializing,
+					Status: corev1.ConditionTrue,
+				},
+			},
+		},
+	}
 	maxUnavailable = intstr.FromString("20%")
 	deploymentDemo = &apps.Deployment{
 		TypeMeta: metav1.TypeMeta{

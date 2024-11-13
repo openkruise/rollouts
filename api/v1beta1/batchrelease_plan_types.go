@@ -70,7 +70,7 @@ type FinalizingPolicyType string
 
 const (
 	// WaitResumeFinalizingPolicyType will wait workload to be resumed, which means
-	// controller will be hold at Finalizing phase util all pods of workload is upgraded.
+	// controller will be hold at Finalizing phase until all pods of workload is upgraded.
 	// WaitResumeFinalizingPolicyType only works in canary-style BatchRelease controller.
 	WaitResumeFinalizingPolicyType FinalizingPolicyType = "WaitResume"
 	// ImmediateFinalizingPolicyType will not to wait workload to be resumed.
