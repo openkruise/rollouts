@@ -90,7 +90,7 @@ type TrafficRoutingStrategy struct {
 	//   my-header: bar
 	//
 	// +optional
-	RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter `json:"requestHeaderModifier,omitempty"`
+	RequestHeaderModifier *gatewayv1beta1.HTTPHeaderFilter `json:"requestHeaderModifier,omitempty"`
 	// Matches define conditions used for matching the incoming HTTP requests to canary service.
 	// Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
 	// If Gateway API, current only support one match.

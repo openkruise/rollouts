@@ -737,7 +737,7 @@ func (in *TrafficRoutingStrategy) DeepCopyInto(out *TrafficRoutingStrategy) {
 	}
 	if in.RequestHeaderModifier != nil {
 		in, out := &in.RequestHeaderModifier, &out.RequestHeaderModifier
-		*out = new(apisv1beta1.HTTPRequestHeaderFilter)
+		*out = new(apisv1beta1.HTTPHeaderFilter)
 		(*in).DeepCopyInto(*out)
 	}
 	if in.Matches != nil {

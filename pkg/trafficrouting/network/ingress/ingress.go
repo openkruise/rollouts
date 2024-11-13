@@ -224,7 +224,7 @@ func defaultCanaryIngressName(name string) string {
 }
 
 func (r *ingressController) executeLuaForCanary(annotations map[string]string, weight *int32, matches []v1beta1.HttpRouteMatch,
-	headerModifier *gatewayv1beta1.HTTPRequestHeaderFilter) (map[string]string, error) {
+	headerModifier *gatewayv1beta1.HTTPHeaderFilter) (map[string]string, error) {
 
 	if weight == nil {
 		// the lua script does not have a pointer type,
@@ -236,7 +236,7 @@ func (r *ingressController) executeLuaForCanary(annotations map[string]string, w
 		Weight                string
 		Matches               []v1beta1.HttpRouteMatch
 		CanaryService         string
-		RequestHeaderModifier *gatewayv1beta1.HTTPRequestHeaderFilter
+		RequestHeaderModifier *gatewayv1beta1.HTTPHeaderFilter
 	}
 	data := &LuaData{
 		Annotations:           annotations,

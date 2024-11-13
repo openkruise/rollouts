@@ -53,25 +53,25 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 
 	DumpAllResources := func() {
 		rollout := &v1beta1.RolloutList{}
-		k8sClient.List(context.TODO(), rollout, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), rollout, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(rollout))
 		batch := &v1beta1.BatchReleaseList{}
-		k8sClient.List(context.TODO(), batch, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), batch, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(batch))
 		deploy := &apps.DeploymentList{}
-		k8sClient.List(context.TODO(), deploy, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), deploy, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(deploy))
 		rs := &apps.ReplicaSetList{}
-		k8sClient.List(context.TODO(), rs, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), rs, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(rs))
 		cloneSet := &appsv1alpha1.CloneSetList{}
-		k8sClient.List(context.TODO(), cloneSet, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), cloneSet, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(cloneSet))
 		sts := &apps.StatefulSetList{}
-		k8sClient.List(context.TODO(), sts, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), sts, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(sts))
 		asts := &appsv1beta1.StatefulSetList{}
-		k8sClient.List(context.TODO(), asts, client.InNamespace(namespace))
+		_ = k8sClient.List(context.TODO(), asts, client.InNamespace(namespace))
 		fmt.Println(util.DumpJSON(asts))
 	}
 
@@ -487,12 +487,12 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 
 	AfterEach(func() {
 		By("[TEST] Clean up resources after an integration test")
-		k8sClient.DeleteAllOf(context.TODO(), &apps.Deployment{}, client.InNamespace(namespace))
-		k8sClient.DeleteAllOf(context.TODO(), &appsv1alpha1.CloneSet{}, client.InNamespace(namespace))
-		k8sClient.DeleteAllOf(context.TODO(), &v1beta1.BatchRelease{}, client.InNamespace(namespace))
-		k8sClient.DeleteAllOf(context.TODO(), &v1beta1.Rollout{}, client.InNamespace(namespace))
-		k8sClient.DeleteAllOf(context.TODO(), &v1.Service{}, client.InNamespace(namespace))
-		k8sClient.DeleteAllOf(context.TODO(), &netv1.Ingress{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &apps.Deployment{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &appsv1alpha1.CloneSet{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &v1beta1.BatchRelease{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &v1beta1.Rollout{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &v1.Service{}, client.InNamespace(namespace))
+		_ = k8sClient.DeleteAllOf(context.TODO(), &netv1.Ingress{}, client.InNamespace(namespace))
 		Expect(k8sClient.Delete(context.TODO(), &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}, client.PropagationPolicy(metav1.DeletePropagationForeground))).Should(Succeed())
 		time.Sleep(time.Second * 3)
 	})
@@ -642,14 +642,14 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("21%"),
+						Traffic: utilpointer.String("21%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause:    v1beta1.RolloutPause{},
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("41%"),
+						Traffic: utilpointer.String("41%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "40%"},
 					Pause: v1beta1.RolloutPause{
@@ -658,7 +658,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("61%"),
+						Traffic: utilpointer.String("61%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "60%"},
 					Pause: v1beta1.RolloutPause{
@@ -667,7 +667,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("81%"),
+						Traffic: utilpointer.String("81%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "80%"},
 					Pause: v1beta1.RolloutPause{
@@ -676,7 +676,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 				},
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("100%"),
+						Traffic: utilpointer.String("100%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"},
 					Pause: v1beta1.RolloutPause{
@@ -1001,7 +1001,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			// update rollout step configuration
 			rollout.Spec.Strategy.Canary.Steps[2] = v1beta1.CanaryStep{
 				TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-					Traffic: utilpointer.StringPtr("60%"),
+					Traffic: utilpointer.String("60%"),
 				},
 				// change to format of integer, so that traffic can be set
 				Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: 3},
@@ -1281,7 +1281,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			// update rollout step configuration
 			rollout.Spec.Strategy.Canary.Steps[2] = v1beta1.CanaryStep{
 				TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-					Traffic: utilpointer.StringPtr("60%"),
+					Traffic: utilpointer.String("60%"),
 				},
 				// change to format of integer, so that traffic can be set
 				Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: 3},
@@ -1480,7 +1480,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("20%"),
+						Traffic: utilpointer.String("20%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause:    v1beta1.RolloutPause{},
@@ -1678,6 +1678,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
 			workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:latest"
 			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			workload.Spec.Template.Spec.Containers[0].ImagePullPolicy = v1.PullIfNotPresent
 			UpdateCloneSet(workload)
 			By("Rollback deployment env NODE_NAME from(version2) -> to(version1)")
 			time.Sleep(time.Second * 2)
@@ -2046,7 +2047,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("20%"),
+						Traffic: utilpointer.String("20%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause:    v1beta1.RolloutPause{},
@@ -2185,7 +2186,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("20%"),
+						Traffic: utilpointer.String("20%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause:    v1beta1.RolloutPause{},
@@ -2291,7 +2292,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("20%"),
+						Traffic: utilpointer.String("20%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause:    v1beta1.RolloutPause{},
@@ -2374,7 +2375,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("20%"),
+						Traffic: utilpointer.String("20%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause:    v1beta1.RolloutPause{},
@@ -2429,7 +2430,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			By("check workload status & paused success")
 
 			By("delete rollout and check deployment")
-			k8sClient.Delete(context.TODO(), rollout)
+			_ = k8sClient.Delete(context.TODO(), rollout)
 			WaitRolloutNotFound(rollout.Name)
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			Expect(workload.Spec.Strategy.Type).Should(Equal(apps.RollingUpdateDeploymentStrategyType))
@@ -2445,7 +2446,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("20%"),
+						Traffic: utilpointer.String("20%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause:    v1beta1.RolloutPause{},
@@ -2601,7 +2602,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("20%"),
+						Traffic: utilpointer.String("20%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause: v1beta1.RolloutPause{
@@ -2698,7 +2699,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("20%"),
+						Traffic: utilpointer.String("20%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause:    v1beta1.RolloutPause{},
@@ -2803,7 +2804,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("20%"),
+						Traffic: utilpointer.String("20%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause:    v1beta1.RolloutPause{},
@@ -2892,7 +2893,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 				{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Traffic: utilpointer.StringPtr("20%"),
+						Traffic: utilpointer.String("20%"),
 					},
 					Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					Pause:    v1beta1.RolloutPause{},
@@ -2977,7 +2978,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 				rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
 						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-							Traffic: utilpointer.StringPtr("20%"),
+							Traffic: utilpointer.String("20%"),
 						},
 						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 						Pause:    v1beta1.RolloutPause{},
@@ -3303,6 +3304,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 				newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
 				workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:latest"
 				workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+				workload.Spec.Template.Spec.Containers[0].ImagePullPolicy = v1.PullIfNotPresent
 				UpdateNativeStatefulSet(workload)
 				By("Rollback deployment env NODE_NAME from(version2) -> to(version1)")
 				time.Sleep(time.Second * 2)
@@ -3445,7 +3447,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 				rollout.Spec.Strategy.Canary.Steps = []v1beta1.CanaryStep{
 					{
 						TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-							Traffic: utilpointer.StringPtr("20%"),
+							Traffic: utilpointer.String("20%"),
 						},
 						Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "20%"},
 					},
@@ -3771,6 +3773,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 				newEnvs = mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "NODE_NAME", Value: "version1"})
 				workload.Spec.Template.Spec.Containers[0].Image = "cilium/echoserver:latest"
 				workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+				workload.Spec.Template.Spec.Containers[0].ImagePullPolicy = v1.PullIfNotPresent
 				UpdateAdvancedStatefulSet(workload)
 				By("Rollback deployment env NODE_NAME from(version2) -> to(version1)")
 				time.Sleep(time.Second * 2)

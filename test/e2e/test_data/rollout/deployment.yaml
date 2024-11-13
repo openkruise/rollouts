@@ -24,7 +24,7 @@ spec:
         image: cilium/echoserver:latest
         # For ARM-based env
         # image: jmalloc/echo-server:latest
-        # imagePullPolicy: IfNotPresent
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
         env:

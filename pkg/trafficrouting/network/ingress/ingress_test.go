@@ -301,9 +301,9 @@ func TestInitialize(t *testing.T) {
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			fakeCli := fake.NewClientBuilder().WithScheme(scheme).Build()
-			fakeCli.Create(context.TODO(), cs.getConfigmap())
+			_ = fakeCli.Create(context.TODO(), cs.getConfigmap())
 			for _, ingress := range cs.getIngress() {
-				fakeCli.Create(context.TODO(), ingress)
+				_ = fakeCli.Create(context.TODO(), ingress)
 			}
 			controller, err := NewIngressTrafficRouting(fakeCli, config)
 			if err != nil {
@@ -368,7 +368,7 @@ func TestEnsureRoutes(t *testing.T) {
 								},
 							},
 						},
-						RequestHeaderModifier: &gatewayv1beta1.HTTPRequestHeaderFilter{
+						RequestHeaderModifier: &gatewayv1beta1.HTTPHeaderFilter{
 							Set: []gatewayv1beta1.HTTPHeader{
 								{
 									Name:  "gray",
@@ -566,7 +566,7 @@ func TestEnsureRoutes(t *testing.T) {
 								},
 							},
 						},
-						RequestHeaderModifier: &gatewayv1beta1.HTTPRequestHeaderFilter{
+						RequestHeaderModifier: &gatewayv1beta1.HTTPHeaderFilter{
 							Set: []gatewayv1beta1.HTTPHeader{
 								{
 									Name:  "gray",
@@ -628,7 +628,7 @@ func TestEnsureRoutes(t *testing.T) {
 								},
 							},
 						},
-						RequestHeaderModifier: &gatewayv1beta1.HTTPRequestHeaderFilter{
+						RequestHeaderModifier: &gatewayv1beta1.HTTPHeaderFilter{
 							Set: []gatewayv1beta1.HTTPHeader{
 								{
 									Name:  "gray",
@@ -670,9 +670,9 @@ func TestEnsureRoutes(t *testing.T) {
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			fakeCli := fake.NewClientBuilder().WithScheme(scheme).Build()
-			fakeCli.Create(context.TODO(), cs.getConfigmap())
+			_ = fakeCli.Create(context.TODO(), cs.getConfigmap())
 			for _, ingress := range cs.getIngress() {
-				fakeCli.Create(context.TODO(), ingress)
+				_ = fakeCli.Create(context.TODO(), ingress)
 			}
 			config.TrafficConf.ClassType = cs.ingressType
 			controller, err := NewIngressTrafficRouting(fakeCli, config)
@@ -742,9 +742,9 @@ func TestFinalise(t *testing.T) {
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			fakeCli := fake.NewClientBuilder().WithScheme(scheme).Build()
-			fakeCli.Create(context.TODO(), cs.getConfigmap())
+			_ = fakeCli.Create(context.TODO(), cs.getConfigmap())
 			for _, ingress := range cs.getIngress() {
-				fakeCli.Create(context.TODO(), ingress)
+				_ = fakeCli.Create(context.TODO(), ingress)
 			}
 			controller, err := NewIngressTrafficRouting(fakeCli, config)
 			if err != nil {

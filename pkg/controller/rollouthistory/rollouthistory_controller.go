@@ -342,7 +342,7 @@ func (r *RolloutHistoryReconciler) updateRolloutHistoryWhenRolloutIsCompeleted(r
 		return err
 	}
 	// update rolloutHistory subresource
-	return r.Status().Update(context.TODO(), rolloutHistory, &client.UpdateOptions{})
+	return r.Status().Update(context.TODO(), rolloutHistory, &client.SubResourceUpdateOptions{})
 }
 
 // recordStatusCanarySteps record all pods information which are canary released
