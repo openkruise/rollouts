@@ -378,8 +378,7 @@ func (r *RolloutReconciler) getReleaseManager(rollout *v1beta1.Rollout) (Release
 	if rollout.Spec.Strategy.IsCanaryStragegy() {
 		return r.canaryManager, nil
 	} else if rollout.Spec.Strategy.IsBlueGreenRelease() {
-		// placeholder for upcoming PR
-		// return r.blueGreenManager, nil
+		return r.blueGreenManager, nil
 	}
 	return nil, fmt.Errorf("unknown rolling style: %s, and thus cannot call corresponding release manager", rollout.Spec.Strategy.GetRollingStyle())
 }
@@ -420,7 +419,7 @@ func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) 
 	}
 	// if no trafficRouting exists, simply remove batchRelease
 	if !c.Rollout.Spec.Strategy.HasTrafficRoutings() {
-		retry, err := releaseManager.removeBatchRelease(c)
+		retry, err := removeBatchRelease(releaseManager.fetchClient(), c)
 		if err != nil {
 			klog.Errorf("rollout(%s/%s) DoFinalising batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 			return false, err
@@ -440,11 +439,11 @@ func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) 
 	switch subStatus.FinalisingStep {
 	default:
 		// start from FinalisingStepTypeGateway
-		subStatus.FinalisingStep = v1beta1.FinalisingStepTypeGateway
+		subStatus.FinalisingStep = v1beta1.FinalisingStepRouteTrafficToStable
 		fallthrough
 	// firstly, restore the gateway resources (ingress/gatewayAPI/Istio), that means
 	// only stable Service will accept the traffic
-	case v1beta1.FinalisingStepTypeGateway:
+	case v1beta1.FinalisingStepRouteTrafficToStable:
 		retry, err := r.trafficRoutingManager.RestoreGateway(tr)
 		if err != nil || retry {
 			subStatus.LastUpdateTime = tr.LastUpdateTime
@@ -452,13 +451,13 @@ func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) 
 		}
 		klog.Infof("rollout(%s/%s) in step (%s), and success", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep)
 		subStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		subStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteBR
+		subStatus.FinalisingStep = v1beta1.FinalisingStepReleaseWorkloadControl
 		fallthrough
 	// secondly, remove the batchRelease. For canary release, it means the immediate deletion of
 	// canary deployment, for other release, the v2 pods won't be deleted immediately
 	// in both cases, only the stable pods (v1) accept the traffic
-	case v1beta1.FinalisingStepTypeDeleteBR:
-		retry, err := releaseManager.removeBatchRelease(c)
+	case v1beta1.FinalisingStepReleaseWorkloadControl:
+		retry, err := removeBatchRelease(releaseManager.fetchClient(), c)
 		if err != nil {
 			klog.Errorf("rollout(%s/%s) Finalize batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 			return false, err
@@ -467,7 +466,7 @@ func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) 
 		}
 		klog.Infof("rollout(%s/%s) in step (%s), and success", c.Rollout.Namespace, c.Rollout.Name, subStatus.FinalisingStep)
 		subStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		subStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteCanaryService
+		subStatus.FinalisingStep = v1beta1.FinalisingStepRemoveCanaryService
 		fallthrough
 	// finally, remove the canary service. This step can swap with the last step.
 	/*
@@ -478,7 +477,7 @@ func (r *RolloutReconciler) doProgressingReset(c *RolloutContext) (bool, error) 
 		stable service selector, then the traffic will route to both v1 and v2 before executing the
 		first step of v3 release.
 	*/
-	case v1beta1.FinalisingStepTypeDeleteCanaryService:
+	case v1beta1.FinalisingStepRemoveCanaryService:
 		// ignore the grace period because it is the last step
 		_, err := r.trafficRoutingManager.RemoveCanaryService(tr)
 		if err != nil {
@@ -495,7 +494,7 @@ func (r *RolloutReconciler) recalculateCanaryStep(c *RolloutContext) (int32, err
 	if err != nil {
 		return 0, err
 	}
-	batch, err := releaseManager.fetchBatchRelease(c.Rollout.Namespace, c.Rollout.Name)
+	batch, err := fetchBatchRelease(releaseManager.fetchClient(), c.Rollout.Namespace, c.Rollout.Name)
 	if errors.IsNotFound(err) {
 		return 1, nil
 	} else if err != nil {
@@ -506,7 +505,12 @@ func (r *RolloutReconciler) recalculateCanaryStep(c *RolloutContext) (int32, err
 	if c.NewStatus != nil {
 		currentIndex = c.NewStatus.GetSubStatus().CurrentStepIndex - 1
 	}
-	steps := append([]int{}, int(currentIndex))
+	steps := make([]int, 0)
+	// currentIndex may greater than len(c.Rollout.Spec.Strategy.GetSteps()) if user changed the release plan
+	// currentIndex should never be less than 0 theoricaly unless user changed it intentionally
+	if ci := int(currentIndex); ci >= 0 && ci < len(c.Rollout.Spec.Strategy.GetSteps()) {
+		steps = append(steps, ci)
+	}
 	// we don't distinguish between the changes in Replicas and Traffic
 	// Whatever the change is, we recalculate the step.
 	// we put the current step index first for retrieval, so that if Traffic is the only change,

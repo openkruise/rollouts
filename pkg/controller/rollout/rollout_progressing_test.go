@@ -289,7 +289,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.NextStepIndex = 0
-				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeStableService
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepRestoreStableService
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
@@ -334,7 +334,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				// given that the selector of stable Service is removed
 				// we will go on it the next step, i.e. patch restoreGateway
-				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeStableService
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepRestoreStableService
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
@@ -358,7 +358,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.NextStepIndex = 0
-				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeGateway
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepRouteTrafficToStable
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
@@ -403,7 +403,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				// because the batchRelease hasn't completed (ie. br.Status.Phase is not completed),
 				// it will take more than one reconciles to go on to the next step
-				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeBatchRelease
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepResumeWorkload
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
@@ -427,7 +427,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.NextStepIndex = 0
-				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeBatchRelease
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepResumeWorkload
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
@@ -471,7 +471,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				// the batchRelease has completed (ie. br.Status.Phase is completed),
 				// we expect the finalizing step to be next step, i.e. deleteBatchRelease
-				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeBatchRelease
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepResumeWorkload
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
@@ -494,7 +494,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.NextStepIndex = 0
-				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteBR
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepReleaseWorkloadControl
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				cond2 := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond2.Reason = v1alpha1.ProgressingReasonFinalising
@@ -534,7 +534,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
 				// deleteBatchRelease is the last step, and it won't wait a grace time
 				// after this step, this release should be succeeded
-				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteBR
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepReleaseWorkloadControl
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonFinalising
 				cond.Status = corev1.ConditionTrue
@@ -740,7 +740,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CurrentStepIndex = 3
 				s.CanaryStatus.CanaryReplicas = 5
 				s.CanaryStatus.CanaryReadyReplicas = 3
-				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeGateway
+				s.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepRouteTrafficToStable
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
@@ -790,7 +790,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.CanaryReadyReplicas = 3
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
-				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepTypeDeleteBR
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepReleaseWorkloadControl
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)

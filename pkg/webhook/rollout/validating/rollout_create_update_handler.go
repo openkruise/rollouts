@@ -160,6 +160,10 @@ func (h *RolloutCreateUpdateHandler) validateRolloutUpdate(oldObj, newObj *appsv
 		if oldObj.Spec.Strategy.GetRollingStyle() != newObj.Spec.Strategy.GetRollingStyle() {
 			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary|BlueGreen"), "Rollout style and enableExtraWorkloadForCanary are immutable")}
 		}
+		// forbid adding or removing steps during rollout so that the code can be simpler
+		if len(oldObj.Spec.Strategy.GetSteps()) != len(newObj.Spec.Strategy.GetSteps()) {
+			return field.ErrorList{field.Forbidden(field.NewPath("Spec.Strategy.Canary|BlueGreen"), "Amount of Rollout steps are immutable")}
+		}
 	}
 
 	/*if newObj.Status.CanaryStatus != nil && newObj.Status.CanaryStatus.CurrentStepState == appsv1beta1.CanaryStepStateReady {
