@@ -392,7 +392,10 @@ func (m *blueGreenReleaseManager) syncBatchRelease(br *v1beta1.BatchRelease, blu
 	// TODO: optimize the logic to better understand
 	blueGreenStatus.Message = fmt.Sprintf("BatchRelease is at state %s, rollout-id %s, step %d",
 		br.Status.CanaryStatus.CurrentBatchState, br.Status.ObservedRolloutID, br.Status.CanaryStatus.CurrentBatch+1)
-
+	// br.Status.Message records messages that help users to understand what is going wrong
+	if len(br.Status.Message) > 0 {
+		blueGreenStatus.Message += fmt.Sprintf(", %s", br.Status.Message)
+	}
 	// sync rolloutId from blueGreenStatus to BatchRelease
 	if blueGreenStatus.ObservedRolloutID != br.Spec.ReleasePlan.RolloutID {
 		body := fmt.Sprintf(`{"spec":{"releasePlan":{"rolloutID":"%s"}}}`, blueGreenStatus.ObservedRolloutID)

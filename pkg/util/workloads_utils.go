@@ -154,7 +154,7 @@ func ComputeHash(template *v1.PodTemplateSpec, collisionCount *int32) string {
 func SafeEncodeString(s string) string {
 	r := make([]byte, len(s))
 	for i, b := range []rune(s) {
-		r[i] = alphanums[(int(b) % len(alphanums))]
+		r[i] = alphanums[int(b)%len(alphanums)]
 	}
 	return string(r)
 }
@@ -329,11 +329,11 @@ func IsWorkloadType(object client.Object, t WorkloadType) bool {
 // DeploymentMaxUnavailable returns the maximum unavailable pods a rolling deployment can take.
 func DeploymentMaxUnavailable(deployment *apps.Deployment) int32 {
 	strategy := deployment.Spec.Strategy
-	if strategy.Type != apps.RollingUpdateDeploymentStrategyType || *(deployment.Spec.Replicas) == 0 {
+	if strategy.Type != apps.RollingUpdateDeploymentStrategyType || *deployment.Spec.Replicas == 0 {
 		return int32(0)
 	}
 	// Error caught by validation
-	_, maxUnavailable, _ := resolveFenceposts(strategy.RollingUpdate.MaxSurge, strategy.RollingUpdate.MaxUnavailable, *(deployment.Spec.Replicas))
+	_, maxUnavailable, _ := resolveFenceposts(strategy.RollingUpdate.MaxSurge, strategy.RollingUpdate.MaxUnavailable, *deployment.Spec.Replicas)
 	if maxUnavailable > *deployment.Spec.Replicas {
 		return *deployment.Spec.Replicas
 	}

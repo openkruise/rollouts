@@ -21,8 +21,10 @@ import (
 	"fmt"
 	"strings"
 
+	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
+	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -61,6 +63,42 @@ func IsControlledByBatchRelease(release *v1beta1.BatchRelease, object client.Obj
 		}
 	}
 	return false
+}
+
+// only when IsReadyForBlueGreenRelease returns true, can we go on to the next batch
+func ValidateReadyForBlueGreenRelease(object client.Object) error {
+	// check the annotation
+	if object.GetAnnotations()[util.BatchReleaseControlAnnotation] == "" {
+		return fmt.Errorf("workload has no control info annotation")
+	}
+	switch o := object.(type) {
+	case *apps.Deployment:
+		// must be RollingUpdate
+		if len(o.Spec.Strategy.Type) > 0 && o.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
+			return fmt.Errorf("deployment strategy type is not RollingUpdate")
+		}
+		if o.Spec.Strategy.RollingUpdate == nil {
+			return fmt.Errorf("deployment strategy rollingUpdate is nil")
+		}
+		// MinReadySeconds and ProgressDeadlineSeconds must be set
+		if o.Spec.MinReadySeconds != v1beta1.MaxReadySeconds || o.Spec.ProgressDeadlineSeconds == nil || *o.Spec.ProgressDeadlineSeconds != v1beta1.MaxProgressSeconds {
+			return fmt.Errorf("deployment strategy minReadySeconds or progressDeadlineSeconds is not MaxReadySeconds or MaxProgressSeconds")
+		}
+
+	case *appsv1alpha1.CloneSet:
+		// must be ReCreate
+		if len(o.Spec.UpdateStrategy.Type) > 0 && o.Spec.UpdateStrategy.Type != appsv1alpha1.RecreateCloneSetUpdateStrategyType {
+			return fmt.Errorf("cloneSet strategy type is not ReCreate")
+		}
+		// MinReadySeconds and ProgressDeadlineSeconds must be set
+		if o.Spec.MinReadySeconds != v1beta1.MaxReadySeconds {
+			return fmt.Errorf("cloneSet strategy minReadySeconds is not MaxReadySeconds")
+		}
+
+	default:
+		panic("unsupported workload type to ValidateReadyForBlueGreenRelease function")
+	}
+	return nil
 }
 
 // BuildReleaseControlInfo return a NewControllerRef of release with escaped `"`.
@@ -111,4 +149,102 @@ func IsCurrentMoreThanOrEqualToDesired(current, desired intstr.IntOrString) bool
 	currentNum, _ := intstr.GetScaledValueFromIntOrPercent(&current, 10000000, true)
 	desiredNum, _ := intstr.GetScaledValueFromIntOrPercent(&desired, 10000000, true)
 	return currentNum >= desiredNum
+}
+
+// GetDeploymentStrategy decode the strategy object for advanced deployment
+// from the annotation "rollouts.kruise.io/original-deployment-strategy"
+func GetOriginalSetting(object client.Object) (OriginalDeploymentStrategy, error) {
+	setting := OriginalDeploymentStrategy{}
+	settingStr := object.GetAnnotations()[v1beta1.OriginalDeploymentStrategyAnnotation]
+	if settingStr == "" {
+		return setting, nil
+	}
+	err := json.Unmarshal([]byte(settingStr), &setting)
+	return setting, err
+}
+
+// InitOriginalSetting will update the original setting based on the workload object
+// note: update the maxSurge and maxUnavailable only when MaxSurge and MaxUnavailable are nil,
+// which means they should keep unchanged in continuous release (though continuous release isn't supported for now)
+func InitOriginalSetting(setting *OriginalDeploymentStrategy, object client.Object) {
+	var changeLogs []string
+	switch o := object.(type) {
+	case *apps.Deployment:
+		if setting.MaxSurge == nil {
+			setting.MaxSurge = getMaxSurgeFromDeployment(o.Spec.Strategy.RollingUpdate)
+			changeLogs = append(changeLogs, fmt.Sprintf("maxSurge changed from nil to %s", setting.MaxSurge.String()))
+		}
+		if setting.MaxUnavailable == nil {
+			setting.MaxUnavailable = getMaxUnavailableFromDeployment(o.Spec.Strategy.RollingUpdate)
+			changeLogs = append(changeLogs, fmt.Sprintf("maxUnavailable changed from nil to %s", setting.MaxUnavailable.String()))
+		}
+		if setting.ProgressDeadlineSeconds == nil {
+			setting.ProgressDeadlineSeconds = getIntPtrOrDefault(o.Spec.ProgressDeadlineSeconds, 600)
+			changeLogs = append(changeLogs, fmt.Sprintf("progressDeadlineSeconds changed from nil to %d", *setting.ProgressDeadlineSeconds))
+		}
+		if setting.MinReadySeconds == 0 {
+			setting.MinReadySeconds = o.Spec.MinReadySeconds
+			changeLogs = append(changeLogs, fmt.Sprintf("minReadySeconds changed from 0 to %d", setting.MinReadySeconds))
+		}
+	case *appsv1alpha1.CloneSet:
+		if setting.MaxSurge == nil {
+			setting.MaxSurge = getMaxSurgeFromCloneset(o.Spec.UpdateStrategy)
+			changeLogs = append(changeLogs, fmt.Sprintf("maxSurge changed from nil to %s", setting.MaxSurge.String()))
+		}
+		if setting.MaxUnavailable == nil {
+			setting.MaxUnavailable = getMaxUnavailableFromCloneset(o.Spec.UpdateStrategy)
+			changeLogs = append(changeLogs, fmt.Sprintf("maxUnavailable changed from nil to %s", setting.MaxUnavailable.String()))
+		}
+		if setting.ProgressDeadlineSeconds == nil {
+			// cloneset is planned to support progressDeadlineSeconds field
+		}
+		if setting.MinReadySeconds == 0 {
+			setting.MinReadySeconds = o.Spec.MinReadySeconds
+			changeLogs = append(changeLogs, fmt.Sprintf("minReadySeconds changed from 0 to %d", setting.MinReadySeconds))
+		}
+	default:
+		panic(fmt.Errorf("unsupported object type %T", o))
+	}
+	if len(changeLogs) == 0 {
+		klog.InfoS("InitOriginalSetting: original setting unchanged", "object", object.GetName())
+		return
+	}
+	klog.InfoS("InitOriginalSetting: original setting updated", "object", object.GetName(), "changes", strings.Join(changeLogs, ";"))
+}
+
+func getMaxSurgeFromDeployment(ru *apps.RollingUpdateDeployment) *intstr.IntOrString {
+	defaultMaxSurge := intstr.FromString("25%")
+	if ru == nil || ru.MaxSurge == nil {
+		return &defaultMaxSurge
+	}
+	return ru.MaxSurge
+}
+func getMaxUnavailableFromDeployment(ru *apps.RollingUpdateDeployment) *intstr.IntOrString {
+	defaultMaxAnavailale := intstr.FromString("25%")
+	if ru == nil || ru.MaxUnavailable == nil {
+		return &defaultMaxAnavailale
+	}
+	return ru.MaxUnavailable
+}
+
+func getMaxSurgeFromCloneset(us appsv1alpha1.CloneSetUpdateStrategy) *intstr.IntOrString {
+	defaultMaxSurge := intstr.FromString("0%")
+	if us.MaxSurge == nil {
+		return &defaultMaxSurge
+	}
+	return us.MaxSurge
+}
+func getMaxUnavailableFromCloneset(us appsv1alpha1.CloneSetUpdateStrategy) *intstr.IntOrString {
+	defaultMaxUnavailable := intstr.FromString("20%")
+	if us.MaxUnavailable == nil {
+		return &defaultMaxUnavailable
+	}
+	return us.MaxUnavailable
+}
+
+func getIntPtrOrDefault(ptr *int32, defaultVal int32) *int32 {
+	if ptr == nil {
+		return &defaultVal
+	}
+	return ptr
 }

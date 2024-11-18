@@ -61,6 +61,9 @@ type BatchContext struct {
 	Pods []*corev1.Pod `json:"-"`
 	// filter or sort pods before patch label
 	FilterFunc FilterFuncType `json:"-"`
+	// the next two fields are only used for bluegreen style
+	CurrentSurge intstr.IntOrString `json:"currentSurge,omitempty"`
+	DesiredSurge intstr.IntOrString `json:"desiredSurge,omitempty"`
 }
 
 type FilterFuncType func(pods []*corev1.Pod, ctx *BatchContext) []*corev1.Pod

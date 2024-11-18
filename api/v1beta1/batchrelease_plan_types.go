@@ -117,6 +117,8 @@ type BatchReleaseStatus struct {
 	// Phase is the release plan phase, which indicates the current state of release
 	// plan state machine in BatchRelease controller.
 	Phase RolloutPhase `json:"phase,omitempty"`
+	// Message provides details on why the rollout is in its current phase
+	Message string `json:"message,omitempty"`
 }
 
 type BatchReleaseCanaryStatus struct {

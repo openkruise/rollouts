@@ -172,7 +172,9 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 		srcV1beta1 := src.(*v1beta1.Rollout)
 		dst.ObjectMeta = srcV1beta1.ObjectMeta
 		if !srcV1beta1.Spec.Strategy.IsCanaryStragegy() {
-			return fmt.Errorf("v1beta1 Rollout with %s strategy cannot be converted to v1alpha1", srcV1beta1.Spec.Strategy.GetRollingStyle())
+			// only v1beta1 supports bluegreen strategy
+			// Don't log the message because it will print too often
+			return nil
 		}
 		// spec
 		dst.Spec = RolloutSpec{
