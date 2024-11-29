@@ -21,13 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
-	custom "github.com/openkruise/rollouts/pkg/trafficrouting/network/customNetworkProvider"
-	"github.com/openkruise/rollouts/pkg/trafficrouting/network/gateway"
-	"github.com/openkruise/rollouts/pkg/trafficrouting/network/ingress"
-	"github.com/openkruise/rollouts/pkg/util"
-	"github.com/openkruise/rollouts/pkg/util/grace"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,6 +29,16 @@ import (
 	"k8s.io/utils/integer"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/feature"
+	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
+	custom "github.com/openkruise/rollouts/pkg/trafficrouting/network/customNetworkProvider"
+	"github.com/openkruise/rollouts/pkg/trafficrouting/network/gateway"
+	"github.com/openkruise/rollouts/pkg/trafficrouting/network/ingress"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
+	"github.com/openkruise/rollouts/pkg/util/grace"
 )
 
 var (
@@ -448,10 +451,13 @@ func (m *Manager) createCanaryService(c *TrafficRoutingContext, cService string,
 	for i := range canaryService.Spec.Ports {
 		canaryService.Spec.Ports[i].NodePort = 0
 	}
-	for key, val := range c.CanaryServiceSelectorPatch {
-		// TODO: add feature gate to support add more selector
-		if _, ok := canaryService.Spec.Selector[key]; ok {
-			canaryService.Spec.Selector[key] = val
+	if len(c.CanaryServiceSelectorPatch) > 0 {
+		for key, val := range c.CanaryServiceSelectorPatch {
+			if _, ok := canaryService.Spec.Selector[key]; ok {
+				canaryService.Spec.Selector[key] = val
+			} else if utilfeature.DefaultFeatureGate.Enabled(feature.AppendServiceSelectorGate) {
+				canaryService.Spec.Selector[key] = val
+			}
 		}
 	}
 	err := m.Create(context.TODO(), canaryService)
