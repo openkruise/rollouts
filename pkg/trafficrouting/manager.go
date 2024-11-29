@@ -44,10 +44,11 @@ var (
 
 type TrafficRoutingContext struct {
 	// only for log info
-	Key       string
-	Namespace string
-	ObjectRef []v1beta1.TrafficRoutingRef
-	Strategy  v1beta1.TrafficRoutingStrategy
+	Key                        string
+	Namespace                  string
+	ObjectRef                  []v1beta1.TrafficRoutingRef
+	Strategy                   v1beta1.TrafficRoutingStrategy
+	CanaryServiceSelectorPatch map[string]string
 	// OnlyTrafficRouting
 	OnlyTrafficRouting bool
 	OwnerRef           metav1.OwnerReference
@@ -446,6 +447,12 @@ func (m *Manager) createCanaryService(c *TrafficRoutingContext, cService string,
 	// avoid port conflicts for NodePort-type service
 	for i := range canaryService.Spec.Ports {
 		canaryService.Spec.Ports[i].NodePort = 0
+	}
+	for key, val := range c.CanaryServiceSelectorPatch {
+		// TODO: add feature gate to support add more selector
+		if _, ok := canaryService.Spec.Selector[key]; ok {
+			canaryService.Spec.Selector[key] = val
+		}
 	}
 	err := m.Create(context.TODO(), canaryService)
 	if err != nil && !errors.IsAlreadyExists(err) {
