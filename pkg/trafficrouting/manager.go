@@ -451,13 +451,11 @@ func (m *Manager) createCanaryService(c *TrafficRoutingContext, cService string,
 	for i := range canaryService.Spec.Ports {
 		canaryService.Spec.Ports[i].NodePort = 0
 	}
-	if len(c.CanaryServiceSelectorPatch) > 0 {
-		for key, val := range c.CanaryServiceSelectorPatch {
-			if _, ok := canaryService.Spec.Selector[key]; ok {
-				canaryService.Spec.Selector[key] = val
-			} else if utilfeature.DefaultFeatureGate.Enabled(feature.AppendServiceSelectorGate) {
-				canaryService.Spec.Selector[key] = val
-			}
+	for key, val := range c.CanaryServiceSelectorPatch {
+		if _, ok := canaryService.Spec.Selector[key]; ok {
+			canaryService.Spec.Selector[key] = val
+		} else if utilfeature.DefaultFeatureGate.Enabled(feature.AppendServiceSelectorGate) {
+			canaryService.Spec.Selector[key] = val
 		}
 	}
 	err := m.Create(context.TODO(), canaryService)
