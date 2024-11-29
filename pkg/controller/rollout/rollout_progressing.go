@@ -600,11 +600,16 @@ func newTrafficRoutingContext(c *RolloutContext) *trafficrouting.TrafficRoutingC
 	if c.Workload != nil {
 		revisionLabelKey = c.Workload.RevisionLabelKey
 	}
+	var selectorPatch map[string]string
+	if !c.Rollout.Spec.Strategy.DisableGenerateCanaryService() && c.Rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata != nil {
+		selectorPatch = c.Rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata.Labels
+	}
 	return &trafficrouting.TrafficRoutingContext{
 		Key:                          fmt.Sprintf("Rollout(%s/%s)", c.Rollout.Namespace, c.Rollout.Name),
 		Namespace:                    c.Rollout.Namespace,
 		ObjectRef:                    c.Rollout.Spec.Strategy.GetTrafficRouting(),
 		Strategy:                     currentStep.TrafficRoutingStrategy,
+		CanaryServiceSelectorPatch:   selectorPatch,
 		OwnerRef:                     *metav1.NewControllerRef(c.Rollout, rolloutControllerKind),
 		RevisionLabelKey:             revisionLabelKey,
 		StableRevision:               c.NewStatus.GetSubStatus().StableRevision,
