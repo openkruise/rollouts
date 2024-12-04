@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -388,7 +389,8 @@ func TestRealController(t *testing.T) {
 
 	release := releaseDemo.DeepCopy()
 	clone := deploymentDemo.DeepCopy()
-	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release, clone).Build()
+	stableRs, canaryRs := makeStableReplicaSets(clone), makeCanaryReplicaSets(clone)
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release, clone, stableRs, canaryRs).Build()
 	// build new controller
 	c := NewController(cli, deploymentKey, clone.GroupVersionKind()).(*realController)
 	controller, err := c.BuildController()
@@ -414,6 +416,10 @@ func TestRealController(t *testing.T) {
 		MinReadySeconds:         0,
 		ProgressDeadlineSeconds: pointer.Int32(600),
 	})))
+	// check minReadyseconds field of stable replicaset
+	fetchRS := &apps.ReplicaSet{}
+	Expect(cli.Get(context.TODO(), types.NamespacedName{Name: stableRs.GetName(), Namespace: stableRs.GetNamespace()}, fetchRS)).NotTo(HaveOccurred())
+	Expect(fetchRS.Spec.MinReadySeconds).Should(Equal(int32(v1beta1.MaxReadySeconds)))
 
 	c.object = fetch // mock
 
@@ -469,6 +475,7 @@ func makeCanaryReplicaSets(d client.Object) client.Object {
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(deploy, deploy.GroupVersionKind()),
 			},
+			CreationTimestamp: metav1.Now(),
 		},
 		Spec: apps.ReplicaSetSpec{
 			Replicas: deploy.Spec.Replicas,
@@ -498,6 +505,7 @@ func makeStableReplicaSets(d client.Object) client.Object {
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(deploy, deploy.GroupVersionKind()),
 			},
+			CreationTimestamp: metav1.NewTime(time.Now().Add(-time.Hour)),
 		},
 		Spec: apps.ReplicaSetSpec{
 			Replicas: deploy.Spec.Replicas,

@@ -154,10 +154,6 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		return errors.NewFatalError(fmt.Errorf("cannot get original setting for cloneset %v: %s from annotation", klog.KObj(rc.object), err.Error()))
 	}
 	patchData := patch.NewClonesetPatch()
-	// why we need a simple MinReadySeconds-based status machine? (ie. the if-else block)
-	// It's possible for Finalize to be called multiple times, if error returned is not nil.
-	// if we do all needed operations in a single code block, like, A->B->C, when C need retry,
-	// both A and B will be executed as well, however, operations like restoreHPA cost a lot(which calls LIST API)
 	if rc.object.Spec.MinReadySeconds != setting.MinReadySeconds {
 		// restore the hpa
 		if err := hpa.RestoreHPA(rc.client, rc.object); err != nil {
@@ -170,21 +166,18 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		if err := rc.client.Patch(context.TODO(), c, patchData); err != nil {
 			return err
 		}
-		// we should return an error to trigger re-enqueue, so that we can go to the next if-else branch in the next reconcile
-		return errors.NewBenignError(fmt.Errorf("cloneset bluegreen: we should wait all pods updated and available"))
-	} else {
-		klog.InfoS("Finalize: cloneset bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
-		// wait all pods updated and ready
-		if rc.object.Status.ReadyReplicas != rc.object.Status.UpdatedReadyReplicas {
-			return errors.NewBenignError(fmt.Errorf("cloneset %v finalize not done, readyReplicas %d != updatedReadyReplicas %d, current policy %s",
-				klog.KObj(rc.object), rc.object.Status.ReadyReplicas, rc.object.Status.UpdatedReadyReplicas, release.Spec.ReleasePlan.FinalizingPolicy))
-		}
-		klog.InfoS("Finalize: cloneset bluegreen release: all pods updated and ready")
-		// restore annotation
-		patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
-		patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
-		return rc.client.Patch(context.TODO(), c, patchData)
 	}
+	klog.InfoS("Finalize: cloneset bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
+	// wait all pods updated and ready
+	if rc.object.Status.ReadyReplicas != rc.object.Status.UpdatedReadyReplicas {
+		return errors.NewBenignError(fmt.Errorf("cloneset %v finalize not done, readyReplicas %d != updatedReadyReplicas %d, current policy %s",
+			klog.KObj(rc.object), rc.object.Status.ReadyReplicas, rc.object.Status.UpdatedReadyReplicas, release.Spec.ReleasePlan.FinalizingPolicy))
+	}
+	klog.InfoS("Finalize: cloneset bluegreen release: all pods updated and ready")
+	// restore annotation
+	patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
+	patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
+	return rc.client.Patch(context.TODO(), c, patchData)
 }
 
 func (rc *realController) finalized() bool {

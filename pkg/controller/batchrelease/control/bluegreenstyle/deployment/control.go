@@ -47,12 +47,14 @@ type realController struct {
 	pods   []*corev1.Pod
 	key    types.NamespacedName
 	object *apps.Deployment
+	finder *util.ControllerFinder
 }
 
 func NewController(cli client.Client, key types.NamespacedName, _ schema.GroupVersionKind) bluegreenstyle.Interface {
 	return &realController{
 		key:    key,
 		client: cli,
+		finder: util.NewControllerFinder(cli),
 	}
 }
 
@@ -82,39 +84,29 @@ func (rc *realController) ListOwnedPods() ([]*corev1.Pod, error) {
 	return rc.pods, err
 }
 
-// Add OriginalDeploymentStrategyAnnotation to workload
+// Initialize prepares the Deployment for the BatchRelease process
 func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 	if rc.object == nil || control.IsControlledByBatchRelease(release, rc.object) {
 		return nil
 	}
-	// disable the hpa
+	// Disable the HPA
 	if err := hpa.DisableHPA(rc.client, rc.object); err != nil {
 		return err
 	}
-	klog.InfoS("Initialize: disable hpa for deployment successfully", "deployment", klog.KObj(rc.object))
-	// update the deployment
-	setting, err := control.GetOriginalSetting(rc.object)
-	if err != nil {
-		return errors.NewFatalError(fmt.Errorf("cannot get original setting for cloneset %v: %s from annotation", klog.KObj(rc.object), err.Error()))
-	}
-	control.InitOriginalSetting(&setting, rc.object)
-	klog.InfoS("Initialize deployment", "deployment", klog.KObj(rc.object), "setting", util.DumpJSON(&setting))
+	klog.InfoS("Initialize: disabled HPA for deployment successfully", "deployment", klog.KObj(rc.object))
 
-	patchData := patch.NewDeploymentPatch()
-	patchData.InsertAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation, util.DumpJSON(&setting))
-	patchData.InsertAnnotation(util.BatchReleaseControlAnnotation, util.DumpJSON(metav1.NewControllerRef(
-		release, release.GetObjectKind().GroupVersionKind())))
-	// update: MinReadySeconds, ProgressDeadlineSeconds, MaxSurge, MaxUnavailable
-	patchData.UpdateStrategy(apps.DeploymentStrategy{
-		Type: apps.RollingUpdateDeploymentStrategyType,
-		RollingUpdate: &apps.RollingUpdateDeployment{
-			MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
-			MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
-		},
-	})
-	patchData.UpdateMinReadySeconds(v1beta1.MaxReadySeconds)
-	patchData.UpdateProgressDeadlineSeconds(utilpointer.Int32(v1beta1.MaxProgressSeconds))
-	return rc.client.Patch(context.TODO(), util.GetEmptyObjectWithKey(rc.object), patchData)
+	// Patch minReadySeconds for stable ReplicaSet
+	if err := rc.patchStableRSMinReadySeconds(v1beta1.MaxReadySeconds); err != nil {
+		return err
+	}
+	klog.InfoS("Initialize: patched minReadySeconds for stable replicaset successfully", "deployment", klog.KObj(rc.object))
+
+	// Patch Deplopyment
+	if err := rc.patchDeployment(release); err != nil {
+		return err
+	}
+	klog.InfoS("Initialize: patched deployment successfully", "deployment", klog.KObj(rc.object))
+	return nil
 }
 
 func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
@@ -131,6 +123,7 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	klog.Infof("Ready to upgrade batch for deployment %v: current %d < desired %d", klog.KObj(rc.object), current, desired)
 	patchData := patch.NewDeploymentPatch()
 	// different with canary release, bluegreen don't need to set pause in the process of rollout
+	// because our webhook may pause the Deployment in some situations, we ensure that the Deployment is not paused
 	patchData.UpdatePaused(false)
 	patchData.UpdateStrategy(apps.DeploymentStrategy{
 		Type: apps.RollingUpdateDeploymentStrategyType,
@@ -166,10 +159,6 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		return errors.NewFatalError(fmt.Errorf("cannot get original setting for cloneset %v: %s from annotation", klog.KObj(rc.object), err.Error()))
 	}
 	patchData := patch.NewDeploymentPatch()
-	// why we need a simple MinReadySeconds-based status machine? (ie. the if-else block)
-	// It's possible for Finalize to be called multiple times, if error returned is not nil.
-	// if we do all needed operations in a single code block, like, A->B->C, when C need retry,
-	// both A and B will be executed as well, however, operations like restoreHPA cost a lot(which calls LIST API)
 	if rc.object.Spec.MinReadySeconds != setting.MinReadySeconds {
 		// restore the hpa
 		if err := hpa.RestoreHPA(rc.client, rc.object); err != nil {
@@ -184,21 +173,18 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		if err := rc.client.Patch(context.TODO(), d, patchData); err != nil {
 			return err
 		}
-		// we should return an error to trigger re-enqueue, so that we can go to the next if-else branch in the next reconcile
-		return errors.NewBenignError(fmt.Errorf("deployment bluegreen: we should wait all pods updated and available"))
-	} else {
-		klog.InfoS("Finalize: deployment bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
-		// wait all pods updated and ready
-		if err := waitAllUpdatedAndReady(d.(*apps.Deployment)); err != nil {
-			return errors.NewBenignError(err)
-		}
-		klog.InfoS("Finalize: deployment is ready to resume, restore the original setting", "deployment", klog.KObj(rc.object))
-		// restore label and annotation
-		patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
-		patchData.DeleteLabel(v1alpha1.DeploymentStableRevisionLabel)
-		patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
-		return rc.client.Patch(context.TODO(), d, patchData)
 	}
+	klog.InfoS("Finalize: deployment bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
+	// wait all pods updated and ready
+	if err := waitAllUpdatedAndReady(d.(*apps.Deployment)); err != nil {
+		return errors.NewBenignError(err)
+	}
+	klog.InfoS("Finalize: deployment is ready to resume, restore the original setting", "deployment", klog.KObj(rc.object))
+	// restore label and annotation
+	patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
+	patchData.DeleteLabel(v1alpha1.DeploymentStableRevisionLabel)
+	patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
+	return rc.client.Patch(context.TODO(), d, patchData)
 }
 
 func (rc *realController) finalized() bool {
@@ -298,6 +284,56 @@ func waitAllUpdatedAndReady(deployment *apps.Deployment) error {
 	allowedUnavailable := util.DeploymentMaxUnavailable(deployment)
 	if allowedUnavailable+availableReplicas < deployment.Status.Replicas {
 		return fmt.Errorf("ready replicas should satisfy maxUnavailable")
+	}
+	return nil
+}
+
+// Patch minReadySeconds for stable ReplicaSet
+/*
+	Here is why:
+	For rollback scenario, we should set the stable rs minReadySeconds to infinity to make pods of the stable rs unavailable,
+	otherwise Pods in new version would be terminated immediately when rollback happens.
+	we want to keep them until traffic is switched to the stable version
+*/
+func (rc *realController) patchStableRSMinReadySeconds(seconds int32) error {
+	if stableRS, err := rc.finder.GetDeploymentStableRs(rc.object); err != nil {
+		return fmt.Errorf("failed to get stable ReplicaSet: %v", err)
+	} else if stableRS == nil {
+		klog.Warningf("No stable ReplicaSet found for deployment %s/%s", rc.object.Namespace, rc.object.Name)
+	} else {
+		body := fmt.Sprintf(`{"spec":{"minReadySeconds":%v}}`, seconds)
+		if err = rc.client.Patch(context.TODO(), stableRS, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
+			return fmt.Errorf("failed to patch ReplicaSet %s/%s minReadySeconds to %v: %v", stableRS.Namespace, stableRS.Name, v1beta1.MaxReadySeconds, err)
+		}
+	}
+	return nil
+}
+
+// Update deployment strategy: MinReadySeconds, ProgressDeadlineSeconds, MaxSurge, MaxUnavailable
+func (rc *realController) patchDeployment(release *v1beta1.BatchRelease) error {
+	setting, err := control.GetOriginalSetting(rc.object)
+	if err != nil {
+		return errors.NewFatalError(fmt.Errorf("cannot get original setting for deployment %v: %s", klog.KObj(rc.object), err.Error()))
+	}
+	control.InitOriginalSetting(&setting, rc.object)
+	patchData := patch.NewDeploymentPatch()
+	patchData.InsertAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation, util.DumpJSON(&setting))
+	patchData.InsertAnnotation(util.BatchReleaseControlAnnotation, util.DumpJSON(metav1.NewControllerRef(
+		release, release.GetObjectKind().GroupVersionKind())))
+
+	patchData.UpdateStrategy(apps.DeploymentStrategy{
+		Type: apps.RollingUpdateDeploymentStrategyType,
+		RollingUpdate: &apps.RollingUpdateDeployment{
+			MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+			MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
+		},
+	})
+	patchData.UpdateMinReadySeconds(v1beta1.MaxReadySeconds)
+	patchData.UpdateProgressDeadlineSeconds(utilpointer.Int32(v1beta1.MaxProgressSeconds))
+
+	// Apply the patch to the Deployment
+	if err := rc.client.Patch(context.TODO(), util.GetEmptyObjectWithKey(rc.object), patchData); err != nil {
+		return fmt.Errorf("failed to patch deployment %v: %v", klog.KObj(rc.object), err)
 	}
 	return nil
 }
