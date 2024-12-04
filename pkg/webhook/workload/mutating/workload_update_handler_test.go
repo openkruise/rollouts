@@ -130,6 +130,51 @@ var (
 		},
 	}
 
+	rsDemoV2 = &apps.ReplicaSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "ReplicaSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "echoserver-v2",
+			Labels: map[string]string{
+				"app":               "echoserver",
+				"pod-template-hash": "verision2",
+			},
+			Annotations: map[string]string{},
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(deploymentDemo, schema.GroupVersionKind{
+					Group:   apps.SchemeGroupVersion.Group,
+					Version: apps.SchemeGroupVersion.Version,
+					Kind:    "Deployment",
+				}),
+			},
+		},
+		Spec: apps.ReplicaSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "echoserver",
+				},
+			},
+			Replicas: pointer.Int32(5),
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "echoserver",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "echoserver",
+							Image: "echoserver:v2",
+						},
+					},
+				},
+			},
+		},
+	}
+
 	cloneSetDemo = &kruisev1aplphal.CloneSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps.kruise.io/v1alpha1",
@@ -519,6 +564,100 @@ func TestHandlerDeployment(t *testing.T) {
 				return obj
 			},
 		},
+		{
+			name: "bluegreen: normal release",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.Paused = true
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.BlueGreen = &appsv1beta1.BlueGreenStrategy{}
+				return obj
+			},
+			isError: false,
+		},
+		{
+			name: "bluegreen: rollback",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				oldObj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				oldObj.Labels[appsv1alpha1.DeploymentStableRevisionLabel] = "5b494f7bf"
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				newObj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v1"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v1"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				obj.Spec.Paused = true
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				rs2 := rsDemoV2.DeepCopy()
+				return []*apps.ReplicaSet{rs, rs2}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.BlueGreen = &appsv1beta1.BlueGreenStrategy{}
+				return obj
+			},
+			isError: false,
+		},
+		{
+			name: "bluegreen: successive release",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				oldObj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				oldObj.Labels[appsv1alpha1.DeploymentStableRevisionLabel] = "5b494f7bf"
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				newObj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				obj.Spec.Paused = true
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				rs2 := rsDemoV2.DeepCopy()
+				return []*apps.ReplicaSet{rs, rs2}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.BlueGreen = &appsv1beta1.BlueGreenStrategy{}
+				return obj
+			},
+			isError: false,
+		},
 	}
 
 	decoder, _ := admission.NewDecoder(scheme)
@@ -542,8 +681,11 @@ func TestHandlerDeployment(t *testing.T) {
 
 			oldObj, newObj := cs.getObjs()
 			_, err := h.handleDeployment(newObj, oldObj)
-			if cs.isError && err == nil {
-				t.Fatal("handlerDeployment failed")
+			if cs.isError {
+				if err == nil {
+					t.Fatal("handlerDeployment failed")
+				}
+				return //no need to check again
 			} else if !cs.isError && err != nil {
 				t.Fatalf(err.Error())
 			}

@@ -25,6 +25,7 @@ import (
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilerrors "github.com/openkruise/rollouts/pkg/util/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -110,7 +111,12 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 	case v1alpha1.ProgressingReasonInRolling:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		err = r.doProgressingInRolling(rolloutContext)
-		if err != nil {
+		if utilerrors.IsFatal(err) {
+			// For fatal errors, do not retry as it wastes resources and has no effect.
+			// therefore, we don't propagate the error, but just log it.
+			// user should do sth instead, eg. for bluegreen continuous release scenario, user should do rollback
+			klog.Warningf("rollout(%s/%s) doProgressingInRolling error(%s)", rollout.Namespace, rollout.Name, err.Error())
+		} else if err != nil {
 			return nil, err
 		}
 
@@ -229,6 +235,14 @@ func (r *RolloutReconciler) handleContinuousRelease(c *RolloutContext) error {
 	r.Recorder.Eventf(c.Rollout, corev1.EventTypeNormal, "Progressing", "workload continuous publishing canaryRevision, then restart publishing")
 	klog.Infof("rollout(%s/%s) workload continuous publishing canaryRevision from(%s) -> to(%s), then restart publishing",
 		c.Rollout.Namespace, c.Rollout.Name, c.NewStatus.GetCanaryRevision(), c.Workload.CanaryRevision)
+
+	// do nothing for blue-green release
+	if c.Rollout.Spec.Strategy.IsBlueGreenRelease() {
+		cond := util.GetRolloutCondition(*c.NewStatus, v1beta1.RolloutConditionProgressing)
+		cond.Message = "[warning] new version released in progress of blue-green release, please rollback first"
+		c.NewStatus.Message = cond.Message
+		return utilerrors.NewFatalError(fmt.Errorf("cannot do continuous release for blue-green release, rollback firstly"))
+	}
 
 	done, err := r.doProgressingReset(c)
 	if err != nil {

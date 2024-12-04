@@ -153,12 +153,7 @@ func (d *delegatingReader) List(ctx context.Context, list client.ObjectList, opt
 	return d.CacheReader.List(ctx, list, opts...)
 }
 
-var DisableDeepCopy = disableDeepCopy{}
-
-type disableDeepCopy struct{}
-
-func (_ disableDeepCopy) ApplyToList(_ *client.ListOptions) {
-}
+var DisableDeepCopy = client.UnsafeDisableDeepCopy
 
 func isDisableDeepCopy(opts []client.ListOption) bool {
 	for _, opt := range opts {

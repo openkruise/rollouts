@@ -128,7 +128,7 @@ func prepareToWrite(dir string) error {
 		// TODO: figure out if we can reduce the permission. (Now it's 0777)
 		err = os.MkdirAll(dir, 0777)
 		if err != nil {
-			return fmt.Errorf("can't create dir: %v", dir)
+			return fmt.Errorf("can't create dir: %v, err: %s", dir, err.Error())
 		}
 	case err != nil:
 		return err

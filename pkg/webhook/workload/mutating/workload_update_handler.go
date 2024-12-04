@@ -263,13 +263,13 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	// in rollout progressing
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
 		modified := false
-		if !newObj.Spec.Paused {
-			modified = true
-			newObj.Spec.Paused = true
-		}
 		strategy := util.GetDeploymentStrategy(newObj)
-		switch strings.ToLower(string(strategy.RollingStyle)) {
-		case strings.ToLower(string(appsv1alpha1.PartitionRollingStyle)):
+		// partition
+		if strings.EqualFold(string(strategy.RollingStyle), string(appsv1alpha1.PartitionRollingStyle)) {
+			if !newObj.Spec.Paused {
+				modified = true
+				newObj.Spec.Paused = true
+			}
 			// Make sure it is always Recreate to disable native controller
 			if newObj.Spec.Strategy.Type == apps.RollingUpdateDeploymentStrategyType {
 				modified = true
@@ -287,7 +287,24 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 			}
 			appsv1alpha1.SetDefaultDeploymentStrategy(&strategy)
 			setDeploymentStrategyAnnotation(strategy, newObj)
-		default:
+			// bluegreenStyle
+		} else if len(newObj.GetAnnotations()[appsv1beta1.OriginalDeploymentStrategyAnnotation]) > 0 {
+			if isEffectiveDeploymentRevisionChange(oldObj, newObj) {
+				newObj.Spec.Paused, modified = true, true
+				// disallow continuous release, allow rollback
+				klog.Warningf("rollback or continuous release detected in Deployment webhook, while only rollback is allowed for bluegreen release for now")
+			}
+			// not allow to modify Strategy.Type to Recreate
+			if newObj.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
+				modified = true
+				newObj.Spec.Strategy.Type = oldObj.Spec.Strategy.Type
+				klog.Warningf("Not allow to modify Strategy.Type to Recreate")
+			}
+		} else { // default
+			if !newObj.Spec.Paused {
+				modified = true
+				newObj.Spec.Paused = true
+			}
 			// Do not allow to modify strategy as Recreate during rolling
 			if newObj.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
 				modified = true
@@ -369,6 +386,22 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
 		return false, nil
 	}
+	/*
+		continuous release (or successive release) is not supported for bluegreen release, especially for cloneset,
+		here is why:
+		suppose we are releasing a cloneset, which has pods of both v1 and v2 for now. If we release v3 before
+		v2 release is done, the cloneset controller might scale down pods without distinguishing between v1 and v2.
+		This is because our implementation is based on the minReadySeconds, pods of both v1 and v2 are "unavailable"
+		in the progress of rollout.
+		Deployment actually has the same problem, however it is possible to bypass this issue for Deployment by setting
+		minReadySeconds for replicaset separately; unfortunately this workaround seems not work for cloneset
+
+		// if rollout.Spec.Strategy.IsBlueGreenRelease() && revision.IsContinuousRelease(h.Client, oldObj, newObj) {
+		// 	err = fmt.Errorf("successive release is not supported for bluegreen for now, rollback first")
+		// 	return false, fmt.Errorf(err.Error())
+		// }
+	*/
+
 	// if traffic routing, there must only be one version of Pods
 	if rollout.Spec.Strategy.HasTrafficRoutings() && newObj.Status.Replicas != newObj.Status.UpdatedReplicas {
 		klog.Warningf("Because cloneSet(%s/%s) have multiple versions of Pods, so can not enter rollout progressing", newObj.Namespace, newObj.Name)
