@@ -4,17 +4,15 @@ metadata:
   name: rollouts-demo
 spec:
   workloadRef:
-    apiVersion: apps/v1
-    kind: Deployment
+    apiVersion: apps.kruise.io/v1alpha1
+    kind: CloneSet
     name: echoserver
   strategy:
     blueGreen:
       steps:
-      - replicas: 50%
-        traffic: 0%
-        pause: {}
       - replicas: 100%
         traffic: 0%
+        pause: {}
       - replicas: 100%
         traffic: 50%
       - replicas: 100%
