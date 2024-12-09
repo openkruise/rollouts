@@ -28,11 +28,14 @@ const (
 	RolloutHistoryGate featuregate.Feature = "RolloutHistory"
 	// AdvancedDeploymentGate enable advanced deployment controller.
 	AdvancedDeploymentGate featuregate.Feature = "AdvancedDeployment"
+	// AppendServiceSelectorGate enable appending pod labels from PodTemplateMetadata to the canary service selector.
+	AppendServiceSelectorGate featuregate.Feature = "AppendPodSelector"
 )
 
 var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	RolloutHistoryGate:     {Default: false, PreRelease: featuregate.Alpha},
-	AdvancedDeploymentGate: {Default: false, PreRelease: featuregate.Alpha},
+	RolloutHistoryGate:        {Default: false, PreRelease: featuregate.Alpha},
+	AdvancedDeploymentGate:    {Default: false, PreRelease: featuregate.Alpha},
+	AppendServiceSelectorGate: {Default: false, PreRelease: featuregate.Alpha},
 }
 
 func init() {
