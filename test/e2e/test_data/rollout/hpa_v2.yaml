@@ -1,0 +1,24 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-dp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: echoserver
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 10
+    #   selectPolicy: Disabled
+    # scaleUp:
+    #   selectPolicy: Disabled
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: AverageValue
+        averageValue: '1m'
