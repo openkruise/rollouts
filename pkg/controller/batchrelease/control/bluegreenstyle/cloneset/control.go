@@ -94,7 +94,7 @@ func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 	// patch the cloneset
 	setting, err := control.GetOriginalSetting(rc.object)
 	if err != nil {
-		return errors.NewFatalError(fmt.Errorf("cannot get original setting for cloneset %v: %s from annotation", klog.KObj(rc.object), err.Error()))
+		return errors.NewBadRequestError(fmt.Errorf("cannot get original setting for cloneset %v: %s from annotation", klog.KObj(rc.object), err.Error()))
 	}
 	control.InitOriginalSetting(&setting, rc.object)
 	patchData := patch.NewClonesetPatch()
@@ -115,7 +115,7 @@ func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 
 func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	if err := control.ValidateReadyForBlueGreenRelease(rc.object); err != nil {
-		return errors.NewFatalError(fmt.Errorf("cannot upgrade batch, because cloneset %v doesn't satisfy conditions: %s", klog.KObj(rc.object), err.Error()))
+		return errors.NewBadRequestError(fmt.Errorf("cannot upgrade batch, because cloneset %v doesn't satisfy conditions: %s", klog.KObj(rc.object), err.Error()))
 	}
 	desired, _ := intstr.GetScaledValueFromIntOrPercent(&ctx.DesiredSurge, int(ctx.Replicas), true)
 	current, _ := intstr.GetScaledValueFromIntOrPercent(&ctx.CurrentSurge, int(ctx.Replicas), true)
@@ -133,10 +133,6 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 }
 
 func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
-	if rc.finalized() {
-		return nil // No need to finalize again
-	}
-
 	if release.Spec.ReleasePlan.BatchPartition != nil {
 		// continuous release (not supported yet)
 		/*
@@ -148,39 +144,37 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		return nil
 	}
 
-	c := util.GetEmptyObjectWithKey(rc.object)
-	setting, err := control.GetOriginalSetting(rc.object)
-	if err != nil {
-		return errors.NewFatalError(fmt.Errorf("cannot get original setting for cloneset %v: %s from annotation", klog.KObj(rc.object), err.Error()))
-	}
-	patchData := patch.NewClonesetPatch()
-	if rc.object.Spec.MinReadySeconds != setting.MinReadySeconds {
-		// restore the hpa
-		if err := hpa.RestoreHPA(rc.client, rc.object); err != nil {
+	// restore the original setting and remove annotation
+	if !rc.restored() {
+		c := util.GetEmptyObjectWithKey(rc.object)
+		setting, err := control.GetOriginalSetting(rc.object)
+		if err != nil {
 			return err
 		}
-		// restore the original setting
+		patchData := patch.NewClonesetPatch()
 		patchData.UpdateMinReadySeconds(setting.MinReadySeconds)
 		patchData.UpdateMaxSurge(setting.MaxSurge)
 		patchData.UpdateMaxUnavailable(setting.MaxUnavailable)
+		patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
+		patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
 		if err := rc.client.Patch(context.TODO(), c, patchData); err != nil {
 			return err
 		}
+		klog.InfoS("Finalize: cloneset bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
 	}
-	klog.InfoS("Finalize: cloneset bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
+
 	// wait all pods updated and ready
 	if rc.object.Status.ReadyReplicas != rc.object.Status.UpdatedReadyReplicas {
-		return errors.NewBenignError(fmt.Errorf("cloneset %v finalize not done, readyReplicas %d != updatedReadyReplicas %d, current policy %s",
+		return errors.NewRetryError(fmt.Errorf("cloneset %v finalize not done, readyReplicas %d != updatedReadyReplicas %d, current policy %s",
 			klog.KObj(rc.object), rc.object.Status.ReadyReplicas, rc.object.Status.UpdatedReadyReplicas, release.Spec.ReleasePlan.FinalizingPolicy))
 	}
 	klog.InfoS("Finalize: cloneset bluegreen release: all pods updated and ready")
-	// restore annotation
-	patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
-	patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
-	return rc.client.Patch(context.TODO(), c, patchData)
+
+	// restore the hpa
+	return hpa.RestoreHPA(rc.client, rc.object)
 }
 
-func (rc *realController) finalized() bool {
+func (rc *realController) restored() bool {
 	if rc.object == nil || rc.object.DeletionTimestamp != nil {
 		return true
 	}

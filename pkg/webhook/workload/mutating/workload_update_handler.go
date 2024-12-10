@@ -189,74 +189,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 		}
 	}
 
-	// handle other workload types, including native/advanced statefulset
-	{
-		newObj := &unstructured.Unstructured{}
-		newObj.SetGroupVersionKind(schema.GroupVersionKind{Group: req.Kind.Group, Version: req.Kind.Version, Kind: req.Kind.Kind})
-		if err := h.Decoder.Decode(req, newObj); err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		if !util.IsWorkloadType(newObj, util.StatefulSetType) && req.Kind.Kind != util.ControllerKindSts.Kind {
-			return admission.Allowed("")
-		}
-		oldObj := &unstructured.Unstructured{}
-		oldObj.SetGroupVersionKind(schema.GroupVersionKind{Group: req.Kind.Group, Version: req.Kind.Version, Kind: req.Kind.Kind})
-		if err := h.Decoder.Decode(
-			admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
-			oldObj); err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		changed, err := h.handleStatefulSetLikeWorkload(newObj, oldObj)
-		if err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		if !changed {
-			return admission.Allowed("")
-		}
-		marshalled, err := json.Marshal(newObj.Object)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError, err)
-		}
-		return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
-	}
-}
-
-func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstructured.Unstructured) (bool, error) {
-	// indicate whether the workload can enter the rollout process
-	// 1. replicas > 0
-	if util.GetReplicas(newObj) == 0 || !util.IsStatefulSetRollingUpdate(newObj) {
-		return false, nil
-	}
-	oldTemplate, newTemplate := util.GetTemplate(oldObj), util.GetTemplate(newObj)
-	if oldTemplate == nil || newTemplate == nil {
-		return false, nil
-	}
-	oldMetadata, newMetadata := util.GetMetadata(oldObj), util.GetMetadata(newObj)
-	if newMetadata.Annotations[appsv1beta1.RolloutIDLabel] != "" &&
-		oldMetadata.Annotations[appsv1beta1.RolloutIDLabel] == newMetadata.Annotations[appsv1beta1.RolloutIDLabel] {
-		return false, nil
-	} else if newMetadata.Annotations[appsv1beta1.RolloutIDLabel] == "" && util.EqualIgnoreHash(oldTemplate, newTemplate) {
-		return false, nil
-	}
-
-	rollout, err := h.fetchMatchedRollout(newObj)
-	if err != nil {
-		return false, err
-	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
-		return false, nil
-	}
-
-	util.SetStatefulSetPartition(newObj, math.MaxInt16)
-	state := &util.RolloutState{RolloutName: rollout.Name}
-	by, _ := json.Marshal(state)
-	annotation := newObj.GetAnnotations()
-	if annotation == nil {
-		annotation = map[string]string{}
-	}
-	annotation[util.InRolloutProgressingAnnotation] = string(by)
-	newObj.SetAnnotations(annotation)
-	klog.Infof("StatefulSet(%s/%s) will be released incrementally based on Rollout(%s)", newMetadata.Namespace, newMetadata.Name, rollout.Name)
-	return true, nil
+	return admission.Allowed("")
 }
 
 func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (bool, error) {
@@ -386,21 +319,6 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
 		return false, nil
 	}
-	/*
-		continuous release (or successive release) is not supported for bluegreen release, especially for cloneset,
-		here is why:
-		suppose we are releasing a cloneset, which has pods of both v1 and v2 for now. If we release v3 before
-		v2 release is done, the cloneset controller might scale down pods without distinguishing between v1 and v2.
-		This is because our implementation is based on the minReadySeconds, pods of both v1 and v2 are "unavailable"
-		in the progress of rollout.
-		Deployment actually has the same problem, however it is possible to bypass this issue for Deployment by setting
-		minReadySeconds for replicaset separately; unfortunately this workaround seems not work for cloneset
-
-		// if rollout.Spec.Strategy.IsBlueGreenRelease() && revision.IsContinuousRelease(h.Client, oldObj, newObj) {
-		// 	err = fmt.Errorf("successive release is not supported for bluegreen for now, rollback first")
-		// 	return false, fmt.Errorf(err.Error())
-		// }
-	*/
 
 	// if traffic routing, there must only be one version of Pods
 	if rollout.Spec.Strategy.HasTrafficRoutings() && newObj.Status.Replicas != newObj.Status.UpdatedReplicas {

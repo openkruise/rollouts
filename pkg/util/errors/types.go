@@ -5,66 +5,65 @@ import (
 	"fmt"
 )
 
-// BenignError represents a benign error that can be handled or ignored by the caller.
+// RetryError represents a benign error that can be handled or ignored by the caller.
 // It encapsulates information that is non-critical and does not require immediate attention.
-type BenignError struct {
+type RetryError struct {
 	Err error
 }
 
-// Error implements the error interface for BenignError.
+// Error implements the error interface for RetryError.
 // It returns the error message of the encapsulated error or a default message.
-func (e *BenignError) Error() string {
+func (e *RetryError) Error() string {
 	if e.Err != nil {
-		return fmt.Sprintf("[benign]: %s", e.Err.Error())
+		return fmt.Sprintf("[retry]: %s", e.Err.Error())
 	}
-	return "benign error"
+	return "retry error"
 }
 
-// NewBenignError creates a new instance of BenignError.
-// If the provided err is nil, it signifies a benign condition without a specific error message.
-func NewBenignError(err error) *BenignError {
-	return &BenignError{Err: err}
+// NewRetryError creates a new instance of RetryError.
+func NewRetryError(err error) *RetryError {
+	return &RetryError{Err: err}
 }
 
-func IsBenign(err error) bool {
-	var benignErr *BenignError
-	return errors.As(err, &benignErr)
+func IsRetryError(err error) bool {
+	var re *RetryError
+	return errors.As(err, &re)
 }
 
-func AsBenign(err error, target **BenignError) bool {
+func AsRetryError(err error, target **RetryError) bool {
 	return errors.As(err, target)
 }
 
-// FatalError represents a fatal error that requires special handling.
+// BadRequestError represents a fatal error that requires special handling.
 // Such errors are critical and may necessitate logging, alerts, or even program termination.
-type FatalError struct {
+type BadRequestError struct {
 	Err error
 }
 
-// Error implements the error interface for FatalError.
+// Error implements the error interface for BadRequestError.
 // It returns the error message of the encapsulated error or a default message.
-func (e *FatalError) Error() string {
+func (e *BadRequestError) Error() string {
 	if e.Err != nil {
 		return e.Err.Error()
 	}
 	return "fatal error"
 }
 
-// NewFatalError creates a new instance of FatalError.
+// NewBadRequestError creates a new instance of BadRequestError.
 // It encapsulates the provided error, marking it as critical.
-func NewFatalError(err error) *FatalError {
-	return &FatalError{Err: err}
+func NewBadRequestError(err error) *BadRequestError {
+	return &BadRequestError{Err: err}
 }
 
-// IsFatal checks whether the provided error is of type FatalError.
-// It returns true if the error is a FatalError or wraps a FatalError, false otherwise.
-func IsFatal(err error) bool {
-	var fatalErr *FatalError
-	return AsFatal(err, &fatalErr)
+// IsBadRequest checks whether the provided error is of type BadRequestError.
+// It returns true if the error is a BadRequestError or wraps a BadRequestError, false otherwise.
+func IsBadRequest(err error) bool {
+	var brErr *BadRequestError
+	return AsBadRequest(err, &brErr)
 }
 
-// AsFatal attempts to cast the provided error to a FatalError.
+// AsBadRequest attempts to cast the provided error to a BadRequestError.
 // It returns true if the casting is successful, allowing the caller to handle it accordingly.
-func AsFatal(err error, target **FatalError) bool {
+func AsBadRequest(err error, target **BadRequestError) bool {
 	return errors.As(err, target)
 }

@@ -35,6 +35,7 @@ import (
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/errors"
 	apps "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -107,7 +108,7 @@ var (
 			UpdatedReplicas:    0,
 			ReadyReplicas:      10,
 			AvailableReplicas:  10,
-			CollisionCount:     pointer.Int32Ptr(1),
+			CollisionCount:     pointer.Int32(1),
 			ObservedGeneration: 1,
 		},
 	}
@@ -128,7 +129,7 @@ var (
 			},
 		},
 		Spec: apps.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(10),
+			Replicas: pointer.Int32(10),
 			Strategy: apps.DeploymentStrategy{
 				Type: apps.RollingUpdateDeploymentStrategyType,
 				RollingUpdate: &apps.RollingUpdateDeployment{
@@ -192,13 +193,182 @@ var (
 			},
 		},
 	}
+
+	hpaDemo = &autoscalingv1.HorizontalPodAutoscaler{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "autoscaling/v1",
+			Kind:       "HorizontalPodAutoscaler",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "hpa",
+			Namespace: deploymentKey.Namespace,
+		},
+		Spec: autoscalingv1.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv1.CrossVersionObjectReference{
+				APIVersion: apps.SchemeGroupVersion.String(),
+				Kind:       "Deployment",
+				Name:       deploymentDemo.Name,
+			},
+			MinReplicas: pointer.Int32(1),
+			MaxReplicas: 10,
+		},
+	}
 )
 
 func init() {
 	apps.AddToScheme(scheme)
 	rolloutapi.AddToScheme(scheme)
 	kruiseappsv1alpha1.AddToScheme(scheme)
+	autoscalingv1.AddToScheme(scheme)
 }
+
+func TestControlPackage(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Deployment Control Package Suite")
+}
+
+var _ = Describe("Deployment Control", func() {
+	var (
+		c          client.Client
+		rc         *realController
+		deployment *apps.Deployment
+		release    *v1beta1.BatchRelease
+		hpa        *autoscalingv1.HorizontalPodAutoscaler
+		stableRS   *apps.ReplicaSet
+		canaryRS   *apps.ReplicaSet
+	)
+
+	BeforeEach(func() {
+		deployment = deploymentDemo.DeepCopy()
+		release = releaseDemo.DeepCopy()
+		hpa = hpaDemo.DeepCopy()
+
+		deployment = getStableWithReady(deployment, "v1").(*apps.Deployment)
+		stableRS = makeStableReplicaSets(deployment).(*apps.ReplicaSet)
+		stableRS.Spec.MinReadySeconds = 0
+		stableRS.Status.ReadyReplicas = *deployment.Spec.Replicas
+		stableRS.Status.AvailableReplicas = *deployment.Spec.Replicas
+
+		canaryRS = makeCanaryReplicaSets(deployment).(*apps.ReplicaSet)
+		canaryRS.Status.ReadyReplicas = 0
+		canaryRS.Status.AvailableReplicas = 0
+
+		c = fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(deployment, release, hpa, stableRS, canaryRS).
+			Build()
+		rc = &realController{
+			key:    types.NamespacedName{Namespace: deployment.Namespace, Name: deployment.Name},
+			client: c,
+			finder: util.NewControllerFinder(c),
+		}
+	})
+
+	It("should initialize Deployment successfully", func() {
+		// build controller
+		_, err := rc.BuildController()
+		Expect(err).NotTo(HaveOccurred())
+		// call Initialize method
+		err = retryFunction(3, func() error {
+			return rc.Initialize(release)
+		})
+		Expect(err).NotTo(HaveOccurred())
+		// inspect if HPA is disabled
+		disabledHPA := &autoscalingv1.HorizontalPodAutoscaler{}
+		err = c.Get(context.TODO(), types.NamespacedName{Namespace: hpa.Namespace, Name: hpa.Name}, disabledHPA)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(disabledHPA.Spec.ScaleTargetRef.Name).To(Equal(deployment.Name + "-DisableByRollout"))
+
+		// inspect if MinReadySeconds of stable ReplicaSet is updated
+		stableRSAfter := &apps.ReplicaSet{}
+		err = c.Get(context.TODO(), client.ObjectKeyFromObject(stableRS), stableRSAfter)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(stableRSAfter.Spec.MinReadySeconds).To(Equal(int32(v1beta1.MaxReadySeconds)))
+
+		// inspect if Deployment is patched properly
+		updatedDeployment := &apps.Deployment{}
+		err = c.Get(context.TODO(), client.ObjectKeyFromObject(deployment), updatedDeployment)
+		Expect(err).NotTo(HaveOccurred())
+
+		// inspect if annotations are added
+		Expect(updatedDeployment.Annotations).To(HaveKey(v1beta1.OriginalDeploymentStrategyAnnotation))
+		Expect(updatedDeployment.Annotations).To(HaveKey(util.BatchReleaseControlAnnotation))
+		Expect(updatedDeployment.Annotations[util.BatchReleaseControlAnnotation]).To(Equal(getControlInfo(release)))
+
+		// inspect if strategy is updated
+		Expect(updatedDeployment.Spec.Strategy.RollingUpdate).NotTo(BeNil())
+		Expect(updatedDeployment.Spec.Strategy.RollingUpdate.MaxSurge.IntVal).To(Equal(int32(1)))
+		Expect(updatedDeployment.Spec.Strategy.RollingUpdate.MaxUnavailable.IntVal).To(Equal(int32(0)))
+		Expect(updatedDeployment.Spec.MinReadySeconds).To(Equal(int32(v1beta1.MaxReadySeconds)))
+		Expect(*updatedDeployment.Spec.ProgressDeadlineSeconds).To(Equal(int32(v1beta1.MaxProgressSeconds)))
+	})
+
+	It("should finalize Deployment successfully", func() {
+		// build controller
+		rc.object = nil
+		_, err := rc.BuildController()
+		Expect(err).NotTo(HaveOccurred())
+		// call Finalize method
+		err = retryFunction(3, func() error {
+			return rc.Finalize(release)
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		// inspect if Deployment is patched properly
+		updatedDeployment := &apps.Deployment{}
+		err = c.Get(context.TODO(), client.ObjectKeyFromObject(deployment), updatedDeployment)
+		Expect(err).NotTo(HaveOccurred())
+
+		// inspect if annotations are removed
+		Expect(updatedDeployment.Annotations).NotTo(HaveKey(v1beta1.OriginalDeploymentStrategyAnnotation))
+		Expect(updatedDeployment.Annotations).NotTo(HaveKey(util.BatchReleaseControlAnnotation))
+
+		// inspect if strategy is restored
+		Expect(updatedDeployment.Spec.Strategy.RollingUpdate).NotTo(BeNil())
+		Expect(*updatedDeployment.Spec.Strategy.RollingUpdate.MaxSurge).To(Equal(intstr.IntOrString{Type: intstr.String, StrVal: "20%"}))
+		Expect(*updatedDeployment.Spec.Strategy.RollingUpdate.MaxUnavailable).To(Equal(intstr.IntOrString{Type: intstr.Int, IntVal: 1}))
+		Expect(updatedDeployment.Spec.MinReadySeconds).To(Equal(int32(0)))
+		Expect(updatedDeployment.Spec.ProgressDeadlineSeconds).To(BeNil())
+
+		// inspect if HPA is restored
+		restoredHPA := &autoscalingv1.HorizontalPodAutoscaler{}
+		err = c.Get(context.TODO(), types.NamespacedName{Namespace: hpa.Namespace, Name: hpa.Name}, restoredHPA)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(restoredHPA.Spec.ScaleTargetRef.Name).To(Equal(deployment.Name))
+
+		// inspect if MinReadySeconds of stable ReplicaSet is restored
+		stableRSAfter := &apps.ReplicaSet{}
+		err = c.Get(context.TODO(), client.ObjectKeyFromObject(stableRS), stableRSAfter)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(stableRSAfter.Spec.MinReadySeconds).To(Equal(int32(0)))
+	})
+
+	It("should upgradBatch for Deployment successfully", func() {
+		// call Initialize method
+		_, err := rc.BuildController()
+		Expect(err).NotTo(HaveOccurred())
+		err = retryFunction(3, func() error {
+			return rc.Initialize(release)
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		// call UpgradeBatch method
+		rc.object = nil
+		_, err = rc.BuildController()
+		Expect(err).NotTo(HaveOccurred())
+		batchContext, err := rc.CalculateBatchContext(release)
+		Expect(err).NotTo(HaveOccurred())
+		err = rc.UpgradeBatch(batchContext)
+		Expect(err).NotTo(HaveOccurred())
+		// inspect if Deployment is patched properly
+		updatedDeployment := &apps.Deployment{}
+		err = c.Get(context.TODO(), client.ObjectKeyFromObject(deployment), updatedDeployment)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updatedDeployment.Spec.Paused).To(BeFalse())
+		Expect(*updatedDeployment.Spec.Strategy.RollingUpdate.MaxSurge).To(Equal(intstr.IntOrString{Type: intstr.String, StrVal: "50%"}))
+		Expect(*updatedDeployment.Spec.Strategy.RollingUpdate.MaxUnavailable).To(Equal(intstr.IntOrString{Type: intstr.Int, IntVal: 0}))
+	})
+})
 
 func TestCalculateBatchContext(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -218,7 +388,7 @@ func TestCalculateBatchContext(t *testing.T) {
 				}
 				// current partition, ie. maxSurge
 				deployment.Spec.Strategy.RollingUpdate.MaxSurge = &intstr.IntOrString{Type: intstr.String, StrVal: "50%"}
-				deployment.Spec.Replicas = pointer.Int32Ptr(10)
+				deployment.Spec.Replicas = pointer.Int32(10)
 				newRss := makeCanaryReplicaSets(deployment).(*apps.ReplicaSet)
 				newRss.Status.ReadyReplicas = 2
 				return []client.Object{deployment, newRss, makeStableReplicaSets(deployment)}
@@ -442,7 +612,7 @@ func TestRealController(t *testing.T) {
 
 	release.Spec.ReleasePlan.BatchPartition = nil
 	err = controller.Finalize(release)
-	Expect(errors.IsBenign(err)).Should(BeTrue())
+	Expect(errors.IsRetryError(err)).Should(BeTrue())
 	fetch = &apps.Deployment{}
 	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())
 	// check workload strategy
@@ -546,4 +716,13 @@ func getStableWithReady(workload client.Object, version string) client.Object {
 		return c
 	}
 	return nil
+}
+
+func retryFunction(limit int, f func() error) (err error) {
+	for i := limit; i >= 0; i-- {
+		if err = f(); err == nil {
+			return nil
+		}
+	}
+	return err
 }

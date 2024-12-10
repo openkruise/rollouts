@@ -111,7 +111,7 @@ func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 
 func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	if err := control.ValidateReadyForBlueGreenRelease(rc.object); err != nil {
-		return errors.NewFatalError(fmt.Errorf("cannot upgrade batch, because deployment %v doesn't satisfy conditions: %s", klog.KObj(rc.object), err.Error()))
+		return errors.NewBadRequestError(fmt.Errorf("cannot upgrade batch, because deployment %v doesn't satisfy conditions: %s", klog.KObj(rc.object), err.Error()))
 	}
 	desired, _ := intstr.GetScaledValueFromIntOrPercent(&ctx.DesiredSurge, int(ctx.Replicas), true)
 	current, _ := intstr.GetScaledValueFromIntOrPercent(&ctx.CurrentSurge, int(ctx.Replicas), true)
@@ -137,9 +137,6 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 
 // set pause to false, restore the original setting, delete annotation
 func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
-	if rc.finalized() {
-		return nil // No need to finalize again.
-	}
 	if release.Spec.ReleasePlan.BatchPartition != nil {
 		// continuous release (not supported yet)
 		/*
@@ -153,41 +150,41 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		return nil
 	}
 
+	// restore the original setting and remove annotation
 	d := util.GetEmptyObjectWithKey(rc.object)
-	setting, err := control.GetOriginalSetting(rc.object)
-	if err != nil {
-		return errors.NewFatalError(fmt.Errorf("cannot get original setting for cloneset %v: %s from annotation", klog.KObj(rc.object), err.Error()))
-	}
-	patchData := patch.NewDeploymentPatch()
-	if rc.object.Spec.MinReadySeconds != setting.MinReadySeconds {
-		// restore the hpa
-		if err := hpa.RestoreHPA(rc.client, rc.object); err != nil {
+	if !rc.restored() {
+		setting, err := control.GetOriginalSetting(rc.object)
+		if err != nil {
 			return err
 		}
+		patchData := patch.NewDeploymentPatch()
 		// restore the original setting
 		patchData.UpdatePaused(false)
 		patchData.UpdateMinReadySeconds(setting.MinReadySeconds)
 		patchData.UpdateProgressDeadlineSeconds(setting.ProgressDeadlineSeconds)
 		patchData.UpdateMaxSurge(setting.MaxSurge)
 		patchData.UpdateMaxUnavailable(setting.MaxUnavailable)
+		// restore label and annotation
+		patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
+		patchData.DeleteLabel(v1alpha1.DeploymentStableRevisionLabel)
+		patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
 		if err := rc.client.Patch(context.TODO(), d, patchData); err != nil {
 			return err
 		}
+		klog.InfoS("Finalize: deployment bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
 	}
-	klog.InfoS("Finalize: deployment bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
+
 	// wait all pods updated and ready
 	if err := waitAllUpdatedAndReady(d.(*apps.Deployment)); err != nil {
-		return errors.NewBenignError(err)
+		return errors.NewRetryError(err)
 	}
 	klog.InfoS("Finalize: deployment is ready to resume, restore the original setting", "deployment", klog.KObj(rc.object))
-	// restore label and annotation
-	patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
-	patchData.DeleteLabel(v1alpha1.DeploymentStableRevisionLabel)
-	patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
-	return rc.client.Patch(context.TODO(), d, patchData)
+
+	// restore hpa
+	return hpa.RestoreHPA(rc.client, rc.object)
 }
 
-func (rc *realController) finalized() bool {
+func (rc *realController) restored() bool {
 	if rc.object == nil || rc.object.DeletionTimestamp != nil {
 		return true
 	}
@@ -313,7 +310,7 @@ func (rc *realController) patchStableRSMinReadySeconds(seconds int32) error {
 func (rc *realController) patchDeployment(release *v1beta1.BatchRelease) error {
 	setting, err := control.GetOriginalSetting(rc.object)
 	if err != nil {
-		return errors.NewFatalError(fmt.Errorf("cannot get original setting for deployment %v: %s", klog.KObj(rc.object), err.Error()))
+		return errors.NewBadRequestError(fmt.Errorf("cannot get original setting for deployment %v: %s", klog.KObj(rc.object), err.Error()))
 	}
 	control.InitOriginalSetting(&setting, rc.object)
 	patchData := patch.NewDeploymentPatch()

@@ -151,7 +151,7 @@ func (r *Executor) progressBatches(release *v1beta1.BatchRelease, newStatus *v1b
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
 			removeProgressingCondition(newStatus)
 			newStatus.CanaryStatus.CurrentBatchState = v1beta1.VerifyingBatchState
-		case errors.IsFatal(err):
+		case errors.IsBadRequest(err):
 			progressingStateTransition(newStatus, v1.ConditionTrue, v1beta1.ProgressingReasonInRolling, err.Error())
 			fallthrough
 		default:

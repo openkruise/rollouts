@@ -31,6 +31,7 @@ import (
 	control "github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -101,7 +103,7 @@ var (
 			UpdateRevision:       "version-2",
 			CurrentRevision:      "version-1",
 			ObservedGeneration:   1,
-			CollisionCount:       pointer.Int32Ptr(1),
+			CollisionCount:       pointer.Int32(1),
 		},
 	}
 
@@ -141,13 +143,156 @@ var (
 			},
 		},
 	}
+	hpaDemo = &autoscalingv1.HorizontalPodAutoscaler{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "autoscaling/v1",
+			Kind:       "HorizontalPodAutoscaler",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "hpa",
+			Namespace: cloneKey.Namespace,
+		},
+		Spec: autoscalingv1.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv1.CrossVersionObjectReference{
+				APIVersion: "apps.kruise.io/v1alpha1",
+				Kind:       "CloneSet",
+				Name:       cloneDemo.Name,
+			},
+			MinReplicas: pointer.Int32(1),
+			MaxReplicas: 10,
+		},
+	}
 )
 
 func init() {
 	apps.AddToScheme(scheme)
 	rolloutapi.AddToScheme(scheme)
 	kruiseappsv1alpha1.AddToScheme(scheme)
+	autoscalingv1.AddToScheme(scheme)
 }
+
+func TestControlPackage(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "CloneSet Control Package Suite")
+}
+
+var _ = Describe("CloneSet Control", func() {
+	var (
+		c        client.Client
+		rc       *realController
+		cloneset *kruiseappsv1alpha1.CloneSet
+		release  *v1beta1.BatchRelease
+		hpa      *autoscalingv1.HorizontalPodAutoscaler
+	)
+
+	BeforeEach(func() {
+		cloneset = cloneDemo.DeepCopy()
+		release = releaseDemo.DeepCopy()
+		hpa = hpaDemo.DeepCopy()
+		c = fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(cloneset, release, hpa).
+			Build()
+		rc = &realController{
+			key:    types.NamespacedName{Namespace: cloneset.Namespace, Name: cloneset.Name},
+			client: c,
+		}
+	})
+
+	It("should initialize cloneset successfully", func() {
+		// build controller
+		_, err := rc.BuildController()
+		Expect(err).NotTo(HaveOccurred())
+		// call Initialize method
+		err = retryFunction(3, func() error {
+			return rc.Initialize(release)
+		})
+		Expect(err).NotTo(HaveOccurred())
+		// inspect if HPA is disabled
+		disabledHPA := &autoscalingv1.HorizontalPodAutoscaler{}
+		err = c.Get(context.TODO(), types.NamespacedName{Namespace: hpa.Namespace, Name: hpa.Name}, disabledHPA)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(disabledHPA.Spec.ScaleTargetRef.Name).To(Equal(cloneset.Name + "-DisableByRollout"))
+
+		// inspect if Cloneset is patched properly
+		updatedCloneset := &kruiseappsv1alpha1.CloneSet{}
+		err = c.Get(context.TODO(), client.ObjectKeyFromObject(cloneset), updatedCloneset)
+		Expect(err).NotTo(HaveOccurred())
+
+		// inspect if annotations are added
+		Expect(updatedCloneset.Annotations).To(HaveKey(v1beta1.OriginalDeploymentStrategyAnnotation))
+		Expect(updatedCloneset.Annotations).To(HaveKey(util.BatchReleaseControlAnnotation))
+		Expect(updatedCloneset.Annotations[util.BatchReleaseControlAnnotation]).To(Equal(getControlInfo(release)))
+
+		// inspect if strategy is updated
+		Expect(updatedCloneset.Spec.UpdateStrategy.Paused).To(BeFalse())
+		Expect(updatedCloneset.Spec.UpdateStrategy.MaxSurge.IntVal).To(Equal(int32(1)))
+		Expect(updatedCloneset.Spec.UpdateStrategy.MaxUnavailable.IntVal).To(Equal(int32(0)))
+		Expect(updatedCloneset.Spec.MinReadySeconds).To(Equal(int32(v1beta1.MaxReadySeconds)))
+	})
+
+	It("should finalize CloneSet successfully", func() {
+		// hack to patch cloneset status
+		cloneset.Status.UpdatedReadyReplicas = 10
+		err := c.Status().Update(context.TODO(), cloneset)
+		Expect(err).NotTo(HaveOccurred())
+		// build controller
+		rc.object = nil
+		_, err = rc.BuildController()
+		Expect(err).NotTo(HaveOccurred())
+		// call Finalize method
+		err = retryFunction(3, func() error {
+			return rc.Finalize(release)
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		// inspect if CloneSet is patched properly
+		updatedCloneset := &kruiseappsv1alpha1.CloneSet{}
+		err = c.Get(context.TODO(), client.ObjectKeyFromObject(cloneset), updatedCloneset)
+		Expect(err).NotTo(HaveOccurred())
+
+		// inspect if annotations are removed
+		Expect(updatedCloneset.Annotations).NotTo(HaveKey(v1beta1.OriginalDeploymentStrategyAnnotation))
+		Expect(updatedCloneset.Annotations).NotTo(HaveKey(util.BatchReleaseControlAnnotation))
+
+		// inspect if strategy is restored
+		Expect(updatedCloneset.Spec.UpdateStrategy.MaxSurge).To(BeNil())
+		Expect(*updatedCloneset.Spec.UpdateStrategy.MaxUnavailable).To(Equal(intstr.IntOrString{Type: intstr.Int, IntVal: 1}))
+		Expect(updatedCloneset.Spec.MinReadySeconds).To(Equal(int32(0)))
+
+		// inspect if HPA is restored
+		restoredHPA := &autoscalingv1.HorizontalPodAutoscaler{}
+		err = c.Get(context.TODO(), types.NamespacedName{Namespace: hpa.Namespace, Name: hpa.Name}, restoredHPA)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(restoredHPA.Spec.ScaleTargetRef.Name).To(Equal(cloneset.Name))
+	})
+
+	It("should upgradBatch for CloneSet successfully", func() {
+		// call Initialize method
+		_, err := rc.BuildController()
+		Expect(err).NotTo(HaveOccurred())
+		err = retryFunction(3, func() error {
+			return rc.Initialize(release)
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		// call UpgradeBatch method
+		rc.object = nil
+		_, err = rc.BuildController()
+		Expect(err).NotTo(HaveOccurred())
+		batchContext, err := rc.CalculateBatchContext(release)
+		Expect(err).NotTo(HaveOccurred())
+		err = rc.UpgradeBatch(batchContext)
+		Expect(err).NotTo(HaveOccurred())
+
+		// inspect if CloneSet is patched properly
+		updatedCloneset := &kruiseappsv1alpha1.CloneSet{}
+		err = c.Get(context.TODO(), client.ObjectKeyFromObject(cloneset), updatedCloneset)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(*updatedCloneset.Spec.UpdateStrategy.MaxSurge).To(Equal(intstr.IntOrString{Type: intstr.String, StrVal: "10%"}))
+		Expect(*updatedCloneset.Spec.UpdateStrategy.MaxUnavailable).To(Equal(intstr.IntOrString{Type: intstr.Int, IntVal: 0}))
+	})
+})
 
 func TestCalculateBatchContext(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -391,4 +536,13 @@ func TestRealController(t *testing.T) {
 func getControlInfo(release *v1beta1.BatchRelease) string {
 	owner, _ := json.Marshal(metav1.NewControllerRef(release, release.GetObjectKind().GroupVersionKind()))
 	return string(owner)
+}
+
+func retryFunction(limit int, f func() error) (err error) {
+	for i := limit; i >= 0; i-- {
+		if err = f(); err == nil {
+			return nil
+		}
+	}
+	return err
 }

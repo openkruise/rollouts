@@ -12,8 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	// "github.com/openkruise/rollouts/api/v1alpha1"
-	// import hpa v1
 )
 
 var (

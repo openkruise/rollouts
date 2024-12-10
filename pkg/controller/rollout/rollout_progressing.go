@@ -111,11 +111,12 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 	case v1alpha1.ProgressingReasonInRolling:
 		klog.Infof("rollout(%s/%s) is Progressing, and in reason(%s)", rollout.Namespace, rollout.Name, cond.Reason)
 		err = r.doProgressingInRolling(rolloutContext)
-		if utilerrors.IsFatal(err) {
+		if utilerrors.IsBadRequest(err) {
 			// For fatal errors, do not retry as it wastes resources and has no effect.
 			// therefore, we don't propagate the error, but just log it.
 			// user should do sth instead, eg. for bluegreen continuous release scenario, user should do rollback
 			klog.Warningf("rollout(%s/%s) doProgressingInRolling error(%s)", rollout.Namespace, rollout.Name, err.Error())
+			return nil, nil
 		} else if err != nil {
 			return nil, err
 		}
@@ -231,6 +232,16 @@ func (r *RolloutReconciler) handleRolloutPaused(rollout *v1beta1.Rollout, newSta
 	return nil
 }
 
+/*
+continuous release (or successive release) is not supported for bluegreen release, especially for cloneset,
+here is why:
+suppose we are releasing a cloneSet, which has pods of both v1 and v2 for now. If we release v3 before
+v2 is fully released, the cloneSet controller might scale down pods without distinguishing between v1 and v2.
+This is because our implementation is based on the minReadySeconds, pods of both v1 and v2 are "unavailable"
+in the progress of rollout.
+Deployment actually has the same problem, however it is possible to bypass this issue for Deployment by setting
+minReadySeconds for replicaset separately; unfortunately this workaround seems not work for cloneset
+*/
 func (r *RolloutReconciler) handleContinuousRelease(c *RolloutContext) error {
 	r.Recorder.Eventf(c.Rollout, corev1.EventTypeNormal, "Progressing", "workload continuous publishing canaryRevision, then restart publishing")
 	klog.Infof("rollout(%s/%s) workload continuous publishing canaryRevision from(%s) -> to(%s), then restart publishing",
@@ -239,9 +250,9 @@ func (r *RolloutReconciler) handleContinuousRelease(c *RolloutContext) error {
 	// do nothing for blue-green release
 	if c.Rollout.Spec.Strategy.IsBlueGreenRelease() {
 		cond := util.GetRolloutCondition(*c.NewStatus, v1beta1.RolloutConditionProgressing)
-		cond.Message = "[warning] new version released in progress of blue-green release, please rollback first"
+		cond.Message = "new version releasing detected in the progress of blue-green release, please rollback first"
 		c.NewStatus.Message = cond.Message
-		return utilerrors.NewFatalError(fmt.Errorf("cannot do continuous release for blue-green release, rollback firstly"))
+		return utilerrors.NewBadRequestError(fmt.Errorf("new version releasing detected in the progress of blue-green release, please rollback first"))
 	}
 
 	done, err := r.doProgressingReset(c)
