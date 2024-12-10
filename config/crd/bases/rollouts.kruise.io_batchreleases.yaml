@@ -507,6 +507,10 @@ spec:
                   - type
                   type: object
                 type: array
+              message:
+                description: Message provides details on why the rollout is in its
+                  current phase
+                type: string
               observedGeneration:
                 description: ObservedGeneration is the most recent generation observed
                   for this BatchRelease. It corresponds to this BatchRelease's generation,

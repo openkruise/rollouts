@@ -36,7 +36,6 @@ import (
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -123,6 +122,51 @@ var (
 						{
 							Name:  "echoserver",
 							Image: "echoserver:v1",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	rsDemoV2 = &apps.ReplicaSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "ReplicaSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "echoserver-v2",
+			Labels: map[string]string{
+				"app":               "echoserver",
+				"pod-template-hash": "verision2",
+			},
+			Annotations: map[string]string{},
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(deploymentDemo, schema.GroupVersionKind{
+					Group:   apps.SchemeGroupVersion.Group,
+					Version: apps.SchemeGroupVersion.Version,
+					Kind:    "Deployment",
+				}),
+			},
+		},
+		Spec: apps.ReplicaSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "echoserver",
+				},
+			},
+			Replicas: pointer.Int32(5),
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "echoserver",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "echoserver",
+							Image: "echoserver:v2",
 						},
 					},
 				},
@@ -519,6 +563,100 @@ func TestHandlerDeployment(t *testing.T) {
 				return obj
 			},
 		},
+		{
+			name: "bluegreen: normal release",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.Paused = true
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.BlueGreen = &appsv1beta1.BlueGreenStrategy{}
+				return obj
+			},
+			isError: false,
+		},
+		{
+			name: "bluegreen: rollback",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				oldObj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				oldObj.Labels[appsv1alpha1.DeploymentStableRevisionLabel] = "5b494f7bf"
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				newObj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v1"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v1"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				obj.Spec.Paused = true
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				rs2 := rsDemoV2.DeepCopy()
+				return []*apps.ReplicaSet{rs, rs2}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.BlueGreen = &appsv1beta1.BlueGreenStrategy{}
+				return obj
+			},
+			isError: false,
+		},
+		{
+			name: "bluegreen: successive release",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				oldObj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				oldObj.Labels[appsv1alpha1.DeploymentStableRevisionLabel] = "5b494f7bf"
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				newObj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[appsv1beta1.OriginalDeploymentStrategyAnnotation] = `{"MaxSurge":"25%", "MaxUnavailable":"25%"}`
+				obj.Spec.Paused = true
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				rs2 := rsDemoV2.DeepCopy()
+				return []*apps.ReplicaSet{rs, rs2}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.BlueGreen = &appsv1beta1.BlueGreenStrategy{}
+				return obj
+			},
+			isError: false,
+		},
 	}
 
 	decoder, _ := admission.NewDecoder(scheme)
@@ -542,8 +680,11 @@ func TestHandlerDeployment(t *testing.T) {
 
 			oldObj, newObj := cs.getObjs()
 			_, err := h.handleDeployment(newObj, oldObj)
-			if cs.isError && err == nil {
-				t.Fatal("handlerDeployment failed")
+			if cs.isError {
+				if err == nil {
+					t.Fatal("handlerDeployment failed")
+				}
+				return //no need to check again
 			} else if !cs.isError && err != nil {
 				t.Fatalf(err.Error())
 			}
@@ -678,82 +819,6 @@ func TestHandlerDaemonSet(t *testing.T) {
 			if !reflect.DeepEqual(newObj, cs.expectObj()) {
 				by, _ := json.Marshal(newObj)
 				t.Fatalf("handlerDaemonSet failed, and new(%s)", string(by))
-			}
-		})
-	}
-}
-
-func TestHandleStatefulSet(t *testing.T) {
-	cases := []struct {
-		name       string
-		getObjs    func() (*kruiseappsv1beta1.StatefulSet, *kruiseappsv1beta1.StatefulSet)
-		expectObj  func() *kruiseappsv1beta1.StatefulSet
-		getRollout func() *appsv1beta1.Rollout
-		isError    bool
-	}{
-		{
-			name: "cloneSet image v1->v2, matched rollout",
-			getObjs: func() (*kruiseappsv1beta1.StatefulSet, *kruiseappsv1beta1.StatefulSet) {
-				oldObj := statefulset.DeepCopy()
-				newObj := statefulset.DeepCopy()
-				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
-				return oldObj, newObj
-			},
-			expectObj: func() *kruiseappsv1beta1.StatefulSet {
-				obj := statefulset.DeepCopy()
-				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
-				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
-				obj.Spec.UpdateStrategy.RollingUpdate.Partition = pointer.Int32(math.MaxInt16)
-				return obj
-			},
-			getRollout: func() *appsv1beta1.Rollout {
-				obj := rolloutDemo.DeepCopy()
-				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
-					APIVersion: "apps.kruise.io/v1beta1",
-					Kind:       "StatefulSet",
-					Name:       "echoserver",
-				}
-				return obj
-			},
-		},
-	}
-
-	decoder, _ := admission.NewDecoder(scheme)
-	for _, cs := range cases {
-		t.Run(cs.name, func(t *testing.T) {
-			client := fake.NewClientBuilder().WithScheme(scheme).Build()
-			h := WorkloadHandler{
-				Client:  client,
-				Decoder: decoder,
-				Finder:  util.NewControllerFinder(client),
-			}
-			rollout := cs.getRollout()
-			if err := client.Create(context.TODO(), rollout); err != nil {
-				t.Errorf(err.Error())
-			}
-
-			oldObj, newObj := cs.getObjs()
-			oldO, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(oldObj)
-			newO, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(newObj)
-			oldUnstructured := &unstructured.Unstructured{Object: oldO}
-			newUnstructured := &unstructured.Unstructured{Object: newO}
-			oldUnstructured.SetGroupVersionKind(newObj.GroupVersionKind())
-			newUnstructured.SetGroupVersionKind(newObj.GroupVersionKind())
-			_, err := h.handleStatefulSetLikeWorkload(newUnstructured, oldUnstructured)
-			if cs.isError && err == nil {
-				t.Fatal("handleStatefulSetLikeWorkload failed")
-			} else if !cs.isError && err != nil {
-				t.Fatalf(err.Error())
-			}
-			newStructured := &kruiseappsv1beta1.StatefulSet{}
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(newUnstructured.Object, newStructured)
-			if err != nil {
-				t.Fatal("DefaultUnstructuredConvert failed")
-			}
-			expect := cs.expectObj()
-			if !reflect.DeepEqual(newStructured, expect) {
-				by, _ := json.Marshal(newStructured)
-				t.Fatalf("handlerCloneSet failed, and new(%s)", string(by))
 			}
 		})
 	}
