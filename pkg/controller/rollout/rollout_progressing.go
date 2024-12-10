@@ -626,7 +626,8 @@ func newTrafficRoutingContext(c *RolloutContext) *trafficrouting.TrafficRoutingC
 		revisionLabelKey = c.Workload.RevisionLabelKey
 	}
 	var selectorPatch map[string]string
-	if !c.Rollout.Spec.Strategy.DisableGenerateCanaryService() && c.Rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata != nil {
+	if !c.Rollout.Spec.Strategy.DisableGenerateCanaryService() && c.Rollout.Spec.Strategy.Canary != nil &&
+		c.Rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata != nil {
 		selectorPatch = c.Rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata.Labels
 	}
 	return &trafficrouting.TrafficRoutingContext{
