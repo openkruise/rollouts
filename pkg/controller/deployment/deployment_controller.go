@@ -81,7 +81,22 @@ func (dc *DeploymentController) getReplicaSetsForDeployment(ctx context.Context,
 	}
 	// List all ReplicaSets to find those we own but that no longer match our
 	// selector. They will be orphaned by ClaimReplicaSets().
-	return dc.rsLister.ReplicaSets(d.Namespace).List(deploymentSelector)
+	allRSs, err := dc.rsLister.ReplicaSets(d.Namespace).List(deploymentSelector)
+	if err != nil {
+		return nil, fmt.Errorf("list %s/%s rs failed:%v", d.Namespace, d.Name, err)
+	}
+	// select rs owner by current deployment
+	ownedRSs := make([]*apps.ReplicaSet, 0)
+	for _, rs := range allRSs {
+		if !rs.DeletionTimestamp.IsZero() {
+			continue
+		}
+
+		if metav1.IsControlledBy(rs, d) {
+			ownedRSs = append(ownedRSs, rs)
+		}
+	}
+	return ownedRSs, nil
 }
 
 // syncDeployment will sync the deployment with the given key.
