@@ -123,7 +123,7 @@ func TestRunCanary(t *testing.T) {
 						Kind:       "Deployment",
 						Name:       dep2.Name,
 						UID:        "1ca4d850-9ec3-48bd-84cb-19f2e8cf4180",
-						Controller: utilpointer.BoolPtr(true),
+						Controller: utilpointer.Bool(true),
 					},
 				}
 				rs2.Labels["pod-template-hash"] = "pod-template-hash-v2"

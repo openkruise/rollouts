@@ -94,6 +94,7 @@ func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) *
 		FailureThreshold:       release.Spec.ReleasePlan.FailureThreshold,
 		UpdatedReplicas:        rc.canaryObject.Status.Replicas,
 		UpdatedReadyReplicas:   rc.canaryObject.Status.AvailableReplicas,
+		Batches:                release.Spec.ReleasePlan.Batches, //shallow copy
 	}
 }
 

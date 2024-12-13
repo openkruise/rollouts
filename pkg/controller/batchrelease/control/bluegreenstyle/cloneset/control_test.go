@@ -305,7 +305,7 @@ func TestCalculateBatchContext(t *testing.T) {
 			workload: func() *kruiseappsv1alpha1.CloneSet {
 				return &kruiseappsv1alpha1.CloneSet{
 					Spec: kruiseappsv1alpha1.CloneSetSpec{
-						Replicas: pointer.Int32Ptr(10),
+						Replicas: pointer.Int32(10),
 						UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
 							MaxSurge: func() *intstr.IntOrString { p := intstr.FromInt(1); return &p }(),
 						},
@@ -348,6 +348,11 @@ func TestCalculateBatchContext(t *testing.T) {
 				UpdateRevision:         "update-version",
 				PlannedUpdatedReplicas: 5,
 				DesiredUpdatedReplicas: 5,
+				Batches: []v1beta1.ReleaseBatch{
+					{CanaryReplicas: intstr.IntOrString{Type: intstr.String, StrVal: "50%"}},
+					{CanaryReplicas: intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+					{CanaryReplicas: intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+				},
 			},
 		},
 
@@ -398,13 +403,18 @@ func TestCalculateBatchContext(t *testing.T) {
 				UpdateRevision:         "update-version",
 				PlannedUpdatedReplicas: 10,
 				DesiredUpdatedReplicas: 10,
+				Batches: []v1beta1.ReleaseBatch{
+					{CanaryReplicas: intstr.IntOrString{Type: intstr.String, StrVal: "50%"}},
+					{CanaryReplicas: intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+					{CanaryReplicas: intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+				},
 			},
 		},
 		"normal case batch2": {
 			workload: func() *kruiseappsv1alpha1.CloneSet {
 				return &kruiseappsv1alpha1.CloneSet{
 					Spec: kruiseappsv1alpha1.CloneSetSpec{
-						Replicas: pointer.Int32Ptr(10),
+						Replicas: pointer.Int32(10),
 						UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
 							MaxSurge: func() *intstr.IntOrString { p := intstr.FromString("100%"); return &p }(),
 						},
@@ -448,6 +458,11 @@ func TestCalculateBatchContext(t *testing.T) {
 				UpdatedReadyReplicas:   10,
 				PlannedUpdatedReplicas: 10,
 				DesiredUpdatedReplicas: 10,
+				Batches: []v1beta1.ReleaseBatch{
+					{CanaryReplicas: intstr.IntOrString{Type: intstr.String, StrVal: "50%"}},
+					{CanaryReplicas: intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+					{CanaryReplicas: intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+				},
 			},
 		},
 	}

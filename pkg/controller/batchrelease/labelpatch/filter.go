@@ -39,8 +39,8 @@ import (
 //     the pods that are really need to be rolled back according to release plan, but patch batch label according
 //     original release plan, and will patch the pods that are really rolled back in priority.
 //   - in batch 0: really roll back (20 - 10) * 20% = 2 pods, but 20 * 20% = 4 pod will be patched batch label;
-//   - in batch 0: really roll back (20 - 10) * 50% = 5 pods, but 20 * 50% = 10 pod will be patched batch label;
-//   - in batch 0: really roll back (20 - 10) * 100% = 10 pods, but 20 * 100% = 20 pod will be patched batch label;
+//   - in batch 1: really roll back (20 - 10) * 50% = 5 pods, but 20 * 50% = 10 pod will be patched batch label;
+//   - in batch 2: really roll back (20 - 10) * 100% = 10 pods, but 20 * 100% = 20 pod will be patched batch label;
 //
 // Mainly for PaaS platform display pod list in conveniently.
 //
@@ -92,8 +92,8 @@ func FilterPodsForUnorderedUpdate(pods []*corev1.Pod, ctx *batchcontext.BatchCon
 //     the pods that are really need to be rolled back according to release plan, but patch batch label according
 //     original release plan, and will patch the pods that are really rolled back in priority.
 //   - in batch 0: really roll back (20 - 10) * 20% = 2 pods, but 20 * 20% = 4 pod will be patched batch label;
-//   - in batch 0: really roll back (20 - 10) * 50% = 5 pods, but 20 * 50% = 10 pod will be patched batch label;
-//   - in batch 0: really roll back (20 - 10) * 100% = 10 pods, but 20 * 100% = 20 pod will be patched batch label;
+//   - in batch 1: really roll back (20 - 10) * 50% = 5 pods, but 20 * 50% = 10 pod will be patched batch label;
+//   - in batch 2: really roll back (20 - 10) * 100% = 10 pods, but 20 * 100% = 20 pod will be patched batch label;
 //
 // Mainly for PaaS platform display pod list in conveniently.
 //

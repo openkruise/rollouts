@@ -5070,8 +5070,8 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 
 			// check pod batch label after scale
 			By("check pod batch label after scale")
-			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "1", 1)
-			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "2", 3)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "1", 2)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "2", 2)
 
 			// resume rollout canary
 			By("check rollout canary status success, resume rollout, and wait rollout canary complete")
@@ -5080,8 +5080,8 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			WaitCloneSetAllPodsReady(workload)
 
 			By("rollout completed, and check pod batch label")
-			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "1", 1)
-			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "2", 3)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "1", 2)
+			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "2", 2)
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "3", 2)
 			CheckPodBatchLabel(workload.Namespace, workload.Spec.Selector, "1", "4", 4)
 		})

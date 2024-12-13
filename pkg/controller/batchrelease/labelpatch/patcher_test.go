@@ -28,6 +28,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -54,8 +55,12 @@ func TestLabelPatcher(t *testing.T) {
 					RolloutID:              "rollout-1",
 					UpdateRevision:         "version-1",
 					PlannedUpdatedReplicas: 5,
-					CurrentBatch:           0,
 					Replicas:               10,
+					Batches: []v1beta1.ReleaseBatch{
+						{
+							CanaryReplicas: intstr.FromInt(5),
+						},
+					},
 				}
 				pods := generatePods(1, ctx.Replicas, 0, "", "", ctx.UpdateRevision)
 				ctx.Pods = pods
@@ -70,9 +75,14 @@ func TestLabelPatcher(t *testing.T) {
 					UpdateRevision:         "version-1",
 					PlannedUpdatedReplicas: 5,
 					Replicas:               10,
+					Batches: []v1beta1.ReleaseBatch{
+						{
+							CanaryReplicas: intstr.FromInt(5),
+						},
+					},
 				}
 				pods := generatePods(1, ctx.Replicas, 2,
-					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch)), ctx.UpdateRevision)
+					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch+1)), ctx.UpdateRevision)
 				ctx.Pods = pods
 				return ctx
 			},
@@ -85,9 +95,14 @@ func TestLabelPatcher(t *testing.T) {
 					UpdateRevision:         "version-1",
 					PlannedUpdatedReplicas: 5,
 					Replicas:               10,
+					Batches: []v1beta1.ReleaseBatch{
+						{
+							CanaryReplicas: intstr.FromInt(5),
+						},
+					},
 				}
 				pods := generatePods(1, ctx.Replicas, 5,
-					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch)), ctx.UpdateRevision)
+					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch+1)), ctx.UpdateRevision)
 				ctx.Pods = pods
 				return ctx
 			},
@@ -100,9 +115,14 @@ func TestLabelPatcher(t *testing.T) {
 					UpdateRevision:         "version-1",
 					PlannedUpdatedReplicas: 5,
 					Replicas:               10,
+					Batches: []v1beta1.ReleaseBatch{
+						{
+							CanaryReplicas: intstr.FromInt(5),
+						},
+					},
 				}
 				pods := generatePods(1, ctx.Replicas, 7,
-					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch)), ctx.UpdateRevision)
+					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch+1)), ctx.UpdateRevision)
 				ctx.Pods = pods
 				return ctx
 			},
@@ -115,9 +135,14 @@ func TestLabelPatcher(t *testing.T) {
 					UpdateRevision:         "version-1",
 					PlannedUpdatedReplicas: 5,
 					Replicas:               10,
+					Batches: []v1beta1.ReleaseBatch{
+						{
+							CanaryReplicas: intstr.FromInt(5),
+						},
+					},
 				}
 				pods := generatePods(1, 2, 0,
-					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch)), ctx.UpdateRevision)
+					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch+1)), ctx.UpdateRevision)
 				ctx.Pods = pods
 				return ctx
 			},
@@ -130,9 +155,14 @@ func TestLabelPatcher(t *testing.T) {
 					UpdateRevision:         "version-1",
 					PlannedUpdatedReplicas: 5,
 					Replicas:               10,
+					Batches: []v1beta1.ReleaseBatch{
+						{
+							CanaryReplicas: intstr.FromInt(5),
+						},
+					},
 				}
 				pods := generatePods(1, ctx.Replicas, 3,
-					"previous-rollout-id", strconv.Itoa(int(ctx.CurrentBatch)), ctx.UpdateRevision)
+					"previous-rollout-id", strconv.Itoa(int(ctx.CurrentBatch+1)), ctx.UpdateRevision)
 				ctx.Pods = pods
 				return ctx
 			},

@@ -238,7 +238,7 @@ var (
 					Kind:       "Deployment",
 					Name:       "echoserver",
 					UID:        types.UID("606132e0-85ef-460a-8cf5-cd8f915a8cc3"),
-					Controller: utilpointer.BoolPtr(true),
+					Controller: utilpointer.Bool(true),
 				},
 			},
 		},

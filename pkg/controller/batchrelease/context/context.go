@@ -64,6 +64,8 @@ type BatchContext struct {
 	// the next two fields are only used for bluegreen style
 	CurrentSurge intstr.IntOrString `json:"currentSurge,omitempty"`
 	DesiredSurge intstr.IntOrString `json:"desiredSurge,omitempty"`
+	// batches field is added to support complicated scenes such as batch-id label
+	Batches []v1beta1.ReleaseBatch
 }
 
 type FilterFuncType func(pods []*corev1.Pod, ctx *BatchContext) []*corev1.Pod

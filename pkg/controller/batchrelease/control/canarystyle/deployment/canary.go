@@ -145,7 +145,7 @@ func (r *realCanaryController) create(release *v1beta1.BatchRelease, template *a
 			canary.Spec.Template.Annotations[k] = v
 		}
 	}
-	canary.Spec.Replicas = pointer.Int32Ptr(0)
+	canary.Spec.Replicas = pointer.Int32(0)
 	canary.Spec.Paused = false
 
 	if err := r.canaryClient.Create(context.TODO(), canary); err != nil {

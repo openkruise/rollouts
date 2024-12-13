@@ -217,6 +217,7 @@ func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (
 		UpdatedReadyReplicas:   rc.Status.UpdatedReadyReplicas,
 		DesiredUpdatedReplicas: int32(desired),
 		PlannedUpdatedReplicas: int32(desired),
+		Batches:                release.Spec.ReleasePlan.Batches, //shallow copy
 	}
 	// the number of no need update pods that marked before rollout
 	// if noNeedUpdate := release.Status.CanaryStatus.NoNeedUpdateReplicas; noNeedUpdate != nil {

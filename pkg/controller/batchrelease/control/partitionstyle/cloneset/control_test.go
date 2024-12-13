@@ -101,7 +101,7 @@ var (
 			UpdateRevision:       "version-2",
 			CurrentRevision:      "version-1",
 			ObservedGeneration:   1,
-			CollisionCount:       pointer.Int32Ptr(1),
+			CollisionCount:       pointer.Int32(1),
 		},
 	}
 
@@ -162,7 +162,7 @@ func TestCalculateBatchContext(t *testing.T) {
 			workload: func() *kruiseappsv1alpha1.CloneSet {
 				return &kruiseappsv1alpha1.CloneSet{
 					Spec: kruiseappsv1alpha1.CloneSetSpec{
-						Replicas: pointer.Int32Ptr(10),
+						Replicas: pointer.Int32(10),
 						UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
 							Partition: func() *intstr.IntOrString { p := intstr.FromString("100%"); return &p }(),
 						},
@@ -205,13 +205,14 @@ func TestCalculateBatchContext(t *testing.T) {
 				DesiredUpdatedReplicas: 2,
 				CurrentPartition:       intstr.FromString("100%"),
 				DesiredPartition:       intstr.FromString("80%"),
+				Batches:                []v1beta1.ReleaseBatch{{CanaryReplicas: percent}},
 			},
 		},
 		"with NoNeedUpdate": {
 			workload: func() *kruiseappsv1alpha1.CloneSet {
 				return &kruiseappsv1alpha1.CloneSet{
 					Spec: kruiseappsv1alpha1.CloneSetSpec{
-						Replicas: pointer.Int32Ptr(20),
+						Replicas: pointer.Int32(20),
 						UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
 							Partition: func() *intstr.IntOrString { p := intstr.FromString("100%"); return &p }(),
 						},
@@ -253,13 +254,14 @@ func TestCalculateBatchContext(t *testing.T) {
 				Replicas:               20,
 				UpdatedReplicas:        10,
 				UpdatedReadyReplicas:   10,
-				NoNeedUpdatedReplicas:  pointer.Int32Ptr(10),
+				NoNeedUpdatedReplicas:  pointer.Int32(10),
 				PlannedUpdatedReplicas: 4,
 				DesiredUpdatedReplicas: 12,
 				CurrentPartition:       intstr.FromString("100%"),
 				DesiredPartition:       intstr.FromString("40%"),
 				FailureThreshold:       &percent,
 				FilterFunc:             labelpatch.FilterPodsForUnorderedUpdate,
+				Batches:                []v1beta1.ReleaseBatch{{CanaryReplicas: percent}},
 			},
 		},
 	}

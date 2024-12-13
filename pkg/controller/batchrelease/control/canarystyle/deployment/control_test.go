@@ -101,7 +101,7 @@ var (
 			UpdatedReplicas:    10,
 			ReadyReplicas:      10,
 			AvailableReplicas:  10,
-			CollisionCount:     pointer.Int32Ptr(1),
+			CollisionCount:     pointer.Int32(1),
 			ObservedGeneration: 1,
 		},
 	}
@@ -163,7 +163,7 @@ func TestCalculateBatchContext(t *testing.T) {
 			workload: func() (*apps.Deployment, *apps.Deployment) {
 				stable := &apps.Deployment{
 					Spec: apps.DeploymentSpec{
-						Replicas: pointer.Int32Ptr(10),
+						Replicas: pointer.Int32(10),
 					},
 					Status: apps.DeploymentStatus{
 						Replicas:          10,
@@ -173,7 +173,7 @@ func TestCalculateBatchContext(t *testing.T) {
 				}
 				canary := &apps.Deployment{
 					Spec: apps.DeploymentSpec{
-						Replicas: pointer.Int32Ptr(5),
+						Replicas: pointer.Int32(5),
 					},
 					Status: apps.DeploymentStatus{
 						Replicas:          5,
@@ -211,6 +211,11 @@ func TestCalculateBatchContext(t *testing.T) {
 				UpdatedReplicas:        5,
 				UpdatedReadyReplicas:   5,
 				DesiredUpdatedReplicas: 2,
+				Batches: []v1beta1.ReleaseBatch{
+					{
+						CanaryReplicas: percent,
+					},
+				},
 			},
 		},
 	}

@@ -160,7 +160,7 @@ func TestCalculateBatchContext(t *testing.T) {
 						Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "foo"}},
 						UpdateStrategy: kruiseappsv1alpha1.DaemonSetUpdateStrategy{
 							RollingUpdate: &kruiseappsv1alpha1.RollingUpdateDaemonSet{
-								Partition: pointer.Int32Ptr(10),
+								Partition: pointer.Int32(10),
 							},
 						},
 					},
@@ -219,6 +219,11 @@ func TestCalculateBatchContext(t *testing.T) {
 				CurrentPartition:       intstr.FromInt(10),
 				DesiredPartition:       intstr.FromInt(8),
 				Pods:                   generatePods(10, "", ""),
+				Batches: []v1beta1.ReleaseBatch{
+					{
+						CanaryReplicas: percent,
+					},
+				},
 			},
 		},
 		"with NoNeedUpdate": {
@@ -233,7 +238,7 @@ func TestCalculateBatchContext(t *testing.T) {
 						Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "foo"}},
 						UpdateStrategy: kruiseappsv1alpha1.DaemonSetUpdateStrategy{
 							RollingUpdate: &kruiseappsv1alpha1.RollingUpdateDaemonSet{
-								Partition: pointer.Int32Ptr(10),
+								Partition: pointer.Int32(10),
 							},
 						},
 					},
@@ -288,7 +293,7 @@ func TestCalculateBatchContext(t *testing.T) {
 				Replicas:               10,
 				UpdatedReplicas:        5,
 				UpdatedReadyReplicas:   5,
-				NoNeedUpdatedReplicas:  pointer.Int32Ptr(5),
+				NoNeedUpdatedReplicas:  pointer.Int32(5),
 				PlannedUpdatedReplicas: 2,
 				DesiredUpdatedReplicas: 6,
 				CurrentPartition:       intstr.FromInt(10),
@@ -296,6 +301,11 @@ func TestCalculateBatchContext(t *testing.T) {
 				FailureThreshold:       &percent,
 				FilterFunc:             labelpatch.FilterPodsForUnorderedUpdate,
 				Pods:                   generatePods(10, "", ""),
+				Batches: []v1beta1.ReleaseBatch{
+					{
+						CanaryReplicas: percent,
+					},
+				},
 			},
 		},
 	}

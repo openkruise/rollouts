@@ -183,6 +183,7 @@ func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (
 		UpdatedReadyReplicas:   rc.Status.UpdatedReadyReplicas,
 		PlannedUpdatedReplicas: PlannedUpdatedReplicas,
 		DesiredUpdatedReplicas: PlannedUpdatedReplicas,
+		Batches:                release.Spec.ReleasePlan.Batches, //shallow copy
 	}, nil
 }
 
