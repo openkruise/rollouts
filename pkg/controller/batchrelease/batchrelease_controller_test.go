@@ -100,7 +100,7 @@ var (
 			},
 		},
 		Spec: apps.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(100),
+			Replicas: pointer.Int32(100),
 			Strategy: apps.DeploymentStrategy{
 				Type: apps.RollingUpdateDeploymentStrategyType,
 				RollingUpdate: &apps.RollingUpdateDeployment{
@@ -146,7 +146,7 @@ var (
 				Name:       "sample",
 			},
 			ReleasePlan: v1beta1.ReleasePlan{
-				BatchPartition: pointer.Int32Ptr(0),
+				BatchPartition: pointer.Int32(0),
 				RollingStyle:   v1beta1.PartitionRollingStyle,
 				Batches: []v1beta1.ReleaseBatch{
 					{
@@ -178,7 +178,7 @@ var (
 			},
 		},
 		Spec: kruiseappsv1alpha1.CloneSetSpec{
-			Replicas: pointer.Int32Ptr(100),
+			Replicas: pointer.Int32(100),
 			UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
 				Partition:      &intstr.IntOrString{Type: intstr.Int, IntVal: int32(1)},
 				MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: int32(2)},
@@ -394,7 +394,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 			},
 			GetCloneSet: func() []client.Object {
 				stable := getStableWithReady(stableClone, "v2").(*kruiseappsv1alpha1.CloneSet)
-				stable.Spec.Replicas = pointer.Int32Ptr(200)
+				stable.Spec.Replicas = pointer.Int32(200)
 				canary := getCanaryWithStage(stable, "v2", 0, true)
 				return []client.Object{
 					canary,
@@ -475,7 +475,7 @@ func TestReconcile_CloneSet(t *testing.T) {
 				release.Status.UpdateRevision = util.ComputeHash(canaryTemplate, nil)
 				release.Status.CanaryStatus.UpdatedReplicas = 10
 				release.Status.CanaryStatus.UpdatedReadyReplicas = 10
-				release.Spec.ReleasePlan.BatchPartition = pointer.Int32Ptr(1)
+				release.Spec.ReleasePlan.BatchPartition = pointer.Int32(1)
 				release.Status.ObservedReleasePlanHash = util.HashReleasePlanBatches(&release.Spec.ReleasePlan)
 				return release
 			},
@@ -651,7 +651,7 @@ func TestReconcile_Deployment(t *testing.T) {
 				release := releaseDeploy.DeepCopy()
 				release.Status.CanaryStatus.UpdatedReplicas = 10
 				release.Status.CanaryStatus.UpdatedReadyReplicas = 10
-				release.Spec.ReleasePlan.BatchPartition = pointer.Int32Ptr(1)
+				release.Spec.ReleasePlan.BatchPartition = pointer.Int32(1)
 				return setState(release, v1beta1.ReadyBatchState)
 			},
 			GetDeployments: func() []client.Object {
@@ -694,7 +694,7 @@ func TestReconcile_Deployment(t *testing.T) {
 			},
 			GetDeployments: func() []client.Object {
 				stable := getStableWithReady(stableDeploy, "v2").(*apps.Deployment)
-				stable.Spec.Replicas = pointer.Int32Ptr(200)
+				stable.Spec.Replicas = pointer.Int32(200)
 				canary := getCanaryWithStage(stable, "v2", 0, true)
 				return []client.Object{
 					stable, canary,
@@ -891,7 +891,7 @@ func getCanaryWithStage(workload client.Object, version string, stage int, ready
 		d.ResourceVersion = strconv.Itoa(rand.Intn(100000000000))
 		d.Labels[util.CanaryDeploymentLabel] = "87076677"
 		d.Finalizers = []string{util.CanaryDeploymentFinalizer}
-		d.Spec.Replicas = pointer.Int32Ptr(int32(stageReplicas))
+		d.Spec.Replicas = pointer.Int32(int32(stageReplicas))
 		d.Spec.Template.Spec.Containers = containers(version)
 		d.Status.Replicas = int32(stageReplicas)
 		d.Status.ReadyReplicas = int32(stageReplicas)

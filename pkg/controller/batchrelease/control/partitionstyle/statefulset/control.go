@@ -196,6 +196,7 @@ func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (
 		NoNeedUpdatedReplicas:  noNeedUpdate,
 		PlannedUpdatedReplicas: plannedUpdate,
 		DesiredUpdatedReplicas: desiredUpdate,
+		Batches:                release.Spec.ReleasePlan.Batches, //shallow copy
 	}
 
 	if noNeedUpdate != nil {

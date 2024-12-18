@@ -36,6 +36,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
+var (
+	blueGreenSupportWorkloadGVKs = []*schema.GroupVersionKind{
+		&util.ControllerKindDep,
+		&util.ControllerKruiseKindCS,
+	}
+)
+
 // RolloutCreateUpdateHandler handles Rollout
 type RolloutCreateUpdateHandler struct {
 	// To use the client, you need to do the following:
@@ -204,12 +211,12 @@ func (h *RolloutCreateUpdateHandler) validateRolloutConflict(rollout *appsv1beta
 }
 
 func validateRolloutSpec(c *validateContext, rollout *appsv1beta1.Rollout, fldPath *field.Path) field.ErrorList {
-	errList := validateRolloutSpecObjectRef(&rollout.Spec.WorkloadRef, fldPath.Child("ObjectRef"))
+	errList := validateRolloutSpecObjectRef(c, &rollout.Spec.WorkloadRef, fldPath.Child("ObjectRef"))
 	errList = append(errList, validateRolloutSpecStrategy(c, &rollout.Spec.Strategy, fldPath.Child("Strategy"))...)
 	return errList
 }
 
-func validateRolloutSpecObjectRef(workloadRef *appsv1beta1.ObjectRef, fldPath *field.Path) field.ErrorList {
+func validateRolloutSpecObjectRef(c *validateContext, workloadRef *appsv1beta1.ObjectRef, fldPath *field.Path) field.ErrorList {
 	if workloadRef == nil {
 		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), workloadRef, "WorkloadRef is required")}
 	}
@@ -217,6 +224,14 @@ func validateRolloutSpecObjectRef(workloadRef *appsv1beta1.ObjectRef, fldPath *f
 	gvk := schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
 	if !util.IsSupportedWorkload(gvk) {
 		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), workloadRef, "WorkloadRef kind is not supported")}
+	}
+	if c.style == string(appsv1beta1.BlueGreenRollingStyle) {
+		for _, allowed := range blueGreenSupportWorkloadGVKs {
+			if gvk.Group == allowed.Group && gvk.Kind == allowed.Kind {
+				return nil
+			}
+		}
+		return field.ErrorList{field.Invalid(fldPath.Child("WorkloadRef"), workloadRef, "WorkloadRef kind is not supported for bluegreen style")}
 	}
 	return nil
 }
@@ -378,7 +393,7 @@ func (h *RolloutCreateUpdateHandler) InjectDecoder(d *admission.Decoder) error {
 
 func GetContextFromv1beta1Rollout(rollout *appsv1beta1.Rollout) *validateContext {
 	if rollout.Spec.Strategy.Canary == nil && rollout.Spec.Strategy.BlueGreen == nil {
-		return nil
+		return &validateContext{}
 	}
 	style := rollout.Spec.Strategy.GetRollingStyle()
 	if appsv1beta1.IsRealPartition(rollout) {

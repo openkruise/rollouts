@@ -10,21 +10,15 @@ spec:
   strategy:
     blueGreen:
       steps:
-      - traffic: 20%
-        replicas: 20%
+      - replicas: 50%
+        traffic: 0%
         pause: {}
-      - traffic: 40%
-        replicas: 40%
-        pause: {duration: 10}
-      - traffic: 60%
-        replicas: 60%
-        pause: {duration: 10}
-      - traffic: 80%
-        replicas: 80%
-        pause: {duration: 10}
-      - traffic: 100%
-        replicas: 100%
-        pause: {duration: 0}
+      - replicas: 100%
+        traffic: 0%
+      - replicas: 100%
+        traffic: 50%
+      - replicas: 100%
+        traffic: 100%
       trafficRoutings:
       - service: echoserver
         ingress:

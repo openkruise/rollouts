@@ -62,31 +62,6 @@ type DeploymentStrategy struct {
 	Partition intstr.IntOrString `json:"partition,omitempty"`
 }
 
-// OriginalDeploymentStrategy stores part of the fileds of a workload,
-// so that it can be restored when finalizing.
-// It is only used for BlueGreen Release
-// Similar to DeploymentStrategy, it is an annotation used in workload
-// However, unlike DeploymentStrategy, it is only used to store and restore the user's strategy
-type OriginalDeploymentStrategy struct {
-	// The deployment strategy to use to replace existing pods with new ones.
-	// +optional
-	// +patchStrategy=retainKeys
-	Strategy *apps.DeploymentStrategy `json:"strategy,omitempty" patchStrategy:"retainKeys" protobuf:"bytes,4,opt,name=strategy"`
-
-	// Minimum number of seconds for which a newly created pod should be ready
-	// without any of its container crashing, for it to be considered available.
-	// Defaults to 0 (pod will be considered available as soon as it is ready)
-	// +optional
-	MinReadySeconds int32 `json:"minReadySeconds,omitempty" protobuf:"varint,5,opt,name=minReadySeconds"`
-
-	// The maximum time in seconds for a deployment to make progress before it
-	// is considered to be failed. The deployment controller will continue to
-	// process failed deployments and a condition with a ProgressDeadlineExceeded
-	// reason will be surfaced in the deployment status. Note that progress will
-	// not be estimated during the time a deployment is paused. Defaults to 600s.
-	ProgressDeadlineSeconds *int32 `json:"progressDeadlineSeconds,omitempty" protobuf:"varint,9,opt,name=progressDeadlineSeconds"`
-}
-
 type RollingStyleType string
 
 const (
@@ -137,45 +112,4 @@ func SetDefaultDeploymentStrategy(strategy *DeploymentStrategy) {
 			MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
 		}
 	}
-}
-
-func SetDefaultSetting(setting *OriginalDeploymentStrategy) {
-	if setting.ProgressDeadlineSeconds == nil {
-		setting.ProgressDeadlineSeconds = new(int32)
-		*setting.ProgressDeadlineSeconds = 600
-	}
-	if setting.Strategy == nil {
-		setting.Strategy = &apps.DeploymentStrategy{}
-	}
-	if setting.Strategy.Type == "" {
-		setting.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
-	}
-	if setting.Strategy.Type == apps.RecreateDeploymentStrategyType {
-		return
-	}
-	strategy := setting.Strategy
-	if strategy.RollingUpdate == nil {
-		strategy.RollingUpdate = &apps.RollingUpdateDeployment{}
-	}
-	if strategy.RollingUpdate.MaxUnavailable == nil {
-		// Set MaxUnavailable as 25% by default
-		maxUnavailable := intstr.FromString("25%")
-		strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
-	}
-	if strategy.RollingUpdate.MaxSurge == nil {
-		// Set MaxSurge as 25% by default
-		maxSurge := intstr.FromString("25%")
-		strategy.RollingUpdate.MaxUnavailable = &maxSurge
-	}
-
-	// Cannot allow maxSurge==0 && MaxUnavailable==0, otherwise, no pod can be updated when rolling update.
-	maxSurge, _ := intstr.GetScaledValueFromIntOrPercent(strategy.RollingUpdate.MaxSurge, 100, true)
-	maxUnavailable, _ := intstr.GetScaledValueFromIntOrPercent(strategy.RollingUpdate.MaxUnavailable, 100, true)
-	if maxSurge == 0 && maxUnavailable == 0 {
-		strategy.RollingUpdate = &apps.RollingUpdateDeployment{
-			MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
-			MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
-		}
-	}
-
 }

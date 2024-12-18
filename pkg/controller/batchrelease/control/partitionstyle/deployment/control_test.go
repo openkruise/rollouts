@@ -101,7 +101,7 @@ var (
 			UpdatedReplicas:    10,
 			ReadyReplicas:      10,
 			AvailableReplicas:  10,
-			CollisionCount:     pointer.Int32Ptr(1),
+			CollisionCount:     pointer.Int32(1),
 			ObservedGeneration: 1,
 		},
 	}
@@ -178,7 +178,7 @@ func TestCalculateBatchContext(t *testing.T) {
 						},
 					},
 					Spec: apps.DeploymentSpec{
-						Replicas: pointer.Int32Ptr(10),
+						Replicas: pointer.Int32(10),
 					},
 					Status: apps.DeploymentStatus{
 						Replicas:          10,
@@ -222,6 +222,11 @@ func TestCalculateBatchContext(t *testing.T) {
 				UpdatedReadyReplicas:   1,
 				PlannedUpdatedReplicas: 2,
 				DesiredUpdatedReplicas: 2,
+				Batches: []v1beta1.ReleaseBatch{
+					{
+						CanaryReplicas: percent,
+					},
+				},
 			},
 		},
 		"partition=90%, replicas=5": {
@@ -242,7 +247,7 @@ func TestCalculateBatchContext(t *testing.T) {
 						},
 					},
 					Spec: apps.DeploymentSpec{
-						Replicas: pointer.Int32Ptr(5),
+						Replicas: pointer.Int32(5),
 					},
 					Status: apps.DeploymentStatus{
 						Replicas:          5,
@@ -286,6 +291,11 @@ func TestCalculateBatchContext(t *testing.T) {
 				UpdatedReadyReplicas:   4,
 				PlannedUpdatedReplicas: 4,
 				DesiredUpdatedReplicas: 4,
+				Batches: []v1beta1.ReleaseBatch{
+					{
+						CanaryReplicas: intstr.FromString("90%"),
+					},
+				},
 			},
 		},
 	}

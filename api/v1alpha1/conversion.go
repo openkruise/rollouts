@@ -154,7 +154,7 @@ func ConversionToV1beta1TrafficRoutingRef(src TrafficRoutingRef) (dst v1beta1.Tr
 
 func ConversionToV1beta1TrafficRoutingStrategy(src TrafficRoutingStrategy) (dst v1beta1.TrafficRoutingStrategy) {
 	if src.Weight != nil {
-		dst.Traffic = utilpointer.StringPtr(fmt.Sprintf("%d", *src.Weight) + "%")
+		dst.Traffic = utilpointer.String(fmt.Sprintf("%d", *src.Weight) + "%")
 	}
 	dst.RequestHeaderModifier = src.RequestHeaderModifier
 	for _, match := range src.Matches {
@@ -172,7 +172,9 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 		srcV1beta1 := src.(*v1beta1.Rollout)
 		dst.ObjectMeta = srcV1beta1.ObjectMeta
 		if !srcV1beta1.Spec.Strategy.IsCanaryStragegy() {
-			return fmt.Errorf("v1beta1 Rollout with %s strategy cannot be converted to v1alpha1", srcV1beta1.Spec.Strategy.GetRollingStyle())
+			// only v1beta1 supports bluegreen strategy
+			// Don't log the message because it will print too often
+			return nil
 		}
 		// spec
 		dst.Spec = RolloutSpec{
