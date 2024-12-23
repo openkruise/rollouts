@@ -80,7 +80,6 @@ func (rc *realController) ListOwnedPods() ([]*corev1.Pod, error) {
 }
 
 func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
-	klog.Info("Initialize cloneset controller")
 	if rc.object == nil || control.IsControlledByBatchRelease(release, rc.object) {
 		return nil
 	}
@@ -120,10 +119,10 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	desired, _ := intstr.GetScaledValueFromIntOrPercent(&ctx.DesiredSurge, int(ctx.Replicas), true)
 	current, _ := intstr.GetScaledValueFromIntOrPercent(&ctx.CurrentSurge, int(ctx.Replicas), true)
 	if current >= desired {
-		klog.Infof("No need to upgrade batch for cloneset %v: because current %d >= desired %d", klog.KObj(rc.object), current, desired)
+		klog.InfoS("No need to upgrade batch, because current >= desired", "cloneset", klog.KObj(rc.object), "current", current, "desired", desired)
 		return nil
 	} else {
-		klog.Infof("Will update batch for cloneset %v: current %d < desired %d", klog.KObj(rc.object), current, desired)
+		klog.InfoS("Will update batch for cloneset, because current < desired", "cloneset", klog.KObj(rc.object), "current", current, "desired", desired)
 	}
 	patchData := patch.NewClonesetPatch()
 	// avoid interference from partition
@@ -168,7 +167,7 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		return errors.NewRetryError(fmt.Errorf("cloneset %v finalize not done, readyReplicas %d != updatedReadyReplicas %d, current policy %s",
 			klog.KObj(rc.object), rc.object.Status.ReadyReplicas, rc.object.Status.UpdatedReadyReplicas, release.Spec.ReleasePlan.FinalizingPolicy))
 	}
-	klog.InfoS("Finalize: cloneset bluegreen release: all pods updated and ready")
+	klog.InfoS("Finalize: cloneset bluegreen release: all pods updated and ready", "cloneset", klog.KObj(rc.object))
 
 	// restore the hpa
 	return hpa.RestoreHPA(rc.client, rc.object)

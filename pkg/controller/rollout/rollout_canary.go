@@ -71,7 +71,6 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 	}
 
 	if m.doCanaryJump(c) {
-		klog.Infof("rollout(%s/%s) canary step jumped", c.Rollout.Namespace, c.Rollout.Name)
 		return nil
 	}
 	// When the first batch is trafficRouting rolling and the next steps are rolling release,

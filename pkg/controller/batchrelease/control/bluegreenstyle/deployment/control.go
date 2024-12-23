@@ -171,14 +171,14 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		if err := rc.client.Patch(context.TODO(), d, patchData); err != nil {
 			return err
 		}
-		klog.InfoS("Finalize: deployment bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
+		klog.InfoS("Finalize: deployment bluegreen release: wait all pods updated and ready", "Deployment", klog.KObj(rc.object))
 	}
 
 	// wait all pods updated and ready
 	if err := waitAllUpdatedAndReady(d.(*apps.Deployment)); err != nil {
 		return errors.NewRetryError(err)
 	}
-	klog.InfoS("Finalize: deployment is ready to resume, restore the original setting", "deployment", klog.KObj(rc.object))
+	klog.InfoS("Finalize: All pods updated and ready, then restore hpa", "Deployment", klog.KObj(rc.object))
 
 	// restore hpa
 	return hpa.RestoreHPA(rc.client, rc.object)
