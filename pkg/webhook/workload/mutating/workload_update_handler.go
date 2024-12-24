@@ -189,87 +189,20 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 		}
 	}
 
-	// handle other workload types, including native/advanced statefulset
-	{
-		newObj := &unstructured.Unstructured{}
-		newObj.SetGroupVersionKind(schema.GroupVersionKind{Group: req.Kind.Group, Version: req.Kind.Version, Kind: req.Kind.Kind})
-		if err := h.Decoder.Decode(req, newObj); err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		if !util.IsWorkloadType(newObj, util.StatefulSetType) && req.Kind.Kind != util.ControllerKindSts.Kind {
-			return admission.Allowed("")
-		}
-		oldObj := &unstructured.Unstructured{}
-		oldObj.SetGroupVersionKind(schema.GroupVersionKind{Group: req.Kind.Group, Version: req.Kind.Version, Kind: req.Kind.Kind})
-		if err := h.Decoder.Decode(
-			admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Object: req.AdmissionRequest.OldObject}},
-			oldObj); err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		changed, err := h.handleStatefulSetLikeWorkload(newObj, oldObj)
-		if err != nil {
-			return admission.Errored(http.StatusBadRequest, err)
-		}
-		if !changed {
-			return admission.Allowed("")
-		}
-		marshalled, err := json.Marshal(newObj.Object)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError, err)
-		}
-		return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
-	}
-}
-
-func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstructured.Unstructured) (bool, error) {
-	// indicate whether the workload can enter the rollout process
-	// 1. replicas > 0
-	if util.GetReplicas(newObj) == 0 || !util.IsStatefulSetRollingUpdate(newObj) {
-		return false, nil
-	}
-	oldTemplate, newTemplate := util.GetTemplate(oldObj), util.GetTemplate(newObj)
-	if oldTemplate == nil || newTemplate == nil {
-		return false, nil
-	}
-	oldMetadata, newMetadata := util.GetMetadata(oldObj), util.GetMetadata(newObj)
-	if newMetadata.Annotations[appsv1beta1.RolloutIDLabel] != "" &&
-		oldMetadata.Annotations[appsv1beta1.RolloutIDLabel] == newMetadata.Annotations[appsv1beta1.RolloutIDLabel] {
-		return false, nil
-	} else if newMetadata.Annotations[appsv1beta1.RolloutIDLabel] == "" && util.EqualIgnoreHash(oldTemplate, newTemplate) {
-		return false, nil
-	}
-
-	rollout, err := h.fetchMatchedRollout(newObj)
-	if err != nil {
-		return false, err
-	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
-		return false, nil
-	}
-
-	util.SetStatefulSetPartition(newObj, math.MaxInt16)
-	state := &util.RolloutState{RolloutName: rollout.Name}
-	by, _ := json.Marshal(state)
-	annotation := newObj.GetAnnotations()
-	if annotation == nil {
-		annotation = map[string]string{}
-	}
-	annotation[util.InRolloutProgressingAnnotation] = string(by)
-	newObj.SetAnnotations(annotation)
-	klog.Infof("StatefulSet(%s/%s) will be released incrementally based on Rollout(%s)", newMetadata.Namespace, newMetadata.Name, rollout.Name)
-	return true, nil
+	return admission.Allowed("")
 }
 
 func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (bool, error) {
 	// in rollout progressing
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
 		modified := false
-		if !newObj.Spec.Paused {
-			modified = true
-			newObj.Spec.Paused = true
-		}
 		strategy := util.GetDeploymentStrategy(newObj)
-		switch strings.ToLower(string(strategy.RollingStyle)) {
-		case strings.ToLower(string(appsv1alpha1.PartitionRollingStyle)):
+		// partition
+		if strings.EqualFold(string(strategy.RollingStyle), string(appsv1alpha1.PartitionRollingStyle)) {
+			if !newObj.Spec.Paused {
+				modified = true
+				newObj.Spec.Paused = true
+			}
 			// Make sure it is always Recreate to disable native controller
 			if newObj.Spec.Strategy.Type == apps.RollingUpdateDeploymentStrategyType {
 				modified = true
@@ -287,7 +220,24 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 			}
 			appsv1alpha1.SetDefaultDeploymentStrategy(&strategy)
 			setDeploymentStrategyAnnotation(strategy, newObj)
-		default:
+			// bluegreenStyle
+		} else if len(newObj.GetAnnotations()[appsv1beta1.OriginalDeploymentStrategyAnnotation]) > 0 {
+			if isEffectiveDeploymentRevisionChange(oldObj, newObj) {
+				newObj.Spec.Paused, modified = true, true
+				// disallow continuous release, allow rollback
+				klog.Warningf("rollback or continuous release detected in Deployment webhook, while only rollback is allowed for bluegreen release for now")
+			}
+			// not allow to modify Strategy.Type to Recreate
+			if newObj.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
+				modified = true
+				newObj.Spec.Strategy.Type = oldObj.Spec.Strategy.Type
+				klog.Warningf("Not allow to modify Strategy.Type to Recreate")
+			}
+		} else { // default
+			if !newObj.Spec.Paused {
+				modified = true
+				newObj.Spec.Paused = true
+			}
 			// Do not allow to modify strategy as Recreate during rolling
 			if newObj.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
 				modified = true
@@ -369,6 +319,7 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
 		return false, nil
 	}
+
 	// if traffic routing, there must only be one version of Pods
 	if rollout.Spec.Strategy.HasTrafficRoutings() && newObj.Status.Replicas != newObj.Status.UpdatedReplicas {
 		klog.Warningf("Because cloneSet(%s/%s) have multiple versions of Pods, so can not enter rollout progressing", newObj.Namespace, newObj.Name)

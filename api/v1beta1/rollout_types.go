@@ -579,6 +579,8 @@ const (
 	FinalisingStepReleaseWorkloadControl FinalisingStepType = "ReleaseWorkloadControl"
 	// All needed work done
 	FinalisingStepTypeEnd FinalisingStepType = "END"
+	// Only for debugging use
+	FinalisingStepWaitEndless FinalisingStepType = "WaitEndless"
 )
 
 // +genclient

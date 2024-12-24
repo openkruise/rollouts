@@ -23,6 +23,8 @@ import (
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -219,6 +221,159 @@ func (s *DeploymentPatch) UpdatePaused(paused bool) *DeploymentPatch {
 		}
 		spec := s.PatchData["spec"].(map[string]interface{})
 		spec["paused"] = paused
+	}
+	return s
+}
+
+func (s *DeploymentPatch) UpdateMinReadySeconds(seconds int32) *DeploymentPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		spec["minReadySeconds"] = seconds
+	}
+	return s
+}
+
+func (s *DeploymentPatch) UpdateProgressDeadlineSeconds(seconds *int32) *DeploymentPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		spec["progressDeadlineSeconds"] = seconds
+	}
+	return s
+}
+
+func (s *DeploymentPatch) UpdateMaxSurge(maxSurge *intstr.IntOrString) *DeploymentPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		if _, ok := spec["strategy"]; !ok {
+			spec["strategy"] = make(map[string]interface{})
+		}
+		strategy := spec["strategy"].(map[string]interface{})
+		if _, ok := strategy["rollingUpdate"]; !ok {
+			strategy["rollingUpdate"] = make(map[string]interface{})
+		}
+		rollingUpdate := strategy["rollingUpdate"].(map[string]interface{})
+		rollingUpdate["maxSurge"] = maxSurge
+	}
+	return s
+}
+
+func (s *DeploymentPatch) UpdateMaxUnavailable(maxUnavailable *intstr.IntOrString) *DeploymentPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		if _, ok := spec["strategy"]; !ok {
+			spec["strategy"] = make(map[string]interface{})
+		}
+		strategy := spec["strategy"].(map[string]interface{})
+		if _, ok := strategy["rollingUpdate"]; !ok {
+			strategy["rollingUpdate"] = make(map[string]interface{})
+		}
+		rollingUpdate := strategy["rollingUpdate"].(map[string]interface{})
+		rollingUpdate["maxUnavailable"] = maxUnavailable
+	}
+	return s
+}
+
+type ClonesetPatch struct {
+	CommonPatch
+}
+
+func NewClonesetPatch() *ClonesetPatch {
+	return &ClonesetPatch{CommonPatch{PatchType: types.MergePatchType, PatchData: make(map[string]interface{})}}
+}
+
+func (s *ClonesetPatch) UpdateMinReadySeconds(seconds int32) *ClonesetPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		klog.Infof("updateMinReadySeconds to %v", seconds)
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		spec["minReadySeconds"] = seconds
+	}
+	return s
+}
+
+func (s *ClonesetPatch) UpdatePaused(paused bool) *ClonesetPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		klog.Infof("updatePaused to %v", paused)
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		if _, ok := spec["updateStrategy"]; !ok {
+			spec["updateStrategy"] = make(map[string]interface{})
+		}
+		updateStrategy := spec["updateStrategy"].(map[string]interface{})
+		updateStrategy["paused"] = paused
+	}
+	return s
+}
+
+func (s *ClonesetPatch) UpdatePartiton(partition *intstr.IntOrString) *ClonesetPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		klog.Infof("updatePartition to %v", partition)
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		if _, ok := spec["updateStrategy"]; !ok {
+			spec["updateStrategy"] = make(map[string]interface{})
+		}
+		updateStrategy := spec["updateStrategy"].(map[string]interface{})
+		updateStrategy["partition"] = partition
+	}
+	return s
+}
+
+func (s *ClonesetPatch) UpdateMaxSurge(maxSurge *intstr.IntOrString) *ClonesetPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		klog.Infof("updateMaxSurge to %v", maxSurge)
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		if _, ok := spec["updateStrategy"]; !ok {
+			spec["updateStrategy"] = make(map[string]interface{})
+		}
+		updateStrategy := spec["updateStrategy"].(map[string]interface{})
+		updateStrategy["maxSurge"] = maxSurge
+	}
+	return s
+}
+
+func (s *ClonesetPatch) UpdateMaxUnavailable(maxUnavailable *intstr.IntOrString) *ClonesetPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		klog.Infof("updateMaxUnavailable to %v", maxUnavailable)
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		if _, ok := spec["updateStrategy"]; !ok {
+			spec["updateStrategy"] = make(map[string]interface{})
+		}
+		updateStrategy := spec["updateStrategy"].(map[string]interface{})
+		updateStrategy["maxUnavailable"] = maxUnavailable
 	}
 	return s
 }

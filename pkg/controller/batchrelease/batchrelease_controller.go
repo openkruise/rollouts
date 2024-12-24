@@ -148,6 +148,7 @@ type BatchReleaseReconciler struct {
 // +kubebuilder:rbac:groups=apps.kruise.io,resources=statefulsets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps.kruise.io,resources=daemonsets,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=apps.kruise.io,resources=daemonsets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;update;patch
 
 // Reconcile reads that state of the cluster for a Rollout object and makes changes based on the state read
 // and what is in the Rollout.Spec

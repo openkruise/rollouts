@@ -71,7 +71,6 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 	}
 
 	if m.doCanaryJump(c) {
-		klog.Infof("rollout(%s/%s) canary step jumped", c.Rollout.Namespace, c.Rollout.Name)
 		return nil
 	}
 	// When the first batch is trafficRouting rolling and the next steps are rolling release,
@@ -457,6 +456,10 @@ func (m *canaryReleaseManager) syncBatchRelease(br *v1beta1.BatchRelease, canary
 	// TODO: optimize the logic to better understand
 	canaryStatus.Message = fmt.Sprintf("BatchRelease is at state %s, rollout-id %s, step %d",
 		br.Status.CanaryStatus.CurrentBatchState, br.Status.ObservedRolloutID, br.Status.CanaryStatus.CurrentBatch+1)
+	// br.Status.Message records messages that help users to understand what is going wrong
+	if len(br.Status.Message) > 0 {
+		canaryStatus.Message += fmt.Sprintf(", %s", br.Status.Message)
+	}
 
 	// sync rolloutId from canaryStatus to BatchRelease
 	if canaryStatus.ObservedRolloutID != br.Spec.ReleasePlan.RolloutID {

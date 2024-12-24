@@ -62,7 +62,6 @@ func (m *blueGreenReleaseManager) runCanary(c *RolloutContext) error {
 	}
 
 	if m.doCanaryJump(c) {
-		klog.Infof("rollout(%s/%s) canary step jumped", c.Rollout.Namespace, c.Rollout.Name)
 		return nil
 	}
 	// When the first batch is trafficRouting rolling and the next steps are rolling release,
@@ -323,6 +322,9 @@ func (m *blueGreenReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, e
 	// route all traffic to new version
 	case v1beta1.FinalisingStepRouteTrafficToNew:
 		retry, err = m.trafficRoutingManager.RouteAllTrafficToNewVersion(tr)
+	// dangerous, wait endlessly, only for debugging use
+	case v1beta1.FinalisingStepWaitEndless:
+		retry, err = true, fmt.Errorf("only for debugging, just wait endlessly")
 	default:
 		nextStep = nextBlueGreenTask(c.FinalizeReason, "")
 		klog.Warningf("unexpected finalising step, current step(%s),  start from the first step(%s)", blueGreenStatus.FinalisingStep, nextStep)
@@ -392,7 +394,10 @@ func (m *blueGreenReleaseManager) syncBatchRelease(br *v1beta1.BatchRelease, blu
 	// TODO: optimize the logic to better understand
 	blueGreenStatus.Message = fmt.Sprintf("BatchRelease is at state %s, rollout-id %s, step %d",
 		br.Status.CanaryStatus.CurrentBatchState, br.Status.ObservedRolloutID, br.Status.CanaryStatus.CurrentBatch+1)
-
+	// br.Status.Message records messages that help users to understand what is going wrong
+	if len(br.Status.Message) > 0 {
+		blueGreenStatus.Message += fmt.Sprintf(", %s", br.Status.Message)
+	}
 	// sync rolloutId from blueGreenStatus to BatchRelease
 	if blueGreenStatus.ObservedRolloutID != br.Spec.ReleasePlan.RolloutID {
 		body := fmt.Sprintf(`{"spec":{"releasePlan":{"rolloutID":"%s"}}}`, blueGreenStatus.ObservedRolloutID)
@@ -450,10 +455,9 @@ func nextBlueGreenTask(reason string, currentTask v1beta1.FinalisingStepType) v1
 	default: // others: disabled/deleting rollout
 		taskSequence = []v1beta1.FinalisingStepType{
 			v1beta1.FinalisingStepRestoreStableService,
-			v1beta1.FinalisingStepResumeWorkload, // scale up new, scale down old
 			v1beta1.FinalisingStepRouteTrafficToStable,
-
 			v1beta1.FinalisingStepRemoveCanaryService,
+			v1beta1.FinalisingStepResumeWorkload, // scale up new, scale down old
 			v1beta1.FinalisingStepReleaseWorkloadControl,
 		}
 	}

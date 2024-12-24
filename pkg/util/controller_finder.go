@@ -289,7 +289,7 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1beta1.O
 		return &Workload{IsStatusConsistent: false}, nil
 	}
 	// stable replicaSet
-	stableRs, err := r.getDeploymentStableRs(stable)
+	stableRs, err := r.GetDeploymentStableRs(stable)
 	if err != nil || stableRs == nil {
 		return &Workload{IsStatusConsistent: false}, err
 	}
@@ -318,7 +318,7 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1beta1.O
 	if err != nil || canary == nil {
 		return workload, err
 	}
-	canaryRs, err := r.getDeploymentStableRs(canary)
+	canaryRs, err := r.GetDeploymentStableRs(canary)
 	if err != nil || canaryRs == nil {
 		return workload, err
 	}
@@ -422,7 +422,7 @@ func (r *ControllerFinder) GetReplicaSetsForDeployment(obj *apps.Deployment) ([]
 	return rss, nil
 }
 
-func (r *ControllerFinder) getDeploymentStableRs(obj *apps.Deployment) (*apps.ReplicaSet, error) {
+func (r *ControllerFinder) GetDeploymentStableRs(obj *apps.Deployment) (*apps.ReplicaSet, error) {
 	rss, err := r.GetReplicaSetsForDeployment(obj)
 	if err != nil {
 		return nil, err

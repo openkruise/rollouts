@@ -24,6 +24,9 @@ import (
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/bluegreenstyle"
+	bgcloneset "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/bluegreenstyle/cloneset"
+	bgdeplopyment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/bluegreenstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle"
 	canarydeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
@@ -32,6 +35,7 @@ import (
 	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/statefulset"
 	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/errors"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -145,7 +149,11 @@ func (r *Executor) progressBatches(release *v1beta1.BatchRelease, newStatus *v1b
 		switch {
 		case err == nil:
 			result = reconcile.Result{RequeueAfter: DefaultDuration}
+			removeProgressingCondition(newStatus)
 			newStatus.CanaryStatus.CurrentBatchState = v1beta1.VerifyingBatchState
+		case errors.IsBadRequest(err):
+			progressingStateTransition(newStatus, v1.ConditionTrue, v1beta1.ProgressingReasonInRolling, err.Error())
+			fallthrough
 		default:
 			klog.Warningf("Failed to upgrade %v, err %v", klog.KObj(release), err)
 		}
@@ -204,14 +212,14 @@ func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus
 	klog.Infof("BatchRelease(%v) using %s-style release controller for this batch release", klog.KObj(release), rollingStyle)
 	switch rollingStyle {
 	case v1beta1.BlueGreenRollingStyle:
-		// if targetRef.APIVersion == appsv1alpha1.GroupVersion.String() && targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
-		// 	klog.InfoS("Using CloneSet bluegreen-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-		// 	return partitionstyle.NewControlPlane(cloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
-		// }
-		// if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
-		// 	klog.InfoS("Using Deployment bluegreen-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-		// 	return bluegreenstyle.NewControlPlane(deployment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
-		// }
+		if targetRef.APIVersion == appsv1alpha1.GroupVersion.String() && targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
+			klog.InfoS("Using CloneSet bluegreen-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+			return bluegreenstyle.NewControlPlane(bgcloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+		}
+		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
+			klog.InfoS("Using Deployment bluegreen-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+			return bluegreenstyle.NewControlPlane(bgdeplopyment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+		}
 
 	case v1beta1.CanaryRollingStyle:
 		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
@@ -256,4 +264,24 @@ func (r *Executor) moveToNextBatch(release *v1beta1.BatchRelease, status *v1beta
 func isPartitioned(release *v1beta1.BatchRelease) bool {
 	return release.Spec.ReleasePlan.BatchPartition != nil &&
 		*release.Spec.ReleasePlan.BatchPartition <= release.Status.CanaryStatus.CurrentBatch
+}
+
+func progressingStateTransition(status *v1beta1.BatchReleaseStatus, condStatus v1.ConditionStatus, reason, message string) {
+	cond := util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionProgressing)
+	if cond == nil {
+		cond = util.NewRolloutCondition(v1beta1.RolloutConditionProgressing, condStatus, reason, message)
+	} else {
+		cond.Status = condStatus
+		cond.Reason = reason
+		if message != "" {
+			cond.Message = message
+		}
+	}
+	util.SetBatchReleaseCondition(status, *cond)
+	status.Message = cond.Message
+}
+
+func removeProgressingCondition(status *v1beta1.BatchReleaseStatus) {
+	util.RemoveBatchReleaseCondition(status, v1beta1.RolloutConditionProgressing)
+	status.Message = ""
 }
