@@ -64,6 +64,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				obj.Status.BlueGreenStatus.UpdatedRevision = "6f8cc56547"
 				obj.Status.BlueGreenStatus.CurrentStepIndex = 1
 				obj.Status.BlueGreenStatus.NextStepIndex = 2
+				obj.Status.BlueGreenStatus.ObservedRolloutID = "88bd5dbfd"
 				obj.Status.BlueGreenStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
@@ -79,6 +80,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				s.BlueGreenStatus.CurrentStepIndex = 1
 				s.BlueGreenStatus.NextStepIndex = 2
 				s.BlueGreenStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				s.BlueGreenStatus.ObservedRolloutID = "88bd5dbfd"
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
@@ -102,6 +104,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.BlueGreenRollingStyle
+				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
 				return br
 			},
 		},
@@ -128,6 +131,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				obj.Status.BlueGreenStatus.CurrentStepIndex = 1
 				obj.Status.BlueGreenStatus.NextStepIndex = 2
 				obj.Status.BlueGreenStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				obj.Status.BlueGreenStatus.ObservedRolloutID = "88bd5dbfd"
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
@@ -148,6 +152,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.BlueGreenRollingStyle
+				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
 				br.Status = v1beta1.BatchReleaseStatus{
 					ObservedGeneration:      1,
 					ObservedReleasePlanHash: util.HashReleasePlanBatches(&br.Spec.ReleasePlan),
@@ -171,6 +176,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				s.BlueGreenStatus.UpdatedReadyReplicas = 1
 				s.BlueGreenStatus.CurrentStepIndex = 1
 				s.BlueGreenStatus.NextStepIndex = 2
+				s.BlueGreenStatus.ObservedRolloutID = "88bd5dbfd"
 				s.BlueGreenStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
@@ -195,6 +201,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.BlueGreenRollingStyle
+				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
 				return br
 			},
 		},
