@@ -103,6 +103,7 @@ func TestRunCanary(t *testing.T) {
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.CanaryRollingStyle
+				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
 				return br
 			},
 		},
@@ -143,6 +144,7 @@ func TestRunCanary(t *testing.T) {
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
 				obj.Status.CanaryStatus.NextStepIndex = 2
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
+				obj.Status.CanaryStatus.ObservedRolloutID = "88bd5dbfd"
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
@@ -164,6 +166,7 @@ func TestRunCanary(t *testing.T) {
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.CanaryRollingStyle
+				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
 				br.Status = v1beta1.BatchReleaseStatus{
 					ObservedGeneration: 1,
 					// since we use RollingStyle over EnableExtraWorkloadForCanary now, former hardcoded hash
@@ -190,6 +193,7 @@ func TestRunCanary(t *testing.T) {
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.NextStepIndex = 2
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
+				s.CanaryStatus.ObservedRolloutID = "88bd5dbfd"
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
@@ -214,6 +218,7 @@ func TestRunCanary(t *testing.T) {
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.CanaryRollingStyle
+				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
 				return br
 			},
 		},

@@ -74,6 +74,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
 				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
 				s.CurrentStepState = s.CanaryStatus.CurrentStepState
+				s.CanaryStatus.ObservedRolloutID = "88bd5dbfd"
 				return s
 			},
 			expectTr: func() *v1alpha1.TrafficRouting {
@@ -107,6 +108,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.NextStepIndex = 2
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
+				s.CanaryStatus.ObservedRolloutID = "88bd5dbfd"
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
