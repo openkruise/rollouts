@@ -154,7 +154,7 @@ func ConversionToV1beta1TrafficRoutingRef(src TrafficRoutingRef) (dst v1beta1.Tr
 
 func ConversionToV1beta1TrafficRoutingStrategy(src TrafficRoutingStrategy) (dst v1beta1.TrafficRoutingStrategy) {
 	if src.Weight != nil {
-		dst.Traffic = utilpointer.StringPtr(fmt.Sprintf("%d", *src.Weight) + "%")
+		dst.Traffic = utilpointer.String(fmt.Sprintf("%d", *src.Weight) + "%")
 	}
 	dst.RequestHeaderModifier = src.RequestHeaderModifier
 	for _, match := range src.Matches {

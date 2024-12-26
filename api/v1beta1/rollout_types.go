@@ -462,9 +462,9 @@ func (r *RolloutStatus) GetSubStatus() *CommonStatus {
 		return nil
 	}
 	if r.CanaryStatus != nil {
-		return &(r.CanaryStatus.CommonStatus)
+		return &r.CanaryStatus.CommonStatus
 	}
-	return &(r.BlueGreenStatus.CommonStatus)
+	return &r.BlueGreenStatus.CommonStatus
 }
 
 func (r *RolloutStatus) IsSubStatusEmpty() bool {

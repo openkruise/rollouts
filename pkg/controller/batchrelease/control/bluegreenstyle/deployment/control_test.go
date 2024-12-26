@@ -439,7 +439,7 @@ func TestCalculateBatchContext(t *testing.T) {
 					AvailableReplicas: 9,
 					ReadyReplicas:     9,
 				}
-				deployment.Spec.Replicas = pointer.Int32Ptr(5)
+				deployment.Spec.Replicas = pointer.Int32(5)
 				// current partition, ie. maxSurge
 				deployment.Spec.Strategy.RollingUpdate.MaxSurge = &intstr.IntOrString{Type: intstr.String, StrVal: "90%"}
 				newRss := makeCanaryReplicaSets(deployment).(*apps.ReplicaSet)

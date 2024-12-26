@@ -91,14 +91,14 @@ func TestWorkloadEventHandler_Update(t *testing.T) {
 				oldObject := getStableWithReady(stableDeploy, "v2").(*apps.Deployment)
 				oldObject.SetGeneration(2)
 				oldObject.Status.ObservedGeneration = 2
-				oldObject.Spec.Replicas = pointer.Int32Ptr(1000)
+				oldObject.Spec.Replicas = pointer.Int32(1000)
 				return oldObject
 			},
 			GetNewWorkload: func() client.Object {
 				newObject := getStableWithReady(stableDeploy, "v2").(*apps.Deployment)
 				newObject.SetGeneration(2)
 				newObject.Status.ObservedGeneration = 2
-				newObject.Spec.Replicas = pointer.Int32Ptr(1000)
+				newObject.Spec.Replicas = pointer.Int32(1000)
 				newObject.Status.Replicas = 1000
 				return newObject
 			},
