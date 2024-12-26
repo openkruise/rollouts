@@ -305,7 +305,7 @@ func TestCalculateBatchContext(t *testing.T) {
 			workload: func() *kruiseappsv1alpha1.CloneSet {
 				return &kruiseappsv1alpha1.CloneSet{
 					Spec: kruiseappsv1alpha1.CloneSetSpec{
-						Replicas: pointer.Int32Ptr(10),
+						Replicas: pointer.Int32(10),
 						UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
 							MaxSurge: func() *intstr.IntOrString { p := intstr.FromInt(1); return &p }(),
 						},
@@ -404,7 +404,7 @@ func TestCalculateBatchContext(t *testing.T) {
 			workload: func() *kruiseappsv1alpha1.CloneSet {
 				return &kruiseappsv1alpha1.CloneSet{
 					Spec: kruiseappsv1alpha1.CloneSetSpec{
-						Replicas: pointer.Int32Ptr(10),
+						Replicas: pointer.Int32(10),
 						UpdateStrategy: kruiseappsv1alpha1.CloneSetUpdateStrategy{
 							MaxSurge: func() *intstr.IntOrString { p := intstr.FromString("100%"); return &p }(),
 						},

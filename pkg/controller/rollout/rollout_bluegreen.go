@@ -368,7 +368,7 @@ func (m *blueGreenReleaseManager) createBatchRelease(rollout *v1beta1.Rollout, r
 			ReleasePlan: v1beta1.ReleasePlan{
 				Batches:          batches,
 				RolloutID:        rolloutID,
-				BatchPartition:   utilpointer.Int32Ptr(batch),
+				BatchPartition:   utilpointer.Int32(batch),
 				FailureThreshold: rollout.Spec.Strategy.BlueGreen.FailureThreshold,
 				RollingStyle:     v1beta1.BlueGreenRollingStyle,
 			},

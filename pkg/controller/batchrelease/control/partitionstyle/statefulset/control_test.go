@@ -108,7 +108,7 @@ var (
 			CurrentRevision:      "version-1",
 			ObservedGeneration:   1,
 			UpdatedReadyReplicas: 0,
-			CollisionCount:       pointer.Int32Ptr(1),
+			CollisionCount:       pointer.Int32(1),
 		},
 	}
 
@@ -183,11 +183,11 @@ func TestCalculateBatchContextForNativeStatefulSet(t *testing.T) {
 					},
 					Spec: apps.StatefulSetSpec{
 						Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "foo"}},
-						Replicas: pointer.Int32Ptr(10),
+						Replicas: pointer.Int32(10),
 						UpdateStrategy: apps.StatefulSetUpdateStrategy{
 							Type: apps.RollingUpdateStatefulSetStrategyType,
 							RollingUpdate: &apps.RollingUpdateStatefulSetStrategy{
-								Partition: pointer.Int32Ptr(100),
+								Partition: pointer.Int32(100),
 							},
 						},
 					},
@@ -258,11 +258,11 @@ func TestCalculateBatchContextForNativeStatefulSet(t *testing.T) {
 					},
 					Spec: apps.StatefulSetSpec{
 						Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "foo"}},
-						Replicas: pointer.Int32Ptr(20),
+						Replicas: pointer.Int32(20),
 						UpdateStrategy: apps.StatefulSetUpdateStrategy{
 							Type: apps.RollingUpdateStatefulSetStrategyType,
 							RollingUpdate: &apps.RollingUpdateStatefulSetStrategy{
-								Partition: pointer.Int32Ptr(100),
+								Partition: pointer.Int32(100),
 							},
 						},
 					},
@@ -312,7 +312,7 @@ func TestCalculateBatchContextForNativeStatefulSet(t *testing.T) {
 				Replicas:               20,
 				UpdatedReplicas:        10,
 				UpdatedReadyReplicas:   10,
-				NoNeedUpdatedReplicas:  pointer.Int32Ptr(10),
+				NoNeedUpdatedReplicas:  pointer.Int32(10),
 				PlannedUpdatedReplicas: 4,
 				DesiredUpdatedReplicas: 12,
 				CurrentPartition:       intstr.FromInt(100),
@@ -377,11 +377,11 @@ func TestCalculateBatchContextForAdvancedStatefulSet(t *testing.T) {
 					},
 					Spec: kruiseappsv1beta1.StatefulSetSpec{
 						Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "foo"}},
-						Replicas: pointer.Int32Ptr(10),
+						Replicas: pointer.Int32(10),
 						UpdateStrategy: kruiseappsv1beta1.StatefulSetUpdateStrategy{
 							Type: apps.RollingUpdateStatefulSetStrategyType,
 							RollingUpdate: &kruiseappsv1beta1.RollingUpdateStatefulSetStrategy{
-								Partition: pointer.Int32Ptr(100),
+								Partition: pointer.Int32(100),
 								UnorderedUpdate: &kruiseappsv1beta1.UnorderedUpdateStrategy{
 									PriorityStrategy: &appsv1pub.UpdatePriorityStrategy{
 										OrderPriority: []appsv1pub.UpdatePriorityOrderTerm{
@@ -461,11 +461,11 @@ func TestCalculateBatchContextForAdvancedStatefulSet(t *testing.T) {
 					},
 					Spec: kruiseappsv1beta1.StatefulSetSpec{
 						Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "foo"}},
-						Replicas: pointer.Int32Ptr(20),
+						Replicas: pointer.Int32(20),
 						UpdateStrategy: kruiseappsv1beta1.StatefulSetUpdateStrategy{
 							Type: apps.RollingUpdateStatefulSetStrategyType,
 							RollingUpdate: &kruiseappsv1beta1.RollingUpdateStatefulSetStrategy{
-								Partition: pointer.Int32Ptr(100),
+								Partition: pointer.Int32(100),
 								UnorderedUpdate: &kruiseappsv1beta1.UnorderedUpdateStrategy{
 									PriorityStrategy: &appsv1pub.UpdatePriorityStrategy{
 										OrderPriority: []appsv1pub.UpdatePriorityOrderTerm{
@@ -524,7 +524,7 @@ func TestCalculateBatchContextForAdvancedStatefulSet(t *testing.T) {
 				Replicas:               20,
 				UpdatedReplicas:        10,
 				UpdatedReadyReplicas:   10,
-				NoNeedUpdatedReplicas:  pointer.Int32Ptr(10),
+				NoNeedUpdatedReplicas:  pointer.Int32(10),
 				PlannedUpdatedReplicas: 4,
 				DesiredUpdatedReplicas: 12,
 				CurrentPartition:       intstr.FromInt(100),

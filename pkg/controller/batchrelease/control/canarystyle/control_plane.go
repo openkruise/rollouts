@@ -50,7 +50,7 @@ func NewControlPlane(f NewInterfaceFunc, cli client.Client, recorder record.Even
 		newStatus:     newStatus,
 		Interface:     f(cli, key),
 		release:       release.DeepCopy(),
-		patcher:       labelpatch.NewLabelPatcher(cli, klog.KObj(release)),
+		patcher:       labelpatch.NewLabelPatcher(cli, klog.KObj(release), release.Spec.ReleasePlan.Batches),
 	}
 }
 

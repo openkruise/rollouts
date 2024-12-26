@@ -251,7 +251,7 @@ func (m *Manager) RouteAllTrafficToNewVersion(c *TrafficRoutingContext) (bool, e
 	retry, remaining, err := grace.RunWithGraceSeconds(string(c.OwnerRef.UID), "updateRoute", graceSeconds, func() (bool, error) {
 		// route all traffic to new version
 		c.Strategy.Matches = nil
-		c.Strategy.Traffic = utilpointer.StringPtr("100%")
+		c.Strategy.Traffic = utilpointer.String("100%")
 		//NOTE - This return value "verified" has the opposite semantics with "modified"
 		verified, err := trController.EnsureRoutes(context.TODO(), &c.Strategy)
 		if !verified {

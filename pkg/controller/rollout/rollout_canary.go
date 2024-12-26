@@ -428,7 +428,7 @@ func (m *canaryReleaseManager) createBatchRelease(rollout *v1beta1.Rollout, roll
 			ReleasePlan: v1beta1.ReleasePlan{
 				Batches:                      batches,
 				RolloutID:                    rolloutID,
-				BatchPartition:               utilpointer.Int32Ptr(batch),
+				BatchPartition:               utilpointer.Int32(batch),
 				FailureThreshold:             rollout.Spec.Strategy.Canary.FailureThreshold,
 				PatchPodTemplateMetadata:     rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata,
 				RollingStyle:                 rollout.Spec.Strategy.GetRollingStyle(),
