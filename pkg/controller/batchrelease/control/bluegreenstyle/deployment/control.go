@@ -214,6 +214,7 @@ func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (
 		CurrentSurge:   currentSurge,
 		DesiredSurge:   desiredSurge,
 		UpdateRevision: release.Status.UpdateRevision,
+		StableRevision: release.Status.StableRevision,
 
 		Replicas:               rc.Replicas,
 		UpdatedReplicas:        rc.Status.UpdatedReplicas,

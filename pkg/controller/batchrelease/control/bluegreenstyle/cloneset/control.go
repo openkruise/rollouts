@@ -208,6 +208,7 @@ func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (
 		RolloutID:      release.Spec.ReleasePlan.RolloutID,
 		CurrentBatch:   currentBatch,
 		UpdateRevision: release.Status.UpdateRevision,
+		StableRevision: release.Status.StableRevision,
 		DesiredSurge:   desiredSurge,
 		CurrentSurge:   currentSurge,
 		// the following fields isused to check if batch is ready

@@ -61,23 +61,36 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 	plannedUpdatedReplicasForBatches := r.calculatePlannedStepIncrements(r.batches, int(ctx.Replicas), int(ctx.CurrentBatch))
 	var updatedButUnpatchedPods []*corev1.Pod
 
+	// this map is used to map pod revision to rollout-id directly, preventing a new but out-dated pod to be considered as the latest revision
+	podRevisionToRolloutIdMap := make(map[string]string)
+	for _, pod := range pods {
+		revision := util.GetPodRevision(pod)
+		if podRevisionToRolloutIdMap[revision] == "" {
+			podRevisionToRolloutIdMap[revision] = pod.Labels[v1beta1.RolloutIDLabel]
+		}
+	}
+
 	for _, pod := range pods {
 		if !pod.DeletionTimestamp.IsZero() {
 			klog.InfoS("Pod is being deleted, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
 			continue
 		}
 		// we don't patch label for the active old revision pod
-		if !util.IsConsistentWithRevision(pod, ctx.UpdateRevision) {
-			klog.InfoS("Pod is not consistent with revision, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
+		if util.IsConsistentWithRevision(pod, ctx.StableRevision) {
+			klog.InfoS("Pod is consistent with stable revision, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
 			continue
 		}
-		if pod.Labels[v1beta1.RolloutIDLabel] != ctx.RolloutID {
-			// for example: new/recreated pods
+		if podRolloutId := podRevisionToRolloutIdMap[util.GetPodRevision(pod)]; podRolloutId != "" && podRolloutId != ctx.RolloutID {
+			klog.InfoS("Legacy pod found, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
+			continue
+		}
+		if pod.Labels[v1beta1.RolloutIDLabel] == "" {
+			// latest newly created pods, for example: new/recreated pods
 			updatedButUnpatchedPods = append(updatedButUnpatchedPods, pod)
 			klog.InfoS("Find a pod to add updatedButUnpatchedPods", "pod", klog.KObj(pod), "rollout", r.logKey)
 			continue
 		}
-
+		// existing labeled latest pods
 		podBatchID, err := strconv.Atoi(pod.Labels[v1beta1.RolloutBatchIDLabel])
 		if err != nil {
 			klog.InfoS("Pod batchID is not a number, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
