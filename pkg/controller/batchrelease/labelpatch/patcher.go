@@ -66,11 +66,6 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 			klog.InfoS("Pod is being deleted, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
 			continue
 		}
-		// we don't patch label for the active old revision pod
-		if !util.IsConsistentWithRevision(pod, ctx.UpdateRevision) {
-			klog.InfoS("Pod is not consistent with revision, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
-			continue
-		}
 		if pod.Labels[v1beta1.RolloutIDLabel] != ctx.RolloutID {
 			// for example: new/recreated pods
 			updatedButUnpatchedPods = append(updatedButUnpatchedPods, pod)
