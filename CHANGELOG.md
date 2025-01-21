@@ -1,5 +1,30 @@
 # Change Log
 
+## v0.6.0
+### Key Features:
+- 🎊 Support for blue-green style releases has been added ([#214](https://github.com/openkruise/rollouts/pull/214),[#229](https://github.com/openkruise/rollouts/pull/229),[#238](https://github.com/openkruise/rollouts/pull/238),[#220](https://github.com/openkruise/rollouts/pull/220),[@myname4423](https://github.com/myname4423))
+- ⭐ Traffic loss during rollouts in certain scenarios is avoided ([#226](https://github.com/openkruise/rollouts/pull/226),[#219](https://github.com/openkruise/rollouts/pull/219),[#222](https://github.com/openkruise/rollouts/pull/222),[@myname4423](https://github.com/myname4423))
+
+### Other Features:
+- Enhanced flexibility by allowing free navigation between different steps within a rollout ([#218](https://github.com/openkruise/rollouts/pull/218),[@myname4423](https://github.com/myname4423))
+- Added support for HTTPQueryParamMatch and HTTPPathMatch of the Gateway API in traffic management ([#204](https://github.com/openkruise/rollouts/pull/204),[@lujiajing1126](https://github.com/lujiajing1126))
+- Integrated RequestHeaderModifier into LuaData, facilitating its use with custom network references like Istio ([#223](https://github.com/openkruise/rollouts/pull/223),[@lujiajing1126](https://github.com/lujiajing1126))
+- Introduced a composite provider to support multiple network providers ([#224](https://github.com/openkruise/rollouts/pull/224),[@lujiajing1126](https://github.com/lujiajing1126))
+- Got the canary service selector patched from pod template metadata ([#243](https://github.com/openkruise/rollouts/pull/243),[@lujiajing1126](https://github.com/lujiajing1126))
+- Patched label `rollout-batch-id` to pods even without `rollout-id` in the workload ([#248](https://github.com/openkruise/rollouts/pull/248),[@PersistentJZH](https://github.com/PersistentJZH))
+- Upgraded Gateway API version from 0.5.1 to 0.7.1 and Kubernetes version from 1.24 to 1.26 ([#237](https://github.com/openkruise/rollouts/pull/237),[@AiRanthem](https://github.com/AiRanthem))
+- Enabled the option to skip canary service generation when using `trafficRoutings.customNetworkRefs` ([#200](https://github.com/openkruise/rollouts/pull/200),[@myname4423](https://github.com/myname4423))
+
+### Bugfix:
+- Filtered out ReplicaSets not part of the current Deployment to prevent frequent scaling issues when multiple deployments share the same selectors ([#191](https://github.com/openkruise/rollouts/pull/191),[@zhengjr9](https://github.com/zhengjr9))
+- Synced the observed `rollout-id` to the BatchRelease CR status ([#193](https://github.com/openkruise/rollouts/pull/193),[@veophi](https://github.com/veophi))
+- Checked deployment strategy during finalization to prevent random stuck states when used with KubeVela ([#198](https://github.com/openkruise/rollouts/pull/198),[@phantomnat](https://github.com/phantomnat))
+- Resolved a Lua encoding structural error ([#209](https://github.com/openkruise/rollouts/pull/209),[@ls-2018](https://github.com/ls-2018))
+- Corrected batch ID labeling in partition-style releases when pod recreation happens ([#246](https://github.com/openkruise/rollouts/pull/246),[@myname4423](https://github.com/myname4423))
+
+### Breaking Changes:
+- Restricted the ability to set traffic percentage or match selectors in a partition-style release step when exceeding 30% replicas. Use the `rollouts.kruise.io/partition-replicas-limit` annotation to override this default threshold. Setting the threshold to 100% restores the previous behavior ([#225](https://github.com/openkruise/rollouts/pull/225),[@myname4423](https://github.com/myname4423))
+
 ## v0.5.0
 ### Resources Graduating to BETA
 
