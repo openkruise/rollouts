@@ -35,14 +35,28 @@ type LabelPatcher interface {
 	PatchPodBatchLabel(ctx *batchcontext.BatchContext) error
 }
 
+// RevisionConsistentFunc determines if the pod corresponds to the revision of batchContext.
+type RevisionConsistentFunc func(pod *corev1.Pod, ctx *batchcontext.BatchContext) bool
+
+var DefaultRevisionConsistentFunc RevisionConsistentFunc = func(pod *corev1.Pod, ctx *batchcontext.BatchContext) bool {
+	return util.IsConsistentWithRevision(pod, ctx.UpdateRevision)
+}
+
 func NewLabelPatcher(cli client.Client, logKey klog.ObjectRef, batches []v1beta1.ReleaseBatch) *realPatcher {
-	return &realPatcher{Client: cli, logKey: logKey, batches: batches}
+	return NewLabelPatcherWithRevisionConsistentFunc(cli, logKey, batches, DefaultRevisionConsistentFunc)
+}
+
+func NewLabelPatcherWithRevisionConsistentFunc(cli client.Client, logKey klog.ObjectRef, batches []v1beta1.ReleaseBatch,
+	fn RevisionConsistentFunc) *realPatcher {
+	return &realPatcher{Client: cli, logKey: logKey, batches: batches,
+		revisionConsistents: fn}
 }
 
 type realPatcher struct {
 	client.Client
-	logKey  klog.ObjectRef
-	batches []v1beta1.ReleaseBatch
+	logKey              klog.ObjectRef
+	batches             []v1beta1.ReleaseBatch
+	revisionConsistents RevisionConsistentFunc
 }
 
 func (r *realPatcher) PatchPodBatchLabel(ctx *batchcontext.BatchContext) error {
@@ -67,7 +81,7 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 			continue
 		}
 		// we don't patch label for the active old revision pod
-		if !util.IsConsistentWithRevision(pod, ctx.UpdateRevision) {
+		if !r.revisionConsistents(pod, ctx) {
 			klog.InfoS("Pod is not consistent with revision, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
 			continue
 		}

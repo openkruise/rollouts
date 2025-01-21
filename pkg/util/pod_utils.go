@@ -68,7 +68,7 @@ func GetPodConditionFromList(conditions []v1.PodCondition, conditionType v1.PodC
 	return -1, nil
 }
 
-// IsConsistentWithRevision return true iff pod is match the revision
+// IsConsistentWithRevision return true if pod is match the revision
 func IsConsistentWithRevision(pod *v1.Pod, revision string) bool {
 	if pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey] != "" &&
 		strings.HasSuffix(revision, pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey]) {

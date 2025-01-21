@@ -23,6 +23,7 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/bluegreenstyle"
 	bgcloneset "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/bluegreenstyle/cloneset"
@@ -34,6 +35,7 @@ import (
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/daemonset"
 	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/statefulset"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/errors"
 	apps "k8s.io/api/apps/v1"
@@ -214,11 +216,13 @@ func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus
 	case v1beta1.BlueGreenRollingStyle:
 		if targetRef.APIVersion == appsv1alpha1.GroupVersion.String() && targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
 			klog.InfoS("Using CloneSet bluegreen-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return bluegreenstyle.NewControlPlane(bgcloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+			return bluegreenstyle.NewControlPlane(bgcloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk, labelpatch.DefaultRevisionConsistentFunc), nil
 		}
 		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
 			klog.InfoS("Using Deployment bluegreen-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return bluegreenstyle.NewControlPlane(bgdeplopyment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+			return bluegreenstyle.NewControlPlane(bgdeplopyment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk, func(pod *v1.Pod, ctx *batchcontext.BatchContext) bool {
+				return !util.IsConsistentWithRevision(pod, ctx.StableRevision)
+			}), nil
 		}
 
 	case v1beta1.CanaryRollingStyle:
