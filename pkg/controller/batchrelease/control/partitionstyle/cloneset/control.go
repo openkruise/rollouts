@@ -182,6 +182,15 @@ func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (
 		NoNeedUpdatedReplicas:  noNeedUpdate,
 		PlannedUpdatedReplicas: plannedUpdate,
 		DesiredUpdatedReplicas: desiredUpdate,
+		FilterFunc: func(pods []*corev1.Pod, ctx *batchcontext.BatchContext) []*corev1.Pod {
+			filteredPods := make([]*corev1.Pod, 0, len(pods))
+			for i := range pods {
+				if util.IsConsistentWithRevision(pods[i], ctx.UpdateRevision) {
+					filteredPods = append(filteredPods, pods[i])
+				}
+			}
+			return filteredPods
+		},
 	}
 
 	if noNeedUpdate != nil {

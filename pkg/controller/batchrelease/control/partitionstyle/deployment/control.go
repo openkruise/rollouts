@@ -175,6 +175,7 @@ func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (
 		RolloutID:        rolloutID,
 		CurrentBatch:     currentBatch,
 		UpdateRevision:   release.Status.UpdateRevision,
+		StableRevision:   release.Status.StableRevision,
 		DesiredPartition: desiredPartition,
 		FailureThreshold: release.Spec.ReleasePlan.FailureThreshold,
 
@@ -183,6 +184,15 @@ func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (
 		UpdatedReadyReplicas:   rc.Status.UpdatedReadyReplicas,
 		PlannedUpdatedReplicas: PlannedUpdatedReplicas,
 		DesiredUpdatedReplicas: PlannedUpdatedReplicas,
+		FilterFunc: func(pods []*corev1.Pod, ctx *batchcontext.BatchContext) []*corev1.Pod {
+			filteredPods := make([]*corev1.Pod, 0, len(pods))
+			for i := range pods {
+				if util.IsConsistentWithRevision(pods[i], ctx.UpdateRevision) {
+					filteredPods = append(filteredPods, pods[i])
+				}
+			}
+			return filteredPods
+		},
 	}, nil
 }
 
