@@ -103,11 +103,19 @@ func (rc *realCanaryController) UpgradeBatch() error {
 		return fmt.Errorf("wait canary workload %v reconcile", canary.GetCanaryInfo().LogKey)
 	}
 
-	batchContext := rc.CalculateBatchContext(rc.release)
+	batchContext, err := rc.CalculateBatchContext(rc.release)
+	if err != nil {
+		return err
+	}
 	klog.Infof("BatchRelease %v calculated context when upgrade batch: %s",
 		klog.KObj(rc.release), batchContext.Log())
 
-	return canary.UpgradeBatch(batchContext)
+	err = canary.UpgradeBatch(batchContext)
+	if err != nil {
+		return err
+	}
+
+	return rc.patcher.PatchPodBatchLabel(batchContext)
 }
 
 func (rc *realCanaryController) CheckBatchReady() error {
@@ -129,7 +137,10 @@ func (rc *realCanaryController) CheckBatchReady() error {
 		return fmt.Errorf("wait canary workload %v reconcile", canary.GetCanaryInfo().LogKey)
 	}
 
-	batchContext := rc.CalculateBatchContext(rc.release)
+	batchContext, err := rc.CalculateBatchContext(rc.release)
+	if err != nil {
+		return err
+	}
 	klog.Infof("BatchRelease %v calculated context when check batch ready: %s",
 		klog.KObj(rc.release), batchContext.Log())
 

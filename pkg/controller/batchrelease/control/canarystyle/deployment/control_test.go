@@ -226,7 +226,9 @@ func TestCalculateBatchContext(t *testing.T) {
 					canaryObject: canary,
 				},
 			}
-			got := control.CalculateBatchContext(cs.release())
+			got, err := control.CalculateBatchContext(cs.release())
+			got.FilterFunc = nil
+			Expect(err).NotTo(HaveOccurred())
 			Expect(reflect.DeepEqual(got, cs.result)).Should(BeTrue())
 		})
 	}
@@ -290,7 +292,8 @@ func TestRealCanaryController(t *testing.T) {
 	Expect(util.EqualIgnoreHash(&c.canaryObject.Spec.Template, &deployment.Spec.Template)).Should(BeTrue())
 
 	// check rolling
-	batchContext := c.CalculateBatchContext(release)
+	batchContext, err := c.CalculateBatchContext(release)
+	Expect(err).NotTo(HaveOccurred())
 	err = controller.UpgradeBatch(batchContext)
 	Expect(err).NotTo(HaveOccurred())
 	canary := getCanaryDeployment(release, deployment, c)

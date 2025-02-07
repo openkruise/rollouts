@@ -33,7 +33,7 @@ type Interface interface {
 	BuildCanaryController(release *v1beta1.BatchRelease) (CanaryInterface, error)
 	// CalculateBatchContext calculate the current batch context according to
 	// our release plan and the statues of stable workload and canary workload.
-	CalculateBatchContext(release *v1beta1.BatchRelease) *batchcontext.BatchContext
+	CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error)
 }
 
 // CanaryInterface contains the methods about canary workload
