@@ -43,14 +43,20 @@ type NewInterfaceFunc func(cli client.Client, key types.NamespacedName, gvk sche
 
 // NewControlPlane creates a new release controller with bluegreen-style to drive batch release state machine
 func NewControlPlane(f NewInterfaceFunc, cli client.Client, recorder record.EventRecorder, release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus, key types.NamespacedName, gvk schema.GroupVersionKind) *realBatchControlPlane {
-	return &realBatchControlPlane{
+	cp := &realBatchControlPlane{
 		Client:        cli,
 		EventRecorder: recorder,
 		newStatus:     newStatus,
 		Interface:     f(cli, key, gvk),
 		release:       release.DeepCopy(),
-		patcher:       labelpatch.NewLabelPatcher(cli, klog.KObj(release), release.Spec.ReleasePlan.Batches),
 	}
+	switch gvk.Kind {
+	case "Deployment":
+		cp.patcher = labelpatch.NewDeploymentLabelPatcher(cli, klog.KObj(release), release.Spec.ReleasePlan.Batches)
+	default:
+		cp.patcher = labelpatch.NewLabelPatcher(cli, klog.KObj(release), release.Spec.ReleasePlan.Batches)
+	}
+	return cp
 }
 
 func (rc *realBatchControlPlane) Initialize() error {
