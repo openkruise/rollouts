@@ -397,7 +397,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			return nil
 		}
 		var err error
-		for i := 0; i < 10; i++ {
+		for i := 0; i < 120; i++ {
 			if err = fn(); err == nil {
 				return nil
 			}

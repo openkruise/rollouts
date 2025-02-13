@@ -32,8 +32,6 @@ type BatchContext struct {
 	CurrentBatch int32 `json:"currentBatchIndex"`
 	// workload update revision
 	UpdateRevision string `json:"updateRevision,omitempty"`
-	// stable revision
-	StableRevision string `json:"stableRevision,omitempty"`
 
 	// workload replicas
 	Replicas int32 `json:"replicas"`

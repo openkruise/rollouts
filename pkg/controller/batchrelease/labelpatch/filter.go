@@ -57,7 +57,7 @@ func FilterPodsForUnorderedUpdate(pods []*corev1.Pod, ctx *batchcontext.BatchCon
 			terminatingPods = append(terminatingPods, pod)
 			continue
 		}
-		if !util.IsConsistentWithRevision(pod, ctx.UpdateRevision) {
+		if !util.IsConsistentWithRevision(pod.GetLabels(), ctx.UpdateRevision) {
 			continue
 		}
 		if pod.Labels[util.NoNeedUpdatePodLabel] == ctx.RolloutID && pod.Labels[v1beta1.RolloutIDLabel] != ctx.RolloutID {
@@ -113,7 +113,7 @@ func FilterPodsForOrderedUpdate(pods []*corev1.Pod, ctx *batchcontext.BatchConte
 			terminatingPods = append(terminatingPods, pod)
 			continue
 		}
-		if !util.IsConsistentWithRevision(pod, ctx.UpdateRevision) {
+		if !util.IsConsistentWithRevision(pod.GetLabels(), ctx.UpdateRevision) {
 			continue
 		}
 		if getPodOrdinal(pod) >= partition {

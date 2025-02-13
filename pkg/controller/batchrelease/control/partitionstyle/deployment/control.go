@@ -175,7 +175,6 @@ func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (
 		RolloutID:        rolloutID,
 		CurrentBatch:     currentBatch,
 		UpdateRevision:   release.Status.UpdateRevision,
-		StableRevision:   release.Status.StableRevision,
 		DesiredPartition: desiredPartition,
 		FailureThreshold: release.Spec.ReleasePlan.FailureThreshold,
 
