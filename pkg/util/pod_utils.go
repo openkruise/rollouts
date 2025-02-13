@@ -68,28 +68,17 @@ func GetPodConditionFromList(conditions []v1.PodCondition, conditionType v1.PodC
 }
 
 // IsConsistentWithRevision return true if pod is match the revision
-func IsConsistentWithRevision(pod *v1.Pod, revision string) bool {
-	if pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey] != "" &&
-		strings.HasSuffix(revision, pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey]) {
+func IsConsistentWithRevision(labels map[string]string, revision string) bool {
+	if labels[appsv1.DefaultDeploymentUniqueLabelKey] != "" &&
+		strings.HasSuffix(revision, labels[appsv1.DefaultDeploymentUniqueLabelKey]) {
 		return true
 	}
 
-	if pod.Labels[appsv1.ControllerRevisionHashLabelKey] != "" &&
-		strings.HasSuffix(revision, pod.Labels[appsv1.ControllerRevisionHashLabelKey]) {
+	if labels[appsv1.ControllerRevisionHashLabelKey] != "" &&
+		strings.HasSuffix(revision, labels[appsv1.ControllerRevisionHashLabelKey]) {
 		return true
 	}
 	return false
-}
-
-// GetPodRevision returns pod revision label
-func GetPodRevision(pod *v1.Pod) string {
-	if pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey] != "" {
-		return pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey]
-	}
-	if pod.Labels[appsv1.ControllerRevisionHashLabelKey] != "" {
-		return pod.Labels[appsv1.ControllerRevisionHashLabelKey]
-	}
-	return ""
 }
 
 // IsEqualRevision return true if a and b have equal revision label
