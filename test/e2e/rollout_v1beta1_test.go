@@ -131,25 +131,6 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 		return clone
 	}
 
-	// UpdateDaemonSet := func(object *appsv1alpha1.DaemonSet) *appsv1alpha1.DaemonSet {
-	// 	var daemon *appsv1alpha1.DaemonSet
-	// 	Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
-	// 		daemon = &appsv1alpha1.DaemonSet{}
-	// 		err := GetObject(object.Name, daemon)
-	// 		if err != nil {
-	// 			return err
-	// 		}
-	// 		// daemon.Spec.Replicas = utilpointer.Int32(*object.Spec.Replicas)
-	// 		daemon.Spec.Template = *object.Spec.Template.DeepCopy()
-	// 		daemon.Spec.UpdateStrategy = *object.Spec.UpdateStrategy.DeepCopy()
-	// 		daemon.Labels = mergeMap(daemon.Labels, object.Labels)
-	// 		daemon.Annotations = mergeMap(daemon.Annotations, object.Annotations)
-	// 		return k8sClient.Update(context.TODO(), daemon)
-	// 	})).NotTo(HaveOccurred())
-
-	// 	return daemon
-	// }
-
 	UpdateNativeStatefulSet := func(object *apps.StatefulSet) *apps.StatefulSet {
 		var clone *apps.StatefulSet
 		Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -292,25 +273,6 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 		}, 20*time.Minute, 3*time.Second).Should(BeTrue())
 	}
 
-	// WaitDaemonSetAllPodsReady := func(daemonset *appsv1alpha1.DaemonSet) {
-	// 	Eventually(func() bool {
-	// 		daemon := &appsv1alpha1.DaemonSet{}
-	// 		Expect(GetObject(daemonset.Name, daemon)).NotTo(HaveOccurred())
-	// 		klog.Infof("DaemonSet updateStrategy(%s) Generation(%d) ObservedGeneration(%d) DesiredNumberScheduled(%d) UpdatedNumberScheduled(%d) NumberReady(%d)",
-	// 			util.DumpJSON(daemon.Spec.UpdateStrategy), daemon.Generation, daemon.Status.ObservedGeneration, daemon.Status.DesiredNumberScheduled, daemon.Status.UpdatedNumberScheduled, daemon.Status.NumberReady)
-	// 		return daemon.Status.ObservedGeneration == daemon.Generation && daemon.Status.DesiredNumberScheduled == daemon.Status.UpdatedNumberScheduled && daemon.Status.DesiredNumberScheduled == daemon.Status.NumberReady
-	// 	}, 5*time.Minute, time.Second).Should(BeTrue())
-	// }
-
-	// WaitDeploymentCanaryReplicas := func(deployment *apps.Deployment) {
-	// 	Eventually(func() bool {
-	// 		clone := &apps.Deployment{}
-	// 		Expect(GetObject(deployment.Name, clone)).NotTo(HaveOccurred())
-	// 		return clone.Status.ObservedGeneration == clone.Generation &&
-	// 			*clone.Spec.Replicas == clone.Status.ReadyReplicas && *clone.Spec.Replicas == clone.Status.Replicas
-	// 	}, 10*time.Minute, time.Second).Should(BeTrue())
-	// }
-
 	WaitDeploymentBlueGreenReplicas := func(deployment *apps.Deployment) {
 		Eventually(func() bool {
 			clone := &apps.Deployment{}
@@ -318,32 +280,6 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			return clone.Status.ObservedGeneration == clone.Generation && clone.Status.ReadyReplicas == clone.Status.Replicas
 		}, 10*time.Minute, time.Second).Should(BeTrue())
 	}
-
-	// WaitClonesetBlueGreenReplicas := func(cloneset *appsv1alpha1.CloneSet) {
-	// 	Eventually(func() bool {
-	// 		clone := &appsv1alpha1.CloneSet{}
-	// 		Expect(GetObject(cloneset.Name, clone)).NotTo(HaveOccurred())
-	// 		return clone.Status.ObservedGeneration == clone.Generation &&
-	// 			*clone.Spec.Replicas == clone.Status.AvailableReplicas && clone.Status.ReadyReplicas == clone.Status.Replicas
-	// 	}, 10*time.Minute, time.Second).Should(BeTrue())
-	// }
-
-	// WaitRolloutStepUpgrade := func(name string, stepIndex int32) {
-	// 	start := time.Now()
-	// 	Eventually(func() bool {
-	// 		if start.Add(time.Minute * 5).Before(time.Now()) {
-	// 			DumpAllResources()
-	// 			Expect(true).Should(BeFalse())
-	// 		}
-	// 		clone := &v1beta1.Rollout{}
-	// 		Expect(GetObject(name, clone)).NotTo(HaveOccurred())
-	// 		if clone.Status.GetSubStatus() == nil {
-	// 			return false
-	// 		}
-	// 		klog.Infof("current step:%v target step:%v current step state %v", clone.Status.GetSubStatus().CurrentStepIndex, stepIndex, clone.Status.GetSubStatus().CurrentStepState)
-	// 		return clone.Status.GetSubStatus().CurrentStepIndex == stepIndex && clone.Status.GetSubStatus().CurrentStepState == v1beta1.CanaryStepStateUpgrade
-	// 	}, 20*time.Minute, time.Second).Should(BeTrue())
-	// }
 
 	WaitRolloutStepPaused := func(name string, stepIndex int32) {
 		start := time.Now()
@@ -437,6 +373,37 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			}
 		}
 		Expect(count).Should(BeNumerically("==", expected))
+	}
+
+	// CheckPodBatchLabel cannot be located if error occurs. use this as Expect(CheckPodBatchLabelV2(...)).Should(Succeed())
+	CheckPodBatchLabelV2 := func(namespace string, labelSelector *metav1.LabelSelector, rolloutID, batchID string, expected int) error {
+		fn := func() error {
+			pods, err := ListPods(namespace, labelSelector)
+			if err != nil {
+				return err
+			}
+
+			count := 0
+			for _, pod := range pods {
+				if pod.Labels[v1beta1.RolloutIDLabel] == rolloutID &&
+					pod.Labels[v1beta1.RolloutBatchIDLabel] == batchID {
+					count++
+				}
+			}
+			if count != expected {
+				return fmt.Errorf("expected %d pods with rolloutID %s and batchID %s, got %d", expected, rolloutID, batchID, count)
+			}
+			klog.InfoS("check pod batch label success", "count", count, "rolloutID", rolloutID, "batchID", batchID)
+			return nil
+		}
+		var err error
+		for i := 0; i < 120; i++ {
+			if err = fn(); err == nil {
+				return nil
+			}
+			time.Sleep(time.Second)
+		}
+		return err
 	}
 
 	ListReplicaSet := func(d *apps.Deployment) []*apps.ReplicaSet {
@@ -1695,12 +1662,6 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			cService := &v1.Service{}
 			Expect(GetObject(service.Name+"-canary", cService)).NotTo(HaveOccurred())
 			Expect(cService.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(canaryRevision))
-			// canary ingress
-			// when traffic is 0%, ingress canary won't create and annotation won't be set (for ingress-nginx)
-			// cIngress := &netv1.Ingress{}
-			// Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
-			// Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			// Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(removePercentageSign(*rollout.Spec.Strategy.BlueGreen.Steps[0].Traffic)))
 
 			// ------ step 2: replicas: 100%, traffic: 0% ------
 			// resume rollout canary
@@ -1726,6 +1687,9 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(rollout.Status.BlueGreenStatus.NextStepIndex).Should(BeNumerically("==", 3))
 			Expect(rollout.Status.BlueGreenStatus.UpdatedReplicas).Should(BeNumerically("==", 5))
 			Expect(rollout.Status.BlueGreenStatus.UpdatedReadyReplicas).Should(BeNumerically("==", 5))
+
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 3)).Should(Succeed())
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "2", 2)).Should(Succeed())
 
 			// ------ step 3: replicas: 100%, traffic: 50% ------
 			// resume rollout canary
@@ -1940,12 +1904,6 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			cService := &v1.Service{}
 			Expect(GetObject(service.Name+"-canary", cService)).NotTo(HaveOccurred())
 			Expect(cService.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(canaryRevision))
-			// canary ingress
-			// when traffic is 0%, ingress canary won't create and annotation won't be set (for ingress-nginx)
-			// cIngress := &netv1.Ingress{}
-			// Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
-			// Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
-			// Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(removePercentageSign(*rollout.Spec.Strategy.BlueGreen.Steps[0].Traffic)))
 
 			// ------ step 2: replicas: 100%, traffic: 0% ------
 			// resume rollout canary
@@ -1971,6 +1929,10 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(rollout.Status.BlueGreenStatus.NextStepIndex).Should(BeNumerically("==", 3))
 			Expect(rollout.Status.BlueGreenStatus.UpdatedReplicas).Should(BeNumerically("==", 5))
 			Expect(rollout.Status.BlueGreenStatus.UpdatedReadyReplicas).Should(BeNumerically("==", 5))
+
+			By("checking pod labels")
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 3)).Should(Succeed())
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "2", 2)).Should(Succeed())
 
 			// ------ step 3: replicas: 100%, traffic: 50% ------
 			// resume rollout canary
@@ -2134,7 +2096,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			cond := getRolloutCondition(rollout.Status, v1beta1.RolloutConditionProgressing)
-			Expect(string(cond.Reason)).Should(Equal(string(v1beta1.CanaryStepStateCompleted)))
+			Expect(cond.Reason).Should(Equal(string(v1beta1.CanaryStepStateCompleted)))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
 			// canary ingress and canary service should be deleted
 			cIngress = &netv1.Ingress{}
@@ -2145,6 +2107,10 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			// check service update
 			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
 			Expect(service.Spec.Selector[apps.DefaultDeploymentUniqueLabelKey]).Should(Equal(""))
+
+			By("checking pod labelsa after rollback")
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 0)).Should(Succeed())
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "2", 0)).Should(Succeed())
 		})
 
 		It("bluegreen deployment continuous rolling case", func() {
@@ -2372,6 +2338,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 3))
 			Expect(workload.Status.UnavailableReplicas).Should(BeNumerically("==", 9))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", 9))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 3)).Should(Succeed())
 
 			// ------ scale up: from 6 to 7 ------
 			workload.Spec.Replicas = utilpointer.Int32(7)
@@ -2387,6 +2354,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 4))
 			Expect(workload.Status.UnavailableReplicas).Should(BeNumerically("==", 11))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", 11))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 4)).Should(Succeed())
 
 			// ------ scale up: from 7 to 8 ------
 			workload.Spec.Replicas = utilpointer.Int32(8)
@@ -2403,6 +2371,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 4))
 			Expect(workload.Status.UnavailableReplicas).Should(BeNumerically("==", 12))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", 12))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 4)).Should(Succeed())
 
 			// ------ scale down: from 8 to 4 ------
 			workload.Spec.Replicas = utilpointer.Int32(4)
@@ -2419,6 +2388,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 2))
 			Expect(workload.Status.UnavailableReplicas).Should(BeNumerically("==", 6))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", 6))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 2)).Should(Succeed())
 
 			// ------ step 2: replicas: 100%, traffic: 0% ------
 			// resume rollout canary
@@ -2459,6 +2429,8 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 7))
 			Expect(workload.Status.UnavailableReplicas).Should(BeNumerically("==", 14))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", 14))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 4)).Should(Succeed())
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "2", 3)).Should(Succeed())
 
 			// ------ scale up: from 7 to 8 ------
 			workload.Spec.Replicas = utilpointer.Int32(8)
@@ -2474,6 +2446,8 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 8))
 			Expect(workload.Status.UnavailableReplicas).Should(BeNumerically("==", 16))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", 16))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 4)).Should(Succeed())
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "2", 4)).Should(Succeed())
 
 			// ------ scale down: from 8 to 4 ------
 			workload.Spec.Replicas = utilpointer.Int32(4)
@@ -2489,7 +2463,8 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 4))
 			Expect(workload.Status.UnavailableReplicas).Should(BeNumerically("==", 8))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", 8))
-
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 2)).Should(Succeed())
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "2", 2)).Should(Succeed())
 		})
 
 		It("bluegreen delete rollout case", func() {
@@ -2957,10 +2932,13 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			WaitCloneSetAllPodsReady(workload)
 
 			// check rollout status
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			Expect(rollout.Status.Phase).Should(Equal(v1beta1.RolloutPhaseHealthy))
-			Expect(rollout.Status.BlueGreenStatus.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			Eventually(func(g Gomega) {
+				g.Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+				g.Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+				g.Expect(rollout.Status.Phase).Should(Equal(v1beta1.RolloutPhaseHealthy))
+				g.Expect(rollout.Status.BlueGreenStatus.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			}).WithTimeout(10 * time.Second).WithPolling(time.Second).Should(Succeed())
+
 			stableRevision := rollout.Status.BlueGreenStatus.StableRevision
 			By("check rollout status & paused success")
 
@@ -2991,6 +2969,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(rollout.Status.BlueGreenStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.BlueGreenStatus.NextStepIndex).Should(BeNumerically("==", 2))
 			Expect(rollout.Status.BlueGreenStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 5)).Should(Succeed())
 			// check stable, canary service & ingress
 			// stable service
 			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
@@ -3118,10 +3097,12 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			WaitCloneSetAllPodsReady(workload)
 
 			// check rollout status
-			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
-			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
-			Expect(rollout.Status.Phase).Should(Equal(v1beta1.RolloutPhaseHealthy))
-			Expect(rollout.Status.BlueGreenStatus.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			Eventually(func(g Gomega) {
+				g.Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+				g.Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+				g.Expect(rollout.Status.Phase).Should(Equal(v1beta1.RolloutPhaseHealthy))
+				g.Expect(rollout.Status.BlueGreenStatus.StableRevision).Should(Equal(workload.Status.CurrentRevision[strings.LastIndex(workload.Status.CurrentRevision, "-")+1:]))
+			}).WithTimeout(time.Second * 30).WithPolling(time.Second).Should(Succeed())
 			stableRevision := rollout.Status.BlueGreenStatus.StableRevision
 			By("check rollout status & paused success")
 
@@ -3152,6 +3133,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(rollout.Status.BlueGreenStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.BlueGreenStatus.NextStepIndex).Should(BeNumerically("==", 2))
 			Expect(rollout.Status.BlueGreenStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 5)).Should(Succeed())
 			// check stable, canary service & ingress
 			// stable service
 			Expect(GetObject(service.Name, service)).NotTo(HaveOccurred())
@@ -3259,6 +3241,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(rollout.Status.BlueGreenStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
 			Expect(rollout.Status.BlueGreenStatus.NextStepIndex).Should(BeNumerically("==", 2))
 			Expect(rollout.Status.BlueGreenStatus.RolloutHash).Should(Equal(rollout.Annotations[util.RolloutHashAnnotation]))
+			CheckPodBatchLabel(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 5)
 			// if network configuration has restored
 			cIngress = &netv1.Ingress{}
 			Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
@@ -3275,7 +3258,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 
 			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 			cond := getRolloutCondition(rollout.Status, v1beta1.RolloutConditionProgressing)
-			Expect(string(cond.Reason)).Should(Equal(string(v1beta1.CanaryStepStateCompleted)))
+			Expect(cond.Reason).Should(Equal(string(v1beta1.CanaryStepStateCompleted)))
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionFalse)))
 			CheckIngressRestored(service.Name)
 
@@ -3285,6 +3268,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 5))
 			Expect(workload.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 5))
 			Expect(workload.Spec.UpdateStrategy.Paused).Should(BeFalse())
+			CheckPodBatchLabel(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 0)
 		})
 
 		It("bluegreen continuous rolling case for cloneset", func() {

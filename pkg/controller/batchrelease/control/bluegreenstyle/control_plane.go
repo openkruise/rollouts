@@ -18,6 +18,7 @@ package bluegreenstyle
 
 import (
 	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -40,7 +41,7 @@ type realBatchControlPlane struct {
 
 type NewInterfaceFunc func(cli client.Client, key types.NamespacedName, gvk schema.GroupVersionKind) Interface
 
-// NewControlPlane creates a new release controller with bluegreen-style to drive batch release state machine
+// NewControlPlane creates a new release controller with blue-green style to drive batch release state machine
 func NewControlPlane(f NewInterfaceFunc, cli client.Client, recorder record.EventRecorder, release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus, key types.NamespacedName, gvk schema.GroupVersionKind) *realBatchControlPlane {
 	return &realBatchControlPlane{
 		Client:        cli,
@@ -72,6 +73,15 @@ func (rc *realBatchControlPlane) Initialize() error {
 	return err
 }
 
+func (rc *realBatchControlPlane) patchPodLabels(batchContext *context.BatchContext) error {
+	pods, err := rc.ListOwnedPods() // add pods to rc for patching pod batch labels
+	if err != nil {
+		return err
+	}
+	batchContext.Pods = pods
+	return rc.patcher.PatchPodBatchLabel(batchContext)
+}
+
 func (rc *realBatchControlPlane) UpgradeBatch() error {
 	controller, err := rc.BuildController()
 	if err != nil {
@@ -94,7 +104,7 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 		return err
 	}
 
-	return nil
+	return rc.patchPodLabels(batchContext)
 }
 
 func (rc *realBatchControlPlane) CheckBatchReady() error {
