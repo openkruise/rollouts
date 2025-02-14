@@ -1,5 +1,10 @@
 # Change Log
 
+## v0.5.1
+### Bugfix:
+
+- Fix Rollout v1alpha1 and v1beta1 version conversions with incorrectly converted partition fields. ([#200](https://github.com/openkruise/rollouts/pull/200),[@myname4423](https://github.com/myname4423))
+
 ## v0.6.0
 ### Key Features:
 - 🎊 Support for blue-green style releases has been added ([#214](https://github.com/openkruise/rollouts/pull/214),[#229](https://github.com/openkruise/rollouts/pull/229),[#238](https://github.com/openkruise/rollouts/pull/238),[#220](https://github.com/openkruise/rollouts/pull/220),[@myname4423](https://github.com/myname4423))
