@@ -75,7 +75,14 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 			labels[k] = v
 		}
 		if labels[v1.ControllerRevisionHashLabelKey] == "" {
-			// for native deployment, we need to get the revision hash from ReplicaSet, which is exactly constants with the update revision
+			// For native deployment, we need to get the revision hash from ReplicaSet, which is exactly constants with the update revision
+			// The reason is that, The status of the Deployment that KCM sees may differ from the Deployment seen by
+			// the Rollouts controller due to some default values not being assigned yet. Therefore, even if both use
+			// exactly the same algorithm, they cannot compute the same pod-template-hash. The fact that K8S does not
+			// expose the method for computing the pod-template-hash also confirms that third-party components relying
+			// on the pod-template-hash is not recommended. Thus, we use the CloneSet algorithm to compute the
+			// controller-revision-hash: this method is fully defined by OpenKruise and can ensure that the same
+			// ReplicaSet produces the same value.
 			owner := metav1.GetControllerOf(pod)
 			if owner != nil && owner.Kind == "ReplicaSet" {
 				var hash string
@@ -84,7 +91,7 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 				} else {
 					rs := &v1.ReplicaSet{}
 					if err := r.Get(context.Background(), types.NamespacedName{Namespace: pod.Namespace, Name: owner.Name}, rs); err != nil {
-						klog.ErrorS(err, "Failed to get ReplicaSet", "pod", klog.KObj(pod), "rollout", r.logKey)
+						klog.ErrorS(err, "Failed to get ReplicaSet", "pod", klog.KObj(pod), "rollout", r.logKey, "owner", owner.Name, "namespace", pod.Namespace)
 						return err
 					}
 					delete(rs.Spec.Template.ObjectMeta.Labels, v1.DefaultDeploymentUniqueLabelKey)
@@ -99,7 +106,9 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 
 		// we don't patch label for the active old revision pod
 		if !util.IsConsistentWithRevision(labels, ctx.UpdateRevision) {
-			klog.InfoS("Pod is not consistent with revision, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
+			klog.InfoS("Pod is not consistent with revision, skip patching", "pod", klog.KObj(pod),
+				"revision", ctx.UpdateRevision, "pod-template-hash", labels[v1.DefaultDeploymentUniqueLabelKey],
+				"controller-revision-hash", labels[v1.ControllerRevisionHashLabelKey], "rollout", r.logKey)
 			continue
 		}
 		if labels[v1beta1.RolloutIDLabel] != ctx.RolloutID {
@@ -116,13 +125,15 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 		}
 		plannedUpdatedReplicasForBatches[podBatchID-1]--
 	}
-	klog.InfoS("updatedButUnpatchedPods amount calculated", "amount", len(updatedButUnpatchedPods), "rollout", r.logKey)
+	klog.InfoS("updatedButUnpatchedPods amount calculated", "amount", len(updatedButUnpatchedPods),
+		"rollout", r.logKey, "plan", plannedUpdatedReplicasForBatches)
 	// patch the pods
 	for i := len(plannedUpdatedReplicasForBatches) - 1; i >= 0; i-- {
 		for ; plannedUpdatedReplicasForBatches[i] > 0; plannedUpdatedReplicasForBatches[i]-- {
 			if len(updatedButUnpatchedPods) == 0 {
 				klog.Warningf("no pods to patch for %v, batch %d", r.logKey, i+1)
-				return nil
+				i = -1
+				break
 			}
 			// patch the updated but unpatched pod
 			pod := updatedButUnpatchedPods[len(updatedButUnpatchedPods)-1]
@@ -139,7 +150,7 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 			if err := r.Patch(context.TODO(), clone, client.RawPatch(types.StrategicMergePatchType, []byte(patchStr))); err != nil {
 				return err
 			}
-			klog.InfoS("Successfully patch Pod batchID", "batchID", i+1, "pod", klog.KObj(pod), "rollout", r.logKey)
+			klog.InfoS("Successfully patched Pod batchID", "batchID", i+1, "pod", klog.KObj(pod), "rollout", r.logKey)
 			// update the counter
 			updatedButUnpatchedPods = updatedButUnpatchedPods[:len(updatedButUnpatchedPods)-1]
 		}
@@ -152,6 +163,8 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 	}
 
 	// pods with controller-revision-hash label updated but not in the rollout release need to be patched too
+	// We must promptly patch the computed controller-revision-hash label to the Pod so that it can be directly read
+	// during frequent Reconcile processes, avoiding a large amount of redundant computation.
 	for pod, hash := range podsToPatchControllerRevision {
 		clone := util.GetEmptyObjectWithKey(pod)
 		patchStr := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s"}}}`, v1.ControllerRevisionHashLabelKey, hash)
