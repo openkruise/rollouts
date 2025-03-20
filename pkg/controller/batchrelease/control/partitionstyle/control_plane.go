@@ -226,7 +226,7 @@ func (rc *realBatchControlPlane) markNoNeedUpdatePodsIfNeeds() (*int32, error) {
 		if !pods[i].DeletionTimestamp.IsZero() {
 			continue
 		}
-		if !util.IsConsistentWithRevision(pods[i], rc.newStatus.UpdateRevision) {
+		if !util.IsConsistentWithRevision(pods[i].GetLabels(), rc.newStatus.UpdateRevision) {
 			continue
 		}
 		if pods[i].Labels[util.NoNeedUpdatePodLabel] == rolloutID {
@@ -273,7 +273,7 @@ func (rc *realBatchControlPlane) countAndUpdateNoNeedUpdateReplicas() error {
 		if !pod.DeletionTimestamp.IsZero() {
 			continue
 		}
-		if !util.IsConsistentWithRevision(pod, rc.release.Status.UpdateRevision) {
+		if !util.IsConsistentWithRevision(pod.GetLabels(), rc.release.Status.UpdateRevision) {
 			continue
 		}
 		id, ok := pod.Labels[util.NoNeedUpdatePodLabel]

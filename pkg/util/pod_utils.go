@@ -1,6 +1,5 @@
 /*
 Copyright 2022 The Kruise Authors.
-Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -68,15 +67,15 @@ func GetPodConditionFromList(conditions []v1.PodCondition, conditionType v1.PodC
 	return -1, nil
 }
 
-// IsConsistentWithRevision return true iff pod is match the revision
-func IsConsistentWithRevision(pod *v1.Pod, revision string) bool {
-	if pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey] != "" &&
-		strings.HasSuffix(revision, pod.Labels[appsv1.DefaultDeploymentUniqueLabelKey]) {
+// IsConsistentWithRevision return true if pod is match the revision
+func IsConsistentWithRevision(labels map[string]string, revision string) bool {
+	if labels[appsv1.DefaultDeploymentUniqueLabelKey] != "" &&
+		strings.HasSuffix(revision, labels[appsv1.DefaultDeploymentUniqueLabelKey]) {
 		return true
 	}
 
-	if pod.Labels[appsv1.ControllerRevisionHashLabelKey] != "" &&
-		strings.HasSuffix(revision, pod.Labels[appsv1.ControllerRevisionHashLabelKey]) {
+	if labels[appsv1.ControllerRevisionHashLabelKey] != "" &&
+		strings.HasSuffix(revision, labels[appsv1.ControllerRevisionHashLabelKey]) {
 		return true
 	}
 	return false

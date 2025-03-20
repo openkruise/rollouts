@@ -18,6 +18,7 @@ package labelpatch
 
 import (
 	"context"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -25,11 +26,15 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	apps "k8s.io/api/apps/v1"
+	"github.com/openkruise/rollouts/pkg/util"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -39,7 +44,8 @@ var (
 )
 
 func init() {
-	corev1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
 }
 
 func TestLabelPatcher(t *testing.T) {
@@ -240,7 +246,7 @@ func TestLabelPatcher(t *testing.T) {
 			}
 			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 			patcher := NewLabelPatcher(cli, klog.ObjectRef{Name: "test"}, cs.Batches)
-			patcher.patchPodBatchLabel(ctx.Pods, ctx)
+			_ = patcher.patchPodBatchLabel(ctx.Pods, ctx)
 
 			podList := &corev1.PodList{}
 			err := cli.List(context.TODO(), podList)
@@ -258,16 +264,308 @@ func TestLabelPatcher(t *testing.T) {
 	}
 }
 
+func TestDeploymentPatch(t *testing.T) {
+	rs := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "rs-1",
+		},
+		Spec: appsv1.ReplicaSetSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx",
+							Image: "nginx:1.14.2",
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 80,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	revision := util.ComputeHash(&rs.Spec.Template, nil)
+	// randomly inserted to test cases, pods with this revision should be skipped and
+	// the result should not be influenced
+	skippedRevision := "should-skip"
+	cases := map[string]struct {
+		batchContext    func() *batchcontext.BatchContext
+		Batches         []v1beta1.ReleaseBatch
+		expectedPatched []int
+	}{
+		"10 pods, 0 patched, 5 new patched": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, ctx.Replicas, 0, "", "")
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{
+					CanaryReplicas: intstr.FromInt(5),
+				},
+			},
+			expectedPatched: []int{5},
+		},
+		"10 pods, 2 patched, 3 new patched": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, ctx.Replicas, 2,
+					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch+1)))
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{
+					CanaryReplicas: intstr.FromInt(5),
+				},
+			},
+			expectedPatched: []int{5},
+		},
+		"10 pods, 5 patched, 0 new patched": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, ctx.Replicas, 5,
+					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch+1)))
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{
+					CanaryReplicas: intstr.FromInt(5),
+				},
+			},
+			expectedPatched: []int{5},
+		},
+		"10 pods, 7 patched, 0 new patched": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, ctx.Replicas, 7,
+					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch+1)))
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{
+					CanaryReplicas: intstr.FromInt(5),
+				},
+			},
+			expectedPatched: []int{7},
+		},
+		"2 pods, 0 patched, 2 new patched": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, 2, 0,
+					ctx.RolloutID, strconv.Itoa(int(ctx.CurrentBatch+1)))
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{
+					CanaryReplicas: intstr.FromInt(5),
+				},
+			},
+			expectedPatched: []int{2},
+		},
+		"10 pods, 3 patched with old rollout-id, 5 new patched": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, ctx.Replicas, 3,
+					"previous-rollout-id", strconv.Itoa(int(ctx.CurrentBatch+1)))
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{
+					CanaryReplicas: intstr.FromInt(5),
+				},
+			},
+			expectedPatched: []int{5},
+		},
+		"10 pods, 2 patched with batch-id:1, 3 new patched": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					CurrentBatch:           1,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, 5, 2,
+					"rollout-1", strconv.Itoa(1))
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{CanaryReplicas: intstr.FromInt(2)},
+				{CanaryReplicas: intstr.FromInt(5)},
+			},
+			expectedPatched: []int{2, 3},
+		},
+		"10 pods, 0 patched with batch-id:1, 5 new patched": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					CurrentBatch:           1,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, 5, 0,
+					"rollout-1", strconv.Itoa(1))
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{CanaryReplicas: intstr.FromInt(2)},
+				{CanaryReplicas: intstr.FromInt(5)},
+			},
+			expectedPatched: []int{2, 3},
+		},
+		"10 pods, 3 patched with batch-id:1, 2 new patched": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					CurrentBatch:           1,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, 5, 3,
+					"rollout-1", strconv.Itoa(1))
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{CanaryReplicas: intstr.FromInt(2)},
+				{CanaryReplicas: intstr.FromInt(5)},
+			},
+			expectedPatched: []int{3, 2},
+		},
+	}
+	for name, cs := range cases {
+		t.Run(name, func(t *testing.T) {
+			ctx := cs.batchContext()
+			insertedSkippedPodNum := int32(rand.Intn(3))
+			if insertedSkippedPodNum > 0 {
+				ctx.Pods = append(ctx.Pods, generatePods(
+					100, 99+insertedSkippedPodNum, 0, "doesn't matter", "1", skippedRevision)...)
+			}
+			t.Logf("%d should-skip pods inserted", insertedSkippedPodNum)
+			if rand.Intn(2) > 0 {
+				now := metav1.Now()
+				ctx.Pods = append(ctx.Pods, &corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						DeletionTimestamp: &now,
+						Labels: map[string]string{
+							appsv1.ControllerRevisionHashLabelKey: skippedRevision,
+						},
+					},
+				})
+				t.Logf("deleted pod inserted")
+			}
+			var objects []client.Object
+			for _, pod := range ctx.Pods {
+				objects = append(objects, pod)
+			}
+			objects = append(objects, rs)
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+			patcher := NewLabelPatcher(cli, klog.ObjectRef{Name: "test"}, cs.Batches)
+			if err := patcher.patchPodBatchLabel(ctx.Pods, ctx); err != nil {
+				t.Fatalf("failed to patch pods: %v", err)
+			}
+
+			podList := &corev1.PodList{}
+			if err := cli.List(context.TODO(), podList); err != nil {
+				t.Fatalf("failed to list pods: %v", err)
+			}
+			patched := make([]int, ctx.CurrentBatch+1)
+			for _, pod := range podList.Items {
+				if pod.Labels[v1beta1.RolloutIDLabel] == ctx.RolloutID {
+					if batchID, err := strconv.Atoi(pod.Labels[v1beta1.RolloutBatchIDLabel]); err == nil {
+						patched[batchID-1]++
+					}
+				}
+			}
+			if !reflect.DeepEqual(patched, cs.expectedPatched) {
+				t.Fatalf("expected patched: %v, got: %v", cs.expectedPatched, patched)
+			}
+			for _, pod := range podList.Items {
+				if pod.Labels[appsv1.ControllerRevisionHashLabelKey] != revision &&
+					pod.Labels[appsv1.ControllerRevisionHashLabelKey] != skippedRevision {
+					t.Fatalf("expected pod %s/%s to have revision %s, got %s", pod.Namespace, pod.Name, revision, pod.Labels[appsv1.ControllerRevisionHashLabelKey])
+				}
+			}
+		})
+	}
+}
+
+func generateDeploymentPods(ordinalBegin, ordinalEnd, labeled int32, rolloutID, batchID string) []*corev1.Pod {
+	podsWithLabel := generateLabeledPods(map[string]string{
+		v1beta1.RolloutIDLabel:      rolloutID,
+		v1beta1.RolloutBatchIDLabel: batchID,
+	}, int(labeled), int(ordinalBegin))
+
+	total := ordinalEnd - ordinalBegin + 1
+	podsWithoutLabel := generateLabeledPods(map[string]string{}, int(total-labeled), int(labeled+ordinalBegin))
+	pods := append(podsWithoutLabel, podsWithLabel...)
+	for _, pod := range pods {
+		pod.OwnerReferences = []metav1.OwnerReference{
+			{
+				APIVersion: "apps/v1",
+				Kind:       "ReplicaSet",
+				Name:       "rs-1",
+				UID:        "123",
+				Controller: pointer.Bool(true),
+			},
+		}
+	}
+	return pods
+}
+
 func generatePods(ordinalBegin, ordinalEnd, labeled int32, rolloutID, batchID, version string) []*corev1.Pod {
 	podsWithLabel := generateLabeledPods(map[string]string{
-		v1beta1.RolloutIDLabel:              rolloutID,
-		v1beta1.RolloutBatchIDLabel:         batchID,
-		apps.ControllerRevisionHashLabelKey: version,
+		v1beta1.RolloutIDLabel:                rolloutID,
+		v1beta1.RolloutBatchIDLabel:           batchID,
+		appsv1.ControllerRevisionHashLabelKey: version,
 	}, int(labeled), int(ordinalBegin))
 
 	total := ordinalEnd - ordinalBegin + 1
 	podsWithoutLabel := generateLabeledPods(map[string]string{
-		apps.ControllerRevisionHashLabelKey: version,
+		appsv1.ControllerRevisionHashLabelKey: version,
 	}, int(total-labeled), int(labeled+ordinalBegin))
 	return append(podsWithoutLabel, podsWithLabel...)
 }
