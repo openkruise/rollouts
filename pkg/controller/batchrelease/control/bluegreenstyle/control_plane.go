@@ -104,7 +104,7 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 		return err
 	}
 
-	return rc.patchPodLabels(batchContext)
+	return nil
 }
 
 func (rc *realBatchControlPlane) CheckBatchReady() error {
@@ -126,7 +126,9 @@ func (rc *realBatchControlPlane) CheckBatchReady() error {
 
 	klog.Infof("BatchRelease %v calculated context when check batch ready: %s",
 		klog.KObj(rc.release), batchContext.Log())
-
+	if err = rc.patchPodLabels(batchContext); err != nil {
+		klog.ErrorS(err, "failed to patch pod labels", "release", klog.KObj(rc.release))
+	}
 	return batchContext.IsBatchReady()
 }
 
