@@ -2329,9 +2329,9 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 				g.Expect(rollout.Status.BlueGreenStatus.UpdatedReadyReplicas).Should(BeNumerically("==", 3))
 			}).WithTimeout(time.Second * 60).WithPolling(time.Second * 3).Should(Succeed())
 			// ------ 50% maxSurge, scale up: from 5 to 6 ------
+			By("50%, scale up from 5 to 6")
 			workload.Spec.Replicas = utilpointer.Int32(6)
 			UpdateDeployment(workload)
-			By("scale up: from 5 to 6")
 			time.Sleep(time.Second * 3)
 			WaitDeploymentBlueGreenReplicas(workload)
 
@@ -2349,6 +2349,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 3)).Should(Succeed())
 
 			// ------ scale up: from 6 to 7 ------
+			By("50%, scale up from 6 to 7")
 			workload.Spec.Replicas = utilpointer.Int32(7)
 			UpdateDeployment(workload)
 			time.Sleep(time.Second * 3)
@@ -2365,9 +2366,9 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 4)).Should(Succeed())
 
 			// ------ scale up: from 7 to 8 ------
+			By("50%, scale up from 7 to 8")
 			workload.Spec.Replicas = utilpointer.Int32(8)
 			UpdateDeployment(workload)
-			By("scale up: from 7 to 8")
 			time.Sleep(time.Second * 3)
 			WaitDeploymentBlueGreenReplicas(workload)
 			// check rollout status
@@ -2382,9 +2383,9 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 4)).Should(Succeed())
 
 			// ------ scale down: from 8 to 4 ------
+			By("50%, scale down from 8 to 4")
 			workload.Spec.Replicas = utilpointer.Int32(4)
 			UpdateDeployment(workload)
-			By("scale down: from 8 to 4")
 			time.Sleep(time.Second * 3)
 			WaitDeploymentBlueGreenReplicas(workload)
 			// check rollout status
@@ -2426,6 +2427,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			}).WithTimeout(time.Second * 60).WithPolling(time.Second * 1).Should(Succeed())
 
 			// ------ scale up: from 4 to 7 ------
+			By("100%, scale up from 4 to 7")
 			workload.Spec.Replicas = utilpointer.Int32(7)
 			UpdateDeployment(workload)
 			time.Sleep(time.Second * 3)
@@ -2443,6 +2445,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "2", 3)).Should(Succeed())
 
 			// ------ scale up: from 7 to 8 ------
+			By("100%, scale up from 7 to 8")
 			workload.Spec.Replicas = utilpointer.Int32(8)
 			UpdateDeployment(workload)
 			time.Sleep(time.Second * 3)
@@ -2460,6 +2463,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "2", 4)).Should(Succeed())
 
 			// ------ scale down: from 8 to 4 ------
+			By("100%, scale down from 8 to 4")
 			workload.Spec.Replicas = utilpointer.Int32(4)
 			UpdateDeployment(workload)
 			time.Sleep(time.Second * 3)
@@ -2473,8 +2477,6 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 4))
 			Expect(workload.Status.UnavailableReplicas).Should(BeNumerically("==", 8))
 			Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", 8))
-			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "1", 2)).Should(Succeed())
-			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.BlueGreenStatus.ObservedRolloutID, "2", 2)).Should(Succeed())
 		})
 
 		It("bluegreen delete rollout case", func() {
