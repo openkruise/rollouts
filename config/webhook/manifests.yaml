@@ -12,66 +12,6 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-apps-kruise-io-v1alpha1-cloneset
-  failurePolicy: Fail
-  name: mcloneset.kb.io
-  rules:
-  - apiGroups:
-    - apps.kruise.io
-    apiVersions:
-    - v1alpha1
-    operations:
-    - UPDATE
-    resources:
-    - clonesets
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /mutate-apps-kruise-io-v1alpha1-daemonset
-  failurePolicy: Fail
-  name: mdaemonset.kb.io
-  rules:
-  - apiGroups:
-    - apps.kruise.io
-    apiVersions:
-    - v1alpha1
-    operations:
-    - UPDATE
-    resources:
-    - daemonsets
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /mutate-apps-v1-deployment
-  failurePolicy: Fail
-  name: mdeployment.kb.io
-  rules:
-  - apiGroups:
-    - apps
-    apiVersions:
-    - v1
-    operations:
-    - UPDATE
-    resources:
-    - deployments
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
       path: /mutate-unified-workload
   failurePolicy: Fail
   name: munifiedworload.kb.io
