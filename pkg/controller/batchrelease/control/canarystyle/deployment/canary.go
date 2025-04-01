@@ -43,6 +43,7 @@ type realCanaryController struct {
 	canaryObject *apps.Deployment
 	canaryClient client.Client
 	objectKey    types.NamespacedName
+	canaryPods   []*corev1.Pod
 }
 
 func newCanary(cli client.Client, key types.NamespacedName) realCanaryController {
