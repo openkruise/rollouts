@@ -115,10 +115,10 @@ func (rc *realCanaryController) UpgradeBatch() error {
 		return err
 	}
 
-	return rc.patcher.PatchPodBatchLabel(batchContext)
+	return nil
 }
 
-func (rc *realCanaryController) CheckBatchReady() error {
+func (rc *realCanaryController) EnsureBatchPodsReadyAndLabeled() error {
 	stable, err := rc.BuildStableController()
 	if err != nil {
 		return err
@@ -143,7 +143,9 @@ func (rc *realCanaryController) CheckBatchReady() error {
 	}
 	klog.Infof("BatchRelease %v calculated context when check batch ready: %s",
 		klog.KObj(rc.release), batchContext.Log())
-
+	if err = rc.patcher.PatchPodBatchLabel(batchContext); err != nil {
+		klog.ErrorS(err, "failed to patch pod labels", "release", klog.KObj(rc.release))
+	}
 	return batchContext.IsBatchReady()
 }
 

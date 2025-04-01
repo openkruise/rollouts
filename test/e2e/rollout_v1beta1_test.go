@@ -624,6 +624,9 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(removePercentageSign(*rollout.Spec.Strategy.Canary.Steps[3].Traffic)))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "1", 1))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "2", 1))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "3", 1))
 
 			// Jump to step 3
 			By("Jump to step 3")
@@ -820,7 +823,11 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
 			WaitRolloutWorkloadGeneration(rollout.Name, workload.Generation)
-
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "1", 1))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "2", 1))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "3", 1))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "4", 1))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "5", 1))
 		})
 
 		// step1-> 2-> 3-> 4-> 3-(TrafficChange)-> 3-> 2-> 1-> 5
@@ -1561,6 +1568,9 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(GetObject(service.Name+"-canary", cIngress)).NotTo(HaveOccurred())
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary", nginxIngressAnnotationDefaultPrefix)]).Should(Equal("true"))
 			Expect(cIngress.Annotations[fmt.Sprintf("%s/canary-weight", nginxIngressAnnotationDefaultPrefix)]).Should(Equal(removePercentageSign(*rollout.Spec.Strategy.Canary.Steps[2].Traffic)))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "1", 1))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "2", 1))
+			Expect(CheckPodBatchLabelV2(namespace, workload.Spec.Selector, rollout.Status.CanaryStatus.ObservedRolloutID, "3", 1))
 
 			// remove step 2 3 4
 			By("Remove step 2 3 4")

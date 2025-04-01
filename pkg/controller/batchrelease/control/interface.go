@@ -52,10 +52,10 @@ type Interface interface {
 	// it returns nil if the preparation is succeeded, else the preparation should retry.
 	UpgradeBatch() error
 
-	// CheckBatchReady checks how many replicas are ready to serve requests in the current batch.
+	// EnsureBatchPodsReadyAndLabeled checks how many replicas are ready to serve requests in the current batch.
 	// this function is tasked to do any initialization work on the resources.
 	// it returns nil if the preparation is succeeded, else the preparation should retry.
-	CheckBatchReady() error
+	EnsureBatchPodsReadyAndLabeled() error
 
 	// Finalize makes sure the resources are in a good final state.
 	// this function is tasked to do any initialization work on the resources.
