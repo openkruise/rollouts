@@ -97,7 +97,7 @@ jobs:
           set +e
           ./bin/ginkgo -timeout 60m -v --focus='bluegreen delete rollout case - autoscaling/v2 for v1.23' test/e2e
           retVal=$?
-          # kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
+          kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
           restartCount=$(kubectl get pod -n kruise-rollout --no-headers | awk '{print $4}')
           if [ "${restartCount}" -eq "0" ];then
               echo "Kruise-rollout has not restarted"
@@ -115,7 +115,7 @@ jobs:
           set +e
           ./bin/ginkgo -timeout 60m -v --focus='Bluegreen Release - Deployment - Ingress' test/e2e
           retVal=$?
-          # kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
+          kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
           restartCount=$(kubectl get pod -n kruise-rollout --no-headers | awk '{print $4}')
           if [ "${restartCount}" -eq "0" ];then
               echo "Kruise-rollout has not restarted"
@@ -133,7 +133,7 @@ jobs:
           set +e
           ./bin/ginkgo -timeout 60m -v --focus='Bluegreen Release - Cloneset - Ingress' test/e2e
           retVal=$?
-          # kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
+          kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
           restartCount=$(kubectl get pod -n kruise-rollout --no-headers | awk '{print $4}')
           if [ "${restartCount}" -eq "0" ];then
               echo "Kruise-rollout has not restarted"

@@ -160,7 +160,7 @@ func (r *Executor) progressBatches(release *v1beta1.BatchRelease, newStatus *v1b
 
 	case v1beta1.VerifyingBatchState:
 		// replicas/partition has been modified, should wait pod ready in this state.
-		err = workloadController.CheckBatchReady()
+		err = workloadController.EnsureBatchPodsReadyAndLabeled()
 		switch {
 		case err != nil:
 			// should go to upgrade state to do again to avoid dead wait.
@@ -175,7 +175,7 @@ func (r *Executor) progressBatches(release *v1beta1.BatchRelease, newStatus *v1b
 
 	case v1beta1.ReadyBatchState:
 		// replicas/partition may be modified even though ready, should recheck in this state.
-		err = workloadController.CheckBatchReady()
+		err = workloadController.EnsureBatchPodsReadyAndLabeled()
 		switch {
 		case err != nil:
 			// if the batch ready condition changed due to some reasons, just recalculate the current batch.

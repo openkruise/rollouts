@@ -114,7 +114,7 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 	return rc.patcher.PatchPodBatchLabel(batchContext)
 }
 
-func (rc *realBatchControlPlane) CheckBatchReady() error {
+func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
 	controller, err := rc.BuildController()
 	if err != nil {
 		return err
