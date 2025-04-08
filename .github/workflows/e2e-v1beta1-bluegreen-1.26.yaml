@@ -1,4 +1,4 @@
-name: E2E-V1Beta1-BlueGreen-1.23
+name: E2E-V1Beta1-BlueGreen-1.26
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
 env:
   # Common versions
   GO_VERSION: '1.19'
-  KIND_IMAGE: 'kindest/node:v1.23.3'
+  KIND_IMAGE: 'kindest/node:v1.26.3'
   KIND_CLUSTER_NAME: 'ci-testing'
 
 jobs:
