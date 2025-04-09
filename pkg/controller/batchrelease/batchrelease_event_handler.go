@@ -145,8 +145,8 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 		return
 	}
 
-	oldObject := evt.ObjectNew
-	newObject := evt.ObjectOld
+	newObject := evt.ObjectNew
+	oldObject := evt.ObjectOld
 	expectationObserved(newObject)
 	if newObject.GetResourceVersion() == oldObject.GetResourceVersion() {
 		return
