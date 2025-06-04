@@ -16,7 +16,7 @@ env:
 jobs:
 
   golangci-lint:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -42,7 +42,7 @@ jobs:
           args: --verbose
 
   unit-tests:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v2
         with:
