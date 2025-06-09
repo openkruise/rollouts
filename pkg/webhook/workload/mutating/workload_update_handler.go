@@ -43,7 +43,6 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -395,23 +394,6 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1beta1.R
 		}
 	}
 	return nil, nil
-}
-
-var _ inject.Client = &WorkloadHandler{}
-
-// InjectClient injects the client into the WorkloadHandler
-func (h *WorkloadHandler) InjectClient(c client.Client) error {
-	h.Client = c
-	h.Finder = util.NewControllerFinder(c)
-	return nil
-}
-
-var _ admission.DecoderInjector = &WorkloadHandler{}
-
-// InjectDecoder injects the decoder into the WorkloadHandler
-func (h *WorkloadHandler) InjectDecoder(d *admission.Decoder) error {
-	h.Decoder = d
-	return nil
 }
 
 func isEffectiveDeploymentRevisionChange(oldObj, newObj *apps.Deployment) bool {
