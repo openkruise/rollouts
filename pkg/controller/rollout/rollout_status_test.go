@@ -148,7 +148,9 @@ func TestCalculateRolloutStatus(t *testing.T) {
 	}
 
 	t.Run("RolloutStatus test", func(t *testing.T) {
-		fc := fake.NewClientBuilder().WithScheme(scheme).Build()
+		fc := fake.NewClientBuilder().WithScheme(scheme).
+			WithStatusSubresource(&v1beta1.Rollout{}).
+			Build()
 		r := &RolloutReconciler{
 			Client:                fc,
 			Scheme:                scheme,

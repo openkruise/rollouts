@@ -659,7 +659,7 @@ func TestHandlerDeployment(t *testing.T) {
 		},
 	}
 
-	decoder, _ := admission.NewDecoder(scheme)
+	decoder := admission.NewDecoder(scheme)
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			client := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -731,7 +731,7 @@ func TestHandlerCloneSet(t *testing.T) {
 		},
 	}
 
-	decoder, _ := admission.NewDecoder(scheme)
+	decoder := admission.NewDecoder(scheme)
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			client := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -795,7 +795,7 @@ func TestHandlerDaemonSet(t *testing.T) {
 		},
 	}
 
-	decoder, _ := admission.NewDecoder(scheme)
+	decoder := admission.NewDecoder(scheme)
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			client := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -861,7 +861,7 @@ func TestCheckWorkloadRule(t *testing.T) {
 	d2, err := json.Marshal(deploy2)
 	assert.NoError(t, err)
 
-	decoder, _ := admission.NewDecoder(scheme)
+	decoder := admission.NewDecoder(scheme)
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
 	h := WorkloadHandler{
 		Client:  client,

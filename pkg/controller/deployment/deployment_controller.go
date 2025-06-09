@@ -58,8 +58,7 @@ var controllerKind = apps.SchemeGroupVersion.WithKind("Deployment")
 type DeploymentController struct {
 	client clientset.Interface
 
-	eventBroadcaster record.EventBroadcaster
-	eventRecorder    record.EventRecorder
+	eventRecorder record.EventRecorder
 
 	// dLister can list/get deployments from the shared informer's store
 	dLister appslisters.DeploymentLister

@@ -198,6 +198,9 @@ func TestStartCleaner(t *testing.T) {
 	// Wait for the cleaner to run
 	time.Sleep(testInterval * 3)
 
+	r.Lock()
+	defer r.Unlock()
+
 	// Verify the outdated items have been cleaned and recent ones remain
 	if len(r.controllerCache["testController1"]) != 1 || r.controllerCache["testController1"][Update] != &recent {
 		t.Errorf("expected only recent Update action for testController1 to remain, found %d", len(r.controllerCache["testController1"]))

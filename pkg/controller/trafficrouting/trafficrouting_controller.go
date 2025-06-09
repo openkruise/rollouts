@@ -207,7 +207,7 @@ func (r *TrafficRoutingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 	// Watch for changes to trafficrouting
-	if err = c.Watch(&source.Kind{Type: &v1alpha1.TrafficRouting{}}, &handler.EnqueueRequestForObject{}); err != nil {
+	if err = c.Watch(source.Kind(mgr.GetCache(), &v1alpha1.TrafficRouting{}), &handler.EnqueueRequestForObject{}); err != nil {
 		return err
 	}
 	r.trafficRoutingManager = trafficrouting.NewTrafficRoutingManager(mgr.GetClient())

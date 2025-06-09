@@ -914,6 +914,7 @@ spec:
                                     - name
                                     x-kubernetes-list-type: map
                                 type: object
+                              maxItems: 16
                               type: array
                             pause:
                               description: Pause defines a pause stage for a rollout,
@@ -1097,6 +1098,7 @@ spec:
                                 Value is of string type and is a percentage, e.g. 5%.
                               type: string
                           type: object
+                        maxItems: 50
                         type: array
                       trafficRoutingRef:
                         description: TrafficRoutingRef is TrafficRouting's Name
@@ -1454,6 +1456,7 @@ spec:
                                     - name
                                     x-kubernetes-list-type: map
                                 type: object
+                              maxItems: 16
                               type: array
                             pause:
                               description: Pause defines a pause stage for a rollout,
@@ -1637,6 +1640,7 @@ spec:
                                 Value is of string type and is a percentage, e.g. 5%.
                               type: string
                           type: object
+                        maxItems: 50
                         type: array
                       trafficRoutingRef:
                         description: TrafficRoutingRef is TrafficRouting's Name

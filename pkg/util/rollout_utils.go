@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"strings"
 	"time"
 
@@ -62,34 +63,34 @@ func IsRollbackInBatchPolicy(rollout *rolloutv1beta1.Rollout, labels map[string]
 	return false
 }
 
-func AddWorkloadWatcher(c controller.Controller, handler handler.EventHandler) error {
+func AddWorkloadWatcher(cs cache.Cache, c controller.Controller, handler handler.EventHandler) error {
 	// Watch changes to Deployment
-	err := c.Watch(&source.Kind{Type: &apps.Deployment{}}, handler)
+	err := c.Watch(source.Kind(cs, &apps.Deployment{}), handler)
 	if err != nil {
 		return err
 	}
 	// Watch changes to Native StatefulSet, use unstructured informer
-	err = c.Watch(&source.Kind{Type: &apps.StatefulSet{}}, handler)
+	err = c.Watch(source.Kind(cs, &apps.StatefulSet{}), handler)
 	if err != nil {
 		return err
 	}
 	// Watch changes to CloneSet if it has the CRD
 	if DiscoverGVK(ControllerKruiseKindCS) {
-		err := c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.CloneSet{}}, handler)
+		err := c.Watch(source.Kind(cs, &kruiseappsv1alpha1.CloneSet{}), handler)
 		if err != nil {
 			return err
 		}
 	}
 	// Watch changes to DaemonSet if it has the CRD
 	if DiscoverGVK(ControllerKruiseKindDS) {
-		err := c.Watch(&source.Kind{Type: &kruiseappsv1alpha1.DaemonSet{}}, handler)
+		err := c.Watch(source.Kind(cs, &kruiseappsv1alpha1.DaemonSet{}), handler)
 		if err != nil {
 			return err
 		}
 	}
 	// Watch changes to Advanced StatefulSet if it has the CRD
 	if DiscoverGVK(ControllerKruiseKindSts) {
-		err := c.Watch(&source.Kind{Type: &kruiseappsv1beta1.StatefulSet{}}, handler)
+		err := c.Watch(source.Kind(cs, &kruiseappsv1beta1.StatefulSet{}), handler)
 		if err != nil {
 			return err
 		}
@@ -138,7 +139,7 @@ func GetGVKFrom(workloadRef *rolloutv1beta1.ObjectRef) schema.GroupVersionKind {
 	return schema.FromAPIVersionAndKind(workloadRef.APIVersion, workloadRef.Kind)
 }
 
-func AddWatcherDynamically(c controller.Controller, h handler.EventHandler, gvk schema.GroupVersionKind) (bool, error) {
+func AddWatcherDynamically(cs cache.Cache, c controller.Controller, h handler.EventHandler, gvk schema.GroupVersionKind) (bool, error) {
 	if !DiscoverGVK(gvk) {
 		klog.Errorf("Failed to find GVK(%v) in cluster", gvk.String())
 		return false, nil
@@ -146,7 +147,7 @@ func AddWatcherDynamically(c controller.Controller, h handler.EventHandler, gvk 
 
 	object := &unstructured.Unstructured{}
 	object.SetGroupVersionKind(gvk)
-	return true, c.Watch(&source.Kind{Type: object}, h)
+	return true, c.Watch(source.Kind(cs, object), h)
 }
 
 func HashReleasePlanBatches(releasePlan *rolloutv1beta1.ReleasePlan) string {

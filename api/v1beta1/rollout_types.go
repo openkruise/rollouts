@@ -172,6 +172,7 @@ func (r *RolloutStrategy) DisableGenerateCanaryService() bool {
 // BlueGreenStrategy defines parameters for Blue Green Release
 type BlueGreenStrategy struct {
 	// Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%)
+	// +kubebuilder:validation:MaxItems=50
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
 	// TrafficRoutings support ingress, gateway api and custom network resource(e.g. istio, apisix) to enable more fine-grained traffic routing
@@ -192,6 +193,7 @@ type BlueGreenStrategy struct {
 // CanaryStrategy defines parameters for a Replica Based Canary
 type CanaryStrategy struct {
 	// Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%)
+	// +kubebuilder:validation:MaxItems=50
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
 	// TrafficRoutings support ingress, gateway api and custom network resource(e.g. istio, apisix) to enable more fine-grained traffic routing
@@ -263,6 +265,7 @@ type TrafficRoutingStrategy struct {
 	//
 	// It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured.
 	// In such cases, Matches takes precedence.
+	// +kubebuilder:validation:MaxItems=16
 	Matches []HttpRouteMatch `json:"matches,omitempty"`
 }
 

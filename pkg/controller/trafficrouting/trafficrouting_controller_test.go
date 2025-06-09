@@ -344,7 +344,10 @@ func TestTrafficRoutingTest(t *testing.T) {
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			ss, ig := cs.getObj()
-			client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ig[0], ss[0], demoConf.DeepCopy()).Build()
+			client := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(ig[0], ss[0], demoConf.DeepCopy()).
+				WithStatusSubresource(&v1alpha1.TrafficRouting{}).
+				Build()
 			if len(ss) == 2 {
 				_ = client.Create(context.TODO(), ss[1])
 			}

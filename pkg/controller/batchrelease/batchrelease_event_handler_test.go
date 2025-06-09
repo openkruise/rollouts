@@ -17,6 +17,7 @@ limitations under the License.
 package batchrelease
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -137,7 +138,7 @@ func TestWorkloadEventHandler_Update(t *testing.T) {
 				ObjectOld: oldObject,
 				ObjectNew: newObject,
 			}
-			handler.Update(updateEvt, updateQ)
+			handler.Update(context.TODO(), updateEvt, updateQ)
 			Expect(updateQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}
@@ -193,7 +194,7 @@ func TestWorkloadEventHandler_Create(t *testing.T) {
 			createEvt := event.CreateEvent{
 				Object: newObject,
 			}
-			handler.Create(createEvt, createQ)
+			handler.Create(context.TODO(), createEvt, createQ)
 			Expect(createQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}
@@ -249,7 +250,7 @@ func TestWorkloadEventHandler_Delete(t *testing.T) {
 			deleteEvt := event.DeleteEvent{
 				Object: newObject,
 			}
-			handler.Delete(deleteEvt, deleteQ)
+			handler.Delete(context.TODO(), deleteEvt, deleteQ)
 			Expect(deleteQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}
@@ -399,7 +400,7 @@ func TestPodEventHandler_Update(t *testing.T) {
 				ObjectOld: oldObject,
 				ObjectNew: newObject,
 			}
-			handler.Update(updateEvt, updateQ)
+			handler.Update(context.TODO(), updateEvt, updateQ)
 			Expect(updateQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}
@@ -466,7 +467,7 @@ func TestPodEventHandler_Create(t *testing.T) {
 			createEvt := event.CreateEvent{
 				Object: newObject,
 			}
-			handler.Create(createEvt, createQ)
+			handler.Create(context.TODO(), createEvt, createQ)
 			Expect(createQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}

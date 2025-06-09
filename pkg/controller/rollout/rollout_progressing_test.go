@@ -810,7 +810,10 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 		t.Run(cs.name, func(t *testing.T) {
 			deps, rss := cs.getObj()
 			rollout, br, tr := cs.getRollout()
-			fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rollout, demoConf.DeepCopy()).Build()
+			fc := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(rollout, demoConf.DeepCopy()).
+				WithStatusSubresource(&v1beta1.Rollout{}).
+				Build()
 			for _, rs := range rss {
 				_ = fc.Create(context.TODO(), rs)
 			}

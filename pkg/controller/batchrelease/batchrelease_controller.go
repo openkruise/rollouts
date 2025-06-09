@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"flag"
 	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sync"
 	"time"
 
@@ -80,6 +81,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		Client:   cli,
 		Scheme:   mgr.GetScheme(),
 		recorder: recorder,
+		cache:    mgr.GetCache(),
 		executor: NewReleasePlanExecutor(cli, recorder),
 	}
 }
@@ -94,7 +96,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to BatchRelease
-	err = c.Watch(&source.Kind{Type: &v1beta1.BatchRelease{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
+	err = c.Watch(source.Kind(mgr.GetCache(), &v1beta1.BatchRelease{}), &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldObject := e.ObjectOld.(*v1beta1.BatchRelease)
 			newObject := e.ObjectNew.(*v1beta1.BatchRelease)
@@ -113,14 +115,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &podEventHandler{Reader: mgr.GetCache()})
+	err = c.Watch(source.Kind(mgr.GetCache(), &corev1.Pod{}), &podEventHandler{Reader: mgr.GetCache()})
 	if err != nil {
 		return err
 	}
 
 	runtimeController = c
 	workloadHandler = &workloadEventHandler{Reader: mgr.GetCache()}
-	return util.AddWorkloadWatcher(c, workloadHandler)
+	return util.AddWorkloadWatcher(mgr.GetCache(), c, workloadHandler)
 }
 
 var _ reconcile.Reconciler = &BatchReleaseReconciler{}
@@ -128,6 +130,7 @@ var _ reconcile.Reconciler = &BatchReleaseReconciler{}
 // BatchReleaseReconciler reconciles a BatchRelease object
 type BatchReleaseReconciler struct {
 	client.Client
+	cache    cache.Cache
 	Scheme   *runtime.Scheme
 	recorder record.EventRecorder
 	executor *Executor
@@ -172,7 +175,7 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	workloadGVK := util.GetGVKFrom(&workloadRef)
 	_, exists := watchedWorkload.Load(workloadGVK.String())
 	if !exists {
-		succeeded, err := util.AddWatcherDynamically(runtimeController, workloadHandler, workloadGVK)
+		succeeded, err := util.AddWatcherDynamically(r.cache, runtimeController, workloadHandler, workloadGVK)
 		if err != nil {
 			return ctrl.Result{}, err
 		} else if succeeded {

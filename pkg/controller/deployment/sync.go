@@ -188,7 +188,8 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 	// hash collisions. If there is any other error, we need to report it in the status of
 	// the Deployment.
 	alreadyExists := false
-	createdRS, err := dc.client.AppsV1().ReplicaSets(d.Namespace).Create(ctx, &newRS, metav1.CreateOptions{})
+	createdRS, err := dc.client.AppsV1().
+		ReplicaSets(d.Namespace).Create(ctx, &newRS, metav1.CreateOptions{})
 	switch {
 	// We may end up hitting this due to a slow cache or a fast resync of the Deployment.
 	case errors.IsAlreadyExists(err):

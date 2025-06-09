@@ -32,20 +32,20 @@ var (
 	// HandlerMap contains admission webhook handlers
 	HandlerMap = map[string]types.HandlerGetter{
 		"mutate-apps-kruise-io-v1alpha1-cloneset": func(mgr manager.Manager) admission.Handler {
-			decoder, _ := admission.NewDecoder(mgr.GetScheme())
+			decoder := admission.NewDecoder(mgr.GetScheme())
 			return &WorkloadHandler{Decoder: decoder, Client: mgr.GetClient(), Finder: util.NewControllerFinder(mgr.GetClient())}
 		},
 		"mutate-apps-v1-deployment": func(mgr manager.Manager) admission.Handler {
-			decoder, _ := admission.NewDecoder(mgr.GetScheme())
+			decoder := admission.NewDecoder(mgr.GetScheme())
 			return &WorkloadHandler{Decoder: decoder, Client: mgr.GetClient(), Finder: util.NewControllerFinder(mgr.GetClient())}
 		},
 
 		"mutate-apps-kruise-io-v1alpha1-daemonset": func(mgr manager.Manager) admission.Handler {
-			decoder, _ := admission.NewDecoder(mgr.GetScheme())
+			decoder := admission.NewDecoder(mgr.GetScheme())
 			return &WorkloadHandler{Decoder: decoder, Client: mgr.GetClient(), Finder: util.NewControllerFinder(mgr.GetClient())}
 		},
 		"mutate-unified-workload": func(mgr manager.Manager) admission.Handler {
-			decoder, _ := admission.NewDecoder(mgr.GetScheme())
+			decoder := admission.NewDecoder(mgr.GetScheme())
 			return &UnifiedWorkloadHandler{Decoder: decoder, Client: mgr.GetClient(), Finder: util.NewControllerFinder(mgr.GetClient())}
 		},
 	}

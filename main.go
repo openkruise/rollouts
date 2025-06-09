@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	webhookutil "github.com/openkruise/rollouts/pkg/webhook/util"
 	"os"
 
 	kruisev1aplphal1 "github.com/openkruise/kruise-api/apps/v1alpha1"
@@ -40,6 +41,8 @@ import (
 	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -89,13 +92,19 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: metricsAddr,
+		},
+		WebhookServer: ctrlwebhook.NewServer(ctrlwebhook.Options{
+			Host:    "0.0.0.0",
+			Port:    webhookutil.GetPort(),
+			CertDir: webhookutil.GetCertDir(),
+		}),
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "71ddec2c.kruise.io",
-		NewClient:              utilclient.NewClient,
+		NewCache:               utilclient.NewCache,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

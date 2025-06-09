@@ -896,7 +896,7 @@ func TestReconcile(t *testing.T) {
 
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
-			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&rolloutv1alpha1.RolloutHistory{}).Build()
 			for _, obj := range cs.getPods() {
 				err := fakeClient.Create(context.TODO(), obj.DeepCopy(), &client.CreateOptions{})
 				if err != nil {

@@ -490,6 +490,8 @@ func TestDeploymentPatch(t *testing.T) {
 				ctx.Pods = append(ctx.Pods, &corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{
 						DeletionTimestamp: &now,
+						// fake client will reject pods with deletiontimestamp if no finalizer is given
+						Finalizers: []string{"finalizers.sigs.k8s.io/test"},
 						Labels: map[string]string{
 							appsv1.ControllerRevisionHashLabelKey: skippedRevision,
 						},
