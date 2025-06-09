@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.0
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.14.0
   name: batchreleases.rollouts.kruise.io
 spec:
   group: rollouts.kruise.io
@@ -36,14 +35,19 @@ spec:
       openAPIV3Schema:
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -55,20 +59,23 @@ spec:
                 description: ReleasePlan is the details on how to rollout the resources
                 properties:
                   batchPartition:
-                    description: All pods in the batches up to the batchPartition
-                      (included) will have the target resource specification while
-                      the rest still is the stable revision. This is designed for
-                      the operators to manually rollout. Default is nil, which means
-                      no partition and will release all batches. BatchPartition start
-                      from 0.
+                    description: |-
+                      All pods in the batches up to the batchPartition (included) will have
+                      the target resource specification while the rest still is the stable revision.
+                      This is designed for the operators to manually rollout.
+                      Default is nil, which means no partition and will release all batches.
+                      BatchPartition start from 0.
                     format: int32
                     type: integer
                   batches:
-                    description: 'Batches is the details on each batch of the ReleasePlan.
-                      Users can specify their batch plan in this field, such as: batches:
-                      - canaryReplicas: 1  # batches 0 - canaryReplicas: 2  # batches
-                      1 - canaryReplicas: 5  # batches 2 Not that these canaryReplicas
-                      should be a non-decreasing sequence.'
+                    description: |-
+                      Batches is the details on each batch of the ReleasePlan.
+                      Users can specify their batch plan in this field, such as:
+                      batches:
+                      - canaryReplicas: 1  # batches 0
+                      - canaryReplicas: 2  # batches 1
+                      - canaryReplicas: 5  # batches 2
+                      Not that these canaryReplicas should be a non-decreasing sequence.
                     items:
                       description: ReleaseBatch is used to describe how each batch
                         release should be
@@ -77,41 +84,44 @@ spec:
                           anyOf:
                           - type: integer
                           - type: string
-                          description: 'CanaryReplicas is the number of upgraded pods
-                            that should have in this batch. it can be an absolute
-                            number (ex: 5) or a percentage of workload replicas. batches[i].canaryReplicas
-                            should less than or equal to batches[j].canaryReplicas
-                            if i < j.'
+                          description: |-
+                            CanaryReplicas is the number of upgraded pods that should have in this batch.
+                            it can be an absolute number (ex: 5) or a percentage of workload replicas.
+                            batches[i].canaryReplicas should less than or equal to batches[j].canaryReplicas if i < j.
                           x-kubernetes-int-or-string: true
                       required:
                       - canaryReplicas
                       type: object
                     type: array
                   enableExtraWorkloadForCanary:
-                    description: EnableExtraWorkloadForCanary indicates whether to
-                      create extra workload for canary True corresponds to RollingStyle
-                      "Canary". False corresponds to RollingStyle "Partiton". Ignored
-                      in BlueGreen-style. This field is about to deprecate, use RollingStyle
-                      instead. If both of them are set, controller will only consider
-                      this filed when RollingStyle is empty
+                    description: |-
+                      EnableExtraWorkloadForCanary indicates whether to create extra workload for canary
+                      True corresponds to RollingStyle "Canary".
+                      False corresponds to RollingStyle "Partiton".
+                      Ignored in BlueGreen-style.
+                      This field is about to deprecate, use RollingStyle instead.
+                      If both of them are set, controller will only consider this
+                      filed when RollingStyle is empty
                     type: boolean
                   failureThreshold:
                     anyOf:
                     - type: integer
                     - type: string
-                    description: FailureThreshold indicates how many failed pods can
-                      be tolerated in all upgraded pods. Only when FailureThreshold
-                      are satisfied, Rollout can enter ready state. If FailureThreshold
-                      is nil, Rollout will use the MaxUnavailable of workload as its
-                      FailureThreshold. Defaults to nil.
+                    description: |-
+                      FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
+                      Only when FailureThreshold are satisfied, Rollout can enter ready state.
+                      If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
+                      FailureThreshold.
+                      Defaults to nil.
                     x-kubernetes-int-or-string: true
                   finalizingPolicy:
-                    description: FinalizingPolicy define the behavior of controller
-                      when phase enter Finalizing Defaults to "Immediate"
+                    description: |-
+                      FinalizingPolicy define the behavior of controller when phase enter Finalizing
+                      Defaults to "Immediate"
                     type: string
                   patchPodTemplateMetadata:
-                    description: PatchPodTemplateMetadata indicates patch configuration(e.g.
-                      labels, annotations) to the canary deployment podTemplateSpec.metadata
+                    description: |-
+                      PatchPodTemplateMetadata indicates patch configuration(e.g. labels, annotations) to the canary deployment podTemplateSpec.metadata
                       only support for canary deployment
                     properties:
                       annotations:
@@ -139,8 +149,9 @@ spec:
                   we need to upgrade to.
                 properties:
                   workloadRef:
-                    description: WorkloadRef contains enough information to let you
-                      identify a workload for Rollout Batch release of the bypass
+                    description: |-
+                      WorkloadRef contains enough information to let you identify a workload for Rollout
+                      Batch release of the bypass
                     properties:
                       apiVersion:
                         description: API Version of the referent
@@ -169,10 +180,10 @@ spec:
                 description: CanaryStatus describes the state of the canary rollout.
                 properties:
                   batchReadyTime:
-                    description: BatchReadyTime is the ready timestamp of the current
-                      batch or the last batch. This field is updated once a batch
-                      ready, and the batches[x].pausedSeconds relies on this field
-                      to calculate the real-time duration.
+                    description: |-
+                      BatchReadyTime is the ready timestamp of the current batch or the last batch.
+                      This field is updated once a batch ready, and the batches[x].pausedSeconds
+                      relies on this field to calculate the real-time duration.
                     format: date-time
                     type: string
                   batchState:
@@ -202,9 +213,10 @@ spec:
                 - currentBatch
                 type: object
               collisionCount:
-                description: Count of hash collisions for creating canary Deployment.
-                  The controller uses this field as a collision avoidance mechanism
-                  when it needs to create the name for the newest canary Deployment.
+                description: |-
+                  Count of hash collisions for creating canary Deployment. The controller uses this
+                  field as a collision avoidance mechanism when it needs to create the name for the
+                  newest canary Deployment.
                 format: int32
                 type: integer
               conditions:
@@ -244,10 +256,10 @@ spec:
                   type: object
                 type: array
               observedGeneration:
-                description: ObservedGeneration is the most recent generation observed
-                  for this BatchRelease. It corresponds to this BatchRelease's generation,
-                  which is updated on mutation by the API Server, and only if BatchRelease
-                  Spec was changed, its generation will increase 1.
+                description: |-
+                  ObservedGeneration is the most recent generation observed for this BatchRelease.
+                  It corresponds to this BatchRelease's generation, which is updated on mutation
+                  by the API Server, and only if BatchRelease Spec was changed, its generation will increase 1.
                 format: int64
                 type: integer
               observedReleasePlanHash:
@@ -255,21 +267,22 @@ spec:
                   spec.releasePlan.
                 type: string
               observedRolloutID:
-                description: ObservedRolloutID is the most recent rollout-id observed
-                  for this BatchRelease. If RolloutID was changed, we will restart
-                  to roll out from batch 0, to ensure the batch-id and rollout-id
-                  labels of Pods are correct.
+                description: |-
+                  ObservedRolloutID is the most recent rollout-id observed for this BatchRelease.
+                  If RolloutID was changed, we will restart to roll out from batch 0,
+                  to ensure the batch-id and rollout-id labels of Pods are correct.
                 type: string
               observedWorkloadReplicas:
-                description: ObservedWorkloadReplicas is observed replicas of target
-                  referenced workload. This field is designed to deal with scaling
-                  event during rollout, if this field changed, it means that the workload
-                  is scaling during rollout.
+                description: |-
+                  ObservedWorkloadReplicas is observed replicas of target referenced workload.
+                  This field is designed to deal with scaling event during rollout, if this field changed,
+                  it means that the workload is scaling during rollout.
                 format: int32
                 type: integer
               phase:
-                description: Phase is the release plan phase, which indicates the
-                  current state of release plan state machine in BatchRelease controller.
+                description: |-
+                  Phase is the release plan phase, which indicates the current state of release
+                  plan state machine in BatchRelease controller.
                 type: string
               stableRevision:
                 description: StableRevision is the pod-template-hash of stable revision
@@ -306,14 +319,19 @@ spec:
       openAPIV3Schema:
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -325,20 +343,23 @@ spec:
                 description: ReleasePlan is the details on how to rollout the resources
                 properties:
                   batchPartition:
-                    description: All pods in the batches up to the batchPartition
-                      (included) will have the target resource specification while
-                      the rest still is the stable revision. This is designed for
-                      the operators to manually rollout. Default is nil, which means
-                      no partition and will release all batches. BatchPartition start
-                      from 0.
+                    description: |-
+                      All pods in the batches up to the batchPartition (included) will have
+                      the target resource specification while the rest still is the stable revision.
+                      This is designed for the operators to manually rollout.
+                      Default is nil, which means no partition and will release all batches.
+                      BatchPartition start from 0.
                     format: int32
                     type: integer
                   batches:
-                    description: 'Batches is the details on each batch of the ReleasePlan.
-                      Users can specify their batch plan in this field, such as: batches:
-                      - canaryReplicas: 1  # batches 0 - canaryReplicas: 2  # batches
-                      1 - canaryReplicas: 5  # batches 2 Not that these canaryReplicas
-                      should be a non-decreasing sequence.'
+                    description: |-
+                      Batches is the details on each batch of the ReleasePlan.
+                      Users can specify their batch plan in this field, such as:
+                      batches:
+                      - canaryReplicas: 1  # batches 0
+                      - canaryReplicas: 2  # batches 1
+                      - canaryReplicas: 5  # batches 2
+                      Not that these canaryReplicas should be a non-decreasing sequence.
                     items:
                       description: ReleaseBatch is used to describe how each batch
                         release should be
@@ -347,41 +368,44 @@ spec:
                           anyOf:
                           - type: integer
                           - type: string
-                          description: 'CanaryReplicas is the number of upgraded pods
-                            that should have in this batch. it can be an absolute
-                            number (ex: 5) or a percentage of workload replicas. batches[i].canaryReplicas
-                            should less than or equal to batches[j].canaryReplicas
-                            if i < j.'
+                          description: |-
+                            CanaryReplicas is the number of upgraded pods that should have in this batch.
+                            it can be an absolute number (ex: 5) or a percentage of workload replicas.
+                            batches[i].canaryReplicas should less than or equal to batches[j].canaryReplicas if i < j.
                           x-kubernetes-int-or-string: true
                       required:
                       - canaryReplicas
                       type: object
                     type: array
                   enableExtraWorkloadForCanary:
-                    description: EnableExtraWorkloadForCanary indicates whether to
-                      create extra workload for canary True corresponds to RollingStyle
-                      "Canary". False corresponds to RollingStyle "Partiton". Ignored
-                      in BlueGreen-style. This field is about to deprecate, use RollingStyle
-                      instead. If both of them are set, controller will only consider
-                      this filed when RollingStyle is empty
+                    description: |-
+                      EnableExtraWorkloadForCanary indicates whether to create extra workload for canary
+                      True corresponds to RollingStyle "Canary".
+                      False corresponds to RollingStyle "Partiton".
+                      Ignored in BlueGreen-style.
+                      This field is about to deprecate, use RollingStyle instead.
+                      If both of them are set, controller will only consider this
+                      filed when RollingStyle is empty
                     type: boolean
                   failureThreshold:
                     anyOf:
                     - type: integer
                     - type: string
-                    description: FailureThreshold indicates how many failed pods can
-                      be tolerated in all upgraded pods. Only when FailureThreshold
-                      are satisfied, Rollout can enter ready state. If FailureThreshold
-                      is nil, Rollout will use the MaxUnavailable of workload as its
-                      FailureThreshold. Defaults to nil.
+                    description: |-
+                      FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
+                      Only when FailureThreshold are satisfied, Rollout can enter ready state.
+                      If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
+                      FailureThreshold.
+                      Defaults to nil.
                     x-kubernetes-int-or-string: true
                   finalizingPolicy:
-                    description: FinalizingPolicy define the behavior of controller
-                      when phase enter Finalizing Defaults to "Immediate"
+                    description: |-
+                      FinalizingPolicy define the behavior of controller when phase enter Finalizing
+                      Defaults to "Immediate"
                     type: string
                   patchPodTemplateMetadata:
-                    description: PatchPodTemplateMetadata indicates patch configuration(e.g.
-                      labels, annotations) to the canary deployment podTemplateSpec.metadata
+                    description: |-
+                      PatchPodTemplateMetadata indicates patch configuration(e.g. labels, annotations) to the canary deployment podTemplateSpec.metadata
                       only support for canary deployment
                     properties:
                       annotations:
@@ -405,8 +429,9 @@ spec:
                 - enableExtraWorkloadForCanary
                 type: object
               workloadRef:
-                description: WorkloadRef contains enough information to let you identify
-                  a workload for Rollout Batch release of the bypass
+                description: |-
+                  WorkloadRef contains enough information to let you identify a workload for Rollout
+                  Batch release of the bypass
                 properties:
                   apiVersion:
                     description: API Version of the referent
@@ -433,10 +458,10 @@ spec:
                 description: CanaryStatus describes the state of the canary rollout.
                 properties:
                   batchReadyTime:
-                    description: BatchReadyTime is the ready timestamp of the current
-                      batch or the last batch. This field is updated once a batch
-                      ready, and the batches[x].pausedSeconds relies on this field
-                      to calculate the real-time duration.
+                    description: |-
+                      BatchReadyTime is the ready timestamp of the current batch or the last batch.
+                      This field is updated once a batch ready, and the batches[x].pausedSeconds
+                      relies on this field to calculate the real-time duration.
                     format: date-time
                     type: string
                   batchState:
@@ -466,9 +491,10 @@ spec:
                 - currentBatch
                 type: object
               collisionCount:
-                description: Count of hash collisions for creating canary Deployment.
-                  The controller uses this field as a collision avoidance mechanism
-                  when it needs to create the name for the newest canary Deployment.
+                description: |-
+                  Count of hash collisions for creating canary Deployment. The controller uses this
+                  field as a collision avoidance mechanism when it needs to create the name for the
+                  newest canary Deployment.
                 format: int32
                 type: integer
               conditions:
@@ -512,10 +538,10 @@ spec:
                   current phase
                 type: string
               observedGeneration:
-                description: ObservedGeneration is the most recent generation observed
-                  for this BatchRelease. It corresponds to this BatchRelease's generation,
-                  which is updated on mutation by the API Server, and only if BatchRelease
-                  Spec was changed, its generation will increase 1.
+                description: |-
+                  ObservedGeneration is the most recent generation observed for this BatchRelease.
+                  It corresponds to this BatchRelease's generation, which is updated on mutation
+                  by the API Server, and only if BatchRelease Spec was changed, its generation will increase 1.
                 format: int64
                 type: integer
               observedReleasePlanHash:
@@ -523,21 +549,22 @@ spec:
                   spec.releasePlan.
                 type: string
               observedRolloutID:
-                description: ObservedRolloutID is the most recent rollout-id observed
-                  for this BatchRelease. If RolloutID was changed, we will restart
-                  to roll out from batch 0, to ensure the batch-id and rollout-id
-                  labels of Pods are correct.
+                description: |-
+                  ObservedRolloutID is the most recent rollout-id observed for this BatchRelease.
+                  If RolloutID was changed, we will restart to roll out from batch 0,
+                  to ensure the batch-id and rollout-id labels of Pods are correct.
                 type: string
               observedWorkloadReplicas:
-                description: ObservedWorkloadReplicas is observed replicas of target
-                  referenced workload. This field is designed to deal with scaling
-                  event during rollout, if this field changed, it means that the workload
-                  is scaling during rollout.
+                description: |-
+                  ObservedWorkloadReplicas is observed replicas of target referenced workload.
+                  This field is designed to deal with scaling event during rollout, if this field changed,
+                  it means that the workload is scaling during rollout.
                 format: int32
                 type: integer
               phase:
-                description: Phase is the release plan phase, which indicates the
-                  current state of release plan state machine in BatchRelease controller.
+                description: |-
+                  Phase is the release plan phase, which indicates the current state of release
+                  plan state machine in BatchRelease controller.
                 type: string
               stableRevision:
                 description: StableRevision is the pod-template-hash of stable revision

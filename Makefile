@@ -53,7 +53,7 @@ vet: ## Run go vet against code.
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
 test: manifests generate fmt vet ## Run tests.
 	mkdir -p ${ENVTEST_ASSETS_DIR}
-	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.8.3/hack/setup-envtest.sh
+	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.16.6/hack/setup-envtest.sh
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./pkg/... -coverprofile cover.out
 
 ##@ Build
@@ -91,7 +91,7 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 
 
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
-CONTROLLER_GEN_VERSION = v0.11.0
+CONTROLLER_GEN_VERSION = v0.14.0
 controller-gen: ## Download controller-gen locally if necessary.
 ifeq ("$(shell $(CONTROLLER_GEN) --version)", "Version: ${CONTROLLER_GEN_VERSION}")
 else
