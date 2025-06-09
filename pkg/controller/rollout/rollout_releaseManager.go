@@ -78,7 +78,7 @@ func removeBatchRelease(cli client.Client, c *RolloutContext) (bool, error) {
 	if err != nil && errors.IsNotFound(err) {
 		return false, nil
 	} else if err != nil {
-		klog.Errorf("rollout(%s/%s) fetch BatchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name)
+		klog.Errorf("rollout(%s/%s) fetch BatchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 		return true, err
 	}
 	if !batch.DeletionTimestamp.IsZero() {

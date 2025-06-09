@@ -248,7 +248,7 @@ func (rc *realBatchControlPlane) markNoNeedUpdatePodsIfNeeds() (*int32, error) {
 			klog.Errorf("Failed to patch no-need-update label(%v) to pod %v, err: %v", rolloutID, klog.KObj(pod), err)
 			return &noNeedUpdateReplicas, err
 		} else {
-			klog.Info("Succeeded to patch no-need-update label(%v) to pod %v", rolloutID, klog.KObj(pod))
+			klog.Infof("Succeeded to patch no-need-update label(%v) to pod %v", rolloutID, klog.KObj(pod))
 		}
 		noNeedUpdateReplicas++
 	}

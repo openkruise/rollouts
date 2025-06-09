@@ -79,11 +79,11 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 	// Watch for changes to rollout
-	if err = c.Watch(&source.Kind{Type: &rolloutv1alpha1.Rollout{}}, &enqueueRequestForRollout{}); err != nil {
+	if err = c.Watch(source.Kind(mgr.GetCache(), &rolloutv1alpha1.Rollout{}), &enqueueRequestForRollout{}); err != nil {
 		return err
 	}
 	// watch for changes to rolloutHistory
-	if err = c.Watch(&source.Kind{Type: &rolloutv1alpha1.RolloutHistory{}}, &enqueueRequestForRolloutHistory{}); err != nil {
+	if err = c.Watch(source.Kind(mgr.GetCache(), &rolloutv1alpha1.RolloutHistory{}), &enqueueRequestForRolloutHistory{}); err != nil {
 		return err
 	}
 	return nil

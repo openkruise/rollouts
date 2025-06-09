@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.0
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.14.0
   name: trafficroutings.rollouts.kruise.io
 spec:
   group: rollouts.kruise.io
@@ -33,14 +32,19 @@ spec:
         description: TrafficRouting is the Schema for the TrafficRoutings API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -71,9 +75,9 @@ spec:
                         type: object
                       type: array
                     gateway:
-                      description: Gateway holds Gateway specific configuration to
-                        route traffic Gateway configuration only supports >= v0.4.0
-                        (v1alpha2).
+                      description: |-
+                        Gateway holds Gateway specific configuration to route traffic
+                        Gateway configuration only supports >= v0.4.0 (v1alpha2).
                       properties:
                         httpRouteName:
                           description: HTTPRouteName refers to the name of an `HTTPRoute`
@@ -92,7 +96,8 @@ spec:
                         route traffic, e.g. Nginx, Alb.
                       properties:
                         classType:
-                          description: ClassType refers to the type of `Ingress`.
+                          description: |-
+                            ClassType refers to the type of `Ingress`.
                             current support nginx, aliyun-alb. default is nginx.
                           type: string
                         name:
@@ -115,52 +120,61 @@ spec:
                 description: trafficrouting strategy
                 properties:
                   matches:
-                    description: Matches define conditions used for matching the incoming
-                      HTTP requests to canary service. Each match is independent,
-                      i.e. this rule will be matched if **any** one of the matches
-                      is satisfied. If Gateway API, current only support one match.
-                      And cannot support both weight and matches, if both are configured,
-                      then matches takes precedence.
+                    description: |-
+                      Matches define conditions used for matching the incoming HTTP requests to canary service.
+                      Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
+                      If Gateway API, current only support one match.
+                      And cannot support both weight and matches, if both are configured, then matches takes precedence.
                     items:
                       properties:
                         headers:
-                          description: Headers specifies HTTP request header matchers.
-                            Multiple match values are ANDed together, meaning, a request
-                            must match all the specified headers to select the route.
+                          description: |-
+                            Headers specifies HTTP request header matchers. Multiple match values are
+                            ANDed together, meaning, a request must match all the specified headers
+                            to select the route.
                           items:
-                            description: HTTPHeaderMatch describes how to select a
-                              HTTP route by matching HTTP request headers.
+                            description: |-
+                              HTTPHeaderMatch describes how to select a HTTP route by matching HTTP request
+                              headers.
                             properties:
                               name:
-                                description: "Name is the name of the HTTP Header
-                                  to be matched. Name matching MUST be case insensitive.
-                                  (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                  \n If multiple entries specify equivalent header
-                                  names, only the first entry with an equivalent name
-                                  MUST be considered for a match. Subsequent entries
-                                  with an equivalent header name MUST be ignored.
-                                  Due to the case-insensitivity of header names, \"foo\"
-                                  and \"Foo\" are considered equivalent. \n When a
-                                  header is repeated in an HTTP request, it is implementation-specific
-                                  behavior as to how this is represented. Generally,
-                                  proxies should follow the guidance from the RFC:
-                                  https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2
-                                  regarding processing a repeated header, with special
-                                  handling for \"Set-Cookie\"."
+                                description: |-
+                                  Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                  case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                  If multiple entries specify equivalent header names, only the first
+                                  entry with an equivalent name MUST be considered for a match. Subsequent
+                                  entries with an equivalent header name MUST be ignored. Due to the
+                                  case-insensitivity of header names, "foo" and "Foo" are considered
+                                  equivalent.
+
+
+                                  When a header is repeated in an HTTP request, it is
+                                  implementation-specific behavior as to how this is represented.
+                                  Generally, proxies should follow the guidance from the RFC:
+                                  https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding
+                                  processing a repeated header, with special handling for "Set-Cookie".
                                 maxLength: 256
                                 minLength: 1
                                 pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
                                 type: string
                               type:
                                 default: Exact
-                                description: "Type specifies how to match against
-                                  the value of the header. \n Support: Core (Exact)
-                                  \n Support: Implementation-specific (RegularExpression)
-                                  \n Since RegularExpression HeaderMatchType has implementation-specific
-                                  conformance, implementations can support POSIX,
-                                  PCRE or any other dialects of regular expressions.
-                                  Please read the implementation's documentation to
-                                  determine the supported dialect."
+                                description: |-
+                                  Type specifies how to match against the value of the header.
+
+
+                                  Support: Core (Exact)
+
+
+                                  Support: Implementation-specific (RegularExpression)
+
+
+                                  Since RegularExpression HeaderMatchType has implementation-specific
+                                  conformance, implementations can support POSIX, PCRE or any other dialects
+                                  of regular expressions. Please read the implementation's documentation to
+                                  determine the supported dialect.
                                 enum:
                                 - Exact
                                 - RegularExpression
@@ -180,32 +194,62 @@ spec:
                       type: object
                     type: array
                   requestHeaderModifier:
-                    description: "Set overwrites the request with the given header
-                      (name, value) before the action. \n Input: GET /foo HTTP/1.1
-                      my-header: foo \n requestHeaderModifier: set: - name: \"my-header\"
-                      value: \"bar\" \n Output: GET /foo HTTP/1.1 my-header: bar"
+                    description: |-
+                      Set overwrites the request with the given header (name, value)
+                      before the action.
+
+
+                      Input:
+                        GET /foo HTTP/1.1
+                        my-header: foo
+
+
+                      requestHeaderModifier:
+                        set:
+                        - name: "my-header"
+                          value: "bar"
+
+
+                      Output:
+                        GET /foo HTTP/1.1
+                        my-header: bar
                     properties:
                       add:
-                        description: "Add adds the given header(s) (name, value) to
-                          the request before the action. It appends to any existing
-                          values associated with the header name. \n Input: GET /foo
-                          HTTP/1.1 my-header: foo \n Config: add: - name: \"my-header\"
-                          value: \"bar,baz\" \n Output: GET /foo HTTP/1.1 my-header:
-                          foo,bar,baz"
+                        description: |-
+                          Add adds the given header(s) (name, value) to the request
+                          before the action. It appends to any existing values associated
+                          with the header name.
+
+
+                          Input:
+                            GET /foo HTTP/1.1
+                            my-header: foo
+
+
+                          Config:
+                            add:
+                            - name: "my-header"
+                              value: "bar,baz"
+
+
+                          Output:
+                            GET /foo HTTP/1.1
+                            my-header: foo,bar,baz
                         items:
                           description: HTTPHeader represents an HTTP Header name and
                             value as defined by RFC 7230.
                           properties:
                             name:
-                              description: "Name is the name of the HTTP Header to
-                                be matched. Name matching MUST be case insensitive.
-                                (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                \n If multiple entries specify equivalent header names,
-                                the first entry with an equivalent name MUST be considered
-                                for a match. Subsequent entries with an equivalent
-                                header name MUST be ignored. Due to the case-insensitivity
-                                of header names, \"foo\" and \"Foo\" are considered
-                                equivalent."
+                              description: |-
+                                Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                If multiple entries specify equivalent header names, the first entry with
+                                an equivalent name MUST be considered for a match. Subsequent entries
+                                with an equivalent header name MUST be ignored. Due to the
+                                case-insensitivity of header names, "foo" and "Foo" are considered
+                                equivalent.
                               maxLength: 256
                               minLength: 1
                               pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
@@ -226,37 +270,67 @@ spec:
                         - name
                         x-kubernetes-list-type: map
                       remove:
-                        description: "Remove the given header(s) from the HTTP request
-                          before the action. The value of Remove is a list of HTTP
-                          header names. Note that the header names are case-insensitive
-                          (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
-                          \n Input: GET /foo HTTP/1.1 my-header1: foo my-header2:
-                          bar my-header3: baz \n Config: remove: [\"my-header1\",
-                          \"my-header3\"] \n Output: GET /foo HTTP/1.1 my-header2:
-                          bar"
+                        description: |-
+                          Remove the given header(s) from the HTTP request before the action. The
+                          value of Remove is a list of HTTP header names. Note that the header
+                          names are case-insensitive (see
+                          https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+
+
+                          Input:
+                            GET /foo HTTP/1.1
+                            my-header1: foo
+                            my-header2: bar
+                            my-header3: baz
+
+
+                          Config:
+                            remove: ["my-header1", "my-header3"]
+
+
+                          Output:
+                            GET /foo HTTP/1.1
+                            my-header2: bar
                         items:
                           type: string
                         maxItems: 16
                         type: array
+                        x-kubernetes-list-type: set
                       set:
-                        description: "Set overwrites the request with the given header
-                          (name, value) before the action. \n Input: GET /foo HTTP/1.1
-                          my-header: foo \n Config: set: - name: \"my-header\" value:
-                          \"bar\" \n Output: GET /foo HTTP/1.1 my-header: bar"
+                        description: |-
+                          Set overwrites the request with the given header (name, value)
+                          before the action.
+
+
+                          Input:
+                            GET /foo HTTP/1.1
+                            my-header: foo
+
+
+                          Config:
+                            set:
+                            - name: "my-header"
+                              value: "bar"
+
+
+                          Output:
+                            GET /foo HTTP/1.1
+                            my-header: bar
                         items:
                           description: HTTPHeader represents an HTTP Header name and
                             value as defined by RFC 7230.
                           properties:
                             name:
-                              description: "Name is the name of the HTTP Header to
-                                be matched. Name matching MUST be case insensitive.
-                                (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                \n If multiple entries specify equivalent header names,
-                                the first entry with an equivalent name MUST be considered
-                                for a match. Subsequent entries with an equivalent
-                                header name MUST be ignored. Due to the case-insensitivity
-                                of header names, \"foo\" and \"Foo\" are considered
-                                equivalent."
+                              description: |-
+                                Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                If multiple entries specify equivalent header names, the first entry with
+                                an equivalent name MUST be considered for a match. Subsequent entries
+                                with an equivalent header name MUST be ignored. Due to the
+                                case-insensitivity of header names, "foo" and "Foo" are considered
+                                equivalent.
                               maxLength: 256
                               minLength: 1
                               pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$

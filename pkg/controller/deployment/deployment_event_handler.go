@@ -19,7 +19,7 @@ type MutatingWebhookEventHandler struct {
 	client.Reader
 }
 
-func (m MutatingWebhookEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (m MutatingWebhookEventHandler) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
 	config, ok := evt.Object.(*admissionregistrationv1.MutatingWebhookConfiguration)
 	if !ok || config == nil || !isKruiseRolloutMutatingConfiguration(config) || config.DeletionTimestamp.IsZero() {
 		return
@@ -27,7 +27,7 @@ func (m MutatingWebhookEventHandler) Create(evt event.CreateEvent, q workqueue.R
 	m.enqueue(q)
 }
 
-func (m MutatingWebhookEventHandler) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (m MutatingWebhookEventHandler) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 	config, ok := evt.Object.(*admissionregistrationv1.MutatingWebhookConfiguration)
 	if !ok || config == nil || !isKruiseRolloutMutatingConfiguration(config) || config.DeletionTimestamp.IsZero() {
 		return
@@ -35,7 +35,7 @@ func (m MutatingWebhookEventHandler) Generic(evt event.GenericEvent, q workqueue
 	m.enqueue(q)
 }
 
-func (m MutatingWebhookEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (m MutatingWebhookEventHandler) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	config, ok := evt.ObjectNew.(*admissionregistrationv1.MutatingWebhookConfiguration)
 	if !ok || config == nil || !isKruiseRolloutMutatingConfiguration(config) || config.DeletionTimestamp.IsZero() {
 		return
@@ -43,7 +43,7 @@ func (m MutatingWebhookEventHandler) Update(evt event.UpdateEvent, q workqueue.R
 	m.enqueue(q)
 }
 
-func (m MutatingWebhookEventHandler) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (m MutatingWebhookEventHandler) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 	config, ok := evt.Object.(*admissionregistrationv1.MutatingWebhookConfiguration)
 	if !ok || config == nil || !isKruiseRolloutMutatingConfiguration(config) {
 		return

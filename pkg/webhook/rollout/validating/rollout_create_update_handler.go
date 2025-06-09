@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -373,22 +372,6 @@ func IsSameWorkloadRefGVKName(a, b *appsv1beta1.ObjectRef) bool {
 		return false
 	}
 	return reflect.DeepEqual(a, b)
-}
-
-var _ inject.Client = &RolloutCreateUpdateHandler{}
-
-// InjectClient injects the client into the RolloutCreateUpdateHandler
-func (h *RolloutCreateUpdateHandler) InjectClient(c client.Client) error {
-	h.Client = c
-	return nil
-}
-
-var _ admission.DecoderInjector = &RolloutCreateUpdateHandler{}
-
-// InjectDecoder injects the decoder into the RolloutCreateUpdateHandler
-func (h *RolloutCreateUpdateHandler) InjectDecoder(d *admission.Decoder) error {
-	h.Decoder = d
-	return nil
 }
 
 func GetContextFromv1beta1Rollout(rollout *appsv1beta1.Rollout) *validateContext {

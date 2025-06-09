@@ -192,6 +192,7 @@ var _ = Describe("CloneSet Control", func() {
 		c = fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithObjects(cloneset, release, hpa).
+			WithStatusSubresource(&kruiseappsv1alpha1.CloneSet{}).
 			Build()
 		rc = &realController{
 			key:    types.NamespacedName{Namespace: cloneset.Namespace, Name: cloneset.Name},
