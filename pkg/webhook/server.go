@@ -19,6 +19,7 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"github.com/openkruise/rollouts/pkg/webhook/types"
 	"time"
 
 	webhookutil "github.com/openkruise/rollouts/pkg/webhook/util"
@@ -28,7 +29,6 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/conversion"
 )
 
@@ -36,15 +36,15 @@ type GateFunc func() (enabled bool)
 
 var (
 	// HandlerMap contains all admission webhook handlers.
-	HandlerMap   = map[string]admission.Handler{}
+	HandlerMap   = map[string]types.HandlerGetter{}
 	handlerGates = map[string]GateFunc{}
 )
 
-func addHandlers(m map[string]admission.Handler) {
+func addHandlers(m map[string]types.HandlerGetter) {
 	addHandlersWithGate(m, nil)
 }
 
-func addHandlersWithGate(m map[string]admission.Handler, fn GateFunc) {
+func addHandlersWithGate(m map[string]types.HandlerGetter, fn GateFunc) {
 	for path, handler := range m {
 		if len(path) == 0 {
 			klog.Warningf("Skip handler with empty path.")
@@ -88,7 +88,7 @@ func SetupWithManager(mgr manager.Manager) error {
 	// register admission handlers
 	filterActiveHandlers()
 	for path, handler := range HandlerMap {
-		server.Register(path, &webhook.Admission{Handler: handler})
+		server.Register(path, &webhook.Admission{Handler: handler(mgr)})
 		klog.V(3).Infof("Registered webhook handler %s", path)
 	}
 	err := initialize(context.TODO(), mgr.GetConfig())

@@ -23,12 +23,13 @@ import (
 	"net/url"
 	"reflect"
 
+	webhooktypes "github.com/openkruise/rollouts/pkg/webhook/types"
 	webhookutil "github.com/openkruise/rollouts/pkg/webhook/util"
+
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 const (
@@ -36,7 +37,7 @@ const (
 	ValidatingWebhookConfigurationName = "kruise-rollout-validating-webhook-configuration"
 )
 
-func Ensure(kubeClient clientset.Interface, handlers map[string]admission.Handler, caBundle []byte) error {
+func Ensure(kubeClient clientset.Interface, handlers map[string]webhooktypes.HandlerGetter, caBundle []byte) error {
 	mutatingConfig, err := kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), MutatingWebhookConfigurationName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("not found MutatingWebhookConfiguration %s", MutatingWebhookConfigurationName)
