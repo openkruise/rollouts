@@ -19,6 +19,7 @@ package rollout
 import (
 	"context"
 	"flag"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sync"
 	"time"
 
@@ -62,6 +63,7 @@ type RolloutReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	cache    cache.Cache
 
 	finder                *util.ControllerFinder
 	trafficRoutingManager *trafficrouting.Manager
@@ -107,7 +109,7 @@ func (r *RolloutReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	workloadGVK := util.GetGVKFrom(&workloadRef)
 	_, exists := watchedWorkload.Load(workloadGVK.String())
 	if !exists {
-		succeeded, err := util.AddWatcherDynamically(runtimeController, workloadHandler, workloadGVK)
+		succeeded, err := util.AddWatcherDynamically(r.cache, runtimeController, workloadHandler, workloadGVK)
 		if err != nil {
 			return ctrl.Result{}, err
 		} else if succeeded {
@@ -171,18 +173,19 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 	// Watch for changes to rollout
-	if err = c.Watch(&source.Kind{Type: &v1beta1.Rollout{}}, &handler.EnqueueRequestForObject{}); err != nil {
+	if err = c.Watch(source.Kind(mgr.GetCache(), &v1beta1.Rollout{}), &handler.EnqueueRequestForObject{}); err != nil {
 		return err
 	}
 	// Watch for changes to batchRelease
-	if err = c.Watch(&source.Kind{Type: &v1beta1.BatchRelease{}}, &enqueueRequestForBatchRelease{reader: mgr.GetCache()}); err != nil {
+	if err = c.Watch(source.Kind(mgr.GetCache(), &v1beta1.BatchRelease{}), &enqueueRequestForBatchRelease{reader: mgr.GetCache()}); err != nil {
 		return err
 	}
 	runtimeController = c
 	workloadHandler = &enqueueRequestForWorkload{reader: mgr.GetCache(), scheme: r.Scheme}
-	if err = util.AddWorkloadWatcher(c, workloadHandler); err != nil {
+	if err = util.AddWorkloadWatcher(mgr.GetCache(), c, workloadHandler); err != nil {
 		return err
 	}
+	r.cache = mgr.GetCache()
 	r.finder = util.NewControllerFinder(mgr.GetClient())
 	r.trafficRoutingManager = trafficrouting.NewTrafficRoutingManager(mgr.GetClient())
 	r.canaryManager = &canaryReleaseManager{

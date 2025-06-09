@@ -55,7 +55,7 @@ type podEventHandler struct {
 	client.Reader
 }
 
-func (p podEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (p podEventHandler) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
 	pod, ok := evt.Object.(*corev1.Pod)
 	if !ok {
 		return
@@ -63,13 +63,13 @@ func (p podEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimitingI
 	p.enqueue(pod, q)
 }
 
-func (p podEventHandler) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (p podEventHandler) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (p podEventHandler) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (p podEventHandler) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (p podEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (p podEventHandler) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	oldPod, oldOK := evt.ObjectOld.(*corev1.Pod)
 	newPod, newOK := evt.ObjectNew.(*corev1.Pod)
 	if !oldOK || !newOK {
@@ -121,12 +121,12 @@ type workloadEventHandler struct {
 	client.Reader
 }
 
-func (w workloadEventHandler) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (w workloadEventHandler) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
 	expectationObserved(evt.Object)
 	w.handleWorkload(q, evt.Object, CreateEventAction)
 }
 
-func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (w workloadEventHandler) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	var gvk schema.GroupVersionKind
 	switch obj := evt.ObjectNew.(type) {
 	case *kruiseappsv1alpha1.CloneSet:
@@ -172,11 +172,11 @@ func (w workloadEventHandler) Update(evt event.UpdateEvent, q workqueue.RateLimi
 	}
 }
 
-func (w workloadEventHandler) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (w workloadEventHandler) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 	w.handleWorkload(q, evt.Object, DeleteEventAction)
 }
 
-func (w workloadEventHandler) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (w workloadEventHandler) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
 
 func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface, obj client.Object, action EventAction) {

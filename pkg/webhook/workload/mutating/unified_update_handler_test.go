@@ -68,7 +68,7 @@ func TestHandleStatefulSet(t *testing.T) {
 		},
 	}
 
-	decoder, _ := admission.NewDecoder(scheme)
+	decoder := admission.NewDecoder(scheme)
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			client := fake.NewClientBuilder().WithScheme(scheme).Build()

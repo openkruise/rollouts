@@ -39,18 +39,18 @@ type enqueueRequestForWorkload struct {
 	scheme *runtime.Scheme
 }
 
-func (w *enqueueRequestForWorkload) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.Object)
 }
 
-func (w *enqueueRequestForWorkload) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.Object)
 }
 
-func (w *enqueueRequestForWorkload) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForWorkload) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.ObjectNew)
 }
 
@@ -106,16 +106,16 @@ type enqueueRequestForBatchRelease struct {
 	reader client.Reader
 }
 
-func (w *enqueueRequestForBatchRelease) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForBatchRelease) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForBatchRelease) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForBatchRelease) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.ObjectNew)
 }
 

@@ -89,7 +89,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "cloneset,in rollout progress",
+			name: "cloneset in rollout progress",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
@@ -132,7 +132,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "in rollback progress",
+			name: "cloneset in rollback progress",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
@@ -179,7 +179,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "deployment: not in rollout progress",
+			name: "deployment not in rollout progress",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
@@ -225,7 +225,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "in rollout progress",
+			name: "deployment in rollout progress",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
@@ -266,7 +266,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "in rollback",
+			name: "deployment in rollback",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
@@ -309,7 +309,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "not consistent",
+			name: "deployment not consistent",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{

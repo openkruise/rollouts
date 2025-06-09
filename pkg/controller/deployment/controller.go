@@ -25,11 +25,9 @@ import (
 
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -87,8 +85,7 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: genericClient.KubeClient.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "advanced-deployment-controller"})
-
+	recorder := mgr.GetEventRecorderFor("advanced-deployment-controller")
 	// Deployment controller factory
 	factory := &controllerFactory{
 		runtimeClient:    mgr.GetClient(),
@@ -117,13 +114,13 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to ReplicaSet
-	if err = c.Watch(&source.Kind{Type: &appsv1.ReplicaSet{}}, &handler.EnqueueRequestForOwner{
-		IsController: true, OwnerType: &appsv1.Deployment{}}, predicate.Funcs{}); err != nil {
+	if err = c.Watch(source.Kind(mgr.GetCache(), &appsv1.ReplicaSet{}), handler.EnqueueRequestForOwner(
+		mgr.GetScheme(), mgr.GetRESTMapper(), &appsv1.Deployment{}, handler.OnlyControllerOwner())); err != nil {
 		return err
 	}
 
 	// Watch for changes to MutatingWebhookConfigurations of kruise-rollout operator
-	if err = c.Watch(&source.Kind{Type: &admissionregistrationv1.MutatingWebhookConfiguration{}}, &MutatingWebhookEventHandler{mgr.GetCache()}); err != nil {
+	if err = c.Watch(source.Kind(mgr.GetCache(), &admissionregistrationv1.MutatingWebhookConfiguration{}), &MutatingWebhookEventHandler{mgr.GetCache()}); err != nil {
 		return err
 	}
 
@@ -146,7 +143,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to Deployment
-	return c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{UpdateFunc: updateHandler})
+	return c.Watch(source.Kind(mgr.GetCache(), &appsv1.Deployment{}), &handler.EnqueueRequestForObject{}, predicate.Funcs{UpdateFunc: updateHandler})
 }
 
 // Reconcile reads that state of the cluster for a Deployment object and makes changes based on the state read

@@ -530,7 +530,11 @@ func TestReconcile_CloneSet(t *testing.T) {
 			release := cs.GetRelease()
 			clonesets := cs.GetCloneSet()
 			rec := record.NewFakeRecorder(100)
-			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).WithObjects(clonesets...).Build()
+			cli := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(release).
+				WithObjects(clonesets...).
+				WithStatusSubresource(&v1beta1.BatchRelease{}).
+				Build()
 			reconciler := &BatchReleaseReconciler{
 				Client:   cli,
 				recorder: rec,
@@ -793,6 +797,8 @@ func TestReconcile_Deployment(t *testing.T) {
 			if len(deployments) > 1 {
 				cliBuilder = cliBuilder.WithObjects(makeCanaryReplicaSets(deployments[1:]...)...)
 			}
+
+			cliBuilder.WithStatusSubresource(&v1beta1.BatchRelease{})
 
 			cli := cliBuilder.Build()
 			reconciler := &BatchReleaseReconciler{

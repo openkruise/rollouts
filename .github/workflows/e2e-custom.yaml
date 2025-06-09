@@ -8,9 +8,12 @@ on:
   pull_request: {}
   workflow_dispatch: {}
 
+# Declare default permissions as read only.
+permissions: read-all
+
 env:
   # Common versions
-  GO_VERSION: '1.19'
+  GO_VERSION: '1.20'
   KIND_VERSION: 'v0.18.0'
   KIND_IMAGE: 'kindest/node:v1.26.3'
   KIND_CLUSTER_NAME: 'ci-testing'
@@ -18,17 +21,17 @@ env:
 jobs:
 
   rollout:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: true
       - name: Setup Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Setup Kind Cluster
-        uses: helm/kind-action@v1.2.0
+        uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
         with:
           version: ${{ env.KIND_VERSION }}
           node_image: ${{ env.KIND_IMAGE }}

@@ -22,7 +22,6 @@ import (
 	"github.com/openkruise/rollouts/pkg/webhook/types"
 	"time"
 
-	webhookutil "github.com/openkruise/rollouts/pkg/webhook/util"
 	webhookcontroller "github.com/openkruise/rollouts/pkg/webhook/util/controller"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/rest"
@@ -81,9 +80,6 @@ func filterActiveHandlers() {
 
 func SetupWithManager(mgr manager.Manager) error {
 	server := mgr.GetWebhookServer()
-	server.Host = "0.0.0.0"
-	server.Port = webhookutil.GetPort()
-	server.CertDir = webhookutil.GetCertDir()
 
 	// register admission handlers
 	filterActiveHandlers()
@@ -96,7 +92,8 @@ func SetupWithManager(mgr manager.Manager) error {
 		return err
 	}
 	// register conversion webhook
-	server.Register("/convert", &conversion.Webhook{})
+	server.Register("/convert", conversion.NewWebhookHandler(mgr.GetScheme()))
+
 	klog.Infof("webhook init done")
 	return nil
 }

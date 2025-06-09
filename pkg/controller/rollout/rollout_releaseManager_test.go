@@ -169,6 +169,7 @@ func TestRemoveBatchRelease(t *testing.T) {
 				Name:              "my-rollout",
 				Namespace:         "default",
 				DeletionTimestamp: &now,
+				Finalizers:        []string{"rollouts.kruise.io/batch-release-finalizer"},
 			},
 		}
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(br).Build()

@@ -40,7 +40,7 @@ func CalculateBatchReplicas(release *v1beta1.BatchRelease, workloadReplicas, cur
 		klog.Warningf("releasePlan has wrong batch replicas, batches[%d].replicas %v is more than workload.replicas %v", currentBatch, batchSize, workloadReplicas)
 		batchSize = workloadReplicas
 	} else if batchSize < 0 {
-		klog.Warningf("releasePlan has wrong batch replicas, batches[%d].replicas %v is less than 0 %v", currentBatch, batchSize)
+		klog.Warningf("releasePlan has wrong batch replicas, batches[%d].replicas %v is less than 0", currentBatch, batchSize)
 		batchSize = 0
 	}
 
