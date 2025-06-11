@@ -11,12 +11,13 @@ import (
 	"math/rand"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 )
 
 var namespace string = "unit-test"
@@ -195,7 +196,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 				rs := generateRS(*dep)
 				rs.Namespace = namespace
 				rs.Spec.Replicas = dep.Spec.Replicas
-				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "c9dcf87d5"
+				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "cd68dc9"
 				return dep, &rs, nil
 			},
 			expectWorkload: func() *Workload {
@@ -217,7 +218,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 					},
 					Replicas:           10,
 					StableRevision:     "stable",
-					CanaryRevision:     "c9dcf87d5",
+					CanaryRevision:     "cd68dc9",
 					PodTemplateHash:    "",
 					RevisionLabelKey:   "pod-template-hash",
 					IsStatusConsistent: true,
@@ -242,7 +243,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 				rs := generateRS(*dep)
 				rs.Namespace = namespace
 				rs.Spec.Replicas = dep.Spec.Replicas
-				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "c9dcf87d5"
+				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "cd68dc9"
 				return dep, &rs, nil
 			},
 			expectWorkload: func() *Workload {
@@ -257,8 +258,8 @@ func TestGetWorkloadForRef(t *testing.T) {
 					},
 					Replicas:             10,
 					StableRevision:       "stable",
-					CanaryRevision:       "c9dcf87d5",
-					PodTemplateHash:      "c9dcf87d5",
+					CanaryRevision:       "cd68dc9",
+					PodTemplateHash:      "cd68dc9",
 					RevisionLabelKey:     "pod-template-hash",
 					IsStatusConsistent:   true,
 					InRolloutProgressing: true,
@@ -299,7 +300,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 					},
 					Replicas:             10,
 					StableRevision:       "stable",
-					CanaryRevision:       "c9dcf87d5",
+					CanaryRevision:       "cd68dc9",
 					PodTemplateHash:      "stable",
 					RevisionLabelKey:     "pod-template-hash",
 					IsStatusConsistent:   true,
@@ -355,7 +356,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			finder := NewControllerFinder(cli)
 			workload, err := finder.GetWorkloadForRef(rollout)
 			if !checkWorkloadEqual(workload, cs.expectWorkload()) {
-				t.Fatal("expected workload not equal got workload")
+				t.Fatalf("expected workload not equal got workload: \n expected: %v \n got: %v", DumpJSON(cs.expectWorkload()), DumpJSON(workload))
 			}
 			if res := checkErrorEqual(err, cs.err); res != "" {
 				t.Fatal(res)

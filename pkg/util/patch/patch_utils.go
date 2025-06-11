@@ -19,13 +19,14 @@ package patch
 import (
 	"strings"
 
-	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 const (

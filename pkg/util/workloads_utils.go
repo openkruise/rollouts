@@ -30,8 +30,6 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/feature"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -45,6 +43,9 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/feature"
 )
 
 var (

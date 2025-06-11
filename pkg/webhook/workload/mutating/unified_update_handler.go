@@ -23,11 +23,6 @@ import (
 	"net/http"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
-	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/admissionregistration/v1"
 	apps "k8s.io/api/apps/v1"
@@ -39,6 +34,12 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
+	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
 
 // UnifiedWorkloadHandler handles Pod
@@ -111,11 +112,11 @@ func (h *UnifiedWorkloadHandler) Handle(ctx context.Context, req admission.Reque
 		if !changed {
 			return admission.Allowed("")
 		}
-		marshalled, err := json.Marshal(newObj.Object)
+		marshaled, err := json.Marshal(newObj.Object)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
-		return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshalled)
+		return admission.PatchResponseFromRaw(req.AdmissionRequest.Object.Raw, marshaled)
 	}
 }
 

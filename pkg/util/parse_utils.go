@@ -235,7 +235,7 @@ func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 
 	case *unstructured.Unstructured:
 		return &WorkloadStatus{
-			ObservedGeneration:   int64(parseStatusIntFromUnstructured(o, "observedGeneration")),
+			ObservedGeneration:   parseStatusIntFromUnstructured(o, "observedGeneration"),
 			Replicas:             int32(parseStatusIntFromUnstructured(o, "replicas")),
 			ReadyReplicas:        int32(parseStatusIntFromUnstructured(o, "readyReplicas")),
 			UpdatedReplicas:      int32(parseStatusIntFromUnstructured(o, "updatedReplicas")),

@@ -24,13 +24,14 @@ import (
 	"testing"
 
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 func TestHandleStatefulSet(t *testing.T) {

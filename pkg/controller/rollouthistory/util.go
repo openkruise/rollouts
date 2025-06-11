@@ -25,14 +25,15 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 // For RolloutHistory

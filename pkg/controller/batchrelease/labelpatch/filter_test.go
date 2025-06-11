@@ -23,12 +23,13 @@ import (
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
-	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 func TestFilterPodsForUnorderedRollback(t *testing.T) {

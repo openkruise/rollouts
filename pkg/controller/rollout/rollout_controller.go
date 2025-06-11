@@ -19,13 +19,11 @@ package rollout
 import (
 	"context"
 	"flag"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sync"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/trafficrouting"
-	"github.com/openkruise/rollouts/pkg/util"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -35,6 +33,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/trafficrouting"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 var (

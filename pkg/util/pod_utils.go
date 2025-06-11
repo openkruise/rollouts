@@ -20,10 +20,11 @@ import (
 	"context"
 	"strings"
 
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 )
 
 // IsPodReady returns true if a pod is ready; false otherwise.

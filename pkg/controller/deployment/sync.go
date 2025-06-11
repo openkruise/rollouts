@@ -458,47 +458,7 @@ func (dc *DeploymentController) scaleReplicaSet(ctx context.Context, rs *apps.Re
 	return scaled, rs, err
 }
 
-// cleanupDeployment is responsible for cleaning up a deployment ie. retains all but the latest N old replica sets
-// where N=d.Spec.RevisionHistoryLimit. Old replica sets are older versions of the podtemplate of a deployment kept
-// around by default 1) for historical reasons and 2) for the ability to rollback a deployment.
-func (dc *DeploymentController) cleanupDeployment(ctx context.Context, oldRSs []*apps.ReplicaSet, deployment *apps.Deployment) error {
-	if !deploymentutil.HasRevisionHistoryLimit(deployment) {
-		return nil
-	}
-
-	// Avoid deleting replica set with deletion timestamp set
-	aliveFilter := func(rs *apps.ReplicaSet) bool {
-		return rs != nil && rs.ObjectMeta.DeletionTimestamp == nil
-	}
-	cleanableRSes := deploymentutil.FilterReplicaSets(oldRSs, aliveFilter)
-
-	diff := int32(len(cleanableRSes)) - *deployment.Spec.RevisionHistoryLimit
-	if diff <= 0 {
-		return nil
-	}
-
-	sort.Sort(deploymentutil.ReplicaSetsByRevision(cleanableRSes))
-	klog.V(4).Infof("Looking to cleanup old replica sets for deployment %q", deployment.Name)
-
-	for i := int32(0); i < diff; i++ {
-		rs := cleanableRSes[i]
-		// Avoid delete replica set with non-zero replica counts
-		if rs.Status.Replicas != 0 || *(rs.Spec.Replicas) != 0 || rs.Generation > rs.Status.ObservedGeneration || rs.DeletionTimestamp != nil {
-			continue
-		}
-		klog.V(4).Infof("Trying to cleanup replica set %q for deployment %q", rs.Name, deployment.Name)
-		if err := dc.runtimeClient.Delete(ctx, rs); err != nil && !errors.IsNotFound(err) {
-			// Return error instead of aggregating and continuing DELETEs on the theory
-			// that we may be overloading the api server.
-			return err
-		}
-	}
-
-	return nil
-}
-
 // syncDeploymentStatus checks if the status is up-to-date and sync it if necessary
-// It also updates the extra status annotation for advanced deployment
 func (dc *DeploymentController) syncDeploymentStatus(ctx context.Context, allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, d *apps.Deployment) error {
 	newStatus := calculateStatus(allRSs, newRS, d, &dc.strategy)
 

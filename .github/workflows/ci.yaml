@@ -64,7 +64,7 @@ jobs:
       - name: Run Unit Tests
         run: |
           make test
-          git status
+          [[ -z $(git status -s) ]] || (printf "Existing modified/untracked files.\nPlease run \"make generate manifests\" and push again.\n"; exit 1)
       - name: Publish Unit Test Coverage
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
         env:
@@ -73,5 +73,3 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: unittests
           file: cover.out
-      - name: Check diff
-        run: '[[ -z $(git status -s) ]] || (printf "Existing modified/untracked files.\nPlease run \"make generate manifests\" and push again.\n"; exit 1)'

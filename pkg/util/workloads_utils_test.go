@@ -25,7 +25,6 @@ import (
 	. "github.com/onsi/gomega"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutapi "github.com/openkruise/rollouts/api"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +32,8 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
 )
 
 var scheme *runtime.Scheme

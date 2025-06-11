@@ -27,11 +27,6 @@ import (
 	appsv1pub "github.com/openkruise/kruise-api/apps/pub"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutapi "github.com/openkruise/rollouts/api"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
-	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,6 +38,12 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 var (

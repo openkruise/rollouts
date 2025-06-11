@@ -25,11 +25,6 @@ import (
 
 	kruisev1aplphal "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutapi "github.com/openkruise/rollouts/api"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
-	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 	"github.com/stretchr/testify/assert"
 	addmissionv1 "k8s.io/api/admission/v1"
 	v12 "k8s.io/api/admissionregistration/v1"
@@ -44,6 +39,12 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
+	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
 
 var (

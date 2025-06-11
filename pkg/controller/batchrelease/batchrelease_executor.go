@@ -22,6 +22,16 @@ import (
 	"time"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	apps "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/bluegreenstyle"
@@ -36,15 +46,6 @@ import (
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/statefulset"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/errors"
-	apps "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
-	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
@@ -124,7 +125,7 @@ func (r *Executor) executeBatchReleasePlan(release *v1beta1.BatchRelease, newSta
 		}
 
 	case v1beta1.RolloutPhaseCompleted:
-		// this state indicates that the plan is executed/cancelled successfully, should do nothing in these states.
+		// this state indicates that the plan is executed/canceled successfully, should do nothing in these states.
 	}
 
 	return result, newStatus, err

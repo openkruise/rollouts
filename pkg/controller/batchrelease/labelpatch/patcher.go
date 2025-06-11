@@ -21,9 +21,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/openkruise/rollouts/api/v1beta1"
-	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +28,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 type LabelPatcher interface {

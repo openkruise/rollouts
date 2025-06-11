@@ -24,8 +24,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/openkruise/rollouts/pkg/webhook/util/generator"
 	"k8s.io/klog/v2"
+
+	"github.com/openkruise/rollouts/pkg/webhook/util/generator"
 )
 
 const (
