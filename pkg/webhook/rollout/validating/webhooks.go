@@ -17,9 +17,10 @@ limitations under the License.
 package validating
 
 import (
-	"github.com/openkruise/rollouts/pkg/webhook/types"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	"github.com/openkruise/rollouts/pkg/webhook/types"
 )
 
 // +kubebuilder:webhook:path=/validate-rollouts-kruise-io-rollout,mutating=false,failurePolicy=fail,sideEffects=None,admissionReviewVersions=v1;v1beta1,groups=rollouts.kruise.io,resources=rollouts,verbs=create;update,versions=v1alpha1;v1beta1,name=vrollout.kb.io

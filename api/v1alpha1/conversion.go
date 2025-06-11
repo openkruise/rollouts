@@ -21,10 +21,11 @@ import (
 
 	"strings"
 
-	"github.com/openkruise/rollouts/api/v1beta1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/conversion"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
 )
 
 func (src *Rollout) ConvertTo(dst conversion.Hub) error {

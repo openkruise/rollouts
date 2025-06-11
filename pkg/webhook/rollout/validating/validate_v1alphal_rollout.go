@@ -22,14 +22,15 @@ import (
 	"reflect"
 	"strings"
 
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/util"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 )
 
 func (h *RolloutCreateUpdateHandler) validateV1alpha1RolloutUpdate(oldObj, newObj *appsv1alpha1.Rollout) field.ErrorList {

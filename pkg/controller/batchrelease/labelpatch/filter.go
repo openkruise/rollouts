@@ -21,12 +21,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openkruise/rollouts/api/v1beta1"
-	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/integer"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 // FilterPodsForUnorderedUpdate can filter pods before patch pod batch label when rolling back in batches.

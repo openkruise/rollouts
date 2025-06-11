@@ -20,11 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
-	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -33,6 +28,12 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 type realBatchControlPlane struct {

@@ -21,15 +21,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"strings"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -39,6 +37,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util/client"
 )
 
 // RolloutState is annotation[rollouts.kruise.io/in-progressing] value

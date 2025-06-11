@@ -19,16 +19,18 @@ package webhook
 import (
 	"context"
 	"fmt"
-	"github.com/openkruise/rollouts/pkg/webhook/types"
 	"time"
 
-	webhookcontroller "github.com/openkruise/rollouts/pkg/webhook/util/controller"
+	"github.com/openkruise/rollouts/pkg/webhook/types"
+
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/conversion"
+
+	webhookcontroller "github.com/openkruise/rollouts/pkg/webhook/util/controller"
 )
 
 type GateFunc func() (enabled bool)

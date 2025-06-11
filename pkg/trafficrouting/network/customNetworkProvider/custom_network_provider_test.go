@@ -26,12 +26,6 @@ import (
 	"strings"
 	"testing"
 
-	rolloutapi "github.com/openkruise/rollouts/api"
-	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
-	"github.com/openkruise/rollouts/pkg/util/configuration"
-	"github.com/openkruise/rollouts/pkg/util/luamanager"
 	"github.com/stretchr/testify/assert"
 	lua "github.com/yuin/gopher-lua"
 	corev1 "k8s.io/api/core/v1"
@@ -48,6 +42,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 	"sigs.k8s.io/yaml"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
+	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/configuration"
+	"github.com/openkruise/rollouts/pkg/util/luamanager"
 )
 
 var (

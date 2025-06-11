@@ -22,14 +22,15 @@ import (
 	"reflect"
 	"testing"
 
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/util"
 	lua "github.com/yuin/gopher-lua"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	luajson "layeh.com/gopher-json"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
+
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 type LuaData struct {

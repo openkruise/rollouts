@@ -19,8 +19,6 @@ package rollout
 import (
 	"context"
 
-	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,6 +28,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 )
 
 var _ handler.EventHandler = &enqueueRequestForWorkload{}
