@@ -19,15 +19,16 @@ package batchrelease
 import (
 	"reflect"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
-	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 func (r *Executor) syncStatusBeforeExecuting(release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus, controller control.Interface) (bool, reconcile.Result, error) {
@@ -46,7 +47,7 @@ func (r *Executor) syncStatusBeforeExecuting(release *v1beta1.BatchRelease, newS
 	 *************************************************************************/
 	//The following special cases are about the **batch release plan**, include:
 	//  (1). Plan has been terminated
-	//  (2). Plan is deleted or cancelled
+	//  (2). Plan is deleted or canceled
 	//  (3). Plan is changed during rollout
 	//  (4). Plan status is unexpected/unhealthy
 	case isPlanCompleted(release):
@@ -55,7 +56,7 @@ func (r *Executor) syncStatusBeforeExecuting(release *v1beta1.BatchRelease, newS
 
 	case isPlanFinalizing(release):
 		// handle the case that the plan is deleted or is terminating
-		message = "release plan is deleted or cancelled, then finalize"
+		message = "release plan is deleted or canceled, then finalize"
 		signalFinalizing(newStatus)
 
 	case isPlanChanged(release):

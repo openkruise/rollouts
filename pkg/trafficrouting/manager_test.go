@@ -24,12 +24,6 @@ import (
 	"testing"
 	"time"
 
-	rolloutapi "github.com/openkruise/rollouts/api"
-	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
-	"github.com/openkruise/rollouts/pkg/util/configuration"
-	"github.com/openkruise/rollouts/pkg/util/grace"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -44,6 +38,13 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/configuration"
+	"github.com/openkruise/rollouts/pkg/util/grace"
 )
 
 var (

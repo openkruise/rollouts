@@ -21,12 +21,11 @@ import (
 	"encoding/json"
 	"flag"
 	"reflect"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sync"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -44,6 +43,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 var (

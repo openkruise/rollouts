@@ -19,11 +19,6 @@ package rollout
 import (
 	"fmt"
 
-	rolloutapi "github.com/openkruise/rollouts/api"
-	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
-	"github.com/openkruise/rollouts/pkg/util/configuration"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -34,6 +29,12 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	utilpointer "k8s.io/utils/pointer"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/configuration"
 )
 
 var (

@@ -21,10 +21,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/trafficrouting"
-	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -34,6 +30,11 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/trafficrouting"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 func TestRunCanary(t *testing.T) {
@@ -49,6 +50,7 @@ func TestRunCanary(t *testing.T) {
 			name: "run canary upgrade1",
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
+				dep1.Labels[v1beta1.RolloutIDLabel] = "test-id"
 				rs1 := rsDemo.DeepCopy()
 				return []*apps.Deployment{dep1}, []*apps.ReplicaSet{rs1}
 			},
@@ -103,7 +105,7 @@ func TestRunCanary(t *testing.T) {
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.CanaryRollingStyle
-				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
+				br.Spec.ReleasePlan.RolloutID = "test-id"
 				return br
 			},
 		},
@@ -112,6 +114,8 @@ func TestRunCanary(t *testing.T) {
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				dep2 := deploymentDemo.DeepCopy()
+				dep1.Labels[v1beta1.RolloutIDLabel] = "test-id"
+				dep2.Labels[v1beta1.RolloutIDLabel] = "test-id"
 				dep2.UID = "1ca4d850-9ec3-48bd-84cb-19f2e8cf4180"
 				dep2.Name = dep1.Name + "-canary"
 				dep2.Labels[util.CanaryDeploymentLabel] = dep1.Name
@@ -144,7 +148,7 @@ func TestRunCanary(t *testing.T) {
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
 				obj.Status.CanaryStatus.NextStepIndex = 2
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
-				obj.Status.CanaryStatus.ObservedRolloutID = "88bd5dbfd"
+				obj.Status.CanaryStatus.ObservedRolloutID = "test-id"
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
@@ -166,7 +170,7 @@ func TestRunCanary(t *testing.T) {
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.CanaryRollingStyle
-				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
+				br.Spec.ReleasePlan.RolloutID = "test-id"
 				br.Status = v1beta1.BatchReleaseStatus{
 					ObservedGeneration: 1,
 					// since we use RollingStyle over EnableExtraWorkloadForCanary now, former hardcoded hash
@@ -193,7 +197,7 @@ func TestRunCanary(t *testing.T) {
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.NextStepIndex = 2
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
-				s.CanaryStatus.ObservedRolloutID = "88bd5dbfd"
+				s.CanaryStatus.ObservedRolloutID = "test-id"
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
@@ -218,7 +222,7 @@ func TestRunCanary(t *testing.T) {
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.EnableExtraWorkloadForCanary = true
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.CanaryRollingStyle
-				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
+				br.Spec.ReleasePlan.RolloutID = "test-id"
 				return br
 			},
 		},
@@ -277,6 +281,8 @@ func TestRunCanary(t *testing.T) {
 			cond.Message = ""
 			util.SetRolloutCondition(cStatus, *cond)
 			expectStatus := cs.expectStatus()
+			// canary revision may change after k8s API changes, munge the revision to make the test stable
+			expectStatus.SetCanaryRevision(cStatus.GetCanaryRevision())
 			if !reflect.DeepEqual(expectStatus, cStatus) {
 				t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(cs.expectStatus()), util.DumpJSON(cStatus))
 			}
@@ -347,8 +353,11 @@ func TestRunCanaryPaused(t *testing.T) {
 			cStatus.CanaryStatus.LastUpdateTime = nil
 			cStatus.CanaryStatus.Message = ""
 			cStatus.Message = ""
-			if !reflect.DeepEqual(cs.expectStatus(), cStatus) {
-				t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(cs.expectStatus()), util.DumpJSON(cStatus))
+			expectStatus := cs.expectStatus()
+			// canary revision may change after k8s API changes, munge the revision to make the test stable
+			expectStatus.SetCanaryRevision(cStatus.GetCanaryRevision())
+			if !reflect.DeepEqual(expectStatus, cStatus) {
+				t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expectStatus), util.DumpJSON(cStatus))
 			}
 		})
 	}

@@ -23,9 +23,6 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +30,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 )
 
 // Workload is used to return (controller, scale, selector) fields from the

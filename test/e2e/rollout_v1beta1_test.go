@@ -29,9 +29,6 @@ import (
 	"github.com/onsi/gomega/format"
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
-	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	scalingV1 "k8s.io/api/autoscaling/v1"
 	scalingV2 "k8s.io/api/autoscaling/v2"
@@ -46,6 +43,10 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 var _ = SIGDescribe("Rollout v1beta1", func() {

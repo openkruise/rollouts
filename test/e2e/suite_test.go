@@ -30,7 +30,6 @@ import (
 	. "github.com/onsi/gomega"
 	kruisev1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruisev1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutapi "github.com/openkruise/rollouts/api"
 	crdv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,6 +41,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 	"sigs.k8s.io/yaml"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
 )
 
 var k8sClient client.Client

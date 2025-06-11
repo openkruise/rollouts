@@ -24,12 +24,6 @@ import (
 	"strings"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
-	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/admissionregistration/v1"
 	apps "k8s.io/api/apps/v1"
@@ -44,6 +38,13 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
+	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
 
 // WorkloadHandler handles Pod
@@ -113,7 +114,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			if !changed {
 				return admission.Allowed("")
 			}
-			marshalled, err := json.Marshal(newObjClone)
+			marshaled, err := json.Marshal(newObjClone)
 			if err != nil {
 				return admission.Errored(http.StatusInternalServerError, err)
 			}
@@ -121,7 +122,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			if err != nil {
 				return admission.Errored(http.StatusInternalServerError, err)
 			}
-			return admission.PatchResponseFromRaw(original, marshalled)
+			return admission.PatchResponseFromRaw(original, marshaled)
 		case util.ControllerKruiseKindDS.Kind:
 			// check daemonset
 			newObj := &kruiseappsv1alpha1.DaemonSet{}
@@ -142,7 +143,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			if !changed {
 				return admission.Allowed("")
 			}
-			marshalled, err := json.Marshal(newObjClone)
+			marshaled, err := json.Marshal(newObjClone)
 			if err != nil {
 				return admission.Errored(http.StatusInternalServerError, err)
 			}
@@ -150,7 +151,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			if err != nil {
 				return admission.Errored(http.StatusInternalServerError, err)
 			}
-			return admission.PatchResponseFromRaw(original, marshalled)
+			return admission.PatchResponseFromRaw(original, marshaled)
 		}
 
 	// native k8s deloyment
@@ -176,7 +177,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			if !changed {
 				return admission.Allowed("")
 			}
-			marshalled, err := json.Marshal(newObjClone)
+			marshaled, err := json.Marshal(newObjClone)
 			if err != nil {
 				return admission.Errored(http.StatusInternalServerError, err)
 			}
@@ -184,7 +185,7 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 			if err != nil {
 				return admission.Errored(http.StatusInternalServerError, err)
 			}
-			return admission.PatchResponseFromRaw(original, marshalled)
+			return admission.PatchResponseFromRaw(original, marshaled)
 		}
 	}
 

@@ -23,10 +23,6 @@ import (
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	expectations "github.com/openkruise/rollouts/pkg/util/expectation"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,6 +35,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	expectations "github.com/openkruise/rollouts/pkg/util/expectation"
 )
 
 type EventAction string

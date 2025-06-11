@@ -20,6 +20,16 @@ import (
 	"context"
 	"fmt"
 
+	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/klog/v2"
+	utilpointer "k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
@@ -30,15 +40,6 @@ import (
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/errors"
 	"github.com/openkruise/rollouts/pkg/util/patch"
-	apps "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/klog/v2"
-	utilpointer "k8s.io/utils/pointer"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type realController struct {

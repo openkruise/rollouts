@@ -18,20 +18,12 @@ package main
 
 import (
 	"flag"
-	webhookutil "github.com/openkruise/rollouts/pkg/webhook/util"
 	"os"
+
+	webhookutil "github.com/openkruise/rollouts/pkg/webhook/util"
 
 	kruisev1aplphal1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruisev1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutapi "github.com/openkruise/rollouts/api"
-	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
-	"github.com/openkruise/rollouts/pkg/controller/deployment"
-	"github.com/openkruise/rollouts/pkg/controller/rollout"
-	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
-	"github.com/openkruise/rollouts/pkg/controller/trafficrouting"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
-	"github.com/openkruise/rollouts/pkg/webhook"
 	"github.com/spf13/pflag"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -44,6 +36,16 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
+	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
+	"github.com/openkruise/rollouts/pkg/controller/deployment"
+	"github.com/openkruise/rollouts/pkg/controller/rollout"
+	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
+	"github.com/openkruise/rollouts/pkg/controller/trafficrouting"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
+	"github.com/openkruise/rollouts/pkg/webhook"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.

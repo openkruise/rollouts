@@ -21,13 +21,14 @@ import (
 	"reflect"
 	"testing"
 
+	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	netv1 "k8s.io/api/networking/v1"
+
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
-	apps "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	netv1 "k8s.io/api/networking/v1"
 
 	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -51,6 +52,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
 				rs1 := rsDemo.DeepCopy()
+				dep1.Labels[v1beta1.RolloutIDLabel] = "test-id"
 				return []*apps.Deployment{dep1}, []*apps.ReplicaSet{rs1}
 			},
 			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
@@ -64,7 +66,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				obj.Status.BlueGreenStatus.UpdatedRevision = "6f8cc56547"
 				obj.Status.BlueGreenStatus.CurrentStepIndex = 1
 				obj.Status.BlueGreenStatus.NextStepIndex = 2
-				obj.Status.BlueGreenStatus.ObservedRolloutID = "88bd5dbfd"
+				obj.Status.BlueGreenStatus.ObservedRolloutID = "test-id"
 				obj.Status.BlueGreenStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
@@ -80,7 +82,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				s.BlueGreenStatus.CurrentStepIndex = 1
 				s.BlueGreenStatus.NextStepIndex = 2
 				s.BlueGreenStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
-				s.BlueGreenStatus.ObservedRolloutID = "88bd5dbfd"
+				s.BlueGreenStatus.ObservedRolloutID = "test-id"
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(s, *cond)
@@ -104,7 +106,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.BlueGreenRollingStyle
-				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
+				br.Spec.ReleasePlan.RolloutID = "test-id"
 				return br
 			},
 		},
@@ -114,6 +116,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				dep1 := deploymentDemo.DeepCopy()
 				rs1 := rsDemo.DeepCopy()
 				rs2 := rsDemo.DeepCopy()
+				dep1.Labels[v1beta1.RolloutIDLabel] = "test-id"
 				rs2.Name = "echoserver-canary"
 				rs2.Labels["pod-template-hash"] = "pod-template-hash-v2"
 				rs2.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
@@ -131,7 +134,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				obj.Status.BlueGreenStatus.CurrentStepIndex = 1
 				obj.Status.BlueGreenStatus.NextStepIndex = 2
 				obj.Status.BlueGreenStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
-				obj.Status.BlueGreenStatus.ObservedRolloutID = "88bd5dbfd"
+				obj.Status.BlueGreenStatus.ObservedRolloutID = "test-id"
 				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
 				util.SetRolloutCondition(&obj.Status, *cond)
@@ -152,7 +155,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.BlueGreenRollingStyle
-				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
+				br.Spec.ReleasePlan.RolloutID = "test-id"
 				br.Status = v1beta1.BatchReleaseStatus{
 					ObservedGeneration:      1,
 					ObservedReleasePlanHash: util.HashReleasePlanBatches(&br.Spec.ReleasePlan),
@@ -176,7 +179,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				s.BlueGreenStatus.UpdatedReadyReplicas = 1
 				s.BlueGreenStatus.CurrentStepIndex = 1
 				s.BlueGreenStatus.NextStepIndex = 2
-				s.BlueGreenStatus.ObservedRolloutID = "88bd5dbfd"
+				s.BlueGreenStatus.ObservedRolloutID = "test-id"
 				s.BlueGreenStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
@@ -201,7 +204,7 @@ func TestBlueGreenRunCanary(t *testing.T) {
 				}
 				br.Spec.ReleasePlan.BatchPartition = utilpointer.Int32(0)
 				br.Spec.ReleasePlan.RollingStyle = v1beta1.BlueGreenRollingStyle
-				br.Spec.ReleasePlan.RolloutID = "88bd5dbfd"
+				br.Spec.ReleasePlan.RolloutID = "test-id"
 				return br
 			},
 		},
@@ -260,6 +263,8 @@ func TestBlueGreenRunCanary(t *testing.T) {
 			cond.Message = ""
 			util.SetRolloutCondition(cStatus, *cond)
 			expectStatus := cs.expectStatus()
+			// canary revision may change after k8s API changes, munge the revision to make the test stable
+			expectStatus.SetCanaryRevision(cStatus.GetCanaryRevision())
 			if !reflect.DeepEqual(expectStatus, cStatus) {
 				t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(cs.expectStatus()), util.DumpJSON(cStatus))
 			}
@@ -330,8 +335,11 @@ func TestBlueGreenRunCanaryPaused(t *testing.T) {
 			cStatus.BlueGreenStatus.LastUpdateTime = nil
 			cStatus.BlueGreenStatus.Message = ""
 			cStatus.Message = ""
-			if !reflect.DeepEqual(cs.expectStatus(), cStatus) {
-				t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(cs.expectStatus()), util.DumpJSON(cStatus))
+			expectStatus := cs.expectStatus()
+			// canary revision may change after k8s API changes, munge the revision to make the test stable
+			expectStatus.SetCanaryRevision(cStatus.GetCanaryRevision())
+			if !reflect.DeepEqual(expectStatus, cStatus) {
+				t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expectStatus), util.DumpJSON(cStatus))
 			}
 		})
 	}

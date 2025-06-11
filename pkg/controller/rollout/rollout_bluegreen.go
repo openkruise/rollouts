@@ -22,10 +22,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/trafficrouting"
-	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,6 +30,11 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/trafficrouting"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 type blueGreenReleaseManager struct {
@@ -295,13 +296,13 @@ func (m *blueGreenReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, e
 		blueGreenStatus.FinalisingStep = nextStep
 		blueGreenStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
 	} else if blueGreenStatus.FinalisingStep == v1beta1.FinalisingStepTypeEnd {
-		klog.Infof("rollout(%s/%s) finalising process is already completed", c.Rollout.Namespace, c.Rollout.Name)
+		klog.Infof("rollout(%s/%s) finalizing process is already completed", c.Rollout.Namespace, c.Rollout.Name)
 		return true, nil
 	}
-	klog.Infof("rollout(%s/%s) Finalising Step is %s", c.Rollout.Namespace, c.Rollout.Name, blueGreenStatus.FinalisingStep)
+	klog.Infof("rollout(%s/%s) finalizing Step is %s", c.Rollout.Namespace, c.Rollout.Name, blueGreenStatus.FinalisingStep)
 
 	var retry bool
-	// the order of steps is maitained by calculating thenextStep
+	// the order of steps is maintained by calculating the nextStep
 	switch blueGreenStatus.FinalisingStep {
 	// set workload.pause=false; set workload.partition=0
 	case v1beta1.FinalisingStepResumeWorkload:
@@ -327,7 +328,7 @@ func (m *blueGreenReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, e
 		retry, err = true, fmt.Errorf("only for debugging, just wait endlessly")
 	default:
 		nextStep = nextBlueGreenTask(c.FinalizeReason, "")
-		klog.Warningf("unexpected finalising step, current step(%s),  start from the first step(%s)", blueGreenStatus.FinalisingStep, nextStep)
+		klog.Warningf("unexpected finalizing step, current step(%s),  start from the first step(%s)", blueGreenStatus.FinalisingStep, nextStep)
 		blueGreenStatus.FinalisingStep = nextStep
 		return false, nil
 	}

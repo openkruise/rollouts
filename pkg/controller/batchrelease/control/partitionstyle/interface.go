@@ -17,10 +17,11 @@ limitations under the License.
 package partitionstyle
 
 import (
+	corev1 "k8s.io/api/core/v1"
+
 	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/util"
-	corev1 "k8s.io/api/core/v1"
 )
 
 type Interface interface {

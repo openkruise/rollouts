@@ -154,6 +154,6 @@ const (
 	RolloutPhasePreparing RolloutPhase = "Preparing"
 	// RolloutPhaseFinalizing indicates a rollout is finalizing
 	RolloutPhaseFinalizing RolloutPhase = "Finalizing"
-	// RolloutPhaseCompleted indicates a rollout is completed/cancelled/terminated
+	// RolloutPhaseCompleted indicates a rollout is completed/canceled/terminated
 	RolloutPhaseCompleted RolloutPhase = "Completed"
 )
