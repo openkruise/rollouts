@@ -485,7 +485,10 @@ func (r *RolloutStatus) GetCanaryRevision() string {
 	if r.CanaryStatus != nil {
 		return r.CanaryStatus.CanaryRevision
 	}
-	return r.BlueGreenStatus.UpdatedRevision
+	if r.BlueGreenStatus != nil {
+		return r.BlueGreenStatus.UpdatedRevision
+	}
+	return ""
 }
 
 func (r *RolloutStatus) SetCanaryRevision(revision string) {
