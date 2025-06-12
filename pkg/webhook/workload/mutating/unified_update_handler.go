@@ -23,11 +23,6 @@ import (
 	"net/http"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
-	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/admissionregistration/v1"
 	apps "k8s.io/api/apps/v1"
@@ -38,8 +33,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
+	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
 
 // UnifiedWorkloadHandler handles Pod
@@ -186,23 +186,6 @@ func (h *UnifiedWorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1
 		}
 	}
 	return nil, nil
-}
-
-var _ inject.Client = &UnifiedWorkloadHandler{}
-
-// InjectClient injects the client into the UnifiedWorkloadHandler
-func (h *UnifiedWorkloadHandler) InjectClient(c client.Client) error {
-	h.Client = c
-	h.Finder = util.NewControllerFinder(c)
-	return nil
-}
-
-var _ admission.DecoderInjector = &UnifiedWorkloadHandler{}
-
-// InjectDecoder injects the decoder into the UnifiedWorkloadHandler
-func (h *UnifiedWorkloadHandler) InjectDecoder(d *admission.Decoder) error {
-	h.Decoder = d
-	return nil
 }
 
 func (h *UnifiedWorkloadHandler) checkWorkloadRules(ctx context.Context, req admission.Request) (bool, error) {

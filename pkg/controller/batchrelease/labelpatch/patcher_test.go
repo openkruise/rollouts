@@ -24,9 +24,6 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	"github.com/openkruise/rollouts/pkg/util"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +34,10 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 var (
@@ -490,6 +491,8 @@ func TestDeploymentPatch(t *testing.T) {
 				ctx.Pods = append(ctx.Pods, &corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{
 						DeletionTimestamp: &now,
+						// fake client will reject pods with deletiontimestamp if no finalizer is given
+						Finalizers: []string{"finalizers.sigs.k8s.io/test"},
 						Labels: map[string]string{
 							appsv1.ControllerRevisionHashLabelKey: skippedRevision,
 						},

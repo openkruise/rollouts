@@ -17,14 +17,20 @@ limitations under the License.
 package validating
 
 import (
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	"github.com/openkruise/rollouts/pkg/webhook/types"
 )
 
 // +kubebuilder:webhook:path=/validate-rollouts-kruise-io-rollout,mutating=false,failurePolicy=fail,sideEffects=None,admissionReviewVersions=v1;v1beta1,groups=rollouts.kruise.io,resources=rollouts,verbs=create;update,versions=v1alpha1;v1beta1,name=vrollout.kb.io
 
 var (
 	// HandlerMap contains admission webhook handlers
-	HandlerMap = map[string]admission.Handler{
-		"validate-rollouts-kruise-io-rollout": &RolloutCreateUpdateHandler{},
+	HandlerMap = map[string]types.HandlerGetter{
+		"validate-rollouts-kruise-io-rollout": func(mgr manager.Manager) admission.Handler {
+			decoder := admission.NewDecoder(mgr.GetScheme())
+			return &RolloutCreateUpdateHandler{Decoder: decoder, Client: mgr.GetClient()}
+		},
 	}
 )

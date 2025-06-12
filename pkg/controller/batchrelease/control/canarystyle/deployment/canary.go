@@ -22,11 +22,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/openkruise/rollouts/api/v1beta1"
-	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	"github.com/openkruise/rollouts/pkg/util"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	expectations "github.com/openkruise/rollouts/pkg/util/expectation"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -36,6 +31,12 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	expectations "github.com/openkruise/rollouts/pkg/util/expectation"
 )
 
 type realCanaryController struct {

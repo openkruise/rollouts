@@ -23,11 +23,6 @@ import (
 	"reflect"
 
 	jsonpatch "github.com/evanphx/json-patch"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
-	"github.com/openkruise/rollouts/pkg/util"
-	"github.com/openkruise/rollouts/pkg/util/configuration"
-	"github.com/openkruise/rollouts/pkg/util/luamanager"
 	lua "github.com/yuin/gopher-lua"
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -41,6 +36,12 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/trafficrouting/network"
+	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/configuration"
+	"github.com/openkruise/rollouts/pkg/util/luamanager"
 )
 
 type ingressController struct {

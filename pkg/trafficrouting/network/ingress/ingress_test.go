@@ -19,10 +19,6 @@ import (
 	"reflect"
 	"testing"
 
-	rolloutsapi "github.com/openkruise/rollouts/api"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
-	"github.com/openkruise/rollouts/pkg/util/configuration"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -33,6 +29,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
+
+	rolloutsapi "github.com/openkruise/rollouts/api"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/util/configuration"
 )
 
 var (

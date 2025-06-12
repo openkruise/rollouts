@@ -23,8 +23,6 @@ import (
 
 	"github.com/openkruise/kruise-api/apps/pub"
 	kruisev1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutapi "github.com/openkruise/rollouts/api"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +35,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/gateway-api/apis/v1alpha2"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 )
 
 func init() {
@@ -896,7 +897,7 @@ func TestReconcile(t *testing.T) {
 
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
-			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&rolloutv1alpha1.RolloutHistory{}).Build()
 			for _, obj := range cs.getPods() {
 				err := fakeClient.Create(context.TODO(), obj.DeepCopy(), &client.CreateOptions{})
 				if err != nil {

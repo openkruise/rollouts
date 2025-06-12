@@ -25,15 +25,11 @@ import (
 
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/client-go/kubernetes/scheme"
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	toolscache "k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -49,7 +45,7 @@ import (
 	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
 	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
-	clientutil "github.com/openkruise/rollouts/pkg/util/client"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"github.com/openkruise/rollouts/pkg/util/patch"
 	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
@@ -93,24 +89,20 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 		return nil, err
 	}
 
+	genericClient := utilclient.GetGenericClientWithName("advanced-deployment-controller")
+
 	// Lister
 	dLister := appslisters.NewDeploymentLister(dInformer.(toolscache.SharedIndexInformer).GetIndexer())
 	rsLister := appslisters.NewReplicaSetLister(rsInformer.(toolscache.SharedIndexInformer).GetIndexer())
 
-	// Client & Recorder
-	genericClient := clientutil.GetGenericClientWithName("advanced-deployment-controller")
-	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(klog.Infof)
-	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: genericClient.KubeClient.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "advanced-deployment-controller"})
+	recorder := mgr.GetEventRecorderFor("advanced-deployment-controller")
 
 	// Deployment controller factory
 	factory := &controllerFactory{
-		client:           genericClient.KubeClient,
-		eventBroadcaster: eventBroadcaster,
-		eventRecorder:    recorder,
-		dLister:          dLister,
-		rsLister:         rsLister,
+		client:        genericClient.KubeClient,
+		eventRecorder: recorder,
+		dLister:       dLister,
+		rsLister:      rsLister,
 	}
 	return &ReconcileDeployment{Client: mgr.GetClient(), controllerFactory: factory}, nil
 }
@@ -134,13 +126,13 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to ReplicaSet
-	if err = c.Watch(&source.Kind{Type: &appsv1.ReplicaSet{}}, &handler.EnqueueRequestForOwner{
-		IsController: true, OwnerType: &appsv1.Deployment{}}, predicate.Funcs{}); err != nil {
+	if err = c.Watch(source.Kind(mgr.GetCache(), &appsv1.ReplicaSet{}), handler.EnqueueRequestForOwner(
+		mgr.GetScheme(), mgr.GetRESTMapper(), &appsv1.Deployment{}, handler.OnlyControllerOwner())); err != nil {
 		return err
 	}
 
 	// Watch for changes to MutatingWebhookConfigurations of kruise-rollout operator
-	if err = c.Watch(&source.Kind{Type: &admissionregistrationv1.MutatingWebhookConfiguration{}}, &MutatingWebhookEventHandler{mgr.GetCache()}); err != nil {
+	if err = c.Watch(source.Kind(mgr.GetCache(), &admissionregistrationv1.MutatingWebhookConfiguration{}), &MutatingWebhookEventHandler{mgr.GetCache()}); err != nil {
 		return err
 	}
 
@@ -163,7 +155,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to Deployment
-	return c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForObject{}, predicate.Funcs{UpdateFunc: updateHandler})
+	return c.Watch(source.Kind(mgr.GetCache(), &appsv1.Deployment{}), &handler.EnqueueRequestForObject{}, predicate.Funcs{UpdateFunc: updateHandler})
 }
 
 // Reconcile reads that state of the cluster for a Deployment object and makes changes based on the state read
@@ -267,11 +259,10 @@ func (f *controllerFactory) NewController(deployment *appsv1.Deployment) *Deploy
 	klog.V(4).Infof("Processing deployment %v strategy %v", klog.KObj(deployment), string(marshaled))
 
 	return &DeploymentController{
-		client:           f.client,
-		eventBroadcaster: f.eventBroadcaster,
-		eventRecorder:    f.eventRecorder,
-		dLister:          f.dLister,
-		rsLister:         f.rsLister,
-		strategy:         strategy,
+		client:        f.client,
+		eventRecorder: f.eventRecorder,
+		dLister:       f.dLister,
+		rsLister:      f.rsLister,
+		strategy:      strategy,
 	}
 }

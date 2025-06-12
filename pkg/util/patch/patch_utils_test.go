@@ -21,8 +21,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/openkruise/rollouts/pkg/util"
 	v1 "k8s.io/api/core/v1"
+
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 func TestCommonPatch(t *testing.T) {

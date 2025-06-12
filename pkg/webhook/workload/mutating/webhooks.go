@@ -17,7 +17,11 @@ limitations under the License.
 package mutating
 
 import (
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/webhook/types"
 )
 
 // +kubebuilder:webhook:path=/mutate-apps-kruise-io-v1alpha1-cloneset,mutating=true,failurePolicy=fail,sideEffects=None,admissionReviewVersions=v1;v1beta1,groups=apps.kruise.io,resources=clonesets,verbs=update,versions=v1alpha1,name=mcloneset.kb.io
@@ -27,10 +31,23 @@ import (
 
 var (
 	// HandlerMap contains admission webhook handlers
-	HandlerMap = map[string]admission.Handler{
-		"mutate-apps-kruise-io-v1alpha1-cloneset":  &WorkloadHandler{},
-		"mutate-apps-v1-deployment":                &WorkloadHandler{},
-		"mutate-apps-kruise-io-v1alpha1-daemonset": &WorkloadHandler{},
-		"mutate-unified-workload":                  &UnifiedWorkloadHandler{},
+	HandlerMap = map[string]types.HandlerGetter{
+		"mutate-apps-kruise-io-v1alpha1-cloneset": func(mgr manager.Manager) admission.Handler {
+			decoder := admission.NewDecoder(mgr.GetScheme())
+			return &WorkloadHandler{Decoder: decoder, Client: mgr.GetClient(), Finder: util.NewControllerFinder(mgr.GetClient())}
+		},
+		"mutate-apps-v1-deployment": func(mgr manager.Manager) admission.Handler {
+			decoder := admission.NewDecoder(mgr.GetScheme())
+			return &WorkloadHandler{Decoder: decoder, Client: mgr.GetClient(), Finder: util.NewControllerFinder(mgr.GetClient())}
+		},
+
+		"mutate-apps-kruise-io-v1alpha1-daemonset": func(mgr manager.Manager) admission.Handler {
+			decoder := admission.NewDecoder(mgr.GetScheme())
+			return &WorkloadHandler{Decoder: decoder, Client: mgr.GetClient(), Finder: util.NewControllerFinder(mgr.GetClient())}
+		},
+		"mutate-unified-workload": func(mgr manager.Manager) admission.Handler {
+			decoder := admission.NewDecoder(mgr.GetScheme())
+			return &UnifiedWorkloadHandler{Decoder: decoder, Client: mgr.GetClient(), Finder: util.NewControllerFinder(mgr.GetClient())}
+		},
 	}
 )

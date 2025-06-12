@@ -20,17 +20,18 @@ import (
 	"context"
 	"fmt"
 
+	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	apps "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type realController struct {

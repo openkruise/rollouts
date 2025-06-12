@@ -21,11 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/trafficrouting"
-	"github.com/openkruise/rollouts/pkg/util"
-	utilerrors "github.com/openkruise/rollouts/pkg/util/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +28,12 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/trafficrouting"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilerrors "github.com/openkruise/rollouts/pkg/util/errors"
 )
 
 var defaultGracePeriodSeconds int32 = 3

@@ -10,12 +10,15 @@ on:
       - master
       - release-*
 
+# Declare default permissions as read only.
+permissions: read-all
+
 jobs:
   license_check:
     runs-on: ubuntu-latest
     name: Check for unapproved licenses
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:

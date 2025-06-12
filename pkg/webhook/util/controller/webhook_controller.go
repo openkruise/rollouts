@@ -22,11 +22,6 @@ import (
 	"sync"
 	"time"
 
-	webhookutil "github.com/openkruise/rollouts/pkg/webhook/util"
-	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
-	"github.com/openkruise/rollouts/pkg/webhook/util/crd"
-	"github.com/openkruise/rollouts/pkg/webhook/util/generator"
-	"github.com/openkruise/rollouts/pkg/webhook/util/writer"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -44,7 +39,13 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	webhooktypes "github.com/openkruise/rollouts/pkg/webhook/types"
+	webhookutil "github.com/openkruise/rollouts/pkg/webhook/util"
+	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
+	"github.com/openkruise/rollouts/pkg/webhook/util/crd"
+	"github.com/openkruise/rollouts/pkg/webhook/util/generator"
+	"github.com/openkruise/rollouts/pkg/webhook/util/writer"
 )
 
 const (
@@ -68,7 +69,7 @@ func Inited() chan struct{} {
 
 type Controller struct {
 	kubeClient clientset.Interface
-	handlers   map[string]admission.Handler
+	handlers   map[string]webhooktypes.HandlerGetter
 
 	informerFactory informers.SharedInformerFactory
 	//secretLister       corelisters.SecretNamespaceLister
@@ -82,7 +83,7 @@ type Controller struct {
 	queue workqueue.RateLimitingInterface
 }
 
-func New(cfg *rest.Config, handlers map[string]admission.Handler) (*Controller, error) {
+func New(cfg *rest.Config, handlers map[string]webhooktypes.HandlerGetter) (*Controller, error) {
 	kubeClient, err := clientset.NewForConfig(cfg)
 	if err != nil {
 		return nil, err

@@ -1,5 +1,4 @@
-# Build the manager binary
-FROM golang:1.19-alpine3.17 AS builder
+FROM golang:1.20.14-alpine3.19 as builder
 
 WORKDIR /workspace
 

@@ -17,13 +17,16 @@ limitations under the License.
 package rollouthistory
 
 import (
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"context"
+
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 )
 
 var _ handler.EventHandler = &enqueueRequestForRolloutHistory{}
@@ -31,17 +34,17 @@ var _ handler.EventHandler = &enqueueRequestForRolloutHistory{}
 type enqueueRequestForRolloutHistory struct {
 }
 
-func (w *enqueueRequestForRolloutHistory) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForRolloutHistory) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.Object)
 }
 
-func (w *enqueueRequestForRolloutHistory) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForRolloutHistory) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForRolloutHistory) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForRolloutHistory) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForRolloutHistory) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForRolloutHistory) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.ObjectNew)
 }
 
@@ -62,17 +65,17 @@ var _ handler.EventHandler = &enqueueRequestForRollout{}
 type enqueueRequestForRollout struct {
 }
 
-func (w *enqueueRequestForRollout) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForRollout) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.Object)
 }
 
-func (w *enqueueRequestForRollout) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForRollout) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForRollout) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForRollout) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForRollout) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForRollout) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.ObjectNew)
 }
 

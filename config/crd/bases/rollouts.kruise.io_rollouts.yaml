@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.0
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.14.0
   name: rollouts.rollouts.kruise.io
 spec:
   group: rollouts.kruise.io
@@ -41,14 +40,19 @@ spec:
         description: Rollout is the Schema for the rollouts API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -61,13 +65,15 @@ spec:
                   changes of workload
                 type: boolean
               objectRef:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                description: |-
+                  INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file
-                  ObjectRef indicates workload'
+                  ObjectRef indicates workload
                 properties:
                   workloadRef:
-                    description: WorkloadRef contains enough information to let you
-                      identify a workload for Rollout Batch release of the bypass
+                    description: |-
+                      WorkloadRef contains enough information to let you identify a workload for Rollout
+                      Batch release of the bypass
                     properties:
                       apiVersion:
                         description: API Version of the referent
@@ -85,11 +91,11 @@ spec:
                     type: object
                 type: object
               rolloutID:
-                description: DeprecatedRolloutID is the deprecated field. It is recommended
-                  that configure RolloutId in workload.annotations[rollouts.kruise.io/rollout-id].
+                description: |-
+                  DeprecatedRolloutID is the deprecated field.
+                  It is recommended that configure RolloutId in workload.annotations[rollouts.kruise.io/rollout-id].
                   RolloutID should be changed before each workload revision publication.
-                  It is to distinguish consecutive multiple workload publications
-                  and rollout progress.
+                  It is to distinguish consecutive multiple workload publications and rollout progress.
                 type: string
               strategy:
                 description: rollout strategy
@@ -106,15 +112,16 @@ spec:
                         anyOf:
                         - type: integer
                         - type: string
-                        description: FailureThreshold indicates how many failed pods
-                          can be tolerated in all upgraded pods. Only when FailureThreshold
-                          are satisfied, Rollout can enter ready state. If FailureThreshold
-                          is nil, Rollout will use the MaxUnavailable of workload
-                          as its FailureThreshold. Defaults to nil.
+                        description: |-
+                          FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
+                          Only when FailureThreshold are satisfied, Rollout can enter ready state.
+                          If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
+                          FailureThreshold.
+                          Defaults to nil.
                         x-kubernetes-int-or-string: true
                       patchPodTemplateMetadata:
-                        description: PatchPodTemplateMetadata indicates patch configuration(e.g.
-                          labels, annotations) to the canary deployment podTemplateSpec.metadata
+                        description: |-
+                          PatchPodTemplateMetadata indicates patch configuration(e.g. labels, annotations) to the canary deployment podTemplateSpec.metadata
                           only support for canary deployment
                         properties:
                           annotations:
@@ -135,59 +142,61 @@ spec:
                           description: CanaryStep defines a step of a canary workload.
                           properties:
                             matches:
-                              description: Matches define conditions used for matching
-                                the incoming HTTP requests to canary service. Each
-                                match is independent, i.e. this rule will be matched
-                                if **any** one of the matches is satisfied. If Gateway
-                                API, current only support one match. And cannot support
-                                both weight and matches, if both are configured, then
-                                matches takes precedence.
+                              description: |-
+                                Matches define conditions used for matching the incoming HTTP requests to canary service.
+                                Each match is independent, i.e. this rule will be matched if **any** one of the matches is satisfied.
+                                If Gateway API, current only support one match.
+                                And cannot support both weight and matches, if both are configured, then matches takes precedence.
                               items:
                                 properties:
                                   headers:
-                                    description: Headers specifies HTTP request header
-                                      matchers. Multiple match values are ANDed together,
-                                      meaning, a request must match all the specified
-                                      headers to select the route.
+                                    description: |-
+                                      Headers specifies HTTP request header matchers. Multiple match values are
+                                      ANDed together, meaning, a request must match all the specified headers
+                                      to select the route.
                                     items:
-                                      description: HTTPHeaderMatch describes how to
-                                        select a HTTP route by matching HTTP request
+                                      description: |-
+                                        HTTPHeaderMatch describes how to select a HTTP route by matching HTTP request
                                         headers.
                                       properties:
                                         name:
-                                          description: "Name is the name of the HTTP
-                                            Header to be matched. Name matching MUST
-                                            be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                            \n If multiple entries specify equivalent
-                                            header names, only the first entry with
-                                            an equivalent name MUST be considered
-                                            for a match. Subsequent entries with an
-                                            equivalent header name MUST be ignored.
-                                            Due to the case-insensitivity of header
-                                            names, \"foo\" and \"Foo\" are considered
-                                            equivalent. \n When a header is repeated
-                                            in an HTTP request, it is implementation-specific
-                                            behavior as to how this is represented.
-                                            Generally, proxies should follow the guidance
-                                            from the RFC: https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2
-                                            regarding processing a repeated header,
-                                            with special handling for \"Set-Cookie\"."
+                                          description: |-
+                                            Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                            case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                            If multiple entries specify equivalent header names, only the first
+                                            entry with an equivalent name MUST be considered for a match. Subsequent
+                                            entries with an equivalent header name MUST be ignored. Due to the
+                                            case-insensitivity of header names, "foo" and "Foo" are considered
+                                            equivalent.
+
+
+                                            When a header is repeated in an HTTP request, it is
+                                            implementation-specific behavior as to how this is represented.
+                                            Generally, proxies should follow the guidance from the RFC:
+                                            https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding
+                                            processing a repeated header, with special handling for "Set-Cookie".
                                           maxLength: 256
                                           minLength: 1
                                           pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
                                           type: string
                                         type:
                                           default: Exact
-                                          description: "Type specifies how to match
-                                            against the value of the header. \n Support:
-                                            Core (Exact) \n Support: Implementation-specific
-                                            (RegularExpression) \n Since RegularExpression
-                                            HeaderMatchType has implementation-specific
-                                            conformance, implementations can support
-                                            POSIX, PCRE or any other dialects of regular
-                                            expressions. Please read the implementation's
-                                            documentation to determine the supported
-                                            dialect."
+                                          description: |-
+                                            Type specifies how to match against the value of the header.
+
+
+                                            Support: Core (Exact)
+
+
+                                            Support: Implementation-specific (RegularExpression)
+
+
+                                            Since RegularExpression HeaderMatchType has implementation-specific
+                                            conformance, implementations can support POSIX, PCRE or any other dialects
+                                            of regular expressions. Please read the implementation's documentation to
+                                            determine the supported dialect.
                                           enum:
                                           - Exact
                                           - RegularExpression
@@ -220,39 +229,67 @@ spec:
                               anyOf:
                               - type: integer
                               - type: string
-                              description: 'Replicas is the number of expected canary
-                                pods in this batch it can be an absolute number (ex:
-                                5) or a percentage of total pods.'
+                              description: |-
+                                Replicas is the number of expected canary pods in this batch
+                                it can be an absolute number (ex: 5) or a percentage of total pods.
                               x-kubernetes-int-or-string: true
                             requestHeaderModifier:
-                              description: "Set overwrites the request with the given
-                                header (name, value) before the action. \n Input:
-                                GET /foo HTTP/1.1 my-header: foo \n requestHeaderModifier:
-                                set: - name: \"my-header\" value: \"bar\" \n Output:
-                                GET /foo HTTP/1.1 my-header: bar"
+                              description: |-
+                                Set overwrites the request with the given header (name, value)
+                                before the action.
+
+
+                                Input:
+                                  GET /foo HTTP/1.1
+                                  my-header: foo
+
+
+                                requestHeaderModifier:
+                                  set:
+                                  - name: "my-header"
+                                    value: "bar"
+
+
+                                Output:
+                                  GET /foo HTTP/1.1
+                                  my-header: bar
                               properties:
                                 add:
-                                  description: "Add adds the given header(s) (name,
-                                    value) to the request before the action. It appends
-                                    to any existing values associated with the header
-                                    name. \n Input: GET /foo HTTP/1.1 my-header: foo
-                                    \n Config: add: - name: \"my-header\" value: \"bar,baz\"
-                                    \n Output: GET /foo HTTP/1.1 my-header: foo,bar,baz"
+                                  description: |-
+                                    Add adds the given header(s) (name, value) to the request
+                                    before the action. It appends to any existing values associated
+                                    with the header name.
+
+
+                                    Input:
+                                      GET /foo HTTP/1.1
+                                      my-header: foo
+
+
+                                    Config:
+                                      add:
+                                      - name: "my-header"
+                                        value: "bar,baz"
+
+
+                                    Output:
+                                      GET /foo HTTP/1.1
+                                      my-header: foo,bar,baz
                                   items:
                                     description: HTTPHeader represents an HTTP Header
                                       name and value as defined by RFC 7230.
                                     properties:
                                       name:
-                                        description: "Name is the name of the HTTP
-                                          Header to be matched. Name matching MUST
-                                          be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                          \n If multiple entries specify equivalent
-                                          header names, the first entry with an equivalent
-                                          name MUST be considered for a match. Subsequent
-                                          entries with an equivalent header name MUST
-                                          be ignored. Due to the case-insensitivity
-                                          of header names, \"foo\" and \"Foo\" are
-                                          considered equivalent."
+                                        description: |-
+                                          Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                          case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                          If multiple entries specify equivalent header names, the first entry with
+                                          an equivalent name MUST be considered for a match. Subsequent entries
+                                          with an equivalent header name MUST be ignored. Due to the
+                                          case-insensitivity of header names, "foo" and "Foo" are considered
+                                          equivalent.
                                         maxLength: 256
                                         minLength: 1
                                         pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
@@ -273,39 +310,67 @@ spec:
                                   - name
                                   x-kubernetes-list-type: map
                                 remove:
-                                  description: "Remove the given header(s) from the
-                                    HTTP request before the action. The value of Remove
-                                    is a list of HTTP header names. Note that the
-                                    header names are case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
-                                    \n Input: GET /foo HTTP/1.1 my-header1: foo my-header2:
-                                    bar my-header3: baz \n Config: remove: [\"my-header1\",
-                                    \"my-header3\"] \n Output: GET /foo HTTP/1.1 my-header2:
-                                    bar"
+                                  description: |-
+                                    Remove the given header(s) from the HTTP request before the action. The
+                                    value of Remove is a list of HTTP header names. Note that the header
+                                    names are case-insensitive (see
+                                    https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+
+
+                                    Input:
+                                      GET /foo HTTP/1.1
+                                      my-header1: foo
+                                      my-header2: bar
+                                      my-header3: baz
+
+
+                                    Config:
+                                      remove: ["my-header1", "my-header3"]
+
+
+                                    Output:
+                                      GET /foo HTTP/1.1
+                                      my-header2: bar
                                   items:
                                     type: string
                                   maxItems: 16
                                   type: array
+                                  x-kubernetes-list-type: set
                                 set:
-                                  description: "Set overwrites the request with the
-                                    given header (name, value) before the action.
-                                    \n Input: GET /foo HTTP/1.1 my-header: foo \n
-                                    Config: set: - name: \"my-header\" value: \"bar\"
-                                    \n Output: GET /foo HTTP/1.1 my-header: bar"
+                                  description: |-
+                                    Set overwrites the request with the given header (name, value)
+                                    before the action.
+
+
+                                    Input:
+                                      GET /foo HTTP/1.1
+                                      my-header: foo
+
+
+                                    Config:
+                                      set:
+                                      - name: "my-header"
+                                        value: "bar"
+
+
+                                    Output:
+                                      GET /foo HTTP/1.1
+                                      my-header: bar
                                   items:
                                     description: HTTPHeader represents an HTTP Header
                                       name and value as defined by RFC 7230.
                                     properties:
                                       name:
-                                        description: "Name is the name of the HTTP
-                                          Header to be matched. Name matching MUST
-                                          be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                          \n If multiple entries specify equivalent
-                                          header names, the first entry with an equivalent
-                                          name MUST be considered for a match. Subsequent
-                                          entries with an equivalent header name MUST
-                                          be ignored. Due to the case-insensitivity
-                                          of header names, \"foo\" and \"Foo\" are
-                                          considered equivalent."
+                                        description: |-
+                                          Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                          case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                          If multiple entries specify equivalent header names, the first entry with
+                                          an equivalent name MUST be considered for a match. Subsequent entries
+                                          with an equivalent header name MUST be ignored. Due to the
+                                          case-insensitivity of header names, "foo" and "Foo" are considered
+                                          equivalent.
                                         maxLength: 256
                                         minLength: 1
                                         pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
@@ -334,8 +399,8 @@ spec:
                           type: object
                         type: array
                       trafficRoutings:
-                        description: TrafficRoutings hosts all the supported service
-                          meshes supported to enable more fine-grained traffic routing
+                        description: |-
+                          TrafficRoutings hosts all the supported service meshes supported to enable more fine-grained traffic routing
                           and current only support one TrafficRouting
                         items:
                           description: TrafficRoutingRef hosts all the different configuration
@@ -360,9 +425,9 @@ spec:
                                 type: object
                               type: array
                             gateway:
-                              description: Gateway holds Gateway specific configuration
-                                to route traffic Gateway configuration only supports
-                                >= v0.4.0 (v1alpha2).
+                              description: |-
+                                Gateway holds Gateway specific configuration to route traffic
+                                Gateway configuration only supports >= v0.4.0 (v1alpha2).
                               properties:
                                 httpRouteName:
                                   description: HTTPRouteName refers to the name of
@@ -382,9 +447,9 @@ spec:
                                 to route traffic, e.g. Nginx, Alb.
                               properties:
                                 classType:
-                                  description: ClassType refers to the type of `Ingress`.
-                                    current support nginx, aliyun-alb. default is
-                                    nginx.
+                                  description: |-
+                                    ClassType refers to the type of `Ingress`.
+                                    current support nginx, aliyun-alb. default is nginx.
                                   type: string
                                 name:
                                   description: Name refers to the name of an `Ingress`
@@ -404,8 +469,9 @@ spec:
                         type: array
                     type: object
                   paused:
-                    description: Paused indicates that the Rollout is paused. Default
-                      value is false
+                    description: |-
+                      Paused indicates that the Rollout is paused.
+                      Default value is false
                     type: boolean
                 type: object
             required:
@@ -428,10 +494,9 @@ spec:
                     format: int32
                     type: integer
                   canaryRevision:
-                    description: CanaryRevision is calculated by rollout based on
-                      podTemplateHash, and the internal logic flow uses It may be
-                      different from rs podTemplateHash in different k8s versions,
-                      so it cannot be used as service selector label
+                    description: |-
+                      CanaryRevision is calculated by rollout based on podTemplateHash, and the internal logic flow uses
+                      It may be different from rs podTemplateHash in different k8s versions, so it cannot be used as service selector label
                     type: string
                   currentStepIndex:
                     format: int32
@@ -446,18 +511,18 @@ spec:
                   message:
                     type: string
                   nextStepIndex:
-                    description: NextStepIndex defines the next step of the rollout
-                      is on. In normal case, NextStepIndex is equal to CurrentStepIndex
-                      + 1 If the current step is the last step, NextStepIndex is equal
-                      to -1 Before the release, NextStepIndex is also equal to -1
-                      0 is not used and won't appear in any case It is allowed to
-                      patch NextStepIndex by design, e.g. if CurrentStepIndex is 2,
-                      user can patch NextStepIndex to 3 (if exists) to achieve batch
-                      jump, or patch NextStepIndex to 1 to implement a re-execution
-                      of step 1 Patching it with a non-positive value is meaningless,
-                      which will be corrected in the next reconciliation achieve batch
-                      jump, or patch NextStepIndex to 1 to implement a re-execution
-                      of step 1
+                    description: |-
+                      NextStepIndex defines the next step of the rollout is on.
+                      In normal case, NextStepIndex is equal to CurrentStepIndex + 1
+                      If the current step is the last step, NextStepIndex is equal to -1
+                      Before the release, NextStepIndex is also equal to -1
+                      0 is not used and won't appear in any case
+                      It is allowed to patch NextStepIndex by design,
+                      e.g. if CurrentStepIndex is 2, user can patch NextStepIndex to 3 (if exists) to
+                      achieve batch jump, or patch NextStepIndex to 1 to implement a re-execution of step 1
+                      Patching it with a non-positive value is meaningless, which will be corrected
+                      in the next reconciliation
+                      achieve batch jump, or patch NextStepIndex to 1 to implement a re-execution of step 1
                     format: int32
                     type: integer
                   observedRolloutID:
@@ -566,14 +631,19 @@ spec:
         description: Rollout is the Schema for the rollouts API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -600,11 +670,12 @@ spec:
                         anyOf:
                         - type: integer
                         - type: string
-                        description: FailureThreshold indicates how many failed pods
-                          can be tolerated in all upgraded pods. Only when FailureThreshold
-                          are satisfied, Rollout can enter ready state. If FailureThreshold
-                          is nil, Rollout will use the MaxUnavailable of workload
-                          as its FailureThreshold. Defaults to nil.
+                        description: |-
+                          FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
+                          Only when FailureThreshold are satisfied, Rollout can enter ready state.
+                          If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
+                          FailureThreshold.
+                          Defaults to nil.
                         x-kubernetes-int-or-string: true
                       steps:
                         description: Steps define the order of phases to execute release
@@ -613,59 +684,63 @@ spec:
                           description: CanaryStep defines a step of a canary workload.
                           properties:
                             matches:
-                              description: "Matches define conditions used for matching
-                                incoming HTTP requests to the canary service. Each
-                                match is independent, i.e. this rule will be matched
-                                as long as **any** one of the matches is satisfied.
-                                \n It cannot support Traffic (weight-based routing)
-                                and Matches simultaneously, if both are configured.
-                                In such cases, Matches takes precedence."
+                              description: |-
+                                Matches define conditions used for matching incoming HTTP requests to the canary service.
+                                Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
+
+
+                                It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured.
+                                In such cases, Matches takes precedence.
                               items:
                                 properties:
                                   headers:
-                                    description: Headers specifies HTTP request header
-                                      matchers. Multiple match values are ANDed together,
-                                      meaning, a request must match all the specified
-                                      headers to select the route.
+                                    description: |-
+                                      Headers specifies HTTP request header matchers. Multiple match values are
+                                      ANDed together, meaning, a request must match all the specified headers
+                                      to select the route.
                                     items:
-                                      description: HTTPHeaderMatch describes how to
-                                        select a HTTP route by matching HTTP request
+                                      description: |-
+                                        HTTPHeaderMatch describes how to select a HTTP route by matching HTTP request
                                         headers.
                                       properties:
                                         name:
-                                          description: "Name is the name of the HTTP
-                                            Header to be matched. Name matching MUST
-                                            be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                            \n If multiple entries specify equivalent
-                                            header names, only the first entry with
-                                            an equivalent name MUST be considered
-                                            for a match. Subsequent entries with an
-                                            equivalent header name MUST be ignored.
-                                            Due to the case-insensitivity of header
-                                            names, \"foo\" and \"Foo\" are considered
-                                            equivalent. \n When a header is repeated
-                                            in an HTTP request, it is implementation-specific
-                                            behavior as to how this is represented.
-                                            Generally, proxies should follow the guidance
-                                            from the RFC: https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2
-                                            regarding processing a repeated header,
-                                            with special handling for \"Set-Cookie\"."
+                                          description: |-
+                                            Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                            case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                            If multiple entries specify equivalent header names, only the first
+                                            entry with an equivalent name MUST be considered for a match. Subsequent
+                                            entries with an equivalent header name MUST be ignored. Due to the
+                                            case-insensitivity of header names, "foo" and "Foo" are considered
+                                            equivalent.
+
+
+                                            When a header is repeated in an HTTP request, it is
+                                            implementation-specific behavior as to how this is represented.
+                                            Generally, proxies should follow the guidance from the RFC:
+                                            https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding
+                                            processing a repeated header, with special handling for "Set-Cookie".
                                           maxLength: 256
                                           minLength: 1
                                           pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
                                           type: string
                                         type:
                                           default: Exact
-                                          description: "Type specifies how to match
-                                            against the value of the header. \n Support:
-                                            Core (Exact) \n Support: Implementation-specific
-                                            (RegularExpression) \n Since RegularExpression
-                                            HeaderMatchType has implementation-specific
-                                            conformance, implementations can support
-                                            POSIX, PCRE or any other dialects of regular
-                                            expressions. Please read the implementation's
-                                            documentation to determine the supported
-                                            dialect."
+                                          description: |-
+                                            Type specifies how to match against the value of the header.
+
+
+                                            Support: Core (Exact)
+
+
+                                            Support: Implementation-specific (RegularExpression)
+
+
+                                            Since RegularExpression HeaderMatchType has implementation-specific
+                                            conformance, implementations can support POSIX, PCRE or any other dialects
+                                            of regular expressions. Please read the implementation's documentation to
+                                            determine the supported dialect.
                                           enum:
                                           - Exact
                                           - RegularExpression
@@ -686,18 +761,22 @@ spec:
                                     - name
                                     x-kubernetes-list-type: map
                                   path:
-                                    description: 'Path specifies a HTTP request path
-                                      matcher. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
-                                      - GatewayAPI: If path is defined, the whole
-                                      HttpRouteMatch will be used as a standalone
-                                      matcher'
+                                    description: |-
+                                      Path specifies a HTTP request path matcher.
+                                      Supported list:
+                                      - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+                                      - GatewayAPI: If path is defined, the whole HttpRouteMatch will be used as a standalone matcher
                                     properties:
                                       type:
                                         default: PathPrefix
-                                        description: "Type specifies how to match
-                                          against the path Value. \n Support: Core
-                                          (Exact, PathPrefix) \n Support: Implementation-specific
-                                          (RegularExpression)"
+                                        description: |-
+                                          Type specifies how to match against the path Value.
+
+
+                                          Support: Core (Exact, PathPrefix)
+
+
+                                          Support: Implementation-specific (RegularExpression)
                                         enum:
                                         - Exact
                                         - PathPrefix
@@ -710,57 +789,111 @@ spec:
                                         maxLength: 1024
                                         type: string
                                     type: object
+                                    x-kubernetes-validations:
+                                    - message: value must be an absolute path and
+                                        start with '/' when type one of ['Exact',
+                                        'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? self.value.startsWith(''/'') : true'
+                                    - message: must not contain '//' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''//'') : true'
+                                    - message: must not contain '/./' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''/./'') : true'
+                                    - message: must not contain '/../' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''/../'') : true'
+                                    - message: must not contain '%2f' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''%2f'') : true'
+                                    - message: must not contain '%2F' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''%2F'') : true'
+                                    - message: must not contain '#' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''#'') : true'
+                                    - message: must not end with '/..' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.endsWith(''/..'') : true'
+                                    - message: must not end with '/.' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.endsWith(''/.'') : true'
+                                    - message: type must be one of ['Exact', 'PathPrefix',
+                                        'RegularExpression']
+                                      rule: self.type in ['Exact','PathPrefix'] ||
+                                        self.type == 'RegularExpression'
+                                    - message: must only contain valid characters
+                                        (matching ^(?:[-A-Za-z0-9/._~!$&'()*+,;=:@]|[%][0-9a-fA-F]{2})+$)
+                                        for types ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? self.value.matches(r"""^(?:[-A-Za-z0-9/._~!$&''()*+,;=:@]|[%][0-9a-fA-F]{2})+$""")
+                                        : true'
                                   queryParams:
-                                    description: 'QueryParams specifies HTTP query
-                                      parameter matchers. Multiple match values are
-                                      ANDed together, meaning, a request must match
-                                      all the specified query parameters to select
-                                      the route. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+                                    description: |-
+                                      QueryParams specifies HTTP query parameter matchers. Multiple match
+                                      values are ANDed together, meaning, a request must match all the
+                                      specified query parameters to select the route.
+                                      Supported list:
+                                      - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
                                       - MSE Ingress: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/annotations-supported-by-mse-ingress-gateways-1
-                                      Header/Cookie > QueryParams - Gateway API'
+                                        Header/Cookie > QueryParams
+                                      - Gateway API
                                     items:
-                                      description: HTTPQueryParamMatch describes how
-                                        to select a HTTP route by matching HTTP query
-                                        parameters.
+                                      description: |-
+                                        HTTPQueryParamMatch describes how to select a HTTP route by matching HTTP
+                                        query parameters.
                                       properties:
                                         name:
-                                          description: "Name is the name of the HTTP
-                                            query param to be matched. This must be
-                                            an exact string match. (See https://tools.ietf.org/html/rfc7230#section-2.7.3).
-                                            \n If multiple entries specify equivalent
-                                            query param names, only the first entry
-                                            with an equivalent name MUST be considered
-                                            for a match. Subsequent entries with an
-                                            equivalent query param name MUST be ignored.
-                                            \n If a query param is repeated in an
-                                            HTTP request, the behavior is purposely
-                                            left undefined, since different data planes
-                                            have different capabilities. However,
-                                            it is *recommended* that implementations
-                                            should match against the first value of
-                                            the param if the data plane supports it,
-                                            as this behavior is expected in other
-                                            load balancing contexts outside of the
-                                            Gateway API. \n Users SHOULD NOT route
-                                            traffic based on repeated query params
-                                            to guard themselves against potential
-                                            differences in the implementations."
+                                          description: |-
+                                            Name is the name of the HTTP query param to be matched. This must be an
+                                            exact string match. (See
+                                            https://tools.ietf.org/html/rfc7230#section-2.7.3).
+
+
+                                            If multiple entries specify equivalent query param names, only the first
+                                            entry with an equivalent name MUST be considered for a match. Subsequent
+                                            entries with an equivalent query param name MUST be ignored.
+
+
+                                            If a query param is repeated in an HTTP request, the behavior is
+                                            purposely left undefined, since different data planes have different
+                                            capabilities. However, it is *recommended* that implementations should
+                                            match against the first value of the param if the data plane supports it,
+                                            as this behavior is expected in other load balancing contexts outside of
+                                            the Gateway API.
+
+
+                                            Users SHOULD NOT route traffic based on repeated query params to guard
+                                            themselves against potential differences in the implementations.
                                           maxLength: 256
                                           minLength: 1
                                           pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
                                           type: string
                                         type:
                                           default: Exact
-                                          description: "Type specifies how to match
-                                            against the value of the query parameter.
-                                            \n Support: Extended (Exact) \n Support:
-                                            Implementation-specific (RegularExpression)
-                                            \n Since RegularExpression QueryParamMatchType
-                                            has Implementation-specific conformance,
-                                            implementations can support POSIX, PCRE
-                                            or any other dialects of regular expressions.
-                                            Please read the implementation's documentation
-                                            to determine the supported dialect."
+                                          description: |-
+                                            Type specifies how to match against the value of the query parameter.
+
+
+                                            Support: Extended (Exact)
+
+
+                                            Support: Implementation-specific (RegularExpression)
+
+
+                                            Since RegularExpression QueryParamMatchType has Implementation-specific
+                                            conformance, implementations can support POSIX, PCRE or any other
+                                            dialects of regular expressions. Please read the implementation's
+                                            documentation to determine the supported dialect.
                                           enum:
                                           - Exact
                                           - RegularExpression
@@ -781,6 +914,7 @@ spec:
                                     - name
                                     x-kubernetes-list-type: map
                                 type: object
+                              maxItems: 16
                               type: array
                             pause:
                               description: Pause defines a pause stage for a rollout,
@@ -796,39 +930,67 @@ spec:
                               anyOf:
                               - type: integer
                               - type: string
-                              description: 'Replicas is the number of expected canary
-                                pods in this batch it can be an absolute number (ex:
-                                5) or a percentage of total pods.'
+                              description: |-
+                                Replicas is the number of expected canary pods in this batch
+                                it can be an absolute number (ex: 5) or a percentage of total pods.
                               x-kubernetes-int-or-string: true
                             requestHeaderModifier:
-                              description: "Set overwrites the request with the given
-                                header (name, value) before the action. \n Input:
-                                GET /foo HTTP/1.1 my-header: foo \n requestHeaderModifier:
-                                set: - name: \"my-header\" value: \"bar\" \n Output:
-                                GET /foo HTTP/1.1 my-header: bar"
+                              description: |-
+                                Set overwrites the request with the given header (name, value)
+                                before the action.
+
+
+                                Input:
+                                  GET /foo HTTP/1.1
+                                  my-header: foo
+
+
+                                requestHeaderModifier:
+                                  set:
+                                  - name: "my-header"
+                                    value: "bar"
+
+
+                                Output:
+                                  GET /foo HTTP/1.1
+                                  my-header: bar
                               properties:
                                 add:
-                                  description: "Add adds the given header(s) (name,
-                                    value) to the request before the action. It appends
-                                    to any existing values associated with the header
-                                    name. \n Input: GET /foo HTTP/1.1 my-header: foo
-                                    \n Config: add: - name: \"my-header\" value: \"bar,baz\"
-                                    \n Output: GET /foo HTTP/1.1 my-header: foo,bar,baz"
+                                  description: |-
+                                    Add adds the given header(s) (name, value) to the request
+                                    before the action. It appends to any existing values associated
+                                    with the header name.
+
+
+                                    Input:
+                                      GET /foo HTTP/1.1
+                                      my-header: foo
+
+
+                                    Config:
+                                      add:
+                                      - name: "my-header"
+                                        value: "bar,baz"
+
+
+                                    Output:
+                                      GET /foo HTTP/1.1
+                                      my-header: foo,bar,baz
                                   items:
                                     description: HTTPHeader represents an HTTP Header
                                       name and value as defined by RFC 7230.
                                     properties:
                                       name:
-                                        description: "Name is the name of the HTTP
-                                          Header to be matched. Name matching MUST
-                                          be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                          \n If multiple entries specify equivalent
-                                          header names, the first entry with an equivalent
-                                          name MUST be considered for a match. Subsequent
-                                          entries with an equivalent header name MUST
-                                          be ignored. Due to the case-insensitivity
-                                          of header names, \"foo\" and \"Foo\" are
-                                          considered equivalent."
+                                        description: |-
+                                          Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                          case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                          If multiple entries specify equivalent header names, the first entry with
+                                          an equivalent name MUST be considered for a match. Subsequent entries
+                                          with an equivalent header name MUST be ignored. Due to the
+                                          case-insensitivity of header names, "foo" and "Foo" are considered
+                                          equivalent.
                                         maxLength: 256
                                         minLength: 1
                                         pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
@@ -849,39 +1011,67 @@ spec:
                                   - name
                                   x-kubernetes-list-type: map
                                 remove:
-                                  description: "Remove the given header(s) from the
-                                    HTTP request before the action. The value of Remove
-                                    is a list of HTTP header names. Note that the
-                                    header names are case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
-                                    \n Input: GET /foo HTTP/1.1 my-header1: foo my-header2:
-                                    bar my-header3: baz \n Config: remove: [\"my-header1\",
-                                    \"my-header3\"] \n Output: GET /foo HTTP/1.1 my-header2:
-                                    bar"
+                                  description: |-
+                                    Remove the given header(s) from the HTTP request before the action. The
+                                    value of Remove is a list of HTTP header names. Note that the header
+                                    names are case-insensitive (see
+                                    https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+
+
+                                    Input:
+                                      GET /foo HTTP/1.1
+                                      my-header1: foo
+                                      my-header2: bar
+                                      my-header3: baz
+
+
+                                    Config:
+                                      remove: ["my-header1", "my-header3"]
+
+
+                                    Output:
+                                      GET /foo HTTP/1.1
+                                      my-header2: bar
                                   items:
                                     type: string
                                   maxItems: 16
                                   type: array
+                                  x-kubernetes-list-type: set
                                 set:
-                                  description: "Set overwrites the request with the
-                                    given header (name, value) before the action.
-                                    \n Input: GET /foo HTTP/1.1 my-header: foo \n
-                                    Config: set: - name: \"my-header\" value: \"bar\"
-                                    \n Output: GET /foo HTTP/1.1 my-header: bar"
+                                  description: |-
+                                    Set overwrites the request with the given header (name, value)
+                                    before the action.
+
+
+                                    Input:
+                                      GET /foo HTTP/1.1
+                                      my-header: foo
+
+
+                                    Config:
+                                      set:
+                                      - name: "my-header"
+                                        value: "bar"
+
+
+                                    Output:
+                                      GET /foo HTTP/1.1
+                                      my-header: bar
                                   items:
                                     description: HTTPHeader represents an HTTP Header
                                       name and value as defined by RFC 7230.
                                     properties:
                                       name:
-                                        description: "Name is the name of the HTTP
-                                          Header to be matched. Name matching MUST
-                                          be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                          \n If multiple entries specify equivalent
-                                          header names, the first entry with an equivalent
-                                          name MUST be considered for a match. Subsequent
-                                          entries with an equivalent header name MUST
-                                          be ignored. Due to the case-insensitivity
-                                          of header names, \"foo\" and \"Foo\" are
-                                          considered equivalent."
+                                        description: |-
+                                          Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                          case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                          If multiple entries specify equivalent header names, the first entry with
+                                          an equivalent name MUST be considered for a match. Subsequent entries
+                                          with an equivalent header name MUST be ignored. Due to the
+                                          case-insensitivity of header names, "foo" and "Foo" are considered
+                                          equivalent.
                                         maxLength: 256
                                         minLength: 1
                                         pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
@@ -903,20 +1093,20 @@ spec:
                                   x-kubernetes-list-type: map
                               type: object
                             traffic:
-                              description: Traffic indicate how many percentage of
-                                traffic the canary pods should receive Value is of
-                                string type and is a percentage, e.g. 5%.
+                              description: |-
+                                Traffic indicate how many percentage of traffic the canary pods should receive
+                                Value is of string type and is a percentage, e.g. 5%.
                               type: string
                           type: object
+                        maxItems: 50
                         type: array
                       trafficRoutingRef:
                         description: TrafficRoutingRef is TrafficRouting's Name
                         type: string
                       trafficRoutings:
-                        description: TrafficRoutings support ingress, gateway api
-                          and custom network resource(e.g. istio, apisix) to enable
-                          more fine-grained traffic routing and current only support
-                          one TrafficRouting
+                        description: |-
+                          TrafficRoutings support ingress, gateway api and custom network resource(e.g. istio, apisix) to enable more fine-grained traffic routing
+                          and current only support one TrafficRouting
                         items:
                           description: TrafficRoutingRef hosts all the different configuration
                             for supported service meshes to enable more fine-grained
@@ -945,9 +1135,9 @@ spec:
                                 type: object
                               type: array
                             gateway:
-                              description: Gateway holds Gateway specific configuration
-                                to route traffic Gateway configuration only supports
-                                >= v0.4.0 (v1alpha2).
+                              description: |-
+                                Gateway holds Gateway specific configuration to route traffic
+                                Gateway configuration only supports >= v0.4.0 (v1alpha2).
                               properties:
                                 httpRouteName:
                                   description: HTTPRouteName refers to the name of
@@ -967,9 +1157,9 @@ spec:
                                 to route traffic, e.g. Nginx, Alb.
                               properties:
                                 classType:
-                                  description: ClassType refers to the type of `Ingress`.
-                                    current support nginx, aliyun-alb. default is
-                                    nginx.
+                                  description: |-
+                                    ClassType refers to the type of `Ingress`.
+                                    current support nginx, aliyun-alb. default is nginx.
                                   type: string
                                 name:
                                   description: Name refers to the name of an `Ingress`
@@ -997,25 +1187,25 @@ spec:
                           is true
                         type: boolean
                       enableExtraWorkloadForCanary:
-                        description: 'If true, then it will create new deployment
-                          for canary, such as: workload-demo-canary. When user verifies
-                          that the canary version is ready, we will remove the canary
-                          deployment and release the deployment workload-demo in full.
-                          Current only support k8s native deployment'
+                        description: |-
+                          If true, then it will create new deployment for canary, such as: workload-demo-canary.
+                          When user verifies that the canary version is ready, we will remove the canary deployment and release the deployment workload-demo in full.
+                          Current only support k8s native deployment
                         type: boolean
                       failureThreshold:
                         anyOf:
                         - type: integer
                         - type: string
-                        description: FailureThreshold indicates how many failed pods
-                          can be tolerated in all upgraded pods. Only when FailureThreshold
-                          are satisfied, Rollout can enter ready state. If FailureThreshold
-                          is nil, Rollout will use the MaxUnavailable of workload
-                          as its FailureThreshold. Defaults to nil.
+                        description: |-
+                          FailureThreshold indicates how many failed pods can be tolerated in all upgraded pods.
+                          Only when FailureThreshold are satisfied, Rollout can enter ready state.
+                          If FailureThreshold is nil, Rollout will use the MaxUnavailable of workload as its
+                          FailureThreshold.
+                          Defaults to nil.
                         x-kubernetes-int-or-string: true
                       patchPodTemplateMetadata:
-                        description: PatchPodTemplateMetadata indicates patch configuration(e.g.
-                          labels, annotations) to the canary deployment podTemplateSpec.metadata
+                        description: |-
+                          PatchPodTemplateMetadata indicates patch configuration(e.g. labels, annotations) to the canary deployment podTemplateSpec.metadata
                           only support for canary deployment
                         properties:
                           annotations:
@@ -1036,59 +1226,63 @@ spec:
                           description: CanaryStep defines a step of a canary workload.
                           properties:
                             matches:
-                              description: "Matches define conditions used for matching
-                                incoming HTTP requests to the canary service. Each
-                                match is independent, i.e. this rule will be matched
-                                as long as **any** one of the matches is satisfied.
-                                \n It cannot support Traffic (weight-based routing)
-                                and Matches simultaneously, if both are configured.
-                                In such cases, Matches takes precedence."
+                              description: |-
+                                Matches define conditions used for matching incoming HTTP requests to the canary service.
+                                Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
+
+
+                                It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured.
+                                In such cases, Matches takes precedence.
                               items:
                                 properties:
                                   headers:
-                                    description: Headers specifies HTTP request header
-                                      matchers. Multiple match values are ANDed together,
-                                      meaning, a request must match all the specified
-                                      headers to select the route.
+                                    description: |-
+                                      Headers specifies HTTP request header matchers. Multiple match values are
+                                      ANDed together, meaning, a request must match all the specified headers
+                                      to select the route.
                                     items:
-                                      description: HTTPHeaderMatch describes how to
-                                        select a HTTP route by matching HTTP request
+                                      description: |-
+                                        HTTPHeaderMatch describes how to select a HTTP route by matching HTTP request
                                         headers.
                                       properties:
                                         name:
-                                          description: "Name is the name of the HTTP
-                                            Header to be matched. Name matching MUST
-                                            be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                            \n If multiple entries specify equivalent
-                                            header names, only the first entry with
-                                            an equivalent name MUST be considered
-                                            for a match. Subsequent entries with an
-                                            equivalent header name MUST be ignored.
-                                            Due to the case-insensitivity of header
-                                            names, \"foo\" and \"Foo\" are considered
-                                            equivalent. \n When a header is repeated
-                                            in an HTTP request, it is implementation-specific
-                                            behavior as to how this is represented.
-                                            Generally, proxies should follow the guidance
-                                            from the RFC: https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2
-                                            regarding processing a repeated header,
-                                            with special handling for \"Set-Cookie\"."
+                                          description: |-
+                                            Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                            case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                            If multiple entries specify equivalent header names, only the first
+                                            entry with an equivalent name MUST be considered for a match. Subsequent
+                                            entries with an equivalent header name MUST be ignored. Due to the
+                                            case-insensitivity of header names, "foo" and "Foo" are considered
+                                            equivalent.
+
+
+                                            When a header is repeated in an HTTP request, it is
+                                            implementation-specific behavior as to how this is represented.
+                                            Generally, proxies should follow the guidance from the RFC:
+                                            https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding
+                                            processing a repeated header, with special handling for "Set-Cookie".
                                           maxLength: 256
                                           minLength: 1
                                           pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
                                           type: string
                                         type:
                                           default: Exact
-                                          description: "Type specifies how to match
-                                            against the value of the header. \n Support:
-                                            Core (Exact) \n Support: Implementation-specific
-                                            (RegularExpression) \n Since RegularExpression
-                                            HeaderMatchType has implementation-specific
-                                            conformance, implementations can support
-                                            POSIX, PCRE or any other dialects of regular
-                                            expressions. Please read the implementation's
-                                            documentation to determine the supported
-                                            dialect."
+                                          description: |-
+                                            Type specifies how to match against the value of the header.
+
+
+                                            Support: Core (Exact)
+
+
+                                            Support: Implementation-specific (RegularExpression)
+
+
+                                            Since RegularExpression HeaderMatchType has implementation-specific
+                                            conformance, implementations can support POSIX, PCRE or any other dialects
+                                            of regular expressions. Please read the implementation's documentation to
+                                            determine the supported dialect.
                                           enum:
                                           - Exact
                                           - RegularExpression
@@ -1109,18 +1303,22 @@ spec:
                                     - name
                                     x-kubernetes-list-type: map
                                   path:
-                                    description: 'Path specifies a HTTP request path
-                                      matcher. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
-                                      - GatewayAPI: If path is defined, the whole
-                                      HttpRouteMatch will be used as a standalone
-                                      matcher'
+                                    description: |-
+                                      Path specifies a HTTP request path matcher.
+                                      Supported list:
+                                      - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+                                      - GatewayAPI: If path is defined, the whole HttpRouteMatch will be used as a standalone matcher
                                     properties:
                                       type:
                                         default: PathPrefix
-                                        description: "Type specifies how to match
-                                          against the path Value. \n Support: Core
-                                          (Exact, PathPrefix) \n Support: Implementation-specific
-                                          (RegularExpression)"
+                                        description: |-
+                                          Type specifies how to match against the path Value.
+
+
+                                          Support: Core (Exact, PathPrefix)
+
+
+                                          Support: Implementation-specific (RegularExpression)
                                         enum:
                                         - Exact
                                         - PathPrefix
@@ -1133,57 +1331,111 @@ spec:
                                         maxLength: 1024
                                         type: string
                                     type: object
+                                    x-kubernetes-validations:
+                                    - message: value must be an absolute path and
+                                        start with '/' when type one of ['Exact',
+                                        'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? self.value.startsWith(''/'') : true'
+                                    - message: must not contain '//' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''//'') : true'
+                                    - message: must not contain '/./' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''/./'') : true'
+                                    - message: must not contain '/../' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''/../'') : true'
+                                    - message: must not contain '%2f' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''%2f'') : true'
+                                    - message: must not contain '%2F' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''%2F'') : true'
+                                    - message: must not contain '#' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.contains(''#'') : true'
+                                    - message: must not end with '/..' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.endsWith(''/..'') : true'
+                                    - message: must not end with '/.' when type one
+                                        of ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? !self.value.endsWith(''/.'') : true'
+                                    - message: type must be one of ['Exact', 'PathPrefix',
+                                        'RegularExpression']
+                                      rule: self.type in ['Exact','PathPrefix'] ||
+                                        self.type == 'RegularExpression'
+                                    - message: must only contain valid characters
+                                        (matching ^(?:[-A-Za-z0-9/._~!$&'()*+,;=:@]|[%][0-9a-fA-F]{2})+$)
+                                        for types ['Exact', 'PathPrefix']
+                                      rule: '(self.type in [''Exact'',''PathPrefix''])
+                                        ? self.value.matches(r"""^(?:[-A-Za-z0-9/._~!$&''()*+,;=:@]|[%][0-9a-fA-F]{2})+$""")
+                                        : true'
                                   queryParams:
-                                    description: 'QueryParams specifies HTTP query
-                                      parameter matchers. Multiple match values are
-                                      ANDed together, meaning, a request must match
-                                      all the specified query parameters to select
-                                      the route. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
+                                    description: |-
+                                      QueryParams specifies HTTP query parameter matchers. Multiple match
+                                      values are ANDed together, meaning, a request must match all the
+                                      specified query parameters to select the route.
+                                      Supported list:
+                                      - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest
                                       - MSE Ingress: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/annotations-supported-by-mse-ingress-gateways-1
-                                      Header/Cookie > QueryParams - Gateway API'
+                                        Header/Cookie > QueryParams
+                                      - Gateway API
                                     items:
-                                      description: HTTPQueryParamMatch describes how
-                                        to select a HTTP route by matching HTTP query
-                                        parameters.
+                                      description: |-
+                                        HTTPQueryParamMatch describes how to select a HTTP route by matching HTTP
+                                        query parameters.
                                       properties:
                                         name:
-                                          description: "Name is the name of the HTTP
-                                            query param to be matched. This must be
-                                            an exact string match. (See https://tools.ietf.org/html/rfc7230#section-2.7.3).
-                                            \n If multiple entries specify equivalent
-                                            query param names, only the first entry
-                                            with an equivalent name MUST be considered
-                                            for a match. Subsequent entries with an
-                                            equivalent query param name MUST be ignored.
-                                            \n If a query param is repeated in an
-                                            HTTP request, the behavior is purposely
-                                            left undefined, since different data planes
-                                            have different capabilities. However,
-                                            it is *recommended* that implementations
-                                            should match against the first value of
-                                            the param if the data plane supports it,
-                                            as this behavior is expected in other
-                                            load balancing contexts outside of the
-                                            Gateway API. \n Users SHOULD NOT route
-                                            traffic based on repeated query params
-                                            to guard themselves against potential
-                                            differences in the implementations."
+                                          description: |-
+                                            Name is the name of the HTTP query param to be matched. This must be an
+                                            exact string match. (See
+                                            https://tools.ietf.org/html/rfc7230#section-2.7.3).
+
+
+                                            If multiple entries specify equivalent query param names, only the first
+                                            entry with an equivalent name MUST be considered for a match. Subsequent
+                                            entries with an equivalent query param name MUST be ignored.
+
+
+                                            If a query param is repeated in an HTTP request, the behavior is
+                                            purposely left undefined, since different data planes have different
+                                            capabilities. However, it is *recommended* that implementations should
+                                            match against the first value of the param if the data plane supports it,
+                                            as this behavior is expected in other load balancing contexts outside of
+                                            the Gateway API.
+
+
+                                            Users SHOULD NOT route traffic based on repeated query params to guard
+                                            themselves against potential differences in the implementations.
                                           maxLength: 256
                                           minLength: 1
                                           pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
                                           type: string
                                         type:
                                           default: Exact
-                                          description: "Type specifies how to match
-                                            against the value of the query parameter.
-                                            \n Support: Extended (Exact) \n Support:
-                                            Implementation-specific (RegularExpression)
-                                            \n Since RegularExpression QueryParamMatchType
-                                            has Implementation-specific conformance,
-                                            implementations can support POSIX, PCRE
-                                            or any other dialects of regular expressions.
-                                            Please read the implementation's documentation
-                                            to determine the supported dialect."
+                                          description: |-
+                                            Type specifies how to match against the value of the query parameter.
+
+
+                                            Support: Extended (Exact)
+
+
+                                            Support: Implementation-specific (RegularExpression)
+
+
+                                            Since RegularExpression QueryParamMatchType has Implementation-specific
+                                            conformance, implementations can support POSIX, PCRE or any other
+                                            dialects of regular expressions. Please read the implementation's
+                                            documentation to determine the supported dialect.
                                           enum:
                                           - Exact
                                           - RegularExpression
@@ -1204,6 +1456,7 @@ spec:
                                     - name
                                     x-kubernetes-list-type: map
                                 type: object
+                              maxItems: 16
                               type: array
                             pause:
                               description: Pause defines a pause stage for a rollout,
@@ -1219,39 +1472,67 @@ spec:
                               anyOf:
                               - type: integer
                               - type: string
-                              description: 'Replicas is the number of expected canary
-                                pods in this batch it can be an absolute number (ex:
-                                5) or a percentage of total pods.'
+                              description: |-
+                                Replicas is the number of expected canary pods in this batch
+                                it can be an absolute number (ex: 5) or a percentage of total pods.
                               x-kubernetes-int-or-string: true
                             requestHeaderModifier:
-                              description: "Set overwrites the request with the given
-                                header (name, value) before the action. \n Input:
-                                GET /foo HTTP/1.1 my-header: foo \n requestHeaderModifier:
-                                set: - name: \"my-header\" value: \"bar\" \n Output:
-                                GET /foo HTTP/1.1 my-header: bar"
+                              description: |-
+                                Set overwrites the request with the given header (name, value)
+                                before the action.
+
+
+                                Input:
+                                  GET /foo HTTP/1.1
+                                  my-header: foo
+
+
+                                requestHeaderModifier:
+                                  set:
+                                  - name: "my-header"
+                                    value: "bar"
+
+
+                                Output:
+                                  GET /foo HTTP/1.1
+                                  my-header: bar
                               properties:
                                 add:
-                                  description: "Add adds the given header(s) (name,
-                                    value) to the request before the action. It appends
-                                    to any existing values associated with the header
-                                    name. \n Input: GET /foo HTTP/1.1 my-header: foo
-                                    \n Config: add: - name: \"my-header\" value: \"bar,baz\"
-                                    \n Output: GET /foo HTTP/1.1 my-header: foo,bar,baz"
+                                  description: |-
+                                    Add adds the given header(s) (name, value) to the request
+                                    before the action. It appends to any existing values associated
+                                    with the header name.
+
+
+                                    Input:
+                                      GET /foo HTTP/1.1
+                                      my-header: foo
+
+
+                                    Config:
+                                      add:
+                                      - name: "my-header"
+                                        value: "bar,baz"
+
+
+                                    Output:
+                                      GET /foo HTTP/1.1
+                                      my-header: foo,bar,baz
                                   items:
                                     description: HTTPHeader represents an HTTP Header
                                       name and value as defined by RFC 7230.
                                     properties:
                                       name:
-                                        description: "Name is the name of the HTTP
-                                          Header to be matched. Name matching MUST
-                                          be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                          \n If multiple entries specify equivalent
-                                          header names, the first entry with an equivalent
-                                          name MUST be considered for a match. Subsequent
-                                          entries with an equivalent header name MUST
-                                          be ignored. Due to the case-insensitivity
-                                          of header names, \"foo\" and \"Foo\" are
-                                          considered equivalent."
+                                        description: |-
+                                          Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                          case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                          If multiple entries specify equivalent header names, the first entry with
+                                          an equivalent name MUST be considered for a match. Subsequent entries
+                                          with an equivalent header name MUST be ignored. Due to the
+                                          case-insensitivity of header names, "foo" and "Foo" are considered
+                                          equivalent.
                                         maxLength: 256
                                         minLength: 1
                                         pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
@@ -1272,39 +1553,67 @@ spec:
                                   - name
                                   x-kubernetes-list-type: map
                                 remove:
-                                  description: "Remove the given header(s) from the
-                                    HTTP request before the action. The value of Remove
-                                    is a list of HTTP header names. Note that the
-                                    header names are case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
-                                    \n Input: GET /foo HTTP/1.1 my-header1: foo my-header2:
-                                    bar my-header3: baz \n Config: remove: [\"my-header1\",
-                                    \"my-header3\"] \n Output: GET /foo HTTP/1.1 my-header2:
-                                    bar"
+                                  description: |-
+                                    Remove the given header(s) from the HTTP request before the action. The
+                                    value of Remove is a list of HTTP header names. Note that the header
+                                    names are case-insensitive (see
+                                    https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+
+
+                                    Input:
+                                      GET /foo HTTP/1.1
+                                      my-header1: foo
+                                      my-header2: bar
+                                      my-header3: baz
+
+
+                                    Config:
+                                      remove: ["my-header1", "my-header3"]
+
+
+                                    Output:
+                                      GET /foo HTTP/1.1
+                                      my-header2: bar
                                   items:
                                     type: string
                                   maxItems: 16
                                   type: array
+                                  x-kubernetes-list-type: set
                                 set:
-                                  description: "Set overwrites the request with the
-                                    given header (name, value) before the action.
-                                    \n Input: GET /foo HTTP/1.1 my-header: foo \n
-                                    Config: set: - name: \"my-header\" value: \"bar\"
-                                    \n Output: GET /foo HTTP/1.1 my-header: bar"
+                                  description: |-
+                                    Set overwrites the request with the given header (name, value)
+                                    before the action.
+
+
+                                    Input:
+                                      GET /foo HTTP/1.1
+                                      my-header: foo
+
+
+                                    Config:
+                                      set:
+                                      - name: "my-header"
+                                        value: "bar"
+
+
+                                    Output:
+                                      GET /foo HTTP/1.1
+                                      my-header: bar
                                   items:
                                     description: HTTPHeader represents an HTTP Header
                                       name and value as defined by RFC 7230.
                                     properties:
                                       name:
-                                        description: "Name is the name of the HTTP
-                                          Header to be matched. Name matching MUST
-                                          be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                          \n If multiple entries specify equivalent
-                                          header names, the first entry with an equivalent
-                                          name MUST be considered for a match. Subsequent
-                                          entries with an equivalent header name MUST
-                                          be ignored. Due to the case-insensitivity
-                                          of header names, \"foo\" and \"Foo\" are
-                                          considered equivalent."
+                                        description: |-
+                                          Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                          case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+
+                                          If multiple entries specify equivalent header names, the first entry with
+                                          an equivalent name MUST be considered for a match. Subsequent entries
+                                          with an equivalent header name MUST be ignored. Due to the
+                                          case-insensitivity of header names, "foo" and "Foo" are considered
+                                          equivalent.
                                         maxLength: 256
                                         minLength: 1
                                         pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
@@ -1326,20 +1635,20 @@ spec:
                                   x-kubernetes-list-type: map
                               type: object
                             traffic:
-                              description: Traffic indicate how many percentage of
-                                traffic the canary pods should receive Value is of
-                                string type and is a percentage, e.g. 5%.
+                              description: |-
+                                Traffic indicate how many percentage of traffic the canary pods should receive
+                                Value is of string type and is a percentage, e.g. 5%.
                               type: string
                           type: object
+                        maxItems: 50
                         type: array
                       trafficRoutingRef:
                         description: TrafficRoutingRef is TrafficRouting's Name
                         type: string
                       trafficRoutings:
-                        description: TrafficRoutings support ingress, gateway api
-                          and custom network resource(e.g. istio, apisix) to enable
-                          more fine-grained traffic routing and current only support
-                          one TrafficRouting
+                        description: |-
+                          TrafficRoutings support ingress, gateway api and custom network resource(e.g. istio, apisix) to enable more fine-grained traffic routing
+                          and current only support one TrafficRouting
                         items:
                           description: TrafficRoutingRef hosts all the different configuration
                             for supported service meshes to enable more fine-grained
@@ -1368,9 +1677,9 @@ spec:
                                 type: object
                               type: array
                             gateway:
-                              description: Gateway holds Gateway specific configuration
-                                to route traffic Gateway configuration only supports
-                                >= v0.4.0 (v1alpha2).
+                              description: |-
+                                Gateway holds Gateway specific configuration to route traffic
+                                Gateway configuration only supports >= v0.4.0 (v1alpha2).
                               properties:
                                 httpRouteName:
                                   description: HTTPRouteName refers to the name of
@@ -1390,9 +1699,9 @@ spec:
                                 to route traffic, e.g. Nginx, Alb.
                               properties:
                                 classType:
-                                  description: ClassType refers to the type of `Ingress`.
-                                    current support nginx, aliyun-alb. default is
-                                    nginx.
+                                  description: |-
+                                    ClassType refers to the type of `Ingress`.
+                                    current support nginx, aliyun-alb. default is nginx.
                                   type: string
                                 name:
                                   description: Name refers to the name of an `Ingress`
@@ -1412,15 +1721,17 @@ spec:
                         type: array
                     type: object
                   paused:
-                    description: Paused indicates that the Rollout is paused. Default
-                      value is false
+                    description: |-
+                      Paused indicates that the Rollout is paused.
+                      Default value is false
                     type: boolean
                 type: object
               workloadRef:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                description: |-
+                  INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file
-                  WorkloadRef contains enough information to let you identify a workload
-                  for Rollout Batch release of the bypass'
+                  WorkloadRef contains enough information to let you identify a workload for Rollout
+                  Batch release of the bypass
                 properties:
                   apiVersion:
                     description: API Version of the referent
@@ -1462,16 +1773,17 @@ spec:
                   message:
                     type: string
                   nextStepIndex:
-                    description: NextStepIndex defines the next step of the rollout
-                      is on. In normal case, NextStepIndex is equal to CurrentStepIndex
-                      + 1 If the current step is the last step, NextStepIndex is equal
-                      to -1 Before the release, NextStepIndex is also equal to -1
-                      0 is not used and won't appear in any case It is allowed to
-                      patch NextStepIndex by design, e.g. if CurrentStepIndex is 2,
-                      user can patch NextStepIndex to 3 (if exists) to achieve batch
-                      jump, or patch NextStepIndex to 1 to implement a re-execution
-                      of step 1 Patching it with a non-positive value is useless and
-                      meaningless, which will be corrected in the next reconciliation
+                    description: |-
+                      NextStepIndex defines the next step of the rollout is on.
+                      In normal case, NextStepIndex is equal to CurrentStepIndex + 1
+                      If the current step is the last step, NextStepIndex is equal to -1
+                      Before the release, NextStepIndex is also equal to -1
+                      0 is not used and won't appear in any case
+                      It is allowed to patch NextStepIndex by design,
+                      e.g. if CurrentStepIndex is 2, user can patch NextStepIndex to 3 (if exists) to
+                      achieve batch jump, or patch NextStepIndex to 1 to implement a re-execution of step 1
+                      Patching it with a non-positive value is useless and meaningless, which will be corrected
+                      in the next reconciliation
                     format: int32
                     type: integer
                   observedRolloutID:
@@ -1502,10 +1814,9 @@ spec:
                     format: int32
                     type: integer
                   updatedRevision:
-                    description: UpdatedRevision is calculated by rollout based on
-                      podTemplateHash, and the internal logic flow uses It may be
-                      different from rs podTemplateHash in different k8s versions,
-                      so it cannot be used as service selector label
+                    description: |-
+                      UpdatedRevision is calculated by rollout based on podTemplateHash, and the internal logic flow uses
+                      It may be different from rs podTemplateHash in different k8s versions, so it cannot be used as service selector label
                     type: string
                 required:
                 - currentStepState
@@ -1529,10 +1840,9 @@ spec:
                     format: int32
                     type: integer
                   canaryRevision:
-                    description: CanaryRevision is calculated by rollout based on
-                      podTemplateHash, and the internal logic flow uses It may be
-                      different from rs podTemplateHash in different k8s versions,
-                      so it cannot be used as service selector label
+                    description: |-
+                      CanaryRevision is calculated by rollout based on podTemplateHash, and the internal logic flow uses
+                      It may be different from rs podTemplateHash in different k8s versions, so it cannot be used as service selector label
                     type: string
                   currentStepIndex:
                     description: CurrentStepIndex defines the current step of the
@@ -1550,16 +1860,17 @@ spec:
                   message:
                     type: string
                   nextStepIndex:
-                    description: NextStepIndex defines the next step of the rollout
-                      is on. In normal case, NextStepIndex is equal to CurrentStepIndex
-                      + 1 If the current step is the last step, NextStepIndex is equal
-                      to -1 Before the release, NextStepIndex is also equal to -1
-                      0 is not used and won't appear in any case It is allowed to
-                      patch NextStepIndex by design, e.g. if CurrentStepIndex is 2,
-                      user can patch NextStepIndex to 3 (if exists) to achieve batch
-                      jump, or patch NextStepIndex to 1 to implement a re-execution
-                      of step 1 Patching it with a non-positive value is useless and
-                      meaningless, which will be corrected in the next reconciliation
+                    description: |-
+                      NextStepIndex defines the next step of the rollout is on.
+                      In normal case, NextStepIndex is equal to CurrentStepIndex + 1
+                      If the current step is the last step, NextStepIndex is equal to -1
+                      Before the release, NextStepIndex is also equal to -1
+                      0 is not used and won't appear in any case
+                      It is allowed to patch NextStepIndex by design,
+                      e.g. if CurrentStepIndex is 2, user can patch NextStepIndex to 3 (if exists) to
+                      achieve batch jump, or patch NextStepIndex to 1 to implement a re-execution of step 1
+                      Patching it with a non-positive value is useless and meaningless, which will be corrected
+                      in the next reconciliation
                     format: int32
                     type: integer
                   observedRolloutID:
@@ -1625,9 +1936,9 @@ spec:
                   type: object
                 type: array
               currentStepIndex:
-                description: These two values will be synchronized with the same fileds
-                  in CanaryStatus or BlueGreeenStatus mainly used to provide info
-                  for kubectl get command
+                description: |-
+                  These two values will be synchronized with the same fileds in CanaryStatus or BlueGreeenStatus
+                  mainly used to provide info for kubectl get command
                 format: int32
                 type: integer
               currentStepState:
@@ -1642,7 +1953,8 @@ spec:
                 format: int64
                 type: integer
               phase:
-                description: BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
+                description: |-
+                  BlueGreenStatus *BlueGreenStatus `json:"blueGreenStatus,omitempty"`
                   Phase is the rollout phase.
                 type: string
             required:

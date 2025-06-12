@@ -11,12 +11,13 @@ import (
 	"math/rand"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
 )
 
 var namespace string = "unit-test"
@@ -89,7 +90,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "cloneset,in rollout progress",
+			name: "cloneset in rollout progress",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
@@ -132,7 +133,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "in rollback progress",
+			name: "cloneset in rollback progress",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
@@ -179,7 +180,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "deployment: not in rollout progress",
+			name: "deployment not in rollout progress",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
@@ -225,7 +226,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "in rollout progress",
+			name: "deployment in rollout progress",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
@@ -266,7 +267,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "in rollback",
+			name: "deployment in rollback",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
@@ -309,7 +310,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 			},
 		},
 		{
-			name: "not consistent",
+			name: "deployment not consistent",
 			getRollout: func() *rolloutv1beta1.Rollout {
 				rollout := demoRollout.DeepCopy()
 				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{

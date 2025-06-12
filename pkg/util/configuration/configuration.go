@@ -20,10 +20,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 const (

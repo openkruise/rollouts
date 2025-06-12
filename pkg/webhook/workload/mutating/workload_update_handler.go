@@ -24,12 +24,6 @@ import (
 	"strings"
 
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
-	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/admissionregistration/v1"
 	apps "k8s.io/api/apps/v1"
@@ -43,8 +37,14 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
+	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
 
 // WorkloadHandler handles Pod
@@ -393,23 +393,6 @@ func (h *WorkloadHandler) fetchMatchedRollout(obj client.Object) (*appsv1beta1.R
 		}
 	}
 	return nil, nil
-}
-
-var _ inject.Client = &WorkloadHandler{}
-
-// InjectClient injects the client into the WorkloadHandler
-func (h *WorkloadHandler) InjectClient(c client.Client) error {
-	h.Client = c
-	h.Finder = util.NewControllerFinder(c)
-	return nil
-}
-
-var _ admission.DecoderInjector = &WorkloadHandler{}
-
-// InjectDecoder injects the decoder into the WorkloadHandler
-func (h *WorkloadHandler) InjectDecoder(d *admission.Decoder) error {
-	h.Decoder = d
-	return nil
 }
 
 func isEffectiveDeploymentRevisionChange(oldObj, newObj *apps.Deployment) bool {

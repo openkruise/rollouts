@@ -19,8 +19,6 @@ package rollout
 import (
 	"context"
 
-	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,6 +28,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 )
 
 var _ handler.EventHandler = &enqueueRequestForWorkload{}
@@ -39,18 +40,18 @@ type enqueueRequestForWorkload struct {
 	scheme *runtime.Scheme
 }
 
-func (w *enqueueRequestForWorkload) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.Object)
 }
 
-func (w *enqueueRequestForWorkload) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.Object)
 }
 
-func (w *enqueueRequestForWorkload) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForWorkload) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.ObjectNew)
 }
 
@@ -106,16 +107,16 @@ type enqueueRequestForBatchRelease struct {
 	reader client.Reader
 }
 
-func (w *enqueueRequestForBatchRelease) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForBatchRelease) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForBatchRelease) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 }
 
-func (w *enqueueRequestForBatchRelease) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	w.handleEvent(q, evt.ObjectNew)
 }
 

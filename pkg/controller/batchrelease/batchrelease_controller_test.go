@@ -27,9 +27,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	rolloutapi "github.com/openkruise/rollouts/api"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,6 +41,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 const TIME_LAYOUT = "2006-01-02 15:04:05"
@@ -530,7 +531,11 @@ func TestReconcile_CloneSet(t *testing.T) {
 			release := cs.GetRelease()
 			clonesets := cs.GetCloneSet()
 			rec := record.NewFakeRecorder(100)
-			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).WithObjects(clonesets...).Build()
+			cli := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(release).
+				WithObjects(clonesets...).
+				WithStatusSubresource(&v1beta1.BatchRelease{}).
+				Build()
 			reconciler := &BatchReleaseReconciler{
 				Client:   cli,
 				recorder: rec,
@@ -793,6 +798,8 @@ func TestReconcile_Deployment(t *testing.T) {
 			if len(deployments) > 1 {
 				cliBuilder = cliBuilder.WithObjects(makeCanaryReplicaSets(deployments[1:]...)...)
 			}
+
+			cliBuilder.WithStatusSubresource(&v1beta1.BatchRelease{})
 
 			cli := cliBuilder.Build()
 			reconciler := &BatchReleaseReconciler{

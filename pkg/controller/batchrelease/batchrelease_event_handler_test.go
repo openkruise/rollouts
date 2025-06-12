@@ -17,14 +17,13 @@ limitations under the License.
 package batchrelease
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,6 +33,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 func TestWorkloadEventHandler_Update(t *testing.T) {
@@ -137,7 +139,7 @@ func TestWorkloadEventHandler_Update(t *testing.T) {
 				ObjectOld: oldObject,
 				ObjectNew: newObject,
 			}
-			handler.Update(updateEvt, updateQ)
+			handler.Update(context.TODO(), updateEvt, updateQ)
 			Expect(updateQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}
@@ -193,7 +195,7 @@ func TestWorkloadEventHandler_Create(t *testing.T) {
 			createEvt := event.CreateEvent{
 				Object: newObject,
 			}
-			handler.Create(createEvt, createQ)
+			handler.Create(context.TODO(), createEvt, createQ)
 			Expect(createQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}
@@ -249,7 +251,7 @@ func TestWorkloadEventHandler_Delete(t *testing.T) {
 			deleteEvt := event.DeleteEvent{
 				Object: newObject,
 			}
-			handler.Delete(deleteEvt, deleteQ)
+			handler.Delete(context.TODO(), deleteEvt, deleteQ)
 			Expect(deleteQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}
@@ -399,7 +401,7 @@ func TestPodEventHandler_Update(t *testing.T) {
 				ObjectOld: oldObject,
 				ObjectNew: newObject,
 			}
-			handler.Update(updateEvt, updateQ)
+			handler.Update(context.TODO(), updateEvt, updateQ)
 			Expect(updateQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}
@@ -466,7 +468,7 @@ func TestPodEventHandler_Create(t *testing.T) {
 			createEvt := event.CreateEvent{
 				Object: newObject,
 			}
-			handler.Create(createEvt, createQ)
+			handler.Create(context.TODO(), createEvt, createQ)
 			Expect(createQ.Len()).Should(Equal(cs.ExpectedQueueLen))
 		})
 	}

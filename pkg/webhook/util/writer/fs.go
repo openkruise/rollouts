@@ -24,9 +24,10 @@ import (
 	"os"
 	"path"
 
+	"k8s.io/klog/v2"
+
 	"github.com/openkruise/rollouts/pkg/webhook/util/generator"
 	"github.com/openkruise/rollouts/pkg/webhook/util/writer/atomic"
-	"k8s.io/klog/v2"
 )
 
 const (

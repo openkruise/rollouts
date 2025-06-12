@@ -19,6 +19,24 @@ SHELL = /usr/bin/env bash -o pipefail
 
 all: build
 
+## Location to install dependencies to
+TESTBIN ?= $(shell pwd)/testbin
+$(TESTBIN):
+	mkdir -p $(TESTBIN)
+
+# ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
+# Run `setup-envtest list` to list available versions.
+ENVTEST_K8S_VERSION ?= 1.28.0
+
+ENVTEST ?= $(TESTBIN)/setup-envtest
+
+.PHONY: envtest
+envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
+$(ENVTEST): $(TESTBIN)
+ifeq (, $(shell ls $(TESTBIN)/setup-envtest 2>/dev/null))
+	GOBIN=$(TESTBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@c7e1dc9b5302d649d5531e19168dd7ea0013736d
+endif
+
 ##@ General
 
 # The help target prints out all targets with their descriptions organized
@@ -51,10 +69,10 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
-test: manifests generate fmt vet ## Run tests.
-	mkdir -p ${ENVTEST_ASSETS_DIR}
-	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.8.3/hack/setup-envtest.sh
-	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./pkg/... -coverprofile cover.out
+test: manifests generate fmt vet envtest ## Run tests.
+	echo $(ENVTEST)
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test -race ./pkg/... -coverprofile raw-cover.out
+	grep -v "pkg/client" raw-cover.out > cover.out
 
 ##@ Build
 
@@ -91,7 +109,7 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 
 
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
-CONTROLLER_GEN_VERSION = v0.11.0
+CONTROLLER_GEN_VERSION = v0.14.0
 controller-gen: ## Download controller-gen locally if necessary.
 ifeq ("$(shell $(CONTROLLER_GEN) --version)", "Version: ${CONTROLLER_GEN_VERSION}")
 else

@@ -19,15 +19,16 @@ package batchrelease
 import (
 	"reflect"
 
-	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
-	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 func (r *Executor) syncStatusBeforeExecuting(release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus, controller control.Interface) (bool, reconcile.Result, error) {

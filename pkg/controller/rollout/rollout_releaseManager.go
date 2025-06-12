@@ -21,13 +21,14 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 type ReleaseManager interface {
@@ -78,7 +79,7 @@ func removeBatchRelease(cli client.Client, c *RolloutContext) (bool, error) {
 	if err != nil && errors.IsNotFound(err) {
 		return false, nil
 	} else if err != nil {
-		klog.Errorf("rollout(%s/%s) fetch BatchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name)
+		klog.Errorf("rollout(%s/%s) fetch BatchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 		return true, err
 	}
 	if !batch.DeletionTimestamp.IsZero() {
