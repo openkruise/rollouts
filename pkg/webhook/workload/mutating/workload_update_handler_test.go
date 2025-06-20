@@ -396,6 +396,37 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 		},
 		{
+			name: "deployment image v1->v2, no matched rollout, but has in-progress annotation",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				newObj.Annotations[util.InRolloutProgressingAnnotation] = "{\"rolloutName\":\"rollouts-demo\"}"
+				newObj.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = "{\"rollingStyle\":\"Partition\",\"rollingUpdate\":{\"maxUnavailable\":\"25%\",\"maxSurge\":\"25%\"},\"paused\":true,\"partition\":1}"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = "{\"rolloutName\":\"rollouts-demo\"}"
+				obj.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = "{\"rollingStyle\":\"Partition\",\"rollingUpdate\":{\"maxUnavailable\":\"25%\",\"maxSurge\":\"25%\"},\"paused\":true,\"partition\":1}"
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+					Name:       "other",
+				}
+				return obj
+			},
+		},
+		{
 			name: "deployment image v2->v3, matched rollout, but multiple rss",
 			getObjs: func() (*apps.Deployment, *apps.Deployment) {
 				oldObj := deploymentDemo.DeepCopy()

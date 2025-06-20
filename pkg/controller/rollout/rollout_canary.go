@@ -367,7 +367,7 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, erro
 	klog.Infof("rollout(%s/%s) Finalising Step is %s", c.Rollout.Namespace, c.Rollout.Name, canaryStatus.FinalisingStep)
 
 	var retry bool
-	// the order of steps is maitained by calculating the nextStep
+	// the order of steps is maintained by calculating the nextStep
 	switch canaryStatus.FinalisingStep {
 	// set workload.pause=false; set workload.partition=0
 	case v1beta1.FinalisingStepResumeWorkload:
