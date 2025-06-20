@@ -373,12 +373,14 @@ func TestHandlerDeployment(t *testing.T) {
 				rs := rsDemo.DeepCopy()
 				return []*apps.ReplicaSet{rs}
 			},
-			getRollout: func() *appsv1beta1.Rollout {
+			getRollout: func() *appsv1alpha1.Rollout {
 				obj := rolloutDemo.DeepCopy()
-				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
-					APIVersion: "apps/v1",
-					Kind:       "Deployment",
-					Name:       "other",
+				obj.Spec.ObjectRef = appsv1alpha1.ObjectRef{
+					WorkloadRef: &appsv1alpha1.WorkloadRef{
+						APIVersion: "apps/v1",
+						Kind:       "Deployment",
+						Name:       "other",
+					},
 				}
 				return obj
 			},
