@@ -260,6 +260,14 @@ func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstruct
 }
 
 func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (bool, error) {
+	// make sure matched Rollout CR always exists
+	rollout, err := h.fetchMatchedRollout(newObj)
+	if err != nil {
+		return false, err
+	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
+		return false, nil
+	}
+
 	// in rollout progressing
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
 		modified := false
@@ -307,12 +315,6 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		return false, nil
 	}
 
-	rollout, err := h.fetchMatchedRollout(newObj)
-	if err != nil {
-		return false, err
-	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
-		return false, nil
-	}
 	rss, err := h.Finder.GetReplicaSetsForDeployment(newObj)
 	if err != nil || len(rss) == 0 {
 		klog.Warningf("Cannot find any activate replicaset for deployment %s/%s, no need to rolling", newObj.Namespace, newObj.Name)
