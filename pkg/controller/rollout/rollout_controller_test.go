@@ -19,21 +19,22 @@ package rollout
 import (
 	"context"
 	"testing"
+
+	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/stretchr/testify/assert"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"github.com/openkruise/rollouts/pkg/trafficrouting"
 
 	"fmt"
 
 	rolloutapi "github.com/openkruise/rollouts/api"
 	"github.com/openkruise/rollouts/api/v1alpha1"
-	"github.com/openkruise/rollouts/pkg/feature"
-	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -463,11 +464,11 @@ func TestFinalizeRolloutKeepPaused(t *testing.T) {
 			Scheme: scheme,
 			finder: util.NewControllerFinder(fakeClient),
 			canaryManager: &canaryReleaseManager{
-				Client: fakeClient,
+				Client:                fakeClient,
 				trafficRoutingManager: trafficrouting.NewTrafficRoutingManager(fakeClient),
 			},
 			blueGreenManager: &blueGreenReleaseManager{
-				Client: fakeClient,
+				Client:                fakeClient,
 				trafficRoutingManager: trafficrouting.NewTrafficRoutingManager(fakeClient),
 			},
 		}
@@ -496,11 +497,11 @@ func TestFinalizeRolloutKeepPaused(t *testing.T) {
 			Scheme: scheme,
 			finder: util.NewControllerFinder(fakeClient),
 			canaryManager: &canaryReleaseManager{
-				Client: fakeClient,
+				Client:                fakeClient,
 				trafficRoutingManager: trafficrouting.NewTrafficRoutingManager(fakeClient),
 			},
 			blueGreenManager: &blueGreenReleaseManager{
-				Client: fakeClient,
+				Client:                fakeClient,
 				trafficRoutingManager: trafficrouting.NewTrafficRoutingManager(fakeClient),
 			},
 		}

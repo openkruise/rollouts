@@ -21,13 +21,14 @@ import (
 	"fmt"
 	"reflect"
 	"time"
-	apps "k8s.io/api/apps/v1"
+
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/feature"
-	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
+	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
+	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -379,20 +380,20 @@ func (m *canaryReleaseManager) doCanaryFinalising(c *RolloutContext) (bool, erro
 			klog.Infof("Rollout(%s/%s) is being deleted, KeepDeploymentPausedOnDeletion is enabled. Skipping resume workload step.", c.Rollout.Namespace, c.Rollout.Name)
 			// Do nothing, effectively skipping this step and considering it "done".
 		} else {
-				// Otherwise, run the original logic to unpause the workload.
-				retry, err = finalizingBatchRelease(m.Client, c)
-				if err == nil && !retry {
-					dep := &apps.Deployment{}
-					key := client.ObjectKey{Namespace: c.Rollout.Namespace, Name: c.Rollout.Spec.WorkloadRef.Name}
-					if getErr := m.Client.Get(context.TODO(), key, dep); getErr == nil {
-						if dep.Spec.Paused {
-							dep.Spec.Paused = false
-							if updErr := m.Client.Update(context.TODO(), dep); updErr != nil {
-								return false, updErr
-							}
+			// Otherwise, run the original logic to unpause the workload.
+			retry, err = finalizingBatchRelease(m.Client, c)
+			if err == nil && !retry {
+				dep := &apps.Deployment{}
+				key := client.ObjectKey{Namespace: c.Rollout.Namespace, Name: c.Rollout.Spec.WorkloadRef.Name}
+				if getErr := m.Client.Get(context.TODO(), key, dep); getErr == nil {
+					if dep.Spec.Paused {
+						dep.Spec.Paused = false
+						if updErr := m.Client.Update(context.TODO(), dep); updErr != nil {
+							return false, updErr
 						}
 					}
 				}
+			}
 		}
 	// delete batchRelease
 	case v1beta1.FinalisingStepReleaseWorkloadControl:

@@ -35,9 +35,9 @@ const (
 )
 
 var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	RolloutHistoryGate:        {Default: false, PreRelease: featuregate.Alpha},
-	AdvancedDeploymentGate:    {Default: false, PreRelease: featuregate.Alpha},
-	AppendServiceSelectorGate: {Default: false, PreRelease: featuregate.Alpha},
+	RolloutHistoryGate:                 {Default: false, PreRelease: featuregate.Alpha},
+	AdvancedDeploymentGate:             {Default: false, PreRelease: featuregate.Alpha},
+	AppendServiceSelectorGate:          {Default: false, PreRelease: featuregate.Alpha},
 	KeepDeploymentPausedOnDeletionGate: {Default: false, PreRelease: featuregate.Alpha},
 }
 
