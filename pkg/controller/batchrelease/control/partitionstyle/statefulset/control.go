@@ -21,17 +21,20 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/openkruise/rollouts/api/v1beta1"
-	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
-	"github.com/openkruise/rollouts/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
+	"github.com/openkruise/rollouts/pkg/feature"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 type realController struct {
@@ -77,7 +80,7 @@ func (rc *realController) BuildController() (partitionstyle.Interface, error) {
 			if !pod.DeletionTimestamp.IsZero() {
 				return false
 			}
-			if !util.IsConsistentWithRevision(pod, rc.WorkloadInfo.Status.UpdateRevision) {
+			if !util.IsConsistentWithRevision(pod.GetLabels(), rc.WorkloadInfo.Status.UpdateRevision) {
 				return false
 			}
 			return util.IsPodReady(pod)
@@ -133,12 +136,10 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 
 	var specBody string
 	// If batchPartition == nil, workload should be promoted;
-	if release.Spec.ReleasePlan.BatchPartition == nil {
+	if release.Spec.ReleasePlan.BatchPartition == nil && !utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) {
 		specBody = `,"spec":{"updateStrategy":{"rollingUpdate":{"partition":null}}}`
 	}
-
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}%s}`, util.BatchReleaseControlAnnotation, specBody)
-
 	clone := util.GetEmptyObjectWithKey(rc.object)
 	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }

@@ -28,11 +28,18 @@ const (
 	RolloutHistoryGate featuregate.Feature = "RolloutHistory"
 	// AdvancedDeploymentGate enable advanced deployment controller.
 	AdvancedDeploymentGate featuregate.Feature = "AdvancedDeployment"
+	// AppendServiceSelectorGate enable appending pod labels from PodTemplateMetadata to the canary service selector.
+	AppendServiceSelectorGate featuregate.Feature = "AppendPodSelector"
+	// If the rollout CR is deleted during the rollout process, `pause=false` and `partition=0` will be set, causing the workload to complete deployment.
+	// If `KeepWorkloadPausedOnRolloutDeletion` is set, the state during deployment will be preserved(Keep partition > 0), enabling users to perform rollback operations.
+	KeepWorkloadPausedOnRolloutDeletion featuregate.Feature = "KeepWorkloadPausedOnRolloutDeletion"
 )
 
 var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	RolloutHistoryGate:     {Default: false, PreRelease: featuregate.Alpha},
-	AdvancedDeploymentGate: {Default: false, PreRelease: featuregate.Alpha},
+	RolloutHistoryGate:                  {Default: false, PreRelease: featuregate.Alpha},
+	AdvancedDeploymentGate:              {Default: false, PreRelease: featuregate.Alpha},
+	AppendServiceSelectorGate:           {Default: false, PreRelease: featuregate.Alpha},
+	KeepWorkloadPausedOnRolloutDeletion: {Default: false, PreRelease: featuregate.Alpha},
 }
 
 func init() {
