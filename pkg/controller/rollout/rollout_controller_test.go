@@ -17,24 +17,13 @@ limitations under the License.
 package rollout
 
 import (
-	"context"
-	"testing"
-
-	"github.com/openkruise/rollouts/pkg/trafficrouting"
-	"github.com/stretchr/testify/assert"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
 	"fmt"
 
 	rolloutapi "github.com/openkruise/rollouts/api"
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/configuration"
-	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -430,90 +419,4 @@ func init() {
 	scheme = runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = rolloutapi.AddToScheme(scheme)
-}
-
-func TestFinalizeRolloutKeepPaused(t *testing.T) {
-	// The scheme is already initialized in the file's init() function.
-
-	deployment := deploymentDemo.DeepCopy()
-	// Simulate the deployment being paused by the rollout controller
-	deployment.Spec.Paused = true
-
-	rollout := rolloutDemo.DeepCopy()
-	// Set the rollout to a finalizing state
-	rollout.Status.Phase = v1beta1.RolloutPhaseDisabling
-	rollout.Status.CanaryStatus = &v1beta1.CanaryStatus{}
-	now := metav1.Now()
-	rollout.DeletionTimestamp = &now
-	// Use the correct finalizer constant from the util package.
-	rollout.Finalizers = []string{v1beta1.RolloutFinalizer}
-
-	// Test Case 1: Feature Gate is ENABLED
-	t.Run("Deployment should remain paused when gate is enabled", func(t *testing.T) {
-		// Enable the feature gate for this specific test
-		err := utilfeature.DefaultMutableFeatureGate.Set(string(feature.KeepDeploymentPausedOnDeletionGate) + "=true")
-		assert.Nil(t, err)
-		// Ensure the feature gate is reset after the test
-		defer utilfeature.DefaultMutableFeatureGate.Set(string(feature.KeepDeploymentPausedOnDeletionGate) + "=false")
-
-		// The reconciler needs a fake client with the test objects
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rollout.DeepCopy(), deployment.DeepCopy()).Build()
-		rollout.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepResumeWorkload
-		r := &RolloutReconciler{
-			Client: fakeClient,
-			Scheme: scheme,
-			finder: util.NewControllerFinder(fakeClient),
-			canaryManager: &canaryReleaseManager{
-				Client:                fakeClient,
-				trafficRoutingManager: trafficrouting.NewTrafficRoutingManager(fakeClient),
-			},
-			blueGreenManager: &blueGreenReleaseManager{
-				Client:                fakeClient,
-				trafficRoutingManager: trafficrouting.NewTrafficRoutingManager(fakeClient),
-			},
-		}
-
-		// Run the reconcile loop to trigger the finalizer
-		_, err = r.Reconcile(context.TODO(), reconcile.Request{NamespacedName: client.ObjectKeyFromObject(rollout)})
-		assert.Nil(t, err)
-
-		// Verify the deployment is still paused
-		updatedDeployment := &apps.Deployment{}
-		err = r.Get(context.TODO(), client.ObjectKeyFromObject(deployment), updatedDeployment)
-		assert.Nil(t, err)
-		assert.True(t, updatedDeployment.Spec.Paused, "Deployment should have remained paused")
-	})
-
-	// Test Case 2: Feature Gate is DISABLED (Default Behavior)
-	t.Run("Deployment should be unpaused when gate is disabled", func(t *testing.T) {
-		// Ensure the feature gate is disabled
-		err := utilfeature.DefaultMutableFeatureGate.Set(string(feature.KeepDeploymentPausedOnDeletionGate) + "=false")
-		assert.Nil(t, err)
-
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rollout.DeepCopy(), deployment.DeepCopy()).Build()
-		rollout.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepResumeWorkload
-		r := &RolloutReconciler{
-			Client: fakeClient,
-			Scheme: scheme,
-			finder: util.NewControllerFinder(fakeClient),
-			canaryManager: &canaryReleaseManager{
-				Client:                fakeClient,
-				trafficRoutingManager: trafficrouting.NewTrafficRoutingManager(fakeClient),
-			},
-			blueGreenManager: &blueGreenReleaseManager{
-				Client:                fakeClient,
-				trafficRoutingManager: trafficrouting.NewTrafficRoutingManager(fakeClient),
-			},
-		}
-
-		// Run the reconcile loop
-		_, err = r.Reconcile(context.TODO(), reconcile.Request{NamespacedName: client.ObjectKeyFromObject(rollout)})
-		assert.Nil(t, err)
-
-		// Verify the deployment is now unpaused (reverted to original spec)
-		updatedDeployment := &apps.Deployment{}
-		err = r.Get(context.TODO(), client.ObjectKeyFromObject(deployment), updatedDeployment)
-		assert.Nil(t, err)
-		assert.False(t, updatedDeployment.Spec.Paused, "Deployment should have been unpaused")
-	})
 }

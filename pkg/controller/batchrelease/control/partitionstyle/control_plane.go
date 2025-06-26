@@ -25,6 +25,8 @@ import (
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
 	"github.com/openkruise/rollouts/pkg/util"
+	"github.com/openkruise/rollouts/pkg/feature"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -142,7 +144,14 @@ func (rc *realBatchControlPlane) Finalize() error {
 	if err != nil {
 		return client.IgnoreNotFound(err)
 	}
-
+    
+	// If Rollout CR was deleted and our gate is on, skip un-pause
+	if rc.release.DeletionTimestamp != nil && utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepDeploymentPausedOnDeletionGate) {
+		klog.Infof("BatchRelease(%s/%s) deletion detected; skipping Finalize() because KeepDeploymentPausedOnDeletionGate is enabled",
+		   rc.release.Namespace, rc.release.Name)
+		return nil
+   }
+    
 	// release workload control info and clean up resources if it needs
 	return controller.Finalize(rc.release)
 }
