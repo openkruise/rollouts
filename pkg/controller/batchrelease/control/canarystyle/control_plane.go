@@ -22,11 +22,11 @@ import (
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"github.com/openkruise/rollouts/pkg/feature"
-	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -152,32 +152,32 @@ func (rc *realCanaryController) EnsureBatchPodsReadyAndLabeled() error {
 }
 
 func (rc *realCanaryController) Finalize() error {
-    stable, err := rc.BuildStableController()
-    if client.IgnoreNotFound(err) != nil {
-        klog.Errorf("…")
-        return err
-    }
+	stable, err := rc.BuildStableController()
+	if client.IgnoreNotFound(err) != nil {
+		klog.Errorf("…")
+		return err
+	}
 
-    // If Rollout is deleted & gate is on, skip stable.Finalize()
-    if rc.release.DeletionTimestamp != nil &&
-       utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepDeploymentPausedOnDeletionGate) {
-        klog.Infof("… skipping stable.Finalize()")
-    } else {
-        if err = stable.Finalize(rc.release); err != nil {
-            klog.Errorf("… finalize stable err: %v", err)
-            return err
-        }
-    }
+	// If Rollout is deleted & gate is on, skip stable.Finalize()
+	if rc.release.DeletionTimestamp != nil &&
+		utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepDeploymentPausedOnDeletionGate) {
+		klog.Infof("… skipping stable.Finalize()")
+	} else {
+		if err = stable.Finalize(rc.release); err != nil {
+			klog.Errorf("… finalize stable err: %v", err)
+			return err
+		}
+	}
 
-    canary, err := rc.BuildCanaryController(rc.release)
-    if client.IgnoreNotFound(err) != nil {
-        klog.Errorf("… build canary err: %v", err)
-        return err
-    }
-    if err = canary.Delete(rc.release); err != nil {
-        klog.Errorf("… delete canary err: %v", err)
-    }
-    return err
+	canary, err := rc.BuildCanaryController(rc.release)
+	if client.IgnoreNotFound(err) != nil {
+		klog.Errorf("… build canary err: %v", err)
+		return err
+	}
+	if err = canary.Delete(rc.release); err != nil {
+		klog.Errorf("… delete canary err: %v", err)
+	}
+	return err
 }
 
 func (rc *realCanaryController) SyncWorkloadInformation() (control.WorkloadEventType, *util.WorkloadInfo, error) {
