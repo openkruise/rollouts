@@ -24,10 +24,8 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/trafficrouting"
 	"github.com/openkruise/rollouts/pkg/util"
-	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -75,23 +73,6 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 	if m.doCanaryJump(c) {
 		return nil
 	}
-
-	if utilfeature.DefaultMutableFeatureGate.Enabled(feature.AdvancedDeploymentGate) &&
-		c.Rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
-		tr := newTrafficRoutingContext(c)
-		if !tr.DisableGenerateCanaryService {
-			klog.Infof("rollout(%s/%s) advancedDeployment: patching stable service for canary", c.Rollout.Namespace, c.Rollout.Name)
-			retry, err := m.trafficRoutingManager.PatchStableService(tr)
-			if err != nil {
-				return err
-			} else if retry {
-				expectedTime := time.Now().Add(tr.RecheckDuration)
-				c.RecheckTime = &expectedTime
-				return nil
-			}
-		}
-	}
-
 	// When the first batch is trafficRouting rolling and the next steps are rolling release,
 	// We need to clean up the canary-related resources first and then rollout the rest of the batch.
 	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
