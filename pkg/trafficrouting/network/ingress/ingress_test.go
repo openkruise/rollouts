@@ -734,7 +734,7 @@ func TestEnsureRoutes(t *testing.T) {
 			getRoutes: func() *v1beta1.CanaryStep {
 				return &v1beta1.CanaryStep{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
-						Weight: utilpointer.Int32Ptr(0),
+						Traffic: utilpointer.String("0"),
 						Matches: []v1beta1.HttpRouteMatch{{
 							Headers: []gatewayv1beta1.HTTPHeaderMatch{{
 								Name:  "user_id",

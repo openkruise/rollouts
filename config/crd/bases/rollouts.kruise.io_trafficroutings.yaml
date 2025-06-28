@@ -97,12 +97,9 @@ spec:
                       properties:
                         classType:
                           description: ClassType refers to the type of `Ingress`.
-                            current support nginx, aliyun-alb, aws-alb. default is nginx.
+                            current support nginx, aliyun-alb, aws-alb. default is
+                            nginx.
                           type: string
-                          enum:
-                          - nginx
-                          - aliyun-alb
-                          - aws-alb
                         name:
                           description: Name refers to the name of an `Ingress` resource
                             in the same namespace as the `Rollout`
