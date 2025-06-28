@@ -189,6 +189,58 @@ var (
 				annotations[conditionKey] = json.encode(conditions)
 				return annotations
  			`,
+			fmt.Sprintf("%s.aws-alb", configuration.LuaTrafficRoutingIngressTypePrefix): `
+                -- aws-alb.lua
+                local annotations = obj.annotations or {}
+                annotations["alb.ingress.kubernetes.io/actions.canary"]    = nil
+                annotations["alb.ingress.kubernetes.io/conditions.canary"] = nil
+
+                local cw = tonumber(obj.weight) or 0
+                if cw < 0 then cw = 0 end
+                if cw > 100 then cw = 100 end
+                local sw = 100 - cw
+
+                local action = {
+                  Type = "forward",
+                  ForwardConfig = {
+                    TargetGroups = {
+                      { ServiceName = obj.stableService, ServicePort = "80", Weight = sw },
+                      { ServiceName = obj.canaryService, ServicePort = "80", Weight = cw },
+                    }
+                  }
+                }
+                annotations["alb.ingress.kubernetes.io/actions.canary"] = action
+
+                if obj.matches then
+                  local conds = {}
+                  for _, m in ipairs(obj.matches) do
+                    for _, hdr in ipairs(m.headers or {}) do
+                      if hdr.name == "canary-by-cookie" then
+                        table.insert(conds, {
+                          Field = "http-cookie",
+                          HttpCookieConfig = { CookieName = hdr.value, Values = { hdr.value } }
+                        })
+                      elseif hdr.name == "SourceIp" then
+                        table.insert(conds, {
+                          Field = "source-ip",
+                          SourceIpConfig = { Values = { hdr.value } }
+                        })
+                      else
+                        table.insert(conds, {
+                          Field = "http-header",
+                          HttpHeaderConfig = {
+                            HttpHeaderName = hdr.name,
+                            Values         = { hdr.value }
+                          }
+                        })
+                      end
+                    end
+                  end
+                  annotations["alb.ingress.kubernetes.io/conditions.canary"] = conds
+                end
+
+                return annotations
+            `,
 		},
 	}
 
@@ -656,6 +708,52 @@ func TestEnsureRoutes(t *testing.T) {
 				expect.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				expect.Spec.Rules[1].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
 				return expect
+			},
+		},
+		{
+			name:        "ensure routes test aws-alb forward+conditions",
+			ingressType: "aws-alb",
+			getConfigmap: func() *corev1.ConfigMap {
+				return demoConf.DeepCopy()
+			},
+			getIngress: func() []*netv1.Ingress {
+				canary := demoIngress.DeepCopy()
+				canary.Name = "echoserver-canary"
+
+				// Expect both stable(80%) and canary(0%) in JSON
+				canary.Annotations["alb.ingress.kubernetes.io/actions.canary"] =
+					`{"Type":"forward","ForwardConfig":{"TargetGroups":[{"ServiceName":"echoserver","ServicePort":"80","Weight":100},{"ServiceName":"echoserver-canary","ServicePort":"80","Weight":0}]}}`
+				// And any header‐match condition
+				canary.Annotations["alb.ingress.kubernetes.io/conditions.canary"] =
+					`[{"Field":"http-header","HttpHeaderConfig":{"HttpHeaderName":"user_id","Values":["123456"]}}]`
+
+				canary.Spec.Rules[0].HTTP.Paths = canary.Spec.Rules[0].HTTP.Paths[:1]
+				canary.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
+			},
+			getRoutes: func() *v1beta1.CanaryStep {
+				return &v1beta1.CanaryStep{
+					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
+						Weight: utilpointer.Int32Ptr(0),
+						Matches: []v1beta1.HttpRouteMatch{{
+							Headers: []gatewayv1beta1.HTTPHeaderMatch{{
+								Name:  "user_id",
+								Value: "123456",
+							}},
+						}},
+					},
+				}
+			},
+			expectIngress: func() *netv1.Ingress {
+				e := demoIngress.DeepCopy()
+				e.Name = "echoserver-canary"
+				e.Annotations = map[string]string{
+					"alb.ingress.kubernetes.io/actions.canary":    `{"Type":"forward","ForwardConfig":{"TargetGroups":[{"ServiceName":"echoserver","ServicePort":"80","Weight":100},{"ServiceName":"echoserver-canary","ServicePort":"80","Weight":0}]}}`,
+					"alb.ingress.kubernetes.io/conditions.canary": `[{"Field":"http-header","HttpHeaderConfig":{"HttpHeaderName":"user_id","Values":["123456"]}}]`,
+				}
+				e.Spec.Rules[0].HTTP.Paths = e.Spec.Rules[0].HTTP.Paths[:1]
+				e.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "echoserver-canary"
+				return e
 			},
 		},
 	}
