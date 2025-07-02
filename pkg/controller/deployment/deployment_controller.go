@@ -39,6 +39,7 @@ import (
 
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -68,6 +69,8 @@ type DeploymentController struct {
 
 	// we will use this strategy to replace spec.strategy of deployment
 	strategy rolloutsv1alpha1.DeploymentStrategy
+
+	runtimeClient client.Client
 }
 
 // getReplicaSetsForDeployment uses ControllerRefManager to reconcile

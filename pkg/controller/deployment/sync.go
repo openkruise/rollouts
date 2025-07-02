@@ -30,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
@@ -117,8 +118,20 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 		annotationsUpdated := deploymentutil.SetNewReplicaSetAnnotations(d, rsCopy, &dc.strategy, newRevision, true, maxRevHistoryLengthInChars)
 		minReadySecondsNeedsUpdate := rsCopy.Spec.MinReadySeconds != d.Spec.MinReadySeconds
 		if annotationsUpdated || minReadySecondsNeedsUpdate {
-			rsCopy.Spec.MinReadySeconds = d.Spec.MinReadySeconds
-			return dc.client.AppsV1().ReplicaSets(rsCopy.ObjectMeta.Namespace).Update(ctx, rsCopy, metav1.UpdateOptions{})
+			// Use existing state directly for patching, let API Server handle conflicts
+			rsCopy = existingNewRS.DeepCopy()
+			deploymentutil.SetNewReplicaSetAnnotations(d, rsCopy, &dc.strategy, newRevision, true, maxRevHistoryLengthInChars)
+			if minReadySecondsNeedsUpdate {
+				rsCopy.Spec.MinReadySeconds = d.Spec.MinReadySeconds
+			}
+
+			// Use MergeFrom for patching, if ResourceVersion conflicts, API Server will return 409 error
+			// Controller-runtime will automatically reschedule for reconciliation
+			err := dc.runtimeClient.Patch(ctx, rsCopy, client.MergeFrom(existingNewRS))
+			if err != nil {
+				return nil, err
+			}
+			return rsCopy, nil
 		}
 
 		// Should use the revision in existingNewRS's annotation, since it set by before
@@ -410,11 +423,29 @@ func (dc *DeploymentController) scaleReplicaSet(ctx context.Context, rs *apps.Re
 	var err error
 	if sizeNeedsUpdate || annotationsNeedUpdate {
 		oldScale := *(rs.Spec.Replicas)
+
+		// Use existing state directly for patching, let API Server handle conflicts
 		rsCopy := rs.DeepCopy()
-		*(rsCopy.Spec.Replicas) = newScale
-		deploymentutil.SetReplicasAnnotations(rsCopy, *(deployment.Spec.Replicas), *(deployment.Spec.Replicas)+deploymentutil.MaxSurge(deployment, &dc.strategy))
-		rs, err = dc.client.AppsV1().ReplicaSets(rsCopy.Namespace).Update(ctx, rsCopy, metav1.UpdateOptions{})
-		if err == nil && sizeNeedsUpdate {
+
+		if sizeNeedsUpdate {
+			rsCopy.Spec.Replicas = &newScale
+		}
+		if annotationsNeedUpdate {
+			// Set the annotations that need to be updated
+			desiredReplicas := *(deployment.Spec.Replicas)
+			maxReplicas := *(deployment.Spec.Replicas) + deploymentutil.MaxSurge(deployment, &dc.strategy)
+			deploymentutil.SetReplicasAnnotations(rsCopy, desiredReplicas, maxReplicas)
+		}
+
+		// Use MergeFrom for patching, if ResourceVersion conflicts, API Server will return 409 error
+		// Controller-runtime will automatically reschedule for reconciliation
+		err = dc.runtimeClient.Patch(ctx, rsCopy, client.MergeFrom(rs))
+		if err != nil {
+			return scaled, rs, err
+		}
+
+		rs = rsCopy
+		if sizeNeedsUpdate {
 			scaled = true
 			dc.eventRecorder.Eventf(deployment, v1.EventTypeNormal, "ScalingReplicaSet", "Scaled %s replica set %s to %d from %d", scalingOperation, rs.Name, newScale, oldScale)
 		}

@@ -107,6 +107,7 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 	// Deployment controller factory
 	factory := &controllerFactory{
 		client:           genericClient.KubeClient,
+		runtimeClient:    mgr.GetClient(),
 		eventBroadcaster: eventBroadcaster,
 		eventRecorder:    recorder,
 		dLister:          dLister,
@@ -268,6 +269,7 @@ func (f *controllerFactory) NewController(deployment *appsv1.Deployment) *Deploy
 
 	return &DeploymentController{
 		client:           f.client,
+		runtimeClient:    f.runtimeClient,
 		eventBroadcaster: f.eventBroadcaster,
 		eventRecorder:    f.eventRecorder,
 		dLister:          f.dLister,
