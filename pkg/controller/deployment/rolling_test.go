@@ -304,10 +304,7 @@ func TestReconcileNewReplicaSet(t *testing.T) {
 				Build()
 
 			dc := &DeploymentController{
-				client:        fakeClient,
 				eventRecorder: fakeRecord,
-				dLister:       &mockDeploymentLister{client: fakeCtrlClient},
-				rsLister:      &mockReplicaSetLister{client: fakeCtrlClient},
 				runtimeClient: fakeCtrlClient,
 				strategy: rolloutsv1alpha1.DeploymentStrategy{
 					RollingUpdate: &apps.RollingUpdateDeployment{
@@ -399,7 +396,6 @@ func TestReconcileOldReplicaSet(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			fakeClient := fake.NewSimpleClientset()
 			fakeRecord := record.NewFakeRecorder(10)
 
 			var deployment apps.Deployment
@@ -417,10 +413,6 @@ func TestReconcileOldReplicaSet(t *testing.T) {
 				deployment.Status.UpdatedReplicas = test.newRSReplicas
 				deployment.Status.Replicas = availableReplicas
 				deployment.Status.AvailableReplicas = availableReplicas
-				_, err := fakeClient.AppsV1().Deployments(deployment.Namespace).Create(context.TODO(), &deployment, metav1.CreateOptions{})
-				if err != nil {
-					t.Fatalf("got unexpected error: %v", err)
-				}
 			}
 			{
 				for index, replicas := range test.oldRSsReplicas {
@@ -433,10 +425,6 @@ func TestReconcileOldReplicaSet(t *testing.T) {
 					rs.Status.AvailableReplicas = test.oldRSsAvailable[index]
 					allRSs = append(allRSs, &rs)
 					oldRSs = append(oldRSs, &rs)
-					_, err := fakeClient.AppsV1().ReplicaSets(rs.Namespace).Create(context.TODO(), &rs, metav1.CreateOptions{})
-					if err != nil {
-						t.Fatalf("got unexpected error: %v", err)
-					}
 				}
 			}
 			{
@@ -447,10 +435,6 @@ func TestReconcileOldReplicaSet(t *testing.T) {
 				newRS.Status.ReadyReplicas = test.newRSAvailable
 				newRS.Status.AvailableReplicas = test.newRSAvailable
 				allRSs = append(allRSs, &newRS)
-				_, err := fakeClient.AppsV1().ReplicaSets(newRS.Namespace).Create(context.TODO(), &newRS, metav1.CreateOptions{})
-				if err != nil {
-					t.Fatalf("got unexpected error: %v", err)
-				}
 			}
 
 			// Create controller-runtime client with all objects
@@ -465,10 +449,7 @@ func TestReconcileOldReplicaSet(t *testing.T) {
 				Build()
 
 			dc := &DeploymentController{
-				client:        fakeClient,
 				eventRecorder: fakeRecord,
-				dLister:       &mockDeploymentLister{client: fakeCtrlClient},
-				rsLister:      &mockReplicaSetLister{client: fakeCtrlClient},
 				runtimeClient: fakeCtrlClient,
 				strategy: rolloutsv1alpha1.DeploymentStrategy{
 					RollingUpdate: &apps.RollingUpdateDeployment{

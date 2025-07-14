@@ -31,8 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	appslisters "k8s.io/client-go/listers/apps/v1"
-	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -83,19 +81,6 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
-	cacher := mgr.GetCache()
-	dInformer, err := cacher.GetInformerForKind(context.TODO(), appsv1.SchemeGroupVersion.WithKind("Deployment"))
-	if err != nil {
-		return nil, err
-	}
-	rsInformer, err := cacher.GetInformerForKind(context.TODO(), appsv1.SchemeGroupVersion.WithKind("ReplicaSet"))
-	if err != nil {
-		return nil, err
-	}
-
-	// Lister
-	dLister := appslisters.NewDeploymentLister(dInformer.(toolscache.SharedIndexInformer).GetIndexer())
-	rsLister := appslisters.NewReplicaSetLister(rsInformer.(toolscache.SharedIndexInformer).GetIndexer())
 
 	// Client & Recorder
 	genericClient := clientutil.GetGenericClientWithName("advanced-deployment-controller")
@@ -106,12 +91,9 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 
 	// Deployment controller factory
 	factory := &controllerFactory{
-		client:           genericClient.KubeClient,
 		runtimeClient:    mgr.GetClient(),
 		eventBroadcaster: eventBroadcaster,
 		eventRecorder:    recorder,
-		dLister:          dLister,
-		rsLister:         rsLister,
 	}
 	return &ReconcileDeployment{Client: mgr.GetClient(), controllerFactory: factory}, nil
 }
@@ -268,12 +250,9 @@ func (f *controllerFactory) NewController(deployment *appsv1.Deployment) *Deploy
 	klog.V(4).Infof("Processing deployment %v strategy %v", klog.KObj(deployment), string(marshaled))
 
 	return &DeploymentController{
-		client:           f.client,
 		runtimeClient:    f.runtimeClient,
 		eventBroadcaster: f.eventBroadcaster,
 		eventRecorder:    f.eventRecorder,
-		dLister:          f.dLister,
-		rsLister:         f.rsLister,
 		strategy:         strategy,
 	}
 }

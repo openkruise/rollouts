@@ -25,7 +25,6 @@ import (
 
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/openkruise/rollouts/pkg/controller/deployment/util"
@@ -115,7 +114,10 @@ func (dc *DeploymentController) syncRolloutStatus(ctx context.Context, allRSs []
 
 	newDeployment := d
 	newDeployment.Status = newStatus
-	_, err := dc.client.AppsV1().Deployments(newDeployment.Namespace).UpdateStatus(ctx, newDeployment, metav1.UpdateOptions{})
+	err := dc.runtimeClient.Status().Update(ctx, newDeployment)
+	if err != nil {
+		klog.Errorf("Failed to update deployment status in progress: %v", err)
+	}
 	return err
 }
 
