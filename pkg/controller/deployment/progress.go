@@ -20,7 +20,6 @@ package deployment
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	apps "k8s.io/api/apps/v1"
@@ -105,20 +104,21 @@ func (dc *DeploymentController) syncRolloutStatus(ctx context.Context, allRSs []
 		util.RemoveDeploymentCondition(&newStatus, apps.DeploymentReplicaFailure)
 	}
 
-	// Do not update if there is nothing new to add.
-	if reflect.DeepEqual(d.Status, newStatus) {
-		// Requeue the deployment if required.
-		dc.requeueStuckDeployment(d, newStatus)
-		return nil
+	// Calculate extra status annotation
+	extraStatusAnno, err := dc.updateDeploymentExtraStatus(ctx, newRS, d)
+	if err != nil {
+		return nil // no need to retry
 	}
 
-	newDeployment := d
-	newDeployment.Status = newStatus
-	err := dc.runtimeClient.Status().Update(ctx, newDeployment)
+	// Update both status and annotation
+	err = dc.patchDeploymentStatusAndAnnotation(ctx, d, newStatus, extraStatusAnno)
 	if err != nil {
-		klog.Errorf("Failed to update deployment status in progress: %v", err)
+		return err
 	}
-	return err
+
+	// Requeue the deployment if required.
+	dc.requeueStuckDeployment(d, newStatus)
+	return nil
 }
 
 // getReplicaFailures will convert replica failure conditions from replica sets

@@ -19,6 +19,7 @@ package deployment
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -497,20 +498,80 @@ func (dc *DeploymentController) cleanupDeployment(ctx context.Context, oldRSs []
 }
 
 // syncDeploymentStatus checks if the status is up-to-date and sync it if necessary
+// It also updates the extra status annotation for advanced deployment
 func (dc *DeploymentController) syncDeploymentStatus(ctx context.Context, allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, d *apps.Deployment) error {
 	newStatus := calculateStatus(allRSs, newRS, d, &dc.strategy)
 
-	if reflect.DeepEqual(d.Status, newStatus) {
+	// Calculate extra status annotation
+	extraStatusAnno, err := dc.updateDeploymentExtraStatus(ctx, newRS, d)
+	if err != nil {
+		return nil // no need to retry
+	}
+
+	// Update both status and annotation
+	return dc.patchDeploymentStatusAndAnnotation(ctx, d, newStatus, extraStatusAnno)
+}
+
+// updateDeploymentExtraStatus updates the extra status annotation for advanced deployment
+func (dc *DeploymentController) updateDeploymentExtraStatus(ctx context.Context, newRS *apps.ReplicaSet, d *apps.Deployment) (string, error) {
+	// For consistency with original logic, we can optionally get the latest deployment
+	// if the passed deployment might be stale. However, in most cases, the passed data
+	// should be fresh enough since it comes from the current reconciliation cycle.
+
+	updatedReadyReplicas := int32(0)
+	if newRS != nil {
+		updatedReadyReplicas = newRS.Status.ReadyReplicas
+	}
+
+	extraStatus := &rolloutsv1alpha1.DeploymentExtraStatus{
+		UpdatedReadyReplicas:    updatedReadyReplicas,
+		ExpectedUpdatedReplicas: deploymentutil.NewRSReplicasLimit(dc.strategy.Partition, d),
+	}
+
+	extraStatusByte, err := json.Marshal(extraStatus)
+	if err != nil {
+		klog.Errorf("Failed to marshal extra status for Deployment %v, err: %v", klog.KObj(d), err)
+		return "", err
+	}
+
+	return string(extraStatusByte), nil
+}
+
+// patchDeploymentStatusAndAnnotation updates both status and annotation in one operation
+func (dc *DeploymentController) patchDeploymentStatusAndAnnotation(ctx context.Context, d *apps.Deployment, newStatus apps.DeploymentStatus, extraStatusAnno string) error {
+	statusNeedsUpdate := !reflect.DeepEqual(d.Status, newStatus)
+	annotationNeedsUpdate := d.Annotations[rolloutsv1alpha1.DeploymentExtraStatusAnnotation] != extraStatusAnno
+
+	// If neither status nor annotation needs update, return early
+	if !statusNeedsUpdate && !annotationNeedsUpdate {
 		return nil
 	}
 
-	newDeployment := d
-	newDeployment.Status = newStatus
-	err := dc.runtimeClient.Status().Update(ctx, newDeployment)
-	if err != nil {
-		klog.Errorf("Failed to sync deployment status: %v", err)
+	// Create a copy for updating both status and annotation
+	deploymentCopy := d.DeepCopy()
+
+	// Update status if needed
+	if statusNeedsUpdate {
+		deploymentCopy.Status = newStatus
 	}
-	return err
+
+	// Update annotation if needed
+	if annotationNeedsUpdate {
+		if deploymentCopy.Annotations == nil {
+			deploymentCopy.Annotations = make(map[string]string)
+		}
+		deploymentCopy.Annotations[rolloutsv1alpha1.DeploymentExtraStatusAnnotation] = extraStatusAnno
+	}
+
+	// Use Strategic Merge Patch to update both status and annotation in one operation
+	patch := client.MergeFrom(d)
+	err := dc.runtimeClient.Patch(ctx, deploymentCopy, patch)
+	if err != nil {
+		klog.Errorf("Failed to patch deployment status and annotation: %v", err)
+		return err
+	}
+
+	return nil
 }
 
 // calculateStatus calculates the latest status for the provided deployment by looking into the provided replica sets.

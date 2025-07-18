@@ -22,7 +22,6 @@ package deployment
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -35,7 +34,6 @@ import (
 	"k8s.io/klog/v2"
 
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -145,50 +143,4 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, deployment *
 	}
 
 	return dc.rolloutRolling(ctx, d, rsList)
-}
-
-// patchExtraStatus will update extra status for advancedStatus
-func (dc *DeploymentController) patchExtraStatus(deployment *apps.Deployment) error {
-	latestDeployment := &apps.Deployment{}
-	err := dc.runtimeClient.Get(context.TODO(), client.ObjectKeyFromObject(deployment), latestDeployment)
-	if err != nil {
-		klog.Errorf("Failed to get deployment: %v", err)
-		return err
-	}
-	rsList, err := dc.getReplicaSetsForDeployment(context.TODO(), latestDeployment)
-	if err != nil {
-		return err
-	}
-
-	updatedReadyReplicas := int32(0)
-	newRS := deploymentutil.FindNewReplicaSet(latestDeployment, rsList)
-	if newRS != nil {
-		updatedReadyReplicas = newRS.Status.ReadyReplicas
-	}
-
-	extraStatus := &rolloutsv1alpha1.DeploymentExtraStatus{
-		UpdatedReadyReplicas:    updatedReadyReplicas,
-		ExpectedUpdatedReplicas: deploymentutil.NewRSReplicasLimit(dc.strategy.Partition, latestDeployment),
-	}
-
-	extraStatusByte, err := json.Marshal(extraStatus)
-	if err != nil {
-		klog.Errorf("Failed to marshal extra status for Deployment %v, err: %v", klog.KObj(latestDeployment), err)
-		return nil // no need to retry
-	}
-
-	extraStatusAnno := string(extraStatusByte)
-	if latestDeployment.Annotations[rolloutsv1alpha1.DeploymentExtraStatusAnnotation] == extraStatusAnno {
-		return nil // no need to update
-	}
-	deploymentCopy := latestDeployment.DeepCopy()
-	deploymentCopy.Annotations[rolloutsv1alpha1.DeploymentExtraStatusAnnotation] = extraStatusAnno
-
-	patch := client.MergeFromWithOptions(latestDeployment, client.MergeFromWithOptimisticLock{})
-	err = dc.runtimeClient.Patch(context.TODO(), deploymentCopy, patch)
-	if err != nil {
-		klog.Errorf("Failed to patch deployment extra status: %v", err)
-		return err
-	}
-	return err
 }

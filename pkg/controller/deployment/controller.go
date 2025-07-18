@@ -186,10 +186,6 @@ func (r *ReconcileDeployment) Reconcile(_ context.Context, request reconcile.Req
 	if err != nil {
 		errList = append(errList, field.InternalError(field.NewPath("syncDeployment"), err))
 	}
-	err = dc.patchExtraStatus(deployment)
-	if err != nil {
-		errList = append(errList, field.InternalError(field.NewPath("patchExtraStatus"), err))
-	}
 	if len(errList) > 0 {
 		return ctrl.Result{}, errList.ToAggregate()
 	}
