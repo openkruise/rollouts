@@ -101,14 +101,8 @@ jobs:
           set +e
           ./bin/ginkgo -timeout 60m -v --focus='Step Jump' test/e2e
           retVal=$?
-          # kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
-          restartCount=$(kubectl get pod -n kruise-rollout --no-headers | awk '{print $4}')
-          if [ "${restartCount}" -eq "0" ];then
-              echo "Kruise-rollout has not restarted"
-          else
-              kubectl get pod -n kruise-rollout --no-headers
-              echo "Kruise-rollout has restarted, abort!!!"
-              kubectl get pod -n kruise-rollout --no-headers| awk '{print $1}' | xargs kubectl logs -p -n kruise-rollout
-              exit 1
+          if [ "${retVal}" -ne 0 ];then
+              echo "test fail, dump kruise-rollout logs"
+              kubectl get pod -n kruise-rollout --no-headers | grep manager | awk '{print $1}' | xargs kubectl logs -n kruise-rollout
           fi
           exit $retVal

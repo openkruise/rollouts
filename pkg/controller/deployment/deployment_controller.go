@@ -31,10 +31,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.

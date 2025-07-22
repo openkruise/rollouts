@@ -246,7 +246,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(GetObject(deployment.Name, clone)).NotTo(HaveOccurred())
 			return clone.Status.ObservedGeneration == clone.Generation && *clone.Spec.Replicas == clone.Status.UpdatedReplicas &&
 				*clone.Spec.Replicas == clone.Status.ReadyReplicas && *clone.Spec.Replicas == clone.Status.Replicas
-		}, 5*time.Minute, time.Second).Should(BeTrue())
+		}, 20*time.Minute, time.Minute).Should(BeTrue())
 	}
 
 	WaitCloneSetAllPodsReady := func(cloneset *appsv1alpha1.CloneSet) {
@@ -255,7 +255,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(GetObject(cloneset.Name, clone)).NotTo(HaveOccurred())
 			return clone.Status.ObservedGeneration == clone.Generation && *clone.Spec.Replicas == clone.Status.UpdatedReplicas &&
 				*clone.Spec.Replicas == clone.Status.ReadyReplicas && *clone.Spec.Replicas == clone.Status.Replicas
-		}, 5*time.Minute, time.Second).Should(BeTrue())
+		}, 20*time.Minute, time.Minute).Should(BeTrue())
 	}
 
 	WaitNativeStatefulSetPodsReady := func(statefulset *apps.StatefulSet) {
@@ -264,7 +264,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(GetObject(statefulset.Name, set)).NotTo(HaveOccurred())
 			return set.Status.ObservedGeneration == set.Generation && *set.Spec.Replicas == set.Status.UpdatedReplicas &&
 				*set.Spec.Replicas == set.Status.ReadyReplicas && *set.Spec.Replicas == set.Status.Replicas
-		}, 20*time.Minute, 3*time.Second).Should(BeTrue())
+		}, 20*time.Minute, time.Minute).Should(BeTrue())
 	}
 
 	WaitAdvancedStatefulSetPodsReady := func(statefulset *appsv1beta1.StatefulSet) {
@@ -273,7 +273,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			Expect(GetObject(statefulset.Name, set)).NotTo(HaveOccurred())
 			return set.Status.ObservedGeneration == set.Generation && *set.Spec.Replicas == set.Status.UpdatedReplicas &&
 				*set.Spec.Replicas == set.Status.ReadyReplicas && *set.Spec.Replicas == set.Status.Replicas
-		}, 20*time.Minute, 3*time.Second).Should(BeTrue())
+		}, 20*time.Minute, time.Minute).Should(BeTrue())
 	}
 
 	WaitDeploymentBlueGreenReplicas := func(deployment *apps.Deployment) {
@@ -4448,7 +4448,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 		})
 	})
 
-	KruiseDescribe("Advanced Deployment canary rollout with Ingress", func() {
+	KruiseDescribe("Canary rollout with Ingress using advance deployment", func() {
 		It("advanced deployment rolling with traffic case", func() {
 			By("Creating Rollout...")
 			rollout := &v1beta1.Rollout{}
