@@ -22,7 +22,9 @@ import (
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -152,24 +154,28 @@ func (rc *realCanaryController) EnsureBatchPodsReadyAndLabeled() error {
 func (rc *realCanaryController) Finalize() error {
 	stable, err := rc.BuildStableController()
 	if client.IgnoreNotFound(err) != nil {
-		klog.Errorf("BatchRelease %v build stable controller err: %v", klog.KObj(rc.release), err)
+		klog.Errorf("…")
 		return err
 	}
 
-	err = stable.Finalize(rc.release)
-	if err != nil {
-		klog.Errorf("BatchRelease %v finalize stable err: %v", klog.KObj(rc.release), err)
-		return err
+	// If Rollout is deleted & gate is on, skip stable.Finalize()
+	if rc.release.DeletionTimestamp != nil &&
+		utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepDeploymentPausedOnDeletionGate) {
+		klog.Infof("… skipping stable.Finalize()")
+	} else {
+		if err = stable.Finalize(rc.release); err != nil {
+			klog.Errorf("… finalize stable err: %v", err)
+			return err
+		}
 	}
 
 	canary, err := rc.BuildCanaryController(rc.release)
 	if client.IgnoreNotFound(err) != nil {
-		klog.Errorf("BatchRelease %v build canary controller err: %v", klog.KObj(rc.release), err)
+		klog.Errorf("… build canary err: %v", err)
 		return err
 	}
-	err = canary.Delete(rc.release)
-	if err != nil {
-		klog.Errorf("BatchRelease %v delete canary workload err: %v", klog.KObj(rc.release), err)
+	if err = canary.Delete(rc.release); err != nil {
+		klog.Errorf("… delete canary err: %v", err)
 	}
 	return err
 }
