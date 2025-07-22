@@ -93,7 +93,8 @@ spec:
                       properties:
                         classType:
                           description: ClassType refers to the type of `Ingress`.
-                            current support nginx, aliyun-alb. default is nginx.
+                            current support nginx, aliyun-alb, aws-alb. default is
+                            nginx.
                           type: string
                         name:
                           description: Name refers to the name of an `Ingress` resource
