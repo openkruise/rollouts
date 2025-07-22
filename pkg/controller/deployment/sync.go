@@ -19,6 +19,7 @@ package deployment
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -30,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/integer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
@@ -117,8 +119,19 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 		annotationsUpdated := deploymentutil.SetNewReplicaSetAnnotations(d, rsCopy, &dc.strategy, newRevision, true, maxRevHistoryLengthInChars)
 		minReadySecondsNeedsUpdate := rsCopy.Spec.MinReadySeconds != d.Spec.MinReadySeconds
 		if annotationsUpdated || minReadySecondsNeedsUpdate {
-			rsCopy.Spec.MinReadySeconds = d.Spec.MinReadySeconds
-			return dc.client.AppsV1().ReplicaSets(rsCopy.ObjectMeta.Namespace).Update(ctx, rsCopy, metav1.UpdateOptions{})
+			// Update the copy with the new minReadySeconds
+			if minReadySecondsNeedsUpdate {
+				rsCopy.Spec.MinReadySeconds = d.Spec.MinReadySeconds
+			}
+
+			// Use MergeFrom with optimistic lock for patching, if ResourceVersion conflicts, API Server will return 409 error
+			// Controller-runtime will automatically reschedule for reconciliation
+			patch := client.MergeFromWithOptions(existingNewRS, client.MergeFromWithOptimisticLock{})
+			err := dc.runtimeClient.Patch(ctx, rsCopy, patch)
+			if err != nil {
+				return nil, err
+			}
+			return rsCopy, nil
 		}
 
 		// Should use the revision in existingNewRS's annotation, since it set by before
@@ -136,7 +149,7 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 
 		if needsUpdate {
 			var err error
-			if _, err = dc.client.AppsV1().Deployments(d.Namespace).UpdateStatus(ctx, d, metav1.UpdateOptions{}); err != nil {
+			if err = dc.runtimeClient.Status().Update(ctx, d); err != nil {
 				return nil, err
 			}
 		}
@@ -188,14 +201,19 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 	// hash collisions. If there is any other error, we need to report it in the status of
 	// the Deployment.
 	alreadyExists := false
-	createdRS, err := dc.client.AppsV1().ReplicaSets(d.Namespace).Create(ctx, &newRS, metav1.CreateOptions{})
+	var createdRS *apps.ReplicaSet
+	err = dc.runtimeClient.Create(ctx, &newRS)
+	if err == nil {
+		createdRS = &newRS
+	}
 	switch {
 	// We may end up hitting this due to a slow cache or a fast resync of the Deployment.
 	case errors.IsAlreadyExists(err):
 		alreadyExists = true
 
 		// Fetch a copy of the ReplicaSet.
-		rs, rsErr := dc.rsLister.ReplicaSets(newRS.Namespace).Get(newRS.Name)
+		rs := &apps.ReplicaSet{}
+		rsErr := dc.runtimeClient.Get(ctx, client.ObjectKey{Namespace: newRS.Namespace, Name: newRS.Name}, rs)
 		if rsErr != nil {
 			return nil, rsErr
 		}
@@ -220,9 +238,11 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 		*d.Status.CollisionCount++
 		// Update the collisionCount for the Deployment and let it requeue by returning the original
 		// error.
-		_, dErr := dc.client.AppsV1().Deployments(d.Namespace).UpdateStatus(ctx, d, metav1.UpdateOptions{})
+		dErr := dc.runtimeClient.Status().Update(ctx, d)
 		if dErr == nil {
 			klog.V(2).Infof("Found a hash collision for deployment %q - bumping collisionCount (%d->%d) to resolve it", d.Name, preCollisionCount, *d.Status.CollisionCount)
+		} else {
+			klog.Errorf("Failed to update deployment collision count: %v", dErr)
 		}
 		return nil, err
 	case errors.HasStatusCause(err, v1.NamespaceTerminatingCause):
@@ -236,7 +256,9 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 			// We don't really care about this error at this point, since we have a bigger issue to report.
 			// TODO: Identify which errors are permanent and switch DeploymentIsFailed to take into account
 			// these reasons as well. Related issue: https://github.com/kubernetes/kubernetes/issues/18568
-			_, _ = dc.client.AppsV1().Deployments(d.Namespace).UpdateStatus(ctx, d, metav1.UpdateOptions{})
+			if updateErr := dc.runtimeClient.Status().Update(ctx, d); updateErr != nil {
+				klog.Errorf("Failed to update deployment status after RS creation failure: %v", updateErr)
+			}
 		}
 		dc.eventRecorder.Eventf(d, v1.EventTypeWarning, deploymentutil.FailedRSCreateReason, msg)
 		return nil, err
@@ -253,7 +275,10 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 		needsUpdate = true
 	}
 	if needsUpdate {
-		_, err = dc.client.AppsV1().Deployments(d.Namespace).UpdateStatus(ctx, d, metav1.UpdateOptions{})
+		if updateErr := dc.runtimeClient.Status().Update(ctx, d); updateErr != nil {
+			klog.Errorf("Failed to update deployment status: %v", updateErr)
+			err = updateErr
+		}
 	}
 	return createdRS, err
 }
@@ -410,11 +435,22 @@ func (dc *DeploymentController) scaleReplicaSet(ctx context.Context, rs *apps.Re
 	var err error
 	if sizeNeedsUpdate || annotationsNeedUpdate {
 		oldScale := *(rs.Spec.Replicas)
+
+		// Use existing state directly for patching, let API Server handle conflicts
 		rsCopy := rs.DeepCopy()
 		*(rsCopy.Spec.Replicas) = newScale
 		deploymentutil.SetReplicasAnnotations(rsCopy, *(deployment.Spec.Replicas), *(deployment.Spec.Replicas)+deploymentutil.MaxSurge(deployment, &dc.strategy))
-		rs, err = dc.client.AppsV1().ReplicaSets(rsCopy.Namespace).Update(ctx, rsCopy, metav1.UpdateOptions{})
-		if err == nil && sizeNeedsUpdate {
+
+		// Use MergeFrom with optimistic lock for patching, if ResourceVersion conflicts, API Server will return 409 error
+		// Controller-runtime will automatically reschedule for reconciliation
+		patch := client.MergeFromWithOptions(rs, client.MergeFromWithOptimisticLock{})
+		err = dc.runtimeClient.Patch(ctx, rsCopy, patch)
+		if err != nil {
+			return scaled, rs, err
+		}
+
+		rs = rsCopy
+		if sizeNeedsUpdate {
 			scaled = true
 			dc.eventRecorder.Eventf(deployment, v1.EventTypeNormal, "ScalingReplicaSet", "Scaled %s replica set %s to %d from %d", scalingOperation, rs.Name, newScale, oldScale)
 		}
@@ -451,7 +487,7 @@ func (dc *DeploymentController) cleanupDeployment(ctx context.Context, oldRSs []
 			continue
 		}
 		klog.V(4).Infof("Trying to cleanup replica set %q for deployment %q", rs.Name, deployment.Name)
-		if err := dc.client.AppsV1().ReplicaSets(rs.Namespace).Delete(ctx, rs.Name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+		if err := dc.runtimeClient.Delete(ctx, rs); err != nil && !errors.IsNotFound(err) {
 			// Return error instead of aggregating and continuing DELETEs on the theory
 			// that we may be overloading the api server.
 			return err
@@ -462,17 +498,80 @@ func (dc *DeploymentController) cleanupDeployment(ctx context.Context, oldRSs []
 }
 
 // syncDeploymentStatus checks if the status is up-to-date and sync it if necessary
+// It also updates the extra status annotation for advanced deployment
 func (dc *DeploymentController) syncDeploymentStatus(ctx context.Context, allRSs []*apps.ReplicaSet, newRS *apps.ReplicaSet, d *apps.Deployment) error {
 	newStatus := calculateStatus(allRSs, newRS, d, &dc.strategy)
 
-	if reflect.DeepEqual(d.Status, newStatus) {
+	// Calculate extra status annotation
+	extraStatusAnno, err := dc.updateDeploymentExtraStatus(ctx, newRS, d)
+	if err != nil {
+		return nil // no need to retry
+	}
+
+	// Update both status and annotation
+	return dc.patchDeploymentStatusAndAnnotation(ctx, d, newStatus, extraStatusAnno)
+}
+
+// updateDeploymentExtraStatus updates the extra status annotation for advanced deployment
+func (dc *DeploymentController) updateDeploymentExtraStatus(ctx context.Context, newRS *apps.ReplicaSet, d *apps.Deployment) (string, error) {
+	// For consistency with original logic, we can optionally get the latest deployment
+	// if the passed deployment might be stale. However, in most cases, the passed data
+	// should be fresh enough since it comes from the current reconciliation cycle.
+
+	updatedReadyReplicas := int32(0)
+	if newRS != nil {
+		updatedReadyReplicas = newRS.Status.ReadyReplicas
+	}
+
+	extraStatus := &rolloutsv1alpha1.DeploymentExtraStatus{
+		UpdatedReadyReplicas:    updatedReadyReplicas,
+		ExpectedUpdatedReplicas: deploymentutil.NewRSReplicasLimit(dc.strategy.Partition, d),
+	}
+
+	extraStatusByte, err := json.Marshal(extraStatus)
+	if err != nil {
+		klog.Errorf("Failed to marshal extra status for Deployment %v, err: %v", klog.KObj(d), err)
+		return "", err
+	}
+
+	return string(extraStatusByte), nil
+}
+
+// patchDeploymentStatusAndAnnotation updates both status and annotation in one operation
+func (dc *DeploymentController) patchDeploymentStatusAndAnnotation(ctx context.Context, d *apps.Deployment, newStatus apps.DeploymentStatus, extraStatusAnno string) error {
+	statusNeedsUpdate := !reflect.DeepEqual(d.Status, newStatus)
+	annotationNeedsUpdate := d.Annotations[rolloutsv1alpha1.DeploymentExtraStatusAnnotation] != extraStatusAnno
+
+	// If neither status nor annotation needs update, return early
+	if !statusNeedsUpdate && !annotationNeedsUpdate {
 		return nil
 	}
 
-	newDeployment := d
-	newDeployment.Status = newStatus
-	_, err := dc.client.AppsV1().Deployments(newDeployment.Namespace).UpdateStatus(ctx, newDeployment, metav1.UpdateOptions{})
-	return err
+	// Create a copy for updating both status and annotation
+	deploymentCopy := d.DeepCopy()
+
+	// Update status if needed
+	if statusNeedsUpdate {
+		deploymentCopy.Status = newStatus
+	}
+
+	// Update annotation if needed
+	if annotationNeedsUpdate {
+		if deploymentCopy.Annotations == nil {
+			deploymentCopy.Annotations = make(map[string]string)
+		}
+		deploymentCopy.Annotations[rolloutsv1alpha1.DeploymentExtraStatusAnnotation] = extraStatusAnno
+	}
+
+	// Use Strategic Merge Patch to update both status and annotation in one operation
+	patch := client.MergeFrom(d)
+	err := dc.runtimeClient.Patch(ctx, deploymentCopy, patch)
+	if err != nil {
+		klog.Errorf("Failed to patch deployment status and annotation: %v", err)
+		return err
+	}
+
+	return nil
 }
 
 // calculateStatus calculates the latest status for the provided deployment by looking into the provided replica sets.

@@ -33,6 +33,8 @@ import (
 	"k8s.io/utils/pointer"
 
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func newDControllerRef(d *apps.Deployment) *metav1.OwnerReference {
@@ -255,16 +257,6 @@ func TestReconcileNewReplicaSet(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			fakeClient := fake.NewSimpleClientset()
 			fakeRecord := record.NewFakeRecorder(10)
-			dc := &DeploymentController{
-				client:        fakeClient,
-				eventRecorder: fakeRecord,
-				strategy: rolloutsv1alpha1.DeploymentStrategy{
-					RollingUpdate: &apps.RollingUpdateDeployment{
-						MaxSurge: &test.maxSurge,
-					},
-					Partition: test.partition,
-				},
-			}
 
 			var deployment apps.Deployment
 			var newRS apps.ReplicaSet
@@ -299,16 +291,41 @@ func TestReconcileNewReplicaSet(t *testing.T) {
 					t.Fatalf("got unexpected error: %v", err)
 				}
 			}
+
+			// Create controller-runtime client with all objects
+			var allObjects []ctrlclient.Object
+			allObjects = append(allObjects, &deployment)
+			for _, rs := range allRSs {
+				allObjects = append(allObjects, rs)
+			}
+
+			fakeCtrlClient := ctrlfake.NewClientBuilder().
+				WithObjects(allObjects...).
+				Build()
+
+			dc := &DeploymentController{
+				eventRecorder: fakeRecord,
+				runtimeClient: fakeCtrlClient,
+				strategy: rolloutsv1alpha1.DeploymentStrategy{
+					RollingUpdate: &apps.RollingUpdateDeployment{
+						MaxSurge: &test.maxSurge,
+					},
+					Partition: test.partition,
+				},
+			}
+
 			_, err := dc.reconcileNewReplicaSet(context.TODO(), allRSs, &newRS, &deployment)
 			if err != nil {
 				t.Fatalf("got unexpected error: %v", err)
 			}
-			result, err := dc.client.AppsV1().ReplicaSets(deployment.Namespace).Get(context.TODO(), newRS.Name, metav1.GetOptions{})
-			if err != nil {
+
+			// Check result from runtimeClient instead of fakeClient
+			var resultRS apps.ReplicaSet
+			if err := fakeCtrlClient.Get(context.TODO(), ctrlclient.ObjectKey{Namespace: newRS.Namespace, Name: newRS.Name}, &resultRS); err != nil {
 				t.Fatalf("got unexpected error: %v", err)
 			}
-			if *result.Spec.Replicas != test.expect {
-				t.Fatalf("expect %d, but got %d", test.expect, *result.Spec.Replicas)
+			if *resultRS.Spec.Replicas != test.expect {
+				t.Fatalf("expect %d, but got %d", test.expect, *resultRS.Spec.Replicas)
 			}
 		})
 	}
@@ -379,19 +396,7 @@ func TestReconcileOldReplicaSet(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			fakeClient := fake.NewSimpleClientset()
 			fakeRecord := record.NewFakeRecorder(10)
-			dc := &DeploymentController{
-				client:        fakeClient,
-				eventRecorder: fakeRecord,
-				strategy: rolloutsv1alpha1.DeploymentStrategy{
-					RollingUpdate: &apps.RollingUpdateDeployment{
-						MaxSurge:       &test.maxSurge,
-						MaxUnavailable: &test.maxUnavailable,
-					},
-					Partition: test.partition,
-				},
-			}
 
 			var deployment apps.Deployment
 			var newRS apps.ReplicaSet
@@ -408,10 +413,6 @@ func TestReconcileOldReplicaSet(t *testing.T) {
 				deployment.Status.UpdatedReplicas = test.newRSReplicas
 				deployment.Status.Replicas = availableReplicas
 				deployment.Status.AvailableReplicas = availableReplicas
-				_, err := fakeClient.AppsV1().Deployments(deployment.Namespace).Create(context.TODO(), &deployment, metav1.CreateOptions{})
-				if err != nil {
-					t.Fatalf("got unexpected error: %v", err)
-				}
 			}
 			{
 				for index, replicas := range test.oldRSsReplicas {
@@ -424,10 +425,6 @@ func TestReconcileOldReplicaSet(t *testing.T) {
 					rs.Status.AvailableReplicas = test.oldRSsAvailable[index]
 					allRSs = append(allRSs, &rs)
 					oldRSs = append(oldRSs, &rs)
-					_, err := fakeClient.AppsV1().ReplicaSets(rs.Namespace).Create(context.TODO(), &rs, metav1.CreateOptions{})
-					if err != nil {
-						t.Fatalf("got unexpected error: %v", err)
-					}
 				}
 			}
 			{
@@ -438,21 +435,43 @@ func TestReconcileOldReplicaSet(t *testing.T) {
 				newRS.Status.ReadyReplicas = test.newRSAvailable
 				newRS.Status.AvailableReplicas = test.newRSAvailable
 				allRSs = append(allRSs, &newRS)
-				_, err := fakeClient.AppsV1().ReplicaSets(newRS.Namespace).Create(context.TODO(), &newRS, metav1.CreateOptions{})
-				if err != nil {
-					t.Fatalf("got unexpected error: %v", err)
-				}
 			}
+
+			// Create controller-runtime client with all objects
+			var allObjects []ctrlclient.Object
+			allObjects = append(allObjects, &deployment)
+			for _, rs := range allRSs {
+				allObjects = append(allObjects, rs)
+			}
+
+			fakeCtrlClient := ctrlfake.NewClientBuilder().
+				WithObjects(allObjects...).
+				Build()
+
+			dc := &DeploymentController{
+				eventRecorder: fakeRecord,
+				runtimeClient: fakeCtrlClient,
+				strategy: rolloutsv1alpha1.DeploymentStrategy{
+					RollingUpdate: &apps.RollingUpdateDeployment{
+						MaxSurge:       &test.maxSurge,
+						MaxUnavailable: &test.maxUnavailable,
+					},
+					Partition: test.partition,
+				},
+			}
+
 			_, err := dc.reconcileOldReplicaSets(context.TODO(), allRSs, oldRSs, &newRS, &deployment)
 			if err != nil {
 				t.Fatalf("got unexpected error: %v", err)
 			}
-			rss, err := dc.client.AppsV1().ReplicaSets(deployment.Namespace).List(context.TODO(), metav1.ListOptions{})
-			if err != nil {
+
+			// Check result from runtimeClient instead of fakeClient
+			var rsList apps.ReplicaSetList
+			if err := fakeCtrlClient.List(context.TODO(), &rsList); err != nil {
 				t.Fatalf("got unexpected error: %v", err)
 			}
 			result := int32(0)
-			for _, rs := range rss.Items {
+			for _, rs := range rsList.Items {
 				if rs.GetName() != "rs-new" {
 					result += *rs.Spec.Replicas
 				}

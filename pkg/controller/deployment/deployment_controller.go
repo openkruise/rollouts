@@ -22,23 +22,19 @@ package deployment
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	clientset "k8s.io/client-go/kubernetes"
-	appslisters "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
-	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -56,18 +52,13 @@ var controllerKind = apps.SchemeGroupVersion.WithKind("Deployment")
 // DeploymentController is responsible for synchronizing Deployment objects stored
 // in the system with actual running replica sets and pods.
 type DeploymentController struct {
-	client clientset.Interface
-
 	eventBroadcaster record.EventBroadcaster
 	eventRecorder    record.EventRecorder
 
-	// dLister can list/get deployments from the shared informer's store
-	dLister appslisters.DeploymentLister
-	// rsLister can list/get replica sets from the shared informer's store
-	rsLister appslisters.ReplicaSetLister
-
 	// we will use this strategy to replace spec.strategy of deployment
 	strategy rolloutsv1alpha1.DeploymentStrategy
+
+	runtimeClient client.Client
 }
 
 // getReplicaSetsForDeployment uses ControllerRefManager to reconcile
@@ -78,15 +69,18 @@ func (dc *DeploymentController) getReplicaSetsForDeployment(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("deployment %s/%s has invalid label selector: %v", d.Namespace, d.Name, err)
 	}
-	// List all ReplicaSets to find those we own but that no longer match our
-	// selector. They will be orphaned by ClaimReplicaSets().
-	allRSs, err := dc.rsLister.ReplicaSets(d.Namespace).List(deploymentSelector)
+
+	// List all ReplicaSets using runtimeClient
+	rsList := &apps.ReplicaSetList{}
+	err = dc.runtimeClient.List(ctx, rsList, client.InNamespace(d.Namespace), client.MatchingLabelsSelector{Selector: deploymentSelector}, utilclient.DisableDeepCopy)
 	if err != nil {
 		return nil, fmt.Errorf("list %s/%s rs failed:%v", d.Namespace, d.Name, err)
 	}
+
 	// select rs owner by current deployment
 	ownedRSs := make([]*apps.ReplicaSet, 0)
-	for _, rs := range allRSs {
+	for i := range rsList.Items {
+		rs := &rsList.Items[i]
 		if !rs.DeletionTimestamp.IsZero() {
 			continue
 		}
@@ -116,7 +110,10 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, deployment *
 		dc.eventRecorder.Eventf(d, v1.EventTypeWarning, "SelectingAll", "This deployment is selecting all pods. A non-empty selector is required.")
 		if d.Status.ObservedGeneration < d.Generation {
 			d.Status.ObservedGeneration = d.Generation
-			dc.client.AppsV1().Deployments(d.Namespace).UpdateStatus(ctx, d, metav1.UpdateOptions{})
+			err := dc.runtimeClient.Status().Update(ctx, d)
+			if err != nil {
+				klog.Errorf("Failed to update deployment status: %v", err)
+			}
 		}
 		return nil
 	}
@@ -146,42 +143,4 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, deployment *
 	}
 
 	return dc.rolloutRolling(ctx, d, rsList)
-}
-
-// patchExtraStatus will update extra status for advancedStatus
-func (dc *DeploymentController) patchExtraStatus(deployment *apps.Deployment) error {
-	rsList, err := dc.getReplicaSetsForDeployment(context.TODO(), deployment)
-	if err != nil {
-		return err
-	}
-
-	updatedReadyReplicas := int32(0)
-	newRS := deploymentutil.FindNewReplicaSet(deployment, rsList)
-	if newRS != nil {
-		updatedReadyReplicas = newRS.Status.ReadyReplicas
-	}
-
-	extraStatus := &rolloutsv1alpha1.DeploymentExtraStatus{
-		UpdatedReadyReplicas:    updatedReadyReplicas,
-		ExpectedUpdatedReplicas: deploymentutil.NewRSReplicasLimit(dc.strategy.Partition, deployment),
-	}
-
-	extraStatusByte, err := json.Marshal(extraStatus)
-	if err != nil {
-		klog.Errorf("Failed to marshal extra status for Deployment %v, err: %v", klog.KObj(deployment), err)
-		return nil // no need to retry
-	}
-
-	extraStatusAnno := string(extraStatusByte)
-	if deployment.Annotations[rolloutsv1alpha1.DeploymentExtraStatusAnnotation] == extraStatusAnno {
-		return nil // no need to update
-	}
-
-	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`,
-		rolloutsv1alpha1.DeploymentExtraStatusAnnotation,
-		strings.Replace(extraStatusAnno, `"`, `\"`, -1))
-
-	_, err = dc.client.AppsV1().Deployments(deployment.Namespace).
-		Patch(context.TODO(), deployment.Name, types.MergePatchType, []byte(body), metav1.PatchOptions{})
-	return err
 }

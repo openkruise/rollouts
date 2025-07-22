@@ -20,12 +20,10 @@ package deployment
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/openkruise/rollouts/pkg/controller/deployment/util"
@@ -106,17 +104,21 @@ func (dc *DeploymentController) syncRolloutStatus(ctx context.Context, allRSs []
 		util.RemoveDeploymentCondition(&newStatus, apps.DeploymentReplicaFailure)
 	}
 
-	// Do not update if there is nothing new to add.
-	if reflect.DeepEqual(d.Status, newStatus) {
-		// Requeue the deployment if required.
-		dc.requeueStuckDeployment(d, newStatus)
-		return nil
+	// Calculate extra status annotation
+	extraStatusAnno, err := dc.updateDeploymentExtraStatus(ctx, newRS, d)
+	if err != nil {
+		return nil // no need to retry
 	}
 
-	newDeployment := d
-	newDeployment.Status = newStatus
-	_, err := dc.client.AppsV1().Deployments(newDeployment.Namespace).UpdateStatus(ctx, newDeployment, metav1.UpdateOptions{})
-	return err
+	// Update both status and annotation
+	err = dc.patchDeploymentStatusAndAnnotation(ctx, d, newStatus, extraStatusAnno)
+	if err != nil {
+		return err
+	}
+
+	// Requeue the deployment if required.
+	dc.requeueStuckDeployment(d, newStatus)
+	return nil
 }
 
 // getReplicaFailures will convert replica failure conditions from replica sets

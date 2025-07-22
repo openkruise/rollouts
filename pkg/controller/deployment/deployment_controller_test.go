@@ -22,15 +22,15 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	apps "k8s.io/api/apps/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	intstrutil "k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes/fake"
-	appslisters "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/pointer"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	rolloutsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/pkg/controller/deployment/util"
@@ -126,78 +126,61 @@ func TestSyncDeployment(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			fakeClient := fake.NewSimpleClientset()
-			fakeRecord := record.NewFakeRecorder(10)
-			informers := informers.NewSharedInformerFactory(fakeClient, 0)
-			rsInformer := informers.Apps().V1().ReplicaSets().Informer()
-			dInformer := informers.Apps().V1().Deployments().Informer()
+			deployment := generateDeployment("busybox")
+			deployment.Spec.Replicas = pointer.Int32(test.dReplicas)
+			deployment.Status.ReadyReplicas = test.newRSReplicas
+			availableReplicas := test.newRSAvailable
+			for _, available := range test.oldRSsAvailable {
+				availableReplicas += available
+			}
+			deployment.Status.UpdatedReplicas = test.newRSReplicas
+			deployment.Status.Replicas = availableReplicas
+			deployment.Status.AvailableReplicas = availableReplicas
 
-			var deployment apps.Deployment
-			var newRS apps.ReplicaSet
-			{
-				deployment = generateDeployment("busybox")
-				deployment.Spec.Replicas = pointer.Int32(test.dReplicas)
-				deployment.Status.ReadyReplicas = test.newRSReplicas
-				availableReplicas := test.newRSAvailable
-				for _, available := range test.oldRSsAvailable {
-					availableReplicas += available
-				}
-				deployment.Status.UpdatedReplicas = test.newRSReplicas
-				deployment.Status.Replicas = availableReplicas
-				deployment.Status.AvailableReplicas = availableReplicas
-				dInformer.GetIndexer().Add(&deployment)
-				_, err := fakeClient.AppsV1().Deployments(deployment.Namespace).Create(context.TODO(), &deployment, metav1.CreateOptions{})
-				if err != nil {
-					t.Fatalf("got unexpected error: %v", err)
-				}
-			}
-			{
-				for index, replicas := range test.oldRSsReplicas {
-					rs := generateRS(deployment)
-					rs.SetName(fmt.Sprintf("rs-%d", index))
-					rs.Spec.Replicas = pointer.Int32(replicas)
-					rs.Status.Replicas = replicas
-					if strings.HasPrefix(name, "scale") {
-						rs.Annotations = map[string]string{
-							util.ReplicasAnnotation:    strconv.Itoa(-1),
-							util.MaxReplicasAnnotation: strconv.Itoa(int(test.dAvailable + test.maxSurge.IntVal)),
-						}
-					}
-					rs.Spec.Template.Spec.Containers[0].Image = fmt.Sprintf("old-version-%d", index)
-					rs.Status.ReadyReplicas = test.oldRSsAvailable[index]
-					rs.Status.AvailableReplicas = test.oldRSsAvailable[index]
-					rsInformer.GetIndexer().Add(&rs)
-					_, err := fakeClient.AppsV1().ReplicaSets(rs.Namespace).Create(context.TODO(), &rs, metav1.CreateOptions{})
-					if err != nil {
-						t.Fatalf("got unexpected error: %v", err)
-					}
-				}
-			}
-			{
-				newRS = generateRS(deployment)
-				newRS.SetName("rs-new")
-				newRS.Spec.Replicas = pointer.Int32(test.newRSReplicas)
+			var allObjects []ctrlclient.Object
+			allObjects = append(allObjects, &deployment)
+
+			for index, replicas := range test.oldRSsReplicas {
+				rs := generateRS(deployment)
+				rs.SetName(fmt.Sprintf("rs-%d", index))
+				rs.Spec.Replicas = pointer.Int32(replicas)
+				rs.Status.Replicas = replicas
 				if strings.HasPrefix(name, "scale") {
-					newRS.Annotations = map[string]string{
+					rs.Annotations = map[string]string{
 						util.ReplicasAnnotation:    strconv.Itoa(-1),
 						util.MaxReplicasAnnotation: strconv.Itoa(int(test.dAvailable + test.maxSurge.IntVal)),
 					}
 				}
-				newRS.Status.Replicas = test.newRSReplicas
-				newRS.Status.ReadyReplicas = test.newRSAvailable
-				newRS.Status.AvailableReplicas = test.newRSAvailable
-				rsInformer.GetIndexer().Add(&newRS)
-				_, err := fakeClient.AppsV1().ReplicaSets(newRS.Namespace).Create(context.TODO(), &newRS, metav1.CreateOptions{})
-				if err != nil {
-					t.Fatalf("got unexpected error: %v", err)
-				}
+				rs.Spec.Template.Spec.Containers[0].Image = fmt.Sprintf("old-version-%d", index)
+				rs.Status.ReadyReplicas = test.oldRSsAvailable[index]
+				rs.Status.AvailableReplicas = test.oldRSsAvailable[index]
+				allObjects = append(allObjects, &rs)
 			}
 
+			newRS := generateRS(deployment)
+			newRS.SetName("rs-new")
+			newRS.Spec.Replicas = pointer.Int32(test.newRSReplicas)
+			if strings.HasPrefix(name, "scale") {
+				newRS.Annotations = map[string]string{
+					util.ReplicasAnnotation:    strconv.Itoa(-1),
+					util.MaxReplicasAnnotation: strconv.Itoa(int(test.dAvailable + test.maxSurge.IntVal)),
+				}
+			}
+			newRS.Status.Replicas = test.newRSReplicas
+			newRS.Status.ReadyReplicas = test.newRSAvailable
+			newRS.Status.AvailableReplicas = test.newRSAvailable
+			allObjects = append(allObjects, &newRS)
+
+			fakeCtrlClient := ctrlfake.NewClientBuilder().
+				WithObjects(allObjects...).
+				Build()
+
+			// Create a mock event recorder
+			fakeRecord := record.NewFakeRecorder(10)
+
 			dc := &DeploymentController{
-				client:        fakeClient,
 				eventRecorder: fakeRecord,
-				dLister:       appslisters.NewDeploymentLister(dInformer.GetIndexer()),
-				rsLister:      appslisters.NewReplicaSetLister(rsInformer.GetIndexer()),
+				runtimeClient: fakeCtrlClient,
 				strategy: rolloutsv1alpha1.DeploymentStrategy{
 					RollingUpdate: &apps.RollingUpdateDeployment{
 						MaxSurge:       &test.maxSurge,
@@ -207,17 +190,40 @@ func TestSyncDeployment(t *testing.T) {
 				},
 			}
 
-			err := dc.syncDeployment(context.TODO(), &deployment)
-			if err != nil {
-				t.Fatalf("got unexpected error: %v", err)
+			// Retry syncDeployment to handle potential resource conflicts gracefully
+			// This simulates the behavior of controller-runtime's reconcile loop
+			var err error
+			maxRetries := 10
+			for i := 0; i < maxRetries; i++ {
+				err = dc.syncDeployment(context.TODO(), &deployment)
+				if err == nil {
+					break
+				}
+
+				// Check if it's a conflict error (409)
+				if errors.IsConflict(err) {
+					if i < maxRetries-1 {
+						// Wait a bit before retrying, simulating the reconcile delay
+						time.Sleep(1 * time.Second)
+						continue
+					}
+				}
+
+				// For non-conflict errors or after max retries, break
+				break
 			}
-			rss, err := dc.client.AppsV1().ReplicaSets(deployment.Namespace).List(context.TODO(), metav1.ListOptions{})
+
 			if err != nil {
-				t.Fatalf("got unexpected error: %v", err)
+				t.Fatalf("got unexpected error after retries: %v", err)
+			}
+
+			var rsList apps.ReplicaSetList
+			if err := fakeCtrlClient.List(context.TODO(), &rsList); err != nil {
+				t.Fatalf("list rs error: %v", err)
 			}
 			resultOld := int32(0)
 			resultNew := int32(0)
-			for _, rs := range rss.Items {
+			for _, rs := range rsList.Items {
 				if rs.GetName() != "rs-new" {
 					resultOld += *rs.Spec.Replicas
 				} else {

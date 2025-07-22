@@ -41,5 +41,4 @@ func TestCommonPatch(t *testing.T) {
 	if !reflect.DeepEqual(patchReq.String(), expectedPatchBody) {
 		t.Fatalf("Not equal: \n%s \n%s", expectedPatchBody, patchReq.String())
 	}
-
 }
