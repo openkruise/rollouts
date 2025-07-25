@@ -2,7 +2,8 @@
 
 ## v0.6.1
 ### Key Features:
-- Introduced `rollout-batch-id` labeling for blue-green and canary style releases ([#250](https://github.com/openkruise/rollouts/pull/250),([#251](https://github.com/openkruise/rollouts/pull/251),[#261](https://github.com/openkruise/rollouts/pull/261),[@PersistentJZH](https://github.com/PersistentJZH),[@AiRanthem](https://github.com/AiRanthem)) 
+- Introduced `rollout-batch-id` labeling for blue-green and canary style releases ([#250](https://github.com/openkruise/rollouts/pull/250),([#251](https://github.com/openkruise/rollouts/pull/251),[#261](https://github.com/openkruise/rollouts/pull/261),[@PersistentJZH](https://github.com/PersistentJZH),[@AiRanthem](https://github.com/AiRanthem))
+- Support for StatefulSet-like rollout behavior on custom resources via `rollouts.kruise.io/workload-type` label
 
 ### Bugfix:
 - The order of object in BatchRelease event handler is fixed ([#265](https://github.com/openkruise/rollouts/pull/265),[@z760087139](https://github.com/z760087139))

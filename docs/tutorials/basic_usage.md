@@ -89,7 +89,7 @@ metadata:
   # namespace: xxxx
 spec:
   objectRef:
-    # rollout of published workloads, currently only supports Deployment, CloneSet
+    # rollout of published workloads, supports Deployment, CloneSet, StatefulSet, and custom resources
     workloadRef:
       apiVersion: apps/v1
       kind: Deployment

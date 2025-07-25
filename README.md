@@ -8,8 +8,9 @@ Kruise Rollouts is a **Bypass** component that offers **Advanced Progressive Del
 
 ## Why Kruise Rollouts?
 - **Functionality**：
-  - Supports canary and multi-batch delivery for various workloads, such as Deployment, CloneSet, and StatefulSet.
+  - Supports canary and multi-batch delivery for various workloads, such as Deployment, CloneSet, StatefulSet, and custom resources.
   - Supports Fine-grained traffic orchestration of application with Kubernetes Ingress and [Gateway API](https://gateway-api.sigs.k8s.io/).
+  - Enables StatefulSet-like rollout behavior for custom resources via `rollouts.kruise.io/workload-type` label.
 
 - **Flexibility**:
   - Handles both incremental and existing workloads with ease.
