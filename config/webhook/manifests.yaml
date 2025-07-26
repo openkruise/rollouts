@@ -14,6 +14,10 @@ webhooks:
       path: /mutate-apps-kruise-io-v1alpha1-cloneset
   failurePolicy: Fail
   name: mcloneset.kb.io
+  objectSelector:
+    matchExpressions:
+    - key: rollouts.kruise.io/workload-type
+      operator: Exists
   rules:
   - apiGroups:
     - apps.kruise.io
@@ -34,6 +38,10 @@ webhooks:
       path: /mutate-apps-kruise-io-v1alpha1-daemonset
   failurePolicy: Fail
   name: mdaemonset.kb.io
+  objectSelector:
+    matchExpressions:
+    - key: rollouts.kruise.io/workload-type
+      operator: Exists
   rules:
   - apiGroups:
     - apps.kruise.io
@@ -54,6 +62,10 @@ webhooks:
       path: /mutate-apps-v1-deployment
   failurePolicy: Fail
   name: mdeployment.kb.io
+  objectSelector:
+    matchExpressions:
+    - key: rollouts.kruise.io/workload-type
+      operator: Exists
   rules:
   - apiGroups:
     - apps
@@ -74,6 +86,10 @@ webhooks:
       path: /mutate-unified-workload
   failurePolicy: Fail
   name: munifiedworload.kb.io
+  objectSelector:
+    matchExpressions:
+    - key: rollouts.kruise.io/workload-type
+      operator: Exists
   rules:
   - apiGroups:
     - '*'
