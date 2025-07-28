@@ -1,5 +1,21 @@
 # Change Log
 
+## v0.5.3
+### Bugfix:
+- Fix: Webhook will take over Deployment even Rollout CR doesn't exist ([#279](https://github.com/openkruise/rollouts/pull/279),[@AiRanthem](https://github.com/AiRanthem))
+
+## v0.4.4
+### Bugfix:
+- Fix: Webhook will take over Deployment even Rollout CR doesn't exist ([#279](https://github.com/openkruise/rollouts/pull/279),[@AiRanthem](https://github.com/AiRanthem))
+
+## v0.5.2
+### Bugfix:
+- Filter rs that are not part of the current Deployment ([#274](https://github.com/openkruise/rollouts/pull/274),[@AiRanthem](https://github.com/AiRanthem))
+
+## v0.4.3
+### Bugfix:
+- Filter rs that are not part of the current Deployment ([#274](https://github.com/openkruise/rollouts/pull/274),[@AiRanthem](https://github.com/AiRanthem))
+
 ## v0.6.1
 ### Key Features:
 - Introduced `rollout-batch-id` labeling for blue-green and canary style releases ([#250](https://github.com/openkruise/rollouts/pull/250),([#251](https://github.com/openkruise/rollouts/pull/251),[#261](https://github.com/openkruise/rollouts/pull/261),[@PersistentJZH](https://github.com/PersistentJZH),[@AiRanthem](https://github.com/AiRanthem)) 
