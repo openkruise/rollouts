@@ -32,7 +32,17 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 	switch t := dst.(type) {
 	case *v1beta1.Rollout:
 		obj := dst.(*v1beta1.Rollout)
+
+		// metadata
 		obj.ObjectMeta = src.ObjectMeta
+		if src.Spec.DeprecatedRolloutID != "" {
+			if obj.Labels == nil {
+				obj.Labels = map[string]string{}
+			}
+			obj.Labels[v1beta1.RolloutIDLabel] = src.Spec.DeprecatedRolloutID
+		}
+
+		// spec
 		obj.Spec = v1beta1.RolloutSpec{}
 		srcSpec := src.Spec
 		obj.Spec.WorkloadRef = v1beta1.ObjectRef{
@@ -192,7 +202,8 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 					FailureThreshold: srcV1beta1.Spec.Strategy.Canary.FailureThreshold,
 				},
 			},
-			Disabled: srcV1beta1.Spec.Disabled,
+			DeprecatedRolloutID: srcV1beta1.Labels[v1beta1.RolloutIDLabel],
+			Disabled:            srcV1beta1.Spec.Disabled,
 		}
 		for _, step := range srcV1beta1.Spec.Strategy.Canary.Steps {
 			obj := CanaryStep{
