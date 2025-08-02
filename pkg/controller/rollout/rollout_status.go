@@ -143,6 +143,7 @@ func (r *RolloutReconciler) calculateRolloutStatus(rollout *v1beta1.Rollout) (re
 				newStatus.CanaryStatus = &v1beta1.CanaryStatus{
 					CommonStatus:   commonStatus,
 					CanaryRevision: workload.CanaryRevision,
+					TotalReplicas:  workload.Replicas,
 				}
 			}
 

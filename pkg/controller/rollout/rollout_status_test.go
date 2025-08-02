@@ -107,6 +107,81 @@ func TestCalculateRolloutHash(t *testing.T) {
 	}
 }
 
+func TestCanaryStatusTotalReplicasInitialization(t *testing.T) {
+	cases := []struct {
+		name          string
+		getRollout    func() *v1beta1.Rollout
+		getWorkload   func() *util.Workload
+		expectedTotal int32
+	}{
+		{
+			name: "initialize CanaryStatus with TotalReplicas",
+			getRollout: func() *v1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Status = v1beta1.RolloutStatus{
+					Phase: v1beta1.RolloutPhaseHealthy,
+				}
+				return obj
+			},
+			getWorkload: func() *util.Workload {
+				return &util.Workload{
+					Replicas: 15,
+				}
+			},
+			expectedTotal: 15,
+		},
+		{
+			name: "initialize CanaryStatus with HPA scaled replicas",
+			getRollout: func() *v1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Status = v1beta1.RolloutStatus{
+					Phase: v1beta1.RolloutPhaseHealthy,
+				}
+				return obj
+			},
+			getWorkload: func() *util.Workload {
+				return &util.Workload{
+					Replicas: 30, // HPA scaled up
+				}
+			},
+			expectedTotal: 30,
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			rollout := cs.getRollout()
+			workload := cs.getWorkload()
+
+			//simulate the status calculation that happens during reconciliation
+			newStatus := rollout.Status.DeepCopy()
+
+			// simulsate the condition where CanaryStatus is initialized
+			if newStatus.IsSubStatusEmpty() {
+				commonStatus := v1beta1.CommonStatus{
+					ObservedRolloutID:          "test-rollout-id",
+					ObservedWorkloadGeneration: workload.Generation,
+					PodTemplateHash:            workload.PodTemplateHash,
+					StableRevision:             workload.StableRevision,
+					CurrentStepIndex:           int32(len(rollout.Spec.Strategy.GetSteps())),
+					NextStepIndex:              util.NextBatchIndex(rollout, int32(len(rollout.Spec.Strategy.GetSteps()))),
+					CurrentStepState:           v1beta1.CanaryStepStateCompleted,
+					RolloutHash:                "test-hash",
+				}
+				newStatus.CanaryStatus = &v1beta1.CanaryStatus{
+					CommonStatus:   commonStatus,
+					CanaryRevision: workload.CanaryRevision,
+					TotalReplicas:  workload.Replicas,
+				}
+			}
+
+			if newStatus.CanaryStatus.TotalReplicas != cs.expectedTotal {
+				t.Fatalf("expected TotalReplicas %d, but got %d", cs.expectedTotal, newStatus.CanaryStatus.TotalReplicas)
+			}
+		})
+	}
+}
+
 func TestCalculateRolloutStatus(t *testing.T) {
 	cases := []struct {
 		name        string

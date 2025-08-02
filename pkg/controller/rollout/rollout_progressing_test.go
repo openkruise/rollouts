@@ -74,6 +74,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.NextStepIndex = 2
 				// now the first step is no longer StepStateUpgrade, it is StepStateInit now
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
+				s.CanaryStatus.TotalReplicas = 10
 				s.CurrentStepIndex = s.CanaryStatus.CurrentStepIndex
 				s.CurrentStepState = s.CanaryStatus.CurrentStepState
 				s.CanaryStatus.ObservedRolloutID = "test-id"
@@ -111,6 +112,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.NextStepIndex = 2
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
+				s.CanaryStatus.TotalReplicas = 10
 				s.CanaryStatus.ObservedRolloutID = "test-id"
 				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
 				cond.Reason = v1alpha1.ProgressingReasonInRolling
