@@ -194,6 +194,7 @@ func TestRunCanary(t *testing.T) {
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CanaryReplicas = 1
 				s.CanaryStatus.CanaryReadyReplicas = 1
+				s.CanaryStatus.TotalReplicas = 10
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.NextStepIndex = 2
 				s.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
@@ -371,5 +372,94 @@ func checkBatchReleaseEqual(c client.WithWatch, t *testing.T, key client.ObjectK
 	}
 	if !reflect.DeepEqual(expect.Spec, obj.Spec) {
 		t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expect.Spec), util.DumpJSON(obj.Spec))
+	}
+}
+
+func TestSyncBatchReleaseTotalReplicas(t *testing.T) {
+	cases := []struct {
+		name          string
+		batchRelease  *v1beta1.BatchRelease
+		workload      *util.Workload
+		expectedTotal int32
+	}{
+		{
+			name: "sync total replicas from workload",
+			batchRelease: &v1beta1.BatchRelease{
+				Status: v1beta1.BatchReleaseStatus{
+					CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
+						UpdatedReplicas:      2,
+						UpdatedReadyReplicas: 2,
+						CurrentBatchState:    v1beta1.ReadyBatchState,
+					},
+					ObservedRolloutID: "rollout-id-123",
+				},
+			},
+			workload: &util.Workload{
+				Replicas: 10,
+			},
+			expectedTotal: 10,
+		},
+		{
+			name: "sync total replicas with HPA scaled workload",
+			batchRelease: &v1beta1.BatchRelease{
+				Status: v1beta1.BatchReleaseStatus{
+					CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
+						UpdatedReplicas:      5,
+						UpdatedReadyReplicas: 5,
+						CurrentBatchState:    v1beta1.ReadyBatchState,
+					},
+					ObservedRolloutID: "rollout-id-456",
+				},
+			},
+			workload: &util.Workload{
+				Replicas: 25,
+			},
+			expectedTotal: 25,
+		},
+		{
+			name: "sync total replicas with nil workload",
+			batchRelease: &v1beta1.BatchRelease{
+				Status: v1beta1.BatchReleaseStatus{
+					CanaryStatus: v1beta1.BatchReleaseCanaryStatus{
+						UpdatedReplicas:      1,
+						UpdatedReadyReplicas: 1,
+						CurrentBatchState:    v1beta1.ReadyBatchState,
+					},
+					ObservedRolloutID: "rollout-id-789",
+				},
+			},
+			workload:      nil,
+			expectedTotal: 0, // should remain 0 when workload is nil
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			fc := fake.NewClientBuilder().WithScheme(scheme).Build()
+			manager := &canaryReleaseManager{
+				Client: fc,
+			}
+
+			canaryStatus := &v1beta1.CanaryStatus{}
+			err := manager.syncBatchRelease(cs.batchRelease, canaryStatus, cs.workload)
+			if err != nil {
+				t.Fatalf("syncBatchRelease failed: %s", err.Error())
+			}
+
+			if canaryStatus.TotalReplicas != cs.expectedTotal {
+				t.Fatalf("expected TotalReplicas %d, but got %d", cs.expectedTotal, canaryStatus.TotalReplicas)
+			}
+
+			// Verify other fields are still synced correctly
+			if canaryStatus.CanaryReplicas != cs.batchRelease.Status.CanaryStatus.UpdatedReplicas {
+				t.Fatalf("expected CanaryReplicas %d, but got %d",
+					cs.batchRelease.Status.CanaryStatus.UpdatedReplicas, canaryStatus.CanaryReplicas)
+			}
+
+			if canaryStatus.CanaryReadyReplicas != cs.batchRelease.Status.CanaryStatus.UpdatedReadyReplicas {
+				t.Fatalf("expected CanaryReadyReplicas %d, but got %d",
+					cs.batchRelease.Status.CanaryStatus.UpdatedReadyReplicas, canaryStatus.CanaryReadyReplicas)
+			}
+		})
 	}
 }

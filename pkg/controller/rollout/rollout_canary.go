@@ -54,7 +54,7 @@ func (m *canaryReleaseManager) runCanary(c *RolloutContext) error {
 		// - sync status from br to Rollout: to better observability;
 		// - sync rollout-id from Rollout to br: to make BatchRelease
 		//   relabels pods in the scene where only rollout-id is changed.
-		if err = m.syncBatchRelease(br, canaryStatus); err != nil {
+		if err = m.syncBatchRelease(br, canaryStatus, c.Workload); err != nil {
 			klog.Errorf("rollout(%s/%s) sync batchRelease failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 			return err
 		}
@@ -448,10 +448,14 @@ func (m *canaryReleaseManager) createBatchRelease(rollout *v1beta1.Rollout, roll
 }
 
 // syncBatchRelease sync status of br to canaryStatus, and sync rollout-id of canaryStatus to br.
-func (m *canaryReleaseManager) syncBatchRelease(br *v1beta1.BatchRelease, canaryStatus *v1beta1.CanaryStatus) error {
+func (m *canaryReleaseManager) syncBatchRelease(br *v1beta1.BatchRelease, canaryStatus *v1beta1.CanaryStatus, workload *util.Workload) error {
 	// sync from BatchRelease status to Rollout canaryStatus
 	canaryStatus.CanaryReplicas = br.Status.CanaryStatus.UpdatedReplicas
 	canaryStatus.CanaryReadyReplicas = br.Status.CanaryStatus.UpdatedReadyReplicas
+	// sync total replicas from workload - especially useful for HPA scenarios
+	if workload != nil {
+		canaryStatus.TotalReplicas = workload.Replicas
+	}
 	// Do not remove this line currently, otherwise, users will be not able to judge whether the BatchRelease works
 	// in the scene where only rollout-id changed.
 	// TODO: optimize the logic to better understand
