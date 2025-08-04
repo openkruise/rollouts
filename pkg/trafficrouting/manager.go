@@ -154,7 +154,7 @@ func (m *Manager) DoTrafficRouting(c *TrafficRoutingContext) (bool, error) {
 			klog.Errorf("%s get canary service(%s) failed: %s", c.Key, canaryServiceName, err.Error())
 			return false, err
 		} else if errors.IsNotFound(err) {
-			canaryService, err = m.createCanaryService(c, canaryServiceName, *stableService.Spec.DeepCopy())
+			canaryService, err = m.createCanaryService(c, canaryServiceName, *stableService.Spec.DeepCopy(), stableService.Annotations, stableService.Labels)
 			if err != nil {
 				return false, err
 			}
@@ -428,12 +428,14 @@ func newNetworkProvider(c client.Client, con *TrafficRoutingContext, sService, c
 	return network.CompositeController(networkProviders), nil
 }
 
-func (m *Manager) createCanaryService(c *TrafficRoutingContext, cService string, spec corev1.ServiceSpec) (*corev1.Service, error) {
+func (m *Manager) createCanaryService(c *TrafficRoutingContext, cService string, spec corev1.ServiceSpec, annotations, labels map[string]string) (*corev1.Service, error) {
 	canaryService := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:       c.Namespace,
 			Name:            cService,
 			OwnerReferences: []metav1.OwnerReference{c.OwnerRef},
+			Annotations:     annotations,
+			Labels:          labels,
 		},
 		Spec: spec,
 	}
