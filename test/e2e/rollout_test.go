@@ -2425,7 +2425,7 @@ var _ = SIGDescribe("Rollout", func() {
 	})
 
 	KruiseDescribe("Canary rollout with Gateway API", func() {
-		It("V1->V2: Percentage 20%,40%,60%,80%,90%, and replicas=3", func() {
+		It("Gateway Canary V1->V2: Percentage 20%,40%,60%,80%,90%, and replicas=3", func() {
 			By("Creating Rollout...")
 			rollout := &v1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/gateway/rollout-test.yaml", rollout)).ToNot(HaveOccurred())
