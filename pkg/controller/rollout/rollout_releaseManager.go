@@ -27,6 +27,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
 )
@@ -168,7 +169,7 @@ func runBatchRelease(m ReleaseManager, rollout *v1beta1.Rollout, rolloutId strin
 
 	// check whether batchRelease configuration is the latest
 	newBr := m.createBatchRelease(rollout, rolloutId, batch, isRollback)
-	if reflect.DeepEqual(br.Spec, newBr.Spec) && reflect.DeepEqual(br.Annotations, newBr.Annotations) {
+	if reflect.DeepEqual(br.Spec, newBr.Spec) && util.AnnotationsDeepEqual(br.Annotations, newBr.Annotations, v1alpha1.RolloutStyleAnnotation) {
 		klog.Infof("rollout(%s/%s) do batchRelease batch(%d) success", rollout.Namespace, rollout.Name, batch+1)
 		return true, br, nil
 	}

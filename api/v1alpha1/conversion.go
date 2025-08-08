@@ -87,7 +87,7 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 				obj.Spec.Strategy.Canary.PatchPodTemplateMetadata.Labels[k] = v
 			}
 		}
-		if !strings.EqualFold(src.Annotations[RolloutStyleAnnotation], string(PartitionRollingStyle)) {
+		if strings.EqualFold(src.Annotations[RolloutStyleAnnotation], string(CanaryRollingStyle)) {
 			obj.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
 		}
 		if src.Annotations[TrafficRoutingAnnotation] != "" {
@@ -132,6 +132,8 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 			CanaryReplicas:      src.Status.CanaryStatus.CanaryReplicas,
 			CanaryReadyReplicas: src.Status.CanaryStatus.CanaryReadyReplicas,
 		}
+		obj.Status.CurrentStepState = obj.Status.CanaryStatus.CurrentStepState
+		obj.Status.CurrentStepIndex = obj.Status.CanaryStatus.CurrentStepIndex
 		return nil
 	default:
 		return fmt.Errorf("unsupported type %v", t)
