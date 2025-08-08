@@ -1,6 +1,6 @@
 # Introduction
 ## What is Kruise Rollout?
-Kruise Rollouts is **a Bypass component which provides advanced deployment capabilities such as canary, traffic routing, and progressive delivery features, for a series of Kubernetes workloads, such as Deployment and CloneSet**.
+Kruise Rollouts is **a Bypass component which provides advanced deployment capabilities such as canary, traffic routing, and progressive delivery features, for a series of Kubernetes workloads, such as Deployment, CloneSet, StatefulSet, and custom resources**.
 
 Kruise Rollout integrates with ingress controllers and service meshes, leveraging their traffic shaping abilities to gradually shift traffic to the new version during an update.
 In addition, the business Pods metrics analysis can be used during rollout to determine whether the release will continue or be suspended.
@@ -15,8 +15,9 @@ The native Kubernetes Deployment Object supports the **RollingUpdate** strategy 
 
 ## Features
 - **Functionality**：
-  - Support multi-batch delivery for Deployment/CloneSet.
+  - Support multi-batch delivery for Deployment/CloneSet/StatefulSet and custom resources.
   - Support Nginx/ALB/Istio traffic routing control during rollout.
+  - Support custom workload types via `rollouts.kruise.io/workload-type` label.
 
 - **Flexibility**:
   - Support scaling up/down to workloads during rollout.
@@ -30,6 +31,7 @@ The native Kubernetes Deployment Object supports the **RollingUpdate** strategy 
 
 - **Extensibility**:
   - Easily extend to other traffic routing types, or workload types via plugin codes.
+  - Support custom resources with StatefulSet-like, Deployment-like, or other rollout behaviors.
 
 - **Easy-integration**:
   - Easily integrate with classic or GitOps-style Kubernetes-based PaaS.
