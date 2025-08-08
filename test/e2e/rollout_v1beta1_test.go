@@ -5379,7 +5379,7 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 
 	KruiseDescribe("StatefulSet canary rollout with Ingress", func() {
 		KruiseDescribe("Native StatefulSet rollout canary with Ingress", func() {
-			It("V1->V2: Percentage, 20%,60% Succeeded", func() {
+			It("V1->V2: Percentage, 20%,60% Succeeded with canary service check", func() {
 				By("Creating Rollout...")
 				rollout := &v1beta1.Rollout{}
 				Expect(ReadYamlToObject("./test_data/rollout/rollout_v1beta1_partition_base.yaml", rollout)).ToNot(HaveOccurred())
@@ -5443,9 +5443,16 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 				Expect(workload.Status.UpdatedReplicas).Should(BeNumerically("==", 1))
 				Expect(workload.Status.ReadyReplicas).Should(BeNumerically("==", *workload.Spec.Replicas))
 				Expect(*workload.Spec.UpdateStrategy.RollingUpdate.Partition).Should(BeNumerically("==", *workload.Spec.Replicas-1))
-				By("check cloneSet status & paused success")
+
+				// check service metadata, once is enough
+				By("check canary service metadata")
+				canaryService := &v1.Service{}
+				Expect(GetObject(service.Name+"-canary", canaryService)).NotTo(HaveOccurred())
+				Expect(canaryService.Labels).To(BeEquivalentTo(service.Labels))
+				Expect(canaryService.Annotations).To(BeEquivalentTo(service.Annotations))
 
 				// check rollout status
+				By("check cloneSet status & paused success")
 				Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
 				Expect(rollout.Status.Phase).Should(Equal(v1beta1.RolloutPhaseProgressing))
 				Expect(rollout.Status.CanaryStatus.StableRevision).Should(Equal(stableRevision))
