@@ -221,12 +221,14 @@ var _ = SIGDescribe("Rollout", func() {
 	}
 
 	WaitDeploymentAllPodsReady := func(deployment *apps.Deployment) {
-		Eventually(func() bool {
+		Eventually(func(g Gomega) {
 			clone := &apps.Deployment{}
-			Expect(GetObject(deployment.Name, clone)).NotTo(HaveOccurred())
-			return clone.Status.ObservedGeneration == clone.Generation && *clone.Spec.Replicas == clone.Status.UpdatedReplicas &&
-				*clone.Spec.Replicas == clone.Status.ReadyReplicas && *clone.Spec.Replicas == clone.Status.Replicas
-		}, 5*time.Minute, time.Second).Should(BeTrue())
+			g.Expect(GetObject(deployment.Name, clone)).NotTo(HaveOccurred())
+			g.Expect(clone.Generation).To(Equal(clone.Status.ObservedGeneration))
+			g.Expect(clone.Status.UpdatedReplicas).To(Equal(*clone.Spec.Replicas))
+			g.Expect(clone.Status.ReadyReplicas).To(Equal(*clone.Spec.Replicas))
+			g.Expect(clone.Status.Replicas).To(Equal(*clone.Spec.Replicas))
+		}).WithPolling(time.Second).WithTimeout(5 * time.Minute).Should(Succeed())
 	}
 
 	WaitCloneSetAllPodsReady := func(cloneset *appsv1alpha1.CloneSet) {
