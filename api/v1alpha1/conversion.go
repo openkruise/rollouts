@@ -42,13 +42,9 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 			obj.Labels[v1beta1.RolloutIDLabel] = src.Spec.DeprecatedRolloutID
 		}
 		if obj.Annotations == nil {
-			obj.Annotations = map[string]string{
-				RolloutStyleAnnotation: "",
-			}
+			obj.Annotations = map[string]string{}
 		}
-		if src.Annotations[RolloutStyleAnnotation] != "" {
-			obj.Annotations[RolloutStyleAnnotation] = src.Annotations[RolloutStyleAnnotation]
-		}
+		obj.Annotations[RolloutStyleAnnotation] = src.Annotations[RolloutStyleAnnotation]
 
 		// spec
 		obj.Spec = v1beta1.RolloutSpec{}
