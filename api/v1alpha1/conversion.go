@@ -41,6 +41,14 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 			}
 			obj.Labels[v1beta1.RolloutIDLabel] = src.Spec.DeprecatedRolloutID
 		}
+		if obj.Annotations == nil {
+			obj.Annotations = map[string]string{
+				RolloutStyleAnnotation: "",
+			}
+		}
+		if src.Annotations[RolloutStyleAnnotation] != "" {
+			obj.Annotations[RolloutStyleAnnotation] = src.Annotations[RolloutStyleAnnotation]
+		}
 
 		// spec
 		obj.Spec = v1beta1.RolloutSpec{}
@@ -87,7 +95,7 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 				obj.Spec.Strategy.Canary.PatchPodTemplateMetadata.Labels[k] = v
 			}
 		}
-		if strings.EqualFold(src.Annotations[RolloutStyleAnnotation], string(CanaryRollingStyle)) {
+		if !strings.EqualFold(src.Annotations[RolloutStyleAnnotation], string(PartitionRollingStyle)) {
 			obj.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
 		}
 		if src.Annotations[TrafficRoutingAnnotation] != "" {
@@ -234,10 +242,14 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 		if dst.Annotations == nil {
 			dst.Annotations = map[string]string{}
 		}
-		if srcV1beta1.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
-			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(CanaryRollingStyle))
+		if style, ok := srcV1beta1.Annotations[RolloutStyleAnnotation]; ok {
+			dst.Annotations[RolloutStyleAnnotation] = style
 		} else {
-			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(PartitionRollingStyle))
+			if srcV1beta1.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
+				dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(CanaryRollingStyle))
+			} else {
+				dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(PartitionRollingStyle))
+			}
 		}
 		if srcV1beta1.Spec.Strategy.Canary.TrafficRoutingRef != "" {
 			dst.Annotations[TrafficRoutingAnnotation] = srcV1beta1.Spec.Strategy.Canary.TrafficRoutingRef
@@ -447,11 +459,13 @@ func (dst *BatchRelease) ConvertFrom(src conversion.Hub) error {
 				dst.Spec.ReleasePlan.PatchPodTemplateMetadata.Labels[k] = v
 			}
 		}
-		if dst.Annotations == nil {
-			dst.Annotations = map[string]string{}
+		if rollingStyle := srcV1beta1.Spec.ReleasePlan.RollingStyle; rollingStyle != "" {
+			if dst.Annotations == nil {
+				dst.Annotations = map[string]string{}
+			}
+			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(rollingStyle))
+			dst.Spec.ReleasePlan.RollingStyle = RollingStyleType(rollingStyle)
 		}
-		dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(srcV1beta1.Spec.ReleasePlan.RollingStyle))
-		dst.Spec.ReleasePlan.RollingStyle = RollingStyleType(srcV1beta1.Spec.ReleasePlan.RollingStyle)
 		dst.Spec.ReleasePlan.EnableExtraWorkloadForCanary = srcV1beta1.Spec.ReleasePlan.EnableExtraWorkloadForCanary
 
 		// status
