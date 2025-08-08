@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Kruise Authors.
+Copyright 2025 The Kruise Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,13 +97,20 @@ func TestAnnotationsDeepEqual(t *testing.T) {
 			a:            map[string]string{"key1": "value1", "key2": "value2"},
 			b:            map[string]string{"key1": "value1"},
 			keysToDelete: []string{"key2"},
-			expected:     false,
+			expected:     true,
 		},
 		{
 			name:         "empty maps after deletion",
 			a:            map[string]string{"key1": "value1"},
 			b:            map[string]string{"key2": "value2"},
 			keysToDelete: []string{"key1", "key2"},
+			expected:     true,
+		},
+		{
+			name:         "complex case with multiple deletions",
+			a:            map[string]string{"key1": "value1", "key2": "value2", "key3": "value3", "key4": "value4"},
+			b:            map[string]string{"key1": "value1", "key2": "value2", "key5": "value5"},
+			keysToDelete: []string{"key3", "key4", "key5"},
 			expected:     true,
 		},
 	}
