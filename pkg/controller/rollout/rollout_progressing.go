@@ -93,6 +93,7 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 			newStatus.CanaryStatus = &v1beta1.CanaryStatus{
 				CommonStatus:   commonStatus,
 				CanaryRevision: rolloutContext.Workload.CanaryRevision,
+				TotalReplicas:  rolloutContext.Workload.Replicas,
 			}
 		}
 

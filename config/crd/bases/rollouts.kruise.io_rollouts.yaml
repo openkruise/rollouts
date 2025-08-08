@@ -1891,6 +1891,11 @@ spec:
                   stableRevision:
                     description: StableRevision indicates the revision of stable pods
                     type: string
+                  totalReplicas:
+                    description: TotalReplicas the total number of replicas for the
+                      workload (including both stable and canary)
+                    format: int32
+                    type: integer
                 required:
                 - canaryReadyReplicas
                 - canaryReplicas
@@ -1899,6 +1904,7 @@ spec:
                 - finalisingStep
                 - nextStepIndex
                 - podTemplateHash
+                - totalReplicas
                 type: object
               conditions:
                 description: Conditions a list of conditions a rollout can have.

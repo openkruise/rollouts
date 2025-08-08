@@ -445,6 +445,8 @@ type CanaryStatus struct {
 	CanaryReplicas int32 `json:"canaryReplicas"`
 	// CanaryReadyReplicas the numbers of ready canary revision pods
 	CanaryReadyReplicas int32 `json:"canaryReadyReplicas"`
+	// TotalReplicas the total number of replicas for the workload (including both stable and canary)
+	TotalReplicas int32 `json:"totalReplicas"`
 }
 
 // BlueGreenStatus status fields that only pertain to the blueGreen rollout
