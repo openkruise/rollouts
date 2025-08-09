@@ -44,9 +44,9 @@ func init() {
 			klog.Errorf("Read file %s failed: %s", path, err.Error())
 			return err
 		}
-        // Normalize key to use forward slashes so lookups are OS-independent
-        normalizedPath := filepath.ToSlash(path)
-        luaConfigurationList[normalizedPath] = string(data)
+		// Normalize key to use forward slashes so lookups are OS-independent
+		normalizedPath := filepath.ToSlash(path)
+		luaConfigurationList[normalizedPath] = string(data)
 		return nil
 	})
 	klog.Infof("Init Lua Configuration(%s)", DumpJSON(luaConfigurationList))
