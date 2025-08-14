@@ -1,6 +1,7 @@
 package deployment
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -76,7 +77,7 @@ func TestMutatingWebhookEventHandler(t *testing.T) {
 			event:         event.CreateEvent{Object: newWebhook(configuration.MutatingWebhookConfigurationName, false)},
 			expectEnqueue: false,
 			handlerFunc: func(e interface{}, q workqueue.RateLimitingInterface) {
-				handler.Create(e.(event.CreateEvent), q)
+				handler.Create(context.TODO(), e.(event.CreateEvent), q)
 			},
 		},
 		{
@@ -84,7 +85,7 @@ func TestMutatingWebhookEventHandler(t *testing.T) {
 			event:         event.CreateEvent{Object: newWebhook(configuration.MutatingWebhookConfigurationName, true)},
 			expectEnqueue: true,
 			handlerFunc: func(e interface{}, q workqueue.RateLimitingInterface) {
-				handler.Create(e.(event.CreateEvent), q)
+				handler.Create(context.TODO(), e.(event.CreateEvent), q)
 			},
 		},
 		{
@@ -92,7 +93,7 @@ func TestMutatingWebhookEventHandler(t *testing.T) {
 			event:         event.CreateEvent{Object: newWebhook("wrong-name", false)},
 			expectEnqueue: false,
 			handlerFunc: func(e interface{}, q workqueue.RateLimitingInterface) {
-				handler.Create(e.(event.CreateEvent), q)
+				handler.Create(context.TODO(), e.(event.CreateEvent), q)
 			},
 		},
 		{
@@ -100,7 +101,7 @@ func TestMutatingWebhookEventHandler(t *testing.T) {
 			event:         event.CreateEvent{Object: matchingDep},
 			expectEnqueue: false,
 			handlerFunc: func(e interface{}, q workqueue.RateLimitingInterface) {
-				handler.Create(e.(event.CreateEvent), q)
+				handler.Create(context.TODO(), e.(event.CreateEvent), q)
 			},
 		},
 		{
@@ -108,7 +109,7 @@ func TestMutatingWebhookEventHandler(t *testing.T) {
 			event:         event.UpdateEvent{ObjectNew: newWebhook(configuration.MutatingWebhookConfigurationName, false)},
 			expectEnqueue: false,
 			handlerFunc: func(e interface{}, q workqueue.RateLimitingInterface) {
-				handler.Update(e.(event.UpdateEvent), q)
+				handler.Update(context.TODO(), e.(event.UpdateEvent), q) // <-- FIXED
 			},
 		},
 		{
@@ -116,7 +117,7 @@ func TestMutatingWebhookEventHandler(t *testing.T) {
 			event:         event.UpdateEvent{ObjectNew: newWebhook(configuration.MutatingWebhookConfigurationName, true)},
 			expectEnqueue: true,
 			handlerFunc: func(e interface{}, q workqueue.RateLimitingInterface) {
-				handler.Update(e.(event.UpdateEvent), q)
+				handler.Update(context.TODO(), e.(event.UpdateEvent), q)
 			},
 		},
 		{
@@ -124,7 +125,7 @@ func TestMutatingWebhookEventHandler(t *testing.T) {
 			event:         event.DeleteEvent{Object: newWebhook(configuration.MutatingWebhookConfigurationName, false)},
 			expectEnqueue: true,
 			handlerFunc: func(e interface{}, q workqueue.RateLimitingInterface) {
-				handler.Delete(e.(event.DeleteEvent), q)
+				handler.Delete(context.TODO(), e.(event.DeleteEvent), q)
 			},
 		},
 		{
@@ -132,7 +133,7 @@ func TestMutatingWebhookEventHandler(t *testing.T) {
 			event:         event.GenericEvent{Object: newWebhook(configuration.MutatingWebhookConfigurationName, false)},
 			expectEnqueue: false,
 			handlerFunc: func(e interface{}, q workqueue.RateLimitingInterface) {
-				handler.Generic(e.(event.GenericEvent), q)
+				handler.Generic(context.TODO(), e.(event.GenericEvent), q)
 			},
 		},
 		{
@@ -140,7 +141,7 @@ func TestMutatingWebhookEventHandler(t *testing.T) {
 			event:         event.GenericEvent{Object: newWebhook(configuration.MutatingWebhookConfigurationName, true)},
 			expectEnqueue: true,
 			handlerFunc: func(e interface{}, q workqueue.RateLimitingInterface) {
-				handler.Generic(e.(event.GenericEvent), q)
+				handler.Generic(context.TODO(), e.(event.GenericEvent), q)
 			},
 		},
 	}
