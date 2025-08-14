@@ -1,62 +1,65 @@
 package util
 
 import (
+	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGettersWithDefaults(t *testing.T) {
-	testCases := []struct {
-		testName     string
-		funcName     string
-		envVarName   string
-		getterFunc   func() string
-		defaultValue string
-		setValue     string
-	}{
-		{
-			testName:     "GetNamespace with env var set",
-			funcName:     "GetNamespace",
-			envVarName:   "POD_NAMESPACE",
-			getterFunc:   GetNamespace,
-			defaultValue: "kruise-rollout",
-			setValue:     "my-namespace",
-		},
-		{
-			testName:     "GetSecretName with env var set",
-			funcName:     "GetSecretName",
-			envVarName:   "SECRET_NAME",
-			getterFunc:   GetSecretName,
-			defaultValue: "kruise-rollout-webhook-certs",
-			setValue:     "my-secret",
-		},
-		{
-			testName:     "GetServiceName with env var set",
-			funcName:     "GetServiceName",
-			envVarName:   "SERVICE_NAME",
-			getterFunc:   GetServiceName,
-			defaultValue: "kruise-rollout-webhook-service",
-			setValue:     "my-service",
-		},
-		{
-			testName:     "GetCertDir with env var set",
-			funcName:     "GetCertDir",
-			envVarName:   "WEBHOOK_CERT_DIR",
-			getterFunc:   GetCertDir,
-			defaultValue: "/tmp/kruise-rollout-webhook-certs",
-			setValue:     "/custom/cert/dir",
-		},
-	}
+// Test cases for functions that return a default value
+var defaultTestCases = []struct {
+	funcName     string
+	envVarName   string
+	getterFunc   func() string
+	defaultValue string
+	setValue     string
+}{
+	{
+		funcName:     "GetNamespace",
+		envVarName:   "POD_NAMESPACE",
+		getterFunc:   GetNamespace,
+		defaultValue: "kruise-rollout",
+		setValue:     "my-namespace",
+	},
+	{
+		funcName:     "GetSecretName",
+		envVarName:   "SECRET_NAME",
+		getterFunc:   GetSecretName,
+		defaultValue: "kruise-rollout-webhook-certs",
+		setValue:     "my-secret",
+	},
+	{
+		funcName:     "GetServiceName",
+		envVarName:   "SERVICE_NAME",
+		getterFunc:   GetServiceName,
+		defaultValue: "kruise-rollout-webhook-service",
+		setValue:     "my-service",
+	},
+	{
+		funcName:     "GetCertDir",
+		envVarName:   "WEBHOOK_CERT_DIR",
+		getterFunc:   GetCertDir,
+		defaultValue: "/tmp/kruise-rollout-webhook-certs",
+		setValue:     "/custom/cert/dir",
+	},
+}
 
-	for _, tc := range testCases {
-		t.Run(tc.testName, func(t *testing.T) {
+func TestGettersWithEnvVarSet(t *testing.T) {
+	for _, tc := range defaultTestCases {
+		t.Run(tc.funcName, func(t *testing.T) {
 			t.Setenv(tc.envVarName, tc.setValue)
 			assert.Equal(t, tc.setValue, tc.getterFunc())
 		})
+	}
+}
 
-		defaultCaseName := tc.funcName + " with default value"
-		t.Run(defaultCaseName, func(t *testing.T) {
+func TestGettersWithDefaultValue(t *testing.T) {
+	for _, tc := range defaultTestCases {
+		t.Run(tc.funcName, func(t *testing.T) {
+			// Ensure the environment variable is not set for this test
+			os.Unsetenv(tc.envVarName)
 			assert.Equal(t, tc.defaultValue, tc.getterFunc())
 		})
 	}
@@ -64,6 +67,7 @@ func TestGettersWithDefaults(t *testing.T) {
 
 func TestGetPort(t *testing.T) {
 	t.Run("should return default port when env var is not set", func(t *testing.T) {
+		os.Unsetenv("WEBHOOK_PORT")
 		port := GetPort()
 		assert.Equal(t, 9876, port)
 	})
@@ -73,7 +77,22 @@ func TestGetPort(t *testing.T) {
 		port := GetPort()
 		assert.Equal(t, 8080, port)
 	})
+}
 
+// This test checks for code that calls klog.Fatalf, which exits the program.
+// It works by re-running the test in a separate process.
+func TestGetPort_Fatal(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		t.Setenv("WEBHOOK_PORT", "not-a-number")
+		GetPort()
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestGetPort_Fatal$")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+	err := cmd.Run()
+	e, ok := err.(*exec.ExitError)
+	assert.True(t, ok, "Expected command to exit with an error")
+	assert.False(t, e.Success(), "Expected command to fail")
 }
 
 func TestSimpleGetters(t *testing.T) {
@@ -84,6 +103,7 @@ func TestSimpleGetters(t *testing.T) {
 	})
 
 	t.Run("GetHost should return empty string if not set", func(t *testing.T) {
+		os.Unsetenv("WEBHOOK_HOST")
 		assert.Empty(t, GetHost())
 	})
 
