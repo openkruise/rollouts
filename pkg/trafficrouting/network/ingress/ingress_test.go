@@ -209,7 +209,7 @@ var (
                     }
                   }
                 }
-                annotations["alb.ingress.kubernetes.io/actions.canary"] = action
+                annotations["alb.ingress.kubernetes.io/actions.canary"] = json.encode(action)
 
                 if obj.matches then
                   local conds = {}
@@ -236,7 +236,7 @@ var (
                       end
                     end
                   end
-                  annotations["alb.ingress.kubernetes.io/conditions.canary"] = conds
+                  annotations["alb.ingress.kubernetes.io/conditions.canary"] = json.encode(conds)
                 end
 
                 return annotations
