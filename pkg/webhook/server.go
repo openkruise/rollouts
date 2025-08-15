@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/openkruise/rollouts/pkg/webhook/types"
-
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -38,7 +37,9 @@ type GateFunc func() (enabled bool)
 var (
 	// HandlerMap contains all admission webhook handlers.
 	HandlerMap   = map[string]types.HandlerGetter{}
-	handlerGates = map[string]GateFunc{}
+	handlerGates  = map[string]GateFunc{}
+
+	initialize func(context.Context, *rest.Config) error = initializeImpl
 )
 
 func addHandlers(m map[string]types.HandlerGetter) {
@@ -105,7 +106,7 @@ func SetupWithManager(mgr manager.Manager) error {
 // +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch;update;patch
 
-func initialize(ctx context.Context, cfg *rest.Config) error {
+func initializeImpl(ctx context.Context, cfg *rest.Config) error {
 	c, err := webhookcontroller.New(cfg, HandlerMap)
 	if err != nil {
 		return err
