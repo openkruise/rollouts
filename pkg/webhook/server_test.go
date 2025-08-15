@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/openkruise/rollouts/pkg/webhook/types"
+	webhookcontroller "github.com/openkruise/rollouts/pkg/webhook/util/controller"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
@@ -36,6 +37,8 @@ func resetGlobals() {
 	HandlerMap = map[string]types.HandlerGetter{}
 	handlerGates = map[string]GateFunc{}
 	initialize = initializeImpl
+	newWebhookController = webhookcontroller.New
+	webhookInited = webhookcontroller.Inited
 }
 
 type mockWebhookServer struct {
@@ -145,6 +148,64 @@ func TestSetupWithManager(t *testing.T) {
 
 		// Act
 		err := SetupWithManager(mockMgr)
+
+		// Assert
+		assert.Error(t, err)
+		assert.Equal(t, expectedErr, err)
+	})
+}
+
+func TestInitializeImpl(t *testing.T) {
+	t.Run("should succeed when controller initializes correctly", func(t *testing.T) {
+		// Arrange
+		resetGlobals()
+		originalInited := webhookInited
+
+		inited := make(chan struct{})
+		close(inited)
+		webhookInited = func() chan struct{} {
+			return inited
+		}
+		defer func() { webhookInited = originalInited }()
+
+		// Act
+		err := initializeImpl(context.TODO(), &rest.Config{})
+
+		// Assert
+		assert.NoError(t, err)
+	})
+
+	t.Run("should return a timeout error", func(t *testing.T) {
+		// Arrange
+		resetGlobals()
+		originalInited := webhookInited
+
+		webhookInited = func() chan struct{} {
+			return make(chan struct{})
+		}
+		defer func() { webhookInited = originalInited }()
+
+		// Act
+		err := initializeImpl(context.TODO(), &rest.Config{})
+
+		// Assert
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "waiting more than 20s")
+	})
+
+	t.Run("should return an error if controller creation fails", func(t *testing.T) {
+		// Arrange
+		resetGlobals()
+		expectedErr := errors.New("controller creation failed")
+
+		originalNewController := newWebhookController
+		newWebhookController = func(cfg *rest.Config, handlerMap map[string]types.HandlerGetter) (*webhookcontroller.Controller, error) {
+			return nil, expectedErr
+		}
+		defer func() { newWebhookController = originalNewController }()
+
+		// Act
+		err := initializeImpl(context.TODO(), &rest.Config{})
 
 		// Assert
 		assert.Error(t, err)
