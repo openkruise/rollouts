@@ -38,7 +38,6 @@ func resetGlobals() {
 	initialize = initializeImpl
 }
 
-
 type mockWebhookServer struct {
 	registered map[string]http.Handler
 }
@@ -50,7 +49,7 @@ func (m *mockWebhookServer) Register(path string, handler http.Handler) {
 	m.registered[path] = handler
 }
 func (m *mockWebhookServer) Start(context.Context) error { return nil }
-func (m *mockWebhookServer) NeedLeaderElection() bool   { return false }
+func (m *mockWebhookServer) NeedLeaderElection() bool    { return false }
 func (m *mockWebhookServer) StartedChecker() healthz.Checker {
 	return func(req *http.Request) error { return nil }
 }
@@ -123,9 +122,9 @@ func TestSetupWithManager(t *testing.T) {
 		err := SetupWithManager(mockMgr)
 
 		// Assert
-		assert.NoError(t, err) 
+		assert.NoError(t, err)
 		registeredHandlers := mockServer.registered
-		assert.Len(t, registeredHandlers, 2) 
+		assert.Len(t, registeredHandlers, 2)
 		assert.Contains(t, registeredHandlers, "/active-gated")
 		assert.Contains(t, registeredHandlers, "/convert")
 		assert.NotContains(t, registeredHandlers, "/inactive-gated")

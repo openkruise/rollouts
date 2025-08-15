@@ -37,7 +37,7 @@ type GateFunc func() (enabled bool)
 var (
 	// HandlerMap contains all admission webhook handlers.
 	HandlerMap   = map[string]types.HandlerGetter{}
-	handlerGates  = map[string]GateFunc{}
+	handlerGates = map[string]GateFunc{}
 
 	initialize func(context.Context, *rest.Config) error = initializeImpl
 )
