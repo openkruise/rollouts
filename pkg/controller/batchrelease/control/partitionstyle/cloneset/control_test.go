@@ -313,7 +313,7 @@ func TestRealController(t *testing.T) {
 	Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())
 	Expect(fetch.Spec.UpdateStrategy.Partition.StrVal).Should(Equal("90%"))
 
-	err = controller.Finalize(release)
+	err = controller.Finalize(release, false)
 	Expect(err).NotTo(HaveOccurred())
 	fetch = &kruiseappsv1alpha1.CloneSet{}
 	Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())

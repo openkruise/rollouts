@@ -130,7 +130,7 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	return rc.client.Patch(context.TODO(), d, patchData)
 }
 
-func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Finalize(release *v1beta1.BatchRelease, keepPaused bool) error {
 	if rc.object == nil {
 		return nil // No need to finalize again.
 	}
@@ -139,19 +139,22 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		return nil // No need to finalize again.
 	}
 
+	d := rc.object.DeepCopy()
+
 	patchData := patch.NewDeploymentPatch()
 	if release.Spec.ReleasePlan.BatchPartition == nil {
-		strategy := util.GetDeploymentStrategy(rc.object)
-		patchData.UpdatePaused(false)
-		if rc.object.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
-			patchData.UpdateStrategy(apps.DeploymentStrategy{Type: apps.RollingUpdateDeploymentStrategyType, RollingUpdate: strategy.RollingUpdate})
+		if !keepPaused {
+			strategy := util.GetDeploymentStrategy(rc.object)
+			patchData.UpdatePaused(false)
+			if rc.object.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
+				patchData.UpdateStrategy(apps.DeploymentStrategy{Type: apps.RollingUpdateDeploymentStrategyType, RollingUpdate: strategy.RollingUpdate})
+			}
 		}
 		patchData.DeleteAnnotation(v1alpha1.DeploymentStrategyAnnotation)
 		patchData.DeleteAnnotation(v1alpha1.DeploymentExtraStatusAnnotation)
 		patchData.DeleteLabel(v1alpha1.DeploymentStableRevisionLabel)
 		patchData.DeleteLabel(v1alpha1.AdvancedDeploymentControlLabel)
 	}
-	d := rc.object.DeepCopy()
 	patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
 	return rc.client.Patch(context.TODO(), d, patchData)
 }

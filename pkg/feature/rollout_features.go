@@ -30,12 +30,15 @@ const (
 	AdvancedDeploymentGate featuregate.Feature = "AdvancedDeployment"
 	// AppendServiceSelectorGate enable appending pod labels from PodTemplateMetadata to the canary service selector.
 	AppendServiceSelectorGate featuregate.Feature = "AppendPodSelector"
+	// KeepDeploymentPausedOnDeletionGate prevents unpausing a Deployment when its managing Rollout CR is deleted.
+	KeepDeploymentPausedOnDeletionGate featuregate.Feature = "KeepDeploymentPausedOnDeletion"
 )
 
 var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	RolloutHistoryGate:        {Default: false, PreRelease: featuregate.Alpha},
-	AdvancedDeploymentGate:    {Default: false, PreRelease: featuregate.Alpha},
-	AppendServiceSelectorGate: {Default: false, PreRelease: featuregate.Alpha},
+	RolloutHistoryGate:                 {Default: false, PreRelease: featuregate.Alpha},
+	AdvancedDeploymentGate:             {Default: false, PreRelease: featuregate.Alpha},
+	AppendServiceSelectorGate:          {Default: false, PreRelease: featuregate.Alpha},
+	KeepDeploymentPausedOnDeletionGate: {Default: false, PreRelease: featuregate.Alpha},
 }
 
 func init() {

@@ -602,11 +602,11 @@ func TestRealController(t *testing.T) {
 	Expect(*fetch.Spec.UpdateStrategy.RollingUpdate.Partition).Should(BeNumerically("==", 9))
 
 	// mock
-	_ = controller.Finalize(release)
+	_ = controller.Finalize(release, false)
 	fetch = &kruiseappsv1beta1.StatefulSet{}
 	Expect(cli.Get(context.TODO(), stsKey, fetch)).NotTo(HaveOccurred())
 	c.object = fetch
-	err = controller.Finalize(release)
+	err = controller.Finalize(release, false)
 	Expect(err).NotTo(HaveOccurred())
 	fetch = &kruiseappsv1beta1.StatefulSet{}
 	Expect(cli.Get(context.TODO(), stsKey, fetch)).NotTo(HaveOccurred())

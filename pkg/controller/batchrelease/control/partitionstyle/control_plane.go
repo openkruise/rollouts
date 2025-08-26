@@ -33,7 +33,9 @@ import (
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 type realBatchControlPlane struct {
@@ -144,8 +146,10 @@ func (rc *realBatchControlPlane) Finalize() error {
 		return client.IgnoreNotFound(err)
 	}
 
+	keepPaused := rc.release.DeletionTimestamp != nil && utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepDeploymentPausedOnDeletionGate)
+
 	// release workload control info and clean up resources if it needs
-	return controller.Finalize(rc.release)
+	return controller.Finalize(rc.release, keepPaused)
 }
 
 func (rc *realBatchControlPlane) SyncWorkloadInformation() (control.WorkloadEventType, *util.WorkloadInfo, error) {

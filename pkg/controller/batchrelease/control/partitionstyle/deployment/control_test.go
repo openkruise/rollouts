@@ -346,7 +346,7 @@ func TestRealController(t *testing.T) {
 	Expect(strategy.Partition.StrVal).Should(Equal("50%"))
 
 	release.Spec.ReleasePlan.BatchPartition = nil
-	err = controller.Finalize(release)
+	err = controller.Finalize(release, false)
 	Expect(err).NotTo(HaveOccurred())
 	fetch = &apps.Deployment{}
 	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())

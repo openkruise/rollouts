@@ -44,6 +44,9 @@ const (
 	// RollbackInBatchAnnotation is set to rollout annotations.
 	// RollbackInBatchAnnotation allow use disable quick rollback, and will roll back in batch style.
 	RollbackInBatchAnnotation = "rollouts.kruise.io/rollback-in-batch"
+
+	// RolloutFinalizer is the finalizer string that the Rollout controller adds to Rollout objects.
+	RolloutFinalizer = "rollouts.kruise.io/finalizer"
 )
 
 // RolloutSpec defines the desired state of Rollout

@@ -45,5 +45,5 @@ type Interface interface {
 	UpgradeBatch(ctx *batchcontext.BatchContext) error
 	// Finalize do something after rolling out, for example:
 	// - set pause to false, restore the original setting, delete annotation
-	Finalize(release *v1beta1.BatchRelease) error
+	Finalize(release *v1beta1.BatchRelease, keepPaused bool) error
 }

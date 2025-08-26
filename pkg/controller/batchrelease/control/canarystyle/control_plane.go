@@ -28,7 +28,9 @@ import (
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 // CloneSetRolloutController is responsible for handling rollout CloneSet type of workloads
@@ -157,9 +159,9 @@ func (rc *realCanaryController) Finalize() error {
 		return err
 	}
 
-	err = stable.Finalize(rc.release)
-	if err != nil {
-		klog.Errorf("BatchRelease %v finalize stable err: %v", klog.KObj(rc.release), err)
+	keepPaused := rc.release.DeletionTimestamp != nil && utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepDeploymentPausedOnDeletionGate)
+	if err = stable.Finalize(rc.release, keepPaused); err != nil {
+		klog.Errorf("… finalize stable err: %v", err)
 		return err
 	}
 
@@ -168,9 +170,8 @@ func (rc *realCanaryController) Finalize() error {
 		klog.Errorf("BatchRelease %v build canary controller err: %v", klog.KObj(rc.release), err)
 		return err
 	}
-	err = canary.Delete(rc.release)
-	if err != nil {
-		klog.Errorf("BatchRelease %v delete canary workload err: %v", klog.KObj(rc.release), err)
+	if err = canary.Delete(rc.release); err != nil {
+		klog.Errorf("… delete canary err: %v", err)
 	}
 	return err
 }

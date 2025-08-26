@@ -132,43 +132,44 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	return rc.client.Patch(context.TODO(), util.GetEmptyObjectWithKey(rc.object), patchData)
 }
 
-func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Finalize(release *v1beta1.BatchRelease, keepPaused bool) error {
 	if release.Spec.ReleasePlan.BatchPartition != nil {
-		// continuous release (not supported yet)
-		/*
-			patchData := patch.NewClonesetPatch()
-			patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
-			return rc.client.Patch(context.TODO(), util.GetEmptyObjectWithKey(rc.object), patchData)
-		*/
 		klog.Warningf("continuous release is not supported yet for bluegreen style release")
 		return nil
 	}
 
-	// restore the original setting and remove annotation
-	if !rc.restored() {
-		c := util.GetEmptyObjectWithKey(rc.object)
-		setting, err := control.GetOriginalSetting(rc.object)
-		if err != nil {
-			return err
+	if !keepPaused {
+		// restore the original setting and remove annotation
+		if !rc.restored() {
+			c := util.GetEmptyObjectWithKey(rc.object)
+			setting, err := control.GetOriginalSetting(rc.object)
+			if err != nil {
+				return err
+			}
+			patchData := patch.NewClonesetPatch()
+			patchData.UpdateMinReadySeconds(setting.MinReadySeconds)
+			patchData.UpdateMaxSurge(setting.MaxSurge)
+			patchData.UpdateMaxUnavailable(setting.MaxUnavailable)
+			patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
+			patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
+			if err := rc.client.Patch(context.TODO(), c, patchData); err != nil {
+				return err
+			}
+			klog.InfoS("Finalize: cloneset bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
 		}
+		// wait all pods updated and ready
+		if rc.object.Status.ReadyReplicas != rc.object.Status.UpdatedReadyReplicas {
+			return errors.NewRetryError(fmt.Errorf("cloneset %v finalize not done, readyReplicas %d != updatedReadyReplicas %d, current policy %s",
+				klog.KObj(rc.object), rc.object.Status.ReadyReplicas, rc.object.Status.UpdatedReadyReplicas, release.Spec.ReleasePlan.FinalizingPolicy))
+		}
+		klog.InfoS("Finalize: cloneset bluegreen release: all pods updated and ready", "cloneset", klog.KObj(rc.object))
+	} else {
 		patchData := patch.NewClonesetPatch()
-		patchData.UpdateMinReadySeconds(setting.MinReadySeconds)
-		patchData.UpdateMaxSurge(setting.MaxSurge)
-		patchData.UpdateMaxUnavailable(setting.MaxUnavailable)
-		patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
 		patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
-		if err := rc.client.Patch(context.TODO(), c, patchData); err != nil {
+		if err := rc.client.Patch(context.TODO(), util.GetEmptyObjectWithKey(rc.object), patchData); err != nil {
 			return err
 		}
-		klog.InfoS("Finalize: cloneset bluegreen release: wait all pods updated and ready", "cloneset", klog.KObj(rc.object))
 	}
-
-	// wait all pods updated and ready
-	if rc.object.Status.ReadyReplicas != rc.object.Status.UpdatedReadyReplicas {
-		return errors.NewRetryError(fmt.Errorf("cloneset %v finalize not done, readyReplicas %d != updatedReadyReplicas %d, current policy %s",
-			klog.KObj(rc.object), rc.object.Status.ReadyReplicas, rc.object.Status.UpdatedReadyReplicas, release.Spec.ReleasePlan.FinalizingPolicy))
-	}
-	klog.InfoS("Finalize: cloneset bluegreen release: all pods updated and ready", "cloneset", klog.KObj(rc.object))
 
 	// restore the hpa
 	return hpa.RestoreHPA(rc.client, rc.object)

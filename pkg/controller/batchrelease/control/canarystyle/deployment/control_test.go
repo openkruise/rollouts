@@ -252,7 +252,7 @@ func TestRealStableController(t *testing.T) {
 	Expect(fetch.Annotations[util.BatchReleaseControlAnnotation]).Should(Equal(getControlInfo(release)))
 	c.stableObject = fetch // mock
 
-	err = controller.Finalize(release)
+	err = controller.Finalize(release, false)
 	Expect(err).NotTo(HaveOccurred())
 	fetch = &apps.Deployment{}
 	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())

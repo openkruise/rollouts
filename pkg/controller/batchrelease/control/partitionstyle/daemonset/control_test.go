@@ -371,7 +371,7 @@ func TestRealController(t *testing.T) {
 	fmt.Println(*fetch.Spec.UpdateStrategy.RollingUpdate.Partition)
 	Expect(*fetch.Spec.UpdateStrategy.RollingUpdate.Partition).Should(Equal(int32(9)))
 
-	err = controller.Finalize(release)
+	err = controller.Finalize(release, false)
 	Expect(err).NotTo(HaveOccurred())
 	fetch = &kruiseappsv1alpha1.DaemonSet{}
 	Expect(cli.Get(context.TODO(), daemonKey, fetch)).NotTo(HaveOccurred())

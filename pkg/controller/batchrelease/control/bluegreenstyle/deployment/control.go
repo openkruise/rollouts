@@ -137,49 +137,48 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 }
 
 // set pause to false, restore the original setting, delete annotation
-func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Finalize(release *v1beta1.BatchRelease, keepPaused bool) error {
 	if release.Spec.ReleasePlan.BatchPartition != nil {
-		// continuous release (not supported yet)
-		/*
-			patchData := patch.NewDeploymentPatch()
-			patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
-			if err := rc.client.Patch(context.TODO(), d, patchData); err != nil {
-				return err
-			}
-		*/
 		klog.Warningf("continuous release is not supported yet for bluegreen style release")
 		return nil
 	}
 
-	// restore the original setting and remove annotation
-	d := util.GetEmptyObjectWithKey(rc.object)
-	if !rc.restored() {
-		setting, err := control.GetOriginalSetting(rc.object)
-		if err != nil {
-			return err
+	if !keepPaused {
+		// restore the original setting and remove annotation
+		d := util.GetEmptyObjectWithKey(rc.object)
+		if !rc.restored() {
+			setting, err := control.GetOriginalSetting(rc.object)
+			if err != nil {
+				return err
+			}
+			patchData := patch.NewDeploymentPatch()
+			// restore the original setting
+			patchData.UpdatePaused(false)
+			patchData.UpdateMinReadySeconds(setting.MinReadySeconds)
+			patchData.UpdateProgressDeadlineSeconds(setting.ProgressDeadlineSeconds)
+			patchData.UpdateMaxSurge(setting.MaxSurge)
+			patchData.UpdateMaxUnavailable(setting.MaxUnavailable)
+			// restore label and annotation
+			patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
+			patchData.DeleteLabel(v1alpha1.DeploymentStableRevisionLabel)
+			patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
+			if err := rc.client.Patch(context.TODO(), d, patchData); err != nil {
+				return err
+			}
+			klog.InfoS("Finalize: deployment bluegreen release: wait all pods updated and ready", "Deployment", klog.KObj(rc.object))
 		}
+		// wait all pods updated and ready
+		if err := waitAllUpdatedAndReady(d.(*apps.Deployment)); err != nil {
+			return errors.NewRetryError(err)
+		}
+		klog.InfoS("Finalize: All pods updated and ready, then restore hpa", "Deployment", klog.KObj(rc.object))
+	} else {
 		patchData := patch.NewDeploymentPatch()
-		// restore the original setting
-		patchData.UpdatePaused(false)
-		patchData.UpdateMinReadySeconds(setting.MinReadySeconds)
-		patchData.UpdateProgressDeadlineSeconds(setting.ProgressDeadlineSeconds)
-		patchData.UpdateMaxSurge(setting.MaxSurge)
-		patchData.UpdateMaxUnavailable(setting.MaxUnavailable)
-		// restore label and annotation
-		patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
-		patchData.DeleteLabel(v1alpha1.DeploymentStableRevisionLabel)
 		patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
-		if err := rc.client.Patch(context.TODO(), d, patchData); err != nil {
+		if err := rc.client.Patch(context.TODO(), util.GetEmptyObjectWithKey(rc.object), patchData); err != nil {
 			return err
 		}
-		klog.InfoS("Finalize: deployment bluegreen release: wait all pods updated and ready", "Deployment", klog.KObj(rc.object))
 	}
-
-	// wait all pods updated and ready
-	if err := waitAllUpdatedAndReady(d.(*apps.Deployment)); err != nil {
-		return errors.NewRetryError(err)
-	}
-	klog.InfoS("Finalize: All pods updated and ready, then restore hpa", "Deployment", klog.KObj(rc.object))
 
 	// restore hpa
 	return hpa.RestoreHPA(rc.client, rc.object)

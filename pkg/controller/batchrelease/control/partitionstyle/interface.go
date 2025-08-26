@@ -46,5 +46,5 @@ type Interface interface {
 	// Finalize do something after rolling out, for example:
 	// - free the stable workload from rollout control;
 	// - resume workload if we need.
-	Finalize(release *v1beta1.BatchRelease) error
+	Finalize(release *v1beta1.BatchRelease, keepPaused bool) error
 }

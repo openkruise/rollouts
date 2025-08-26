@@ -57,5 +57,5 @@ type StableInterface interface {
 	// Finalize do something after rolling out, for example:
 	// - free the stable workload from rollout control;
 	// - resume stable workload and wait all pods updated if we need.
-	Finalize(controller *v1beta1.BatchRelease) error
+	Finalize(controller *v1beta1.BatchRelease, keepPaused bool) error
 }

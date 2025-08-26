@@ -244,7 +244,7 @@ var _ = Describe("CloneSet Control", func() {
 		Expect(err).NotTo(HaveOccurred())
 		// call Finalize method
 		err = retryFunction(3, func() error {
-			return rc.Finalize(release)
+			return rc.Finalize(release, false)
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -526,7 +526,7 @@ func TestRealController(t *testing.T) {
 		MinReadySeconds: 0,
 	})))
 
-	controller.Finalize(release)
+	controller.Finalize(release, false)
 	fetch = &kruiseappsv1alpha1.CloneSet{}
 	Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())
 	Expect(fetch.Spec.UpdateStrategy.MaxSurge.StrVal).Should(Equal("0%"))

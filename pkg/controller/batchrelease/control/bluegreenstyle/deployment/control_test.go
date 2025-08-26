@@ -311,7 +311,7 @@ var _ = Describe("Deployment Control", func() {
 		Expect(err).NotTo(HaveOccurred())
 		// call Finalize method
 		err = retryFunction(3, func() error {
-			return rc.Finalize(release)
+			return rc.Finalize(release, false)
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -612,7 +612,7 @@ func TestRealController(t *testing.T) {
 	Expect(reflect.DeepEqual(fetch.Spec.Strategy.RollingUpdate.MaxSurge, &intstr.IntOrString{Type: intstr.String, StrVal: "50%"})).Should(BeTrue())
 
 	release.Spec.ReleasePlan.BatchPartition = nil
-	err = controller.Finalize(release)
+	err = controller.Finalize(release, false)
 	Expect(errors.IsRetryError(err)).Should(BeTrue())
 	fetch = &apps.Deployment{}
 	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())

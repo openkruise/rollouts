@@ -56,21 +56,24 @@ func (rc *realStableController) Initialize(release *v1beta1.BatchRelease) error 
 	return rc.stableClient.Patch(context.TODO(), d, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
 }
 
-func (rc *realStableController) Finalize(release *v1beta1.BatchRelease) error {
+func (rc *realStableController) Finalize(release *v1beta1.BatchRelease, keepPaused bool) error {
 	if rc.stableObject == nil {
 		return nil // no need to process deleted object
 	}
 
-	// if batchPartition == nil, workload should be promoted;
-	pause := release.Spec.ReleasePlan.BatchPartition != nil
-	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}},"spec":{"paused":%v}}`,
-		util.BatchReleaseControlAnnotation, pause)
-
 	d := util.GetEmptyObjectWithKey(rc.stableObject)
+	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}}`, util.BatchReleaseControlAnnotation)
+	if !keepPaused {
+		// if batchPartition == nil, workload should be promoted;
+		pause := release.Spec.ReleasePlan.BatchPartition != nil
+		body = fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}},"spec":{"paused":%v}}`,
+			util.BatchReleaseControlAnnotation, pause)
+	}
+
 	if err := rc.stableClient.Patch(context.TODO(), d, client.RawPatch(types.StrategicMergePatchType, []byte(body))); err != nil {
 		return err
 	}
-	if control.ShouldWaitResume(release) {
+	if !keepPaused && control.ShouldWaitResume(release) {
 		return waitAllUpdatedAndReady(d.(*apps.Deployment))
 	}
 	return nil

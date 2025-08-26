@@ -127,15 +127,18 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
-func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Finalize(release *v1beta1.BatchRelease, keepPaused bool) error {
 	if rc.object == nil {
 		return nil
 	}
 
 	var specBody string
-	// If batchPartition == nil, workload should be promoted;
-	if release.Spec.ReleasePlan.BatchPartition == nil {
-		specBody = `,"spec":{"updateStrategy":{"rollingUpdate":{"partition":null}}}`
+	if !keepPaused {
+		// If batchPartition == nil, workload should be promoted;
+		if release.Spec.ReleasePlan.BatchPartition == nil {
+			specBody = `,"spec":{"updateStrategy":{"rollingUpdate":{"partition":null}}}`
+		}
+
 	}
 
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}%s}`, util.BatchReleaseControlAnnotation, specBody)
