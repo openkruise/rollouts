@@ -92,8 +92,8 @@ func ValidateReadyForBlueGreenRelease(object client.Object) error {
 			return fmt.Errorf("cloneSet strategy type is not ReCreate")
 		}
 		// MinReadySeconds and ProgressDeadlineSeconds must be set
-		if o.Spec.MinReadySeconds != v1beta1.MaxReadySeconds {
-			return fmt.Errorf("cloneSet strategy minReadySeconds is not MaxReadySeconds")
+		if o.Spec.MinReadySeconds != v1beta1.MaxReadySeconds || o.Spec.ProgressDeadlineSeconds == nil || *o.Spec.ProgressDeadlineSeconds != v1beta1.MaxProgressSeconds {
+			return fmt.Errorf("cloneSet strategy minReadySeconds or progressDeadlineSeconds is not MaxReadySeconds or MaxProgressSeconds")
 		}
 
 	default:
@@ -198,6 +198,8 @@ func InitOriginalSetting(setting *OriginalDeploymentStrategy, object client.Obje
 		}
 		if setting.ProgressDeadlineSeconds == nil {
 			// cloneset is planned to support progressDeadlineSeconds field
+			setting.ProgressDeadlineSeconds = getIntPtrOrDefault(o.Spec.ProgressDeadlineSeconds, 600)
+			changeLogs = append(changeLogs, fmt.Sprintf("progressDeadlineSeconds changed from nil to %d", *setting.ProgressDeadlineSeconds))
 		}
 		if setting.MinReadySeconds == 0 {
 			setting.MinReadySeconds = o.Spec.MinReadySeconds

@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
+	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
@@ -109,6 +110,7 @@ func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 	patchData.UpdateMaxSurge(&maxSurge)
 	patchData.UpdateMaxUnavailable(&maxUnavailable)
 	patchData.UpdateMinReadySeconds(v1beta1.MaxReadySeconds)
+	patchData.UpdateProgressDeadlineSeconds(utilpointer.Int32(v1beta1.MaxProgressSeconds))
 	klog.InfoS("Initialize: try to update cloneset", "cloneset", klog.KObj(rc.object), "patchData", patchData.String())
 	return rc.client.Patch(context.TODO(), util.GetEmptyObjectWithKey(rc.object), patchData)
 }
@@ -153,6 +155,7 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		}
 		patchData := patch.NewClonesetPatch()
 		patchData.UpdateMinReadySeconds(setting.MinReadySeconds)
+		patchData.UpdateProgressDeadlineSeconds(setting.ProgressDeadlineSeconds)
 		patchData.UpdateMaxSurge(setting.MaxSurge)
 		patchData.UpdateMaxUnavailable(setting.MaxUnavailable)
 		patchData.DeleteAnnotation(v1beta1.OriginalDeploymentStrategyAnnotation)
