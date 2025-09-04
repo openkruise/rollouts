@@ -18,6 +18,7 @@ package labelpatch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -84,7 +85,7 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 			// on the pod-template-hash is not recommended. Thus, we use the CloneSet algorithm to compute the
 			// controller-revision-hash: this method is fully defined by OpenKruise and can ensure that the same
 			// ReplicaSet produces the same value.
-			owner := metav1.GetControllerOf(pod)
+			owner := metav1.GetControllerOfNoCopy(pod)
 			if owner != nil && owner.Kind == "ReplicaSet" {
 				var hash string
 				if cache, ok := revisionHashCache[owner.UID]; ok {
@@ -92,10 +93,23 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 				} else {
 					rs := &v1.ReplicaSet{}
 					if err := r.Get(context.Background(), types.NamespacedName{Namespace: pod.Namespace, Name: owner.Name}, rs); err != nil {
-						klog.ErrorS(err, "Failed to get ReplicaSet", "pod", klog.KObj(pod), "rollout", r.logKey, "owner", owner.Name, "namespace", pod.Namespace)
+						klog.ErrorS(err, "Failed to get ReplicaSet when patching pod", "pod", klog.KObj(pod), "rollout", r.logKey, "owner", owner.Name, "namespace", pod.Namespace)
 						return err
 					}
-					delete(rs.Spec.Template.ObjectMeta.Labels, v1.DefaultDeploymentUniqueLabelKey)
+					rsOwner := metav1.GetControllerOfNoCopy(rs)
+					if rsOwner == nil || rsOwner.Kind != "Deployment" {
+						klog.ErrorS(nil, "ReplicaSet has no deployment owner, skip patching")
+						return errors.New("ReplicaSet has no deployment owner")
+					}
+					deploy := &v1.Deployment{}
+					if err := r.Get(context.Background(), types.NamespacedName{Namespace: pod.Namespace, Name: rsOwner.Name}, deploy); err != nil {
+						klog.ErrorS(err, "Failed to get Deployment when patching pod", "pod", klog.KObj(pod), "rollout", r.logKey, "owner", owner.Name, "namespace", pod.Namespace)
+						return err
+					}
+
+					if deploy.Spec.Template.Labels[v1.DefaultDeploymentUniqueLabelKey] == "" {
+						delete(rs.Spec.Template.ObjectMeta.Labels, v1.DefaultDeploymentUniqueLabelKey)
+					}
 					hash = util.ComputeHash(&rs.Spec.Template, nil)
 					revisionHashCache[owner.UID] = hash
 				}
