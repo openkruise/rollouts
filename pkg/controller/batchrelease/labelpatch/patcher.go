@@ -96,6 +96,20 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 						klog.ErrorS(err, "Failed to get ReplicaSet when patching pod", "pod", klog.KObj(pod), "rollout", r.logKey, "owner", owner.Name, "namespace", pod.Namespace)
 						return err
 					}
+					// Under normal circumstances, if pod-template-hash is not specified in the Deployment's PodTemplate,
+					// then one will be generated in the ReplicaSet it manages. This means that there may be differences
+					// between the Deployment and the ReplicaSet's PodTemplate in whether pod-template-hash is included.
+					// When BatchRelease calculates the update revision, it uses the Deployment's PodTemplate, while when
+					// calculating the pod's revision, it uses the ReplicaSet's revision. The above difference may cause
+					// the pod revision to be inconsistent with the update revision, which in turn causes the subsequent
+					// IsConsistentWithRevision function to return false and skip patching the label, ultimately causing
+					// the BatchRelease to be stuck in the Verifying phase. This is the reason why the label is removed
+					// from the ReplicaSet before calculating the pod hash.
+					//
+					// However, the Deployment's PodTemplate is also allowed to carry pod-template-hash. In this case,
+					// directly deleting this label will also cause the two hashes to be inconsistent. Therefore, we
+					// need to determine whether the Deployment contains this label to decide whether it needs to be
+					// deleted from the ReplicaSet in the final analysis.
 					rsOwner := metav1.GetControllerOfNoCopy(rs)
 					if rsOwner == nil || rsOwner.Kind != "Deployment" {
 						klog.ErrorS(nil, "ReplicaSet has no deployment owner, skip patching")
@@ -106,7 +120,6 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 						klog.ErrorS(err, "Failed to get Deployment when patching pod", "pod", klog.KObj(pod), "rollout", r.logKey, "owner", owner.Name, "namespace", pod.Namespace)
 						return err
 					}
-
 					if deploy.Spec.Template.Labels[v1.DefaultDeploymentUniqueLabelKey] == "" {
 						delete(rs.Spec.Template.ObjectMeta.Labels, v1.DefaultDeploymentUniqueLabelKey)
 					}
