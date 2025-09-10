@@ -315,7 +315,7 @@ func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 // doStepJump implements the common logic for both canary and bluegreen rollout strategies
 // to handle step jumping based on NextStepIndex.
 func doStepJump(rollout *v1beta1.Rollout, newStatus *v1beta1.RolloutStatus, steps []v1beta1.CanaryStep, workloadReplicas int) (jumped bool) {
-	status := newStatus.GetUnifiedStatus()
+	status := GetUnifiedStatus(newStatus)
 	if status.IsNil() {
 		klog.InfoS("doStepJump skipped: unified status is nil")
 		return false

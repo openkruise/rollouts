@@ -306,7 +306,7 @@ func (r *RolloutReconciler) handleRolloutPlanChanged(c *RolloutContext) error {
 		klog.Errorf("rollout(%s/%s) reCalculate Canary StepIndex failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 		return err
 	}
-	status := c.NewStatus.GetUnifiedStatus()
+	status := GetUnifiedStatus(c.NewStatus)
 	// if the target step index is the same as the NextStepIndex
 	// we simply set the CurrentStepState to Ready
 	if status.NextStepIndex == newStepIndex {

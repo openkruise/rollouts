@@ -459,24 +459,8 @@ type BlueGreenStatus struct {
 	UpdatedReadyReplicas int32 `json:"updatedReadyReplicas"`
 }
 
-// UnifiedStatus is a data structure used to unify BlueGreenStatus and CanaryStatus, allowing the controller to operate
-// the current release status in a unified manner without considering the release form.
-type UnifiedStatus struct {
-	*CommonStatus
-	// UpdatedRevision is the pointer of BlueGreenStatus.UpdatedRevision or CanaryStatus.CanaryRevision
-	UpdatedRevision *string `json:"updatedRevision"`
-	// UpdatedReplicas is the pointer of BlueGreenStatus.UpdatedReplicas or CanaryStatus.CanaryReplicas
-	UpdatedReplicas *int32 `json:"updatedReplicas"`
-	// UpdatedReadyReplicas is the pointer of BlueGreenStatus.UpdatedReadyReplicas or CanaryStatus.CanaryReadyReplicas
-	UpdatedReadyReplicas *int32 `json:"updatedReadyReplicas"`
-}
-
-func (u UnifiedStatus) IsNil() bool {
-	return u.CommonStatus == nil || u.UpdatedReplicas == nil || u.UpdatedReadyReplicas == nil || u.UpdatedRevision == nil
-}
-
 // GetSubStatus returns the ethier canary or bluegreen status
-// Deprecated: use
+// Deprecated: use controller GetUnifiedStatus
 func (r *RolloutStatus) GetSubStatus() *CommonStatus {
 	if r.CanaryStatus == nil && r.BlueGreenStatus == nil {
 		return nil
@@ -485,22 +469,6 @@ func (r *RolloutStatus) GetSubStatus() *CommonStatus {
 		return &r.CanaryStatus.CommonStatus
 	}
 	return &r.BlueGreenStatus.CommonStatus
-}
-
-func (r *RolloutStatus) GetUnifiedStatus() UnifiedStatus {
-	status := UnifiedStatus{}
-	if r.CanaryStatus != nil {
-		status.CommonStatus = &r.CanaryStatus.CommonStatus
-		status.UpdatedReadyReplicas = &r.CanaryStatus.CanaryReadyReplicas
-		status.UpdatedReplicas = &r.CanaryStatus.CanaryReplicas
-		status.UpdatedRevision = &r.CanaryStatus.CanaryRevision
-	} else if r.BlueGreenStatus != nil {
-		status.CommonStatus = &r.BlueGreenStatus.CommonStatus
-		status.UpdatedReadyReplicas = &r.BlueGreenStatus.UpdatedReadyReplicas
-		status.UpdatedReplicas = &r.BlueGreenStatus.UpdatedReplicas
-		status.UpdatedRevision = &r.BlueGreenStatus.UpdatedRevision
-	}
-	return status
 }
 
 func (r *RolloutStatus) IsSubStatusEmpty() bool {
