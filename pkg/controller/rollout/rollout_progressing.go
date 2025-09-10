@@ -206,24 +206,30 @@ func (r *RolloutReconciler) doProgressingInRolling(c *RolloutContext) error {
 	switch {
 	// 1. In case of rollback in a quick way, un-paused and just use workload rolling strategy
 	case isRollingBackDirectly(c.Rollout, c.Workload):
+		klog.InfoS("rollout is rolling back directly", "rollout", klog.KObj(c.Rollout))
 		return r.handleRollbackDirectly(c.Rollout, c.Workload, c.NewStatus)
 
 	// 2. In case of rollout paused, just stop reconcile
 	case isRolloutPaused(c.Rollout):
+		klog.InfoS("rollout is paused", "rollout", klog.KObj(c.Rollout))
 		return r.handleRolloutPaused(c.Rollout, c.NewStatus)
 
 	// 3. In case of rollback in a batch way, use rollout step strategy
 	case isRollingBackInBatches(c.Rollout, c.Workload):
+		klog.InfoS("rollout is rolling back in batches", "rollout", klog.KObj(c.Rollout))
 		return r.handleRollbackInBatches(c.Rollout, c.Workload, c.NewStatus)
 
 	// 4. In case of continuous publishing(v1 -> v2 -> v3), restart publishing
 	case isContinuousRelease(c.Rollout, c.Workload):
+		klog.InfoS("rollout is in continuous release", "rollout", klog.KObj(c.Rollout))
 		return r.handleContinuousRelease(c)
 
 	// 5. In case of rollout plan changed, recalculate and publishing
 	case isRolloutPlanChanged(c.Rollout):
+		klog.InfoS("rollout plan changed", "rollout", klog.KObj(c.Rollout))
 		return r.handleRolloutPlanChanged(c)
 	}
+	klog.InfoS("rollout is in normal rolling", "rollout", klog.KObj(c.Rollout))
 	return r.handleNormalRolling(c)
 }
 
@@ -300,28 +306,29 @@ func (r *RolloutReconciler) handleRolloutPlanChanged(c *RolloutContext) error {
 		klog.Errorf("rollout(%s/%s) reCalculate Canary StepIndex failed: %s", c.Rollout.Namespace, c.Rollout.Name, err.Error())
 		return err
 	}
+	status := c.NewStatus.GetUnifiedStatus()
 	// if the target step index is the same as the NextStepIndex
 	// we simply set the CurrentStepState to Ready
-	if c.NewStatus.GetSubStatus().NextStepIndex == newStepIndex {
-		c.NewStatus.GetSubStatus().CurrentStepState = v1beta1.CanaryStepStateReady
-		c.NewStatus.GetSubStatus().LastUpdateTime = &metav1.Time{Time: time.Now()}
-		c.NewStatus.GetSubStatus().RolloutHash = c.Rollout.Annotations[util.RolloutHashAnnotation]
+	if status.NextStepIndex == newStepIndex {
+		status.CurrentStepState = v1beta1.CanaryStepStateReady
+		status.LastUpdateTime = &metav1.Time{Time: time.Now()}
+		status.RolloutHash = c.Rollout.Annotations[util.RolloutHashAnnotation]
 		klog.Infof("rollout(%s/%s) canary step configuration change, and NextStepIndex(%d) state(%s)",
-			c.Rollout.Namespace, c.Rollout.Name, c.NewStatus.GetSubStatus().NextStepIndex, c.NewStatus.GetSubStatus().CurrentStepState)
+			c.Rollout.Namespace, c.Rollout.Name, status.NextStepIndex, status.CurrentStepState)
 		return nil
 	}
 
 	// otherwise, execute the "jump" logic
-	c.NewStatus.GetSubStatus().NextStepIndex = newStepIndex
-	c.NewStatus.GetSubStatus().LastUpdateTime = &metav1.Time{Time: time.Now()}
-	c.NewStatus.GetSubStatus().RolloutHash = c.Rollout.Annotations[util.RolloutHashAnnotation]
+	status.NextStepIndex = newStepIndex
+	status.LastUpdateTime = &metav1.Time{Time: time.Now()}
+	status.RolloutHash = c.Rollout.Annotations[util.RolloutHashAnnotation]
 	releaseManager, err := r.getReleaseManager(c.Rollout)
 	if err != nil {
 		return err
 	}
 	releaseManager.doCanaryJump(c)
-	klog.Infof("rollout(%s/%s) canary step configuration change, and NextStepIndex(%d) state(%s)",
-		c.Rollout.Namespace, c.Rollout.Name, c.NewStatus.GetSubStatus().NextStepIndex, c.NewStatus.GetSubStatus().CurrentStepState)
+	klog.InfoS("rollout step configuration changed", "rollout", klog.KObj(c.Rollout),
+		"nextStepIndex", status.NextStepIndex, "currentStepState", status.CurrentStepState)
 	return nil
 }
 

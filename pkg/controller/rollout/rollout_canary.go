@@ -19,7 +19,6 @@ package rollout
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -313,32 +312,46 @@ func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 	return false, nil
 }
 
-func (m *canaryReleaseManager) doCanaryJump(c *RolloutContext) (jumped bool) {
-	canaryStatus := c.NewStatus.CanaryStatus
-	// since we forbid adding or removing steps, currentStepIndex should always be valid
-	currentStep := c.Rollout.Spec.Strategy.Canary.Steps[canaryStatus.CurrentStepIndex-1]
-	// nextIndex=-1 means the release is done, nextIndex=0 is not used
-	if nextIndex := canaryStatus.NextStepIndex; nextIndex != util.NextBatchIndex(c.Rollout, canaryStatus.CurrentStepIndex) && nextIndex > 0 {
-		currentIndexBackup := canaryStatus.CurrentStepIndex
-		currentStepStateBackup := canaryStatus.CurrentStepState
+// doStepJump implements the common logic for both canary and bluegreen rollout strategies
+// to handle step jumping based on NextStepIndex.
+func doStepJump(rollout *v1beta1.Rollout, newStatus *v1beta1.RolloutStatus, steps []v1beta1.CanaryStep, workloadReplicas int) (jumped bool) {
+	status := newStatus.GetUnifiedStatus()
+	if status.IsNil() {
+		klog.InfoS("doStepJump skipped: unified status is nil")
+		return false
+	}
+	klog.InfoS("will do step jump", "steps", len(steps), "updatedReplicas", *status.UpdatedReplicas,
+		"nextStepIndex", status.NextStepIndex, "rollout", klog.KObj(rollout))
+	if nextIndex := status.NextStepIndex; nextIndex != util.NextBatchIndex(rollout, status.CurrentStepIndex) &&
+		nextIndex > 0 && nextIndex <= int32(len(steps)) {
+		currentIndexBackup := status.CurrentStepIndex
+		currentStepStateBackup := status.CurrentStepState
 		// update the current and next stepIndex
-		canaryStatus.CurrentStepIndex = nextIndex
-		canaryStatus.NextStepIndex = util.NextBatchIndex(c.Rollout, nextIndex)
-		nextStep := c.Rollout.Spec.Strategy.Canary.Steps[nextIndex-1]
+		status.CurrentStepIndex = nextIndex
+		status.NextStepIndex = util.NextBatchIndex(rollout, nextIndex)
+		nextStep := steps[nextIndex-1]
 		// compare next step and current step to decide the state we should go
-		if reflect.DeepEqual(nextStep.Replicas, currentStep.Replicas) {
-			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
+		nextStepReplicas, _ := intstr.GetScaledValueFromIntOrPercent(nextStep.Replicas, workloadReplicas, true)
+		if int32(nextStepReplicas) == *status.UpdatedReplicas {
+			status.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
 		} else {
-			canaryStatus.CurrentStepState = v1beta1.CanaryStepStateInit
+			status.CurrentStepState = v1beta1.CanaryStepStateInit
 		}
-		canaryStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		klog.Infof("rollout(%s/%s) step(%d->%d) state from(%s -> %s)",
-			c.Rollout.Namespace, c.Rollout.Name,
-			currentIndexBackup, canaryStatus.CurrentStepIndex,
-			currentStepStateBackup, canaryStatus.CurrentStepState)
+		status.LastUpdateTime = &metav1.Time{Time: time.Now()}
+		klog.InfoS("step jumped", "rollout", klog.KObj(rollout),
+			"oldCurrentIndex", currentIndexBackup, "newCurrentIndex", status.CurrentStepIndex,
+			"oldCurrentStepState", currentStepStateBackup, "newCurrentStepState", status.CurrentStepState)
 		return true
 	}
+	klog.InfoS("step not jumped")
 	return false
+}
+
+func (m *canaryReleaseManager) doCanaryJump(c *RolloutContext) (jumped bool) {
+	if c.Workload == nil {
+		return false
+	}
+	return doStepJump(c.Rollout, c.NewStatus, c.Rollout.Spec.Strategy.Canary.Steps, int(c.Workload.Replicas))
 }
 
 // cleanup after rollout is completed or finished

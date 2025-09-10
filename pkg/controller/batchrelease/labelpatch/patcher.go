@@ -124,7 +124,9 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 			klog.InfoS("Pod batchID is not a number, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
 			continue
 		}
-		plannedUpdatedReplicasForBatches[podBatchID-1]--
+		if podBatchID > 0 && podBatchID <= len(plannedUpdatedReplicasForBatches) {
+			plannedUpdatedReplicasForBatches[podBatchID-1]--
+		}
 	}
 	klog.InfoS("updatedButUnpatchedPods amount calculated", "amount", len(updatedButUnpatchedPods),
 		"rollout", r.logKey, "plan", plannedUpdatedReplicasForBatches)
