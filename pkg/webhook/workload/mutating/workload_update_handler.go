@@ -259,8 +259,10 @@ func (h *WorkloadHandler) handleStatefulSetLikeWorkload(newObj, oldObj *unstruct
 }
 
 func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (bool, error) {
+	klog.Infof("handler deployment old(%s) new(%s)", util.DumpJSON(oldObj), util.DumpJSON(newObj))
 	// in rollout progressing
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
+		klog.Infof("deployment(%s/%s) contains(annotation=%s)", newObj.Namespace, newObj.Name, newObj.Annotations[util.InRolloutProgressingAnnotation])
 		modified := false
 		if !newObj.Spec.Paused {
 			modified = true
@@ -299,9 +301,11 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	// indicate whether the workload can enter the rollout process
 	// replicas > 0
 	if newObj.Spec.Replicas != nil && *newObj.Spec.Replicas == 0 {
+		klog.Infof("deployment(%s/%s) replicas=0", newObj.Namespace, newObj.Name)
 		return false, nil
 	}
 	if !isEffectiveDeploymentRevisionChange(oldObj, newObj) {
+		klog.Infof("deployment(%s/%s) isEffectiveDeploymentRevisionChange=false", newObj.Namespace, newObj.Name)
 		return false, nil
 	}
 
@@ -309,8 +313,10 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	if err != nil {
 		return false, err
 	} else if rollout == nil || rollout.Spec.Strategy.Canary == nil {
+		klog.Infof("deployment(%s/%s) rollout(%s)", newObj.Namespace, newObj.Name, util.DumpJSON(rollout))
 		return false, nil
 	}
+	klog.Infof("deployment(%s/%s) rollout(%s)", newObj.Namespace, newObj.Name, util.DumpJSON(rollout))
 	rss, err := h.Finder.GetReplicaSetsForDeployment(newObj)
 	if err != nil || len(rss) == 0 {
 		klog.Warningf("Cannot find any activate replicaset for deployment %s/%s, no need to rolling", newObj.Namespace, newObj.Name)
