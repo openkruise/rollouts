@@ -19,7 +19,9 @@ package mutating
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
+	"os"
 	"reflect"
 	"testing"
 
@@ -44,6 +46,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
+
+func TestEqualIgnoreHash(t *testing.T) {
+	file1, err := os.Open("/Users/zhaomingshan/Documents/asi-work/temp/log.before")
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	defer file1.Close()
+
+	var deploy1 apps.Deployment
+	if err := json.NewDecoder(file1).Decode(&deploy1); err != nil {
+		t.Fatalf(err.Error())
+	}
+	file2, err := os.Open("/Users/zhaomingshan/Documents/asi-work/temp/log.after")
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	defer file2.Close()
+
+	var deploy2 apps.Deployment
+	if err := json.NewDecoder(file2).Decode(&deploy2); err != nil {
+		t.Fatalf(err.Error())
+	}
+	fmt.Println(util.EqualIgnoreHash(&deploy1.Spec.Template, &deploy2.Spec.Template))
+}
 
 var (
 	scheme *runtime.Scheme

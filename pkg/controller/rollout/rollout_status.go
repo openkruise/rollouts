@@ -269,7 +269,7 @@ func (r *RolloutReconciler) patchWorkloadRolloutWebhookLabel(rollout *v1alpha1.R
 	case util.ControllerKruiseKindDS.Kind:
 		workloadType = util.DaemonSetType
 	}
-	if workload.Annotations[util.WorkloadTypeLabel] == "" && workloadType != "" {
+	if workload.Labels[util.WorkloadTypeLabel] == "" && workloadType != "" {
 		workloadGVK := schema.FromAPIVersionAndKind(workload.APIVersion, workload.Kind)
 		obj := util.GetEmptyWorkloadObject(workloadGVK)
 		obj.SetNamespace(workload.Namespace)
