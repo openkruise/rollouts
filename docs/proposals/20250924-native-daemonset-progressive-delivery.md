@@ -268,18 +268,18 @@ During initialization, the controller:
 
 ##### Batch Upgrade Process
 
-The batch upgrade process works through a delegation model where the native DaemonSet controller only manages annotations, while an advanced-daemonset-controller handles the actual pod deletion logic:
+The batch upgrade process works through a delegation model where the native DaemonSet controller only manages annotations, while an advanced-daemonset-controller handles the actual pod deletion logic.
 
-**Native DaemonSet Controller Responsibilities:**
-1. **Check Existing Annotations**: Examines the DaemonSet for the presence of rollout control annotations
-2. **Annotation Management Logic**:
-    - **If annotations are missing**: Patches the DaemonSet with initial control annotations:
+Native DaemonSet Controller Responsibilities:
+1. Check Existing Annotations: Examines the DaemonSet for the presence of rollout control annotations
+2. Annotation Management Logic:
+    - If annotations are missing: Patches the DaemonSet with initial control annotations:
         - `rollouts.kruise.io/rollout-batch-id: <ctx.CurrentBatch>` - Indicates the current batch being processed
         - `rollouts.kruise.io/desired-updated-replicas: <ctx.DesiredUpdatedReplicas>` - Specifies the target number of updated pods for this batch
-    - **If annotations exist**:
+    - If annotations exist:
         - Checks if `rollouts.kruise.io/rollout-batch-id` matches `ctx.CurrentBatch`
-        - **If batch ID matches**: Returns without action (batch is already in progress)
-        - **If batch ID differs**: Updates annotations with current values:
+        - If batch ID matches: Returns without action (batch is already in progress)
+        - If batch ID differs: Updates annotations with current values:
             - `rollouts.kruise.io/rollout-batch-id: <ctx.CurrentBatch>`
             - `rollouts.kruise.io/desired-updated-replicas: <ctx.DesiredUpdatedReplicas>`
 
@@ -297,26 +297,19 @@ Upon completion or cancellation of the rollout:
 The advanced-daemonset-controller is a separate controller that watches for native DaemonSets with the partition annotation and implements the actual pod deletion logic. 
 It operates independently of the BatchRelease controller and responds to annotation changes.
 
-**Controller Responsibilities:**
+Controller Responsibilities:
 
 The advanced-daemonset-controller watches for native DaemonSets with the rollout batch annotation and implements the pod deletion logic:
 
-1. **Refreshing the pod list** to get the current state of all DaemonSet-owned pods
-2. **Checking if any pods are currently being deleted** (exits the reconciliation cycle if deletions are in progress to avoid race conditions)
-3. **Analyzing pods** to determine which pods are running the old revision and need to be updated
-4. **Calculating how many pods need to be deleted** based on the desired updated replicas value:
+1. Monitors DaemonSets for `rollouts.kruise.io/rollout-batch-id` annotation changes when a new batch should be processed
+2. Refreshing the pod list to get the current state of all DaemonSet-owned pods
+3. Checking if any pods are currently being deleted (exits the reconciliation cycle if deletions are in progress to avoid race conditions)
+4. Analyzing pods to determine which pods are running the old revision and need to be updated
+5. Calculating how many pods need to be deleted based on the desired updated replicas value:
     - Current updated pods = count of pods with canary revision that are ready
     - Pods to delete = `desired-updated-replicas - Current updated pods`
-5. **Applying maxUnavailable constraints** from the original DaemonSet spec to ensure cluster stability
-6. **Deleting the required number of pods** (oldest first based on creation timestamp)
-
-**Key Implementation Details:**
-- **Annotation Watching**: Monitors DaemonSets for `rollouts.kruise.io/rollout-batch-id` annotation changes
-- **Batch Tracking**: Uses the batch ID to detect when a new batch should be processed
-- **Revision Awareness**: Uses the revision annotations to distinguish between stable and canary pods
-- **Constraint Compliance**: Always respects the original DaemonSet's `maxUnavailable` setting
-- **Pod Selection Strategy**: Consistently selects oldest pods first based on creation timestamp
-- **Concurrent Safety**: Handles multiple reconciliation attempts gracefully and avoids race conditions
+6. Applying maxUnavailable constraints from the original DaemonSet spec to restrict the number of deletions
+7. Deleting the required number of pods (oldest first based on creation timestamp)
 
 #### Rollback and Continuous Release Support
 
