@@ -110,7 +110,7 @@ graph TB
     subgraph "Kruise Rollout Control Plane"
         RC["<b>Rollout (and BatchRelease) Controller</b><br/>Main orchestration<br/>and scheduling"]
         CF["<b>ControllerFinder</b><br/>Discovers revisions<br/>from ControllerRevisions"]
-        NDC["<b>Native DaemonSet Controller</b><br/>Implements partition-style<br/>interface for DaemonSet"]
+        NDC["<b>Native (and Advanced) DaemonSet Controller</b><br/>Implements partition-style<br/>interface for DaemonSet"]
     end
 
 %% Kubernetes Native Layer  
