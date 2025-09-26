@@ -274,14 +274,14 @@ Native DaemonSet Controller Responsibilities:
 1. Check Existing Annotations: Examines the DaemonSet for the presence of rollout control annotations
 2. Annotation Management Logic:
     - If annotations are missing: Patches the DaemonSet with initial control annotations:
-        - `rollouts.kruise.io/rollout-batch-id: <ctx.CurrentBatch>` - Indicates the current batch being processed
-        - `rollouts.kruise.io/desired-updated-replicas: <ctx.DesiredUpdatedReplicas>` - Specifies the target number of updated pods for this batch
+        - `rollouts.kruise.io/daemonset-batch-id: <ctx.CurrentBatch>` - Indicates the current batch being processed
+        - `rollouts.kruise.io/daemonset-desired-updated-replicas: <ctx.DesiredUpdatedReplicas>` - Specifies the target number of updated pods for this batch
     - If annotations exist:
         - Checks if `rollouts.kruise.io/rollout-batch-id` matches `ctx.CurrentBatch`
         - If batch ID matches: Returns without action (batch is already in progress)
         - If batch ID differs: Updates annotations with current values:
-            - `rollouts.kruise.io/rollout-batch-id: <ctx.CurrentBatch>`
-            - `rollouts.kruise.io/desired-updated-replicas: <ctx.DesiredUpdatedReplicas>`
+            - `rollouts.kruise.io/daemonset-batch-id: <ctx.CurrentBatch>`
+            - `rollouts.kruise.io/daemonset-desired-updated-replicas: <ctx.DesiredUpdatedReplicas>`
 
 ##### Finalization Process
 
