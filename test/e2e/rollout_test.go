@@ -413,6 +413,7 @@ var _ = SIGDescribe("Rollout", func() {
 			workload.Spec.Template.Annotations = map[string]string{
 				"pod": "stable",
 			}
+			workload.Spec.Template.Labels[apps.DefaultDeploymentUniqueLabelKey] = "abcdefg"
 			CreateObject(workload)
 			WaitDeploymentAllPodsReady(workload)
 

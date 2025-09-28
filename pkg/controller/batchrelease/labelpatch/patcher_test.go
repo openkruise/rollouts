@@ -31,10 +31,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -268,6 +270,16 @@ func TestDeploymentPatch(t *testing.T) {
 	rs := &appsv1.ReplicaSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "rs-1",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "apps/v1",
+					Kind:               "Deployment",
+					Name:               "deploy-1",
+					UID:                types.UID("deploy-1"),
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			},
 		},
 		Spec: appsv1.ReplicaSetSpec{
 			Template: corev1.PodTemplateSpec{
@@ -287,6 +299,34 @@ func TestDeploymentPatch(t *testing.T) {
 			},
 		},
 	}
+	deploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "deploy-1",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(int32(10)),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "nginx",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "nginx",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx",
+							Image: "nginx:1.14.2",
+						},
+					},
+				},
+			},
+		},
+	}
 	revision := util.ComputeHash(&rs.Spec.Template, nil)
 	// randomly inserted to test cases, pods with this revision should be skipped and
 	// the result should not be influenced
@@ -295,6 +335,8 @@ func TestDeploymentPatch(t *testing.T) {
 		batchContext    func() *batchcontext.BatchContext
 		Batches         []v1beta1.ReleaseBatch
 		expectedPatched []int
+		modifier        func(rs *appsv1.ReplicaSet, deploy *appsv1.Deployment)
+		expectErr       bool
 	}{
 		"10 pods, 0 patched, 5 new patched": {
 			batchContext: func() *batchcontext.BatchContext {
@@ -475,6 +517,54 @@ func TestDeploymentPatch(t *testing.T) {
 			},
 			expectedPatched: []int{3, 2},
 		},
+		"rs with no controller": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					CurrentBatch:           1,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, 5, 3,
+					"rollout-1", strconv.Itoa(1))
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{CanaryReplicas: intstr.FromInt(2)},
+				{CanaryReplicas: intstr.FromInt(5)},
+			},
+			expectedPatched: []int{3, 2},
+			expectErr:       true,
+			modifier: func(rs *appsv1.ReplicaSet, deploy *appsv1.Deployment) {
+				rs.OwnerReferences = nil
+			},
+		},
+		"failed to get deployment": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         revision,
+					PlannedUpdatedReplicas: 5,
+					CurrentBatch:           1,
+					Replicas:               10,
+				}
+				pods := generateDeploymentPods(1, 5, 3,
+					"rollout-1", strconv.Itoa(1))
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{CanaryReplicas: intstr.FromInt(2)},
+				{CanaryReplicas: intstr.FromInt(5)},
+			},
+			expectedPatched: []int{3, 2},
+			expectErr:       true,
+			modifier: func(rs *appsv1.ReplicaSet, deploy *appsv1.Deployment) {
+				deploy.Name = "not-exist"
+			},
+		},
 	}
 	for name, cs := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -501,11 +591,21 @@ func TestDeploymentPatch(t *testing.T) {
 			for _, pod := range ctx.Pods {
 				objects = append(objects, pod)
 			}
-			objects = append(objects, rs)
+			rsCopy, deployCopy := rs.DeepCopy(), deploy.DeepCopy()
+			if cs.modifier != nil {
+				cs.modifier(rsCopy, deployCopy)
+			}
+			objects = append(objects, rsCopy, deployCopy)
 			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 			patcher := NewLabelPatcher(cli, klog.ObjectRef{Name: "test"}, cs.Batches)
 			if err := patcher.patchPodBatchLabel(ctx.Pods, ctx); err != nil {
+				if cs.expectErr {
+					return
+				}
 				t.Fatalf("failed to patch pods: %v", err)
+			}
+			if cs.expectErr {
+				t.Fatalf("errors should occur")
 			}
 
 			podList := &corev1.PodList{}
