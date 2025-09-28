@@ -236,6 +236,7 @@ func (r *ingressController) executeLuaForCanary(annotations map[string]string, w
 		Annotations           map[string]string
 		Weight                string
 		Matches               []v1beta1.HttpRouteMatch
+		StableService         string
 		CanaryService         string
 		RequestHeaderModifier *gatewayv1beta1.HTTPHeaderFilter
 	}
@@ -243,6 +244,7 @@ func (r *ingressController) executeLuaForCanary(annotations map[string]string, w
 		Annotations:           annotations,
 		Weight:                fmt.Sprintf("%d", *weight),
 		Matches:               matches,
+		StableService:         r.conf.StableService,
 		CanaryService:         r.conf.CanaryService,
 		RequestHeaderModifier: headerModifier,
 	}
