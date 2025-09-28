@@ -34,7 +34,9 @@ import (
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
 	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"github.com/openkruise/rollouts/pkg/util/patch"
 )
 
@@ -142,7 +144,9 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	patchData := patch.NewDeploymentPatch()
 	if release.Spec.ReleasePlan.BatchPartition == nil {
 		strategy := util.GetDeploymentStrategy(rc.object)
-		patchData.UpdatePaused(false)
+		if !utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) {
+			patchData.UpdatePaused(false)
+		}
 		if rc.object.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
 			patchData.UpdateStrategy(apps.DeploymentStrategy{Type: apps.RollingUpdateDeploymentStrategyType, RollingUpdate: strategy.RollingUpdate})
 		}

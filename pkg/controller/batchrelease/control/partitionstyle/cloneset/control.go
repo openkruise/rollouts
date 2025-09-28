@@ -32,7 +32,9 @@ import (
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 type realController struct {
@@ -117,9 +119,14 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	}
 
 	var specBody string
+
 	// if batchPartition == nil, workload should be promoted.
 	if release.Spec.ReleasePlan.BatchPartition == nil {
-		specBody = `,"spec":{"updateStrategy":{"partition":null,"paused":false}}`
+		if utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) {
+			specBody = `,"spec":{"updateStrategy":{"paused":false}}`
+		} else {
+			specBody = `,"spec":{"updateStrategy":{"partition":null,"paused":false}}`
+		}
 	}
 
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}%s}`, util.BatchReleaseControlAnnotation, specBody)
