@@ -460,6 +460,7 @@ type BlueGreenStatus struct {
 }
 
 // GetSubStatus returns the ethier canary or bluegreen status
+// Deprecated: use controller GetUnifiedStatus
 func (r *RolloutStatus) GetSubStatus() *CommonStatus {
 	if r.CanaryStatus == nil && r.BlueGreenStatus == nil {
 		return nil
