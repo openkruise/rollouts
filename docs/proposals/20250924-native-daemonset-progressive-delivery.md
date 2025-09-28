@@ -275,21 +275,19 @@ Native DaemonSet Controller Responsibilities:
 1. Check Existing Annotations: Examines the DaemonSet for the presence of rollout control annotations
 2. Annotation Management Logic:
     - If annotations are missing: Patches the DaemonSet with initial control annotations:
-        - `rollouts.kruise.io/daemonset-batch-id: <ctx.CurrentBatch>` - Indicates the current batch being processed
-        - `rollouts.kruise.io/daemonset-desired-updated-replicas: <ctx.DesiredUpdatedReplicas>` - Specifies the target number of updated pods for this batch
+        - `rollouts.kruise.io/daemonset-partition: <ctx.DesiredUpdatedReplicas>` - Specifies the target number of updated pods for this batch
     - If annotations exist:
-        - Checks if `rollouts.kruise.io/rollout-batch-id` matches `ctx.CurrentBatch`
-        - If batch ID matches: Returns without action (batch is already in progress)
-        - If batch ID differs: Updates annotations with current values:
-            - `rollouts.kruise.io/daemonset-batch-id: <ctx.CurrentBatch>`
-            - `rollouts.kruise.io/daemonset-desired-updated-replicas: <ctx.DesiredUpdatedReplicas>`
+        - Checks if `rollouts.kruise.io/daemonset-partition` matches `ctx.DesiredUpdatedReplicas`
+        - If it matches: Returns without action (batch is already in progress)
+        - If it differs: Updates annotations with current values:
+            - `rollouts.kruise.io/daemonset-partition: <ctx.DesiredUpdatedReplicas>`
 
 ##### Finalization Process
 
 Upon completion or cancellation of the rollout:
 1. Removes the BatchRelease control annotations
 2. Removes the revision annotations (`rollouts.kruise.io/daemonset-canary-revision`, `rollouts.kruise.io/daemonset-stable-revision`)
-3. Removes the rollout control annotations (`rollouts.kruise.io/rollout-batch-id`, `rollouts.kruise.io/desired-updated-replicas`)
+3. Removes the rollout control annotations (`rollouts.kruise.io/daemonset-partition`)
 4. If the rollout is complete (BatchPartition == nil), restores the original update strategy to RollingUpdate
 5. Cleans up any other Kruise Rollout specific annotations
 
@@ -302,7 +300,7 @@ Controller Responsibilities:
 
 The advanced-daemonset-controller watches for native DaemonSets with the rollout batch annotation and implements the pod deletion logic:
 
-1. Monitors DaemonSets for `rollouts.kruise.io/rollout-batch-id` annotation changes when a new batch should be processed
+1. Monitors DaemonSets for `rollouts.kruise.io/daemonset-partition` annotation changes when a new batch should be processed
 2. Refreshing the pod list to get the current state of all DaemonSet-owned pods
 3. Checking if any pods are currently being deleted (exits the reconciliation cycle if deletions are in progress to avoid race conditions)
 4. Analyzing pods to determine which pods are running the old revision and need to be updated
