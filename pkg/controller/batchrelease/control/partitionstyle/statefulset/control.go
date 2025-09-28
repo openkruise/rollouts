@@ -80,7 +80,7 @@ func (rc *realController) BuildController() (partitionstyle.Interface, error) {
 			if !pod.DeletionTimestamp.IsZero() {
 				return false
 			}
-			if !util.IsConsistentWithRevision(pod.GetLabels(), rc.WorkloadInfo.Status.UpdateRevision) {
+			if !util.IsConsistentWithRevision(pod, rc.WorkloadInfo.Status.UpdateRevision) {
 				return false
 			}
 			return util.IsPodReady(pod)
