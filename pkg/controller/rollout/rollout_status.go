@@ -23,8 +23,10 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
@@ -394,4 +396,39 @@ func GetUnifiedStatus(r *v1beta1.RolloutStatus) UnifiedStatus {
 		status.UpdatedRevision = &r.BlueGreenStatus.UpdatedRevision
 	}
 	return status
+}
+
+// doStepJump implements the common logic for both canary and bluegreen rollout strategies
+// to handle step jumping based on NextStepIndex.
+func doStepJump(rollout *v1beta1.Rollout, newStatus *v1beta1.RolloutStatus, steps []v1beta1.CanaryStep, workloadReplicas int) (jumped bool) {
+	status := GetUnifiedStatus(newStatus)
+	if status.IsNil() {
+		klog.InfoS("doStepJump skipped: unified status is nil", "rollout", klog.KObj(rollout))
+		return false
+	}
+	klog.InfoS("will do step jump", "steps", len(steps), "updatedReplicas", *status.UpdatedReplicas,
+		"nextStepIndex", status.NextStepIndex, "rollout", klog.KObj(rollout))
+	if nextIndex := status.NextStepIndex; nextIndex != util.NextBatchIndex(rollout, status.CurrentStepIndex) &&
+		nextIndex > 0 && nextIndex <= int32(len(steps)) {
+		currentIndexBackup := status.CurrentStepIndex
+		currentStepStateBackup := status.CurrentStepState
+		// update the current and next stepIndex
+		status.CurrentStepIndex = nextIndex
+		status.NextStepIndex = util.NextBatchIndex(rollout, nextIndex)
+		nextStep := steps[nextIndex-1]
+		// compare next step and current step to decide the state we should go
+		nextStepReplicas, _ := intstr.GetScaledValueFromIntOrPercent(nextStep.Replicas, workloadReplicas, true)
+		if int32(nextStepReplicas) == *status.UpdatedReplicas {
+			status.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
+		} else {
+			status.CurrentStepState = v1beta1.CanaryStepStateInit
+		}
+		status.LastUpdateTime = &metav1.Time{Time: time.Now()}
+		klog.InfoS("step jumped", "rollout", klog.KObj(rollout),
+			"oldCurrentIndex", currentIndexBackup, "newCurrentIndex", status.CurrentStepIndex,
+			"oldCurrentStepState", currentStepStateBackup, "newCurrentStepState", status.CurrentStepState)
+		return true
+	}
+	klog.InfoS("step not jumped", "rollout", klog.KObj(rollout))
+	return false
 }
