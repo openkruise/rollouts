@@ -317,7 +317,7 @@ func (m *canaryReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error) {
 func doStepJump(rollout *v1beta1.Rollout, newStatus *v1beta1.RolloutStatus, steps []v1beta1.CanaryStep, workloadReplicas int) (jumped bool) {
 	status := GetUnifiedStatus(newStatus)
 	if status.IsNil() {
-		klog.InfoS("doStepJump skipped: unified status is nil")
+		klog.InfoS("doStepJump skipped: unified status is nil", "rollout", klog.KObj(rollout))
 		return false
 	}
 	klog.InfoS("will do step jump", "steps", len(steps), "updatedReplicas", *status.UpdatedReplicas,
@@ -343,7 +343,7 @@ func doStepJump(rollout *v1beta1.Rollout, newStatus *v1beta1.RolloutStatus, step
 			"oldCurrentStepState", currentStepStateBackup, "newCurrentStepState", status.CurrentStepState)
 		return true
 	}
-	klog.InfoS("step not jumped")
+	klog.InfoS("step not jumped", "rollout", klog.KObj(rollout))
 	return false
 }
 
