@@ -23,8 +23,10 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
@@ -362,4 +364,71 @@ func getRolloutID(workload *util.Workload) string {
 		return rolloutID
 	}
 	return ""
+}
+
+// UnifiedStatus is a data structure used to unify BlueGreenStatus and CanaryStatus, allowing the controller to operate
+// the current release status in a unified manner without considering the release form.
+type UnifiedStatus struct {
+	*v1beta1.CommonStatus
+	// UpdatedRevision is the pointer of BlueGreenStatus.UpdatedRevision or CanaryStatus.CanaryRevision
+	UpdatedRevision *string `json:"updatedRevision"`
+	// UpdatedReplicas is the pointer of BlueGreenStatus.UpdatedReplicas or CanaryStatus.CanaryReplicas
+	UpdatedReplicas *int32 `json:"updatedReplicas"`
+	// UpdatedReadyReplicas is the pointer of BlueGreenStatus.UpdatedReadyReplicas or CanaryStatus.CanaryReadyReplicas
+	UpdatedReadyReplicas *int32 `json:"updatedReadyReplicas"`
+}
+
+func (u UnifiedStatus) IsNil() bool {
+	return u.CommonStatus == nil || u.UpdatedReplicas == nil || u.UpdatedReadyReplicas == nil || u.UpdatedRevision == nil
+}
+
+func GetUnifiedStatus(r *v1beta1.RolloutStatus) UnifiedStatus {
+	status := UnifiedStatus{}
+	if r.CanaryStatus != nil {
+		status.CommonStatus = &r.CanaryStatus.CommonStatus
+		status.UpdatedReadyReplicas = &r.CanaryStatus.CanaryReadyReplicas
+		status.UpdatedReplicas = &r.CanaryStatus.CanaryReplicas
+		status.UpdatedRevision = &r.CanaryStatus.CanaryRevision
+	} else if r.BlueGreenStatus != nil {
+		status.CommonStatus = &r.BlueGreenStatus.CommonStatus
+		status.UpdatedReadyReplicas = &r.BlueGreenStatus.UpdatedReadyReplicas
+		status.UpdatedReplicas = &r.BlueGreenStatus.UpdatedReplicas
+		status.UpdatedRevision = &r.BlueGreenStatus.UpdatedRevision
+	}
+	return status
+}
+
+// doStepJump implements the common logic for both canary and bluegreen rollout strategies
+// to handle step jumping based on NextStepIndex.
+func doStepJump(rollout *v1beta1.Rollout, newStatus *v1beta1.RolloutStatus, steps []v1beta1.CanaryStep, workloadReplicas int) (jumped bool) {
+	status := GetUnifiedStatus(newStatus)
+	if status.IsNil() {
+		klog.InfoS("doStepJump skipped: unified status is nil", "rollout", klog.KObj(rollout))
+		return false
+	}
+	klog.InfoS("will do step jump", "steps", len(steps), "updatedReplicas", *status.UpdatedReplicas,
+		"nextStepIndex", status.NextStepIndex, "rollout", klog.KObj(rollout))
+	if nextIndex := status.NextStepIndex; nextIndex != util.NextBatchIndex(rollout, status.CurrentStepIndex) &&
+		nextIndex > 0 && nextIndex <= int32(len(steps)) {
+		currentIndexBackup := status.CurrentStepIndex
+		currentStepStateBackup := status.CurrentStepState
+		// update the current and next stepIndex
+		status.CurrentStepIndex = nextIndex
+		status.NextStepIndex = util.NextBatchIndex(rollout, nextIndex)
+		nextStep := steps[nextIndex-1]
+		// compare next step and current step to decide the state we should go
+		nextStepReplicas, _ := intstr.GetScaledValueFromIntOrPercent(nextStep.Replicas, workloadReplicas, true)
+		if int32(nextStepReplicas) == *status.UpdatedReplicas {
+			status.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
+		} else {
+			status.CurrentStepState = v1beta1.CanaryStepStateInit
+		}
+		status.LastUpdateTime = &metav1.Time{Time: time.Now()}
+		klog.InfoS("step jumped", "rollout", klog.KObj(rollout),
+			"oldCurrentIndex", currentIndexBackup, "newCurrentIndex", status.CurrentStepIndex,
+			"oldCurrentStepState", currentStepStateBackup, "newCurrentStepState", status.CurrentStepState)
+		return true
+	}
+	klog.InfoS("step not jumped", "rollout", klog.KObj(rollout))
+	return false
 }

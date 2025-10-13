@@ -19,7 +19,6 @@ package rollout
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -248,31 +247,10 @@ func (m *blueGreenReleaseManager) doCanaryPaused(c *RolloutContext) (bool, error
 }
 
 func (m *blueGreenReleaseManager) doCanaryJump(c *RolloutContext) (jumped bool) {
-	bluegreenStatus := c.NewStatus.BlueGreenStatus
-	// since we forbid adding or removing steps, currentStepIndex should always be valid
-	currentStep := c.Rollout.Spec.Strategy.BlueGreen.Steps[bluegreenStatus.CurrentStepIndex-1]
-	// nextIndex=-1 means the release is done, nextIndex=0 is not used
-	if nextIndex := bluegreenStatus.NextStepIndex; nextIndex != util.NextBatchIndex(c.Rollout, bluegreenStatus.CurrentStepIndex) && nextIndex > 0 {
-		currentIndexBackup := bluegreenStatus.CurrentStepIndex
-		currentStepStateBackup := bluegreenStatus.CurrentStepState
-		// update the current and next stepIndex
-		bluegreenStatus.CurrentStepIndex = nextIndex
-		bluegreenStatus.NextStepIndex = util.NextBatchIndex(c.Rollout, nextIndex)
-		nextStep := c.Rollout.Spec.Strategy.BlueGreen.Steps[nextIndex-1]
-		// compare next step and current step to decide the state we should go
-		if reflect.DeepEqual(nextStep.Replicas, currentStep.Replicas) {
-			bluegreenStatus.CurrentStepState = v1beta1.CanaryStepStateTrafficRouting
-		} else {
-			bluegreenStatus.CurrentStepState = v1beta1.CanaryStepStateInit
-		}
-		bluegreenStatus.LastUpdateTime = &metav1.Time{Time: time.Now()}
-		klog.Infof("rollout(%s/%s) step(%d->%d) state from(%s -> %s)",
-			c.Rollout.Namespace, c.Rollout.Name,
-			currentIndexBackup, bluegreenStatus.CurrentStepIndex,
-			currentStepStateBackup, bluegreenStatus.CurrentStepState)
-		return true
+	if c.Workload == nil {
+		return false
 	}
-	return false
+	return doStepJump(c.Rollout, c.NewStatus, c.Rollout.Spec.Strategy.BlueGreen.Steps, int(c.Workload.Replicas))
 }
 
 // cleanup after rollout is completed or finished

@@ -73,7 +73,7 @@ func TestLabelPatcher(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{5},
@@ -93,7 +93,7 @@ func TestLabelPatcher(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{5},
@@ -113,7 +113,7 @@ func TestLabelPatcher(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{5},
@@ -133,7 +133,7 @@ func TestLabelPatcher(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{7},
@@ -153,7 +153,7 @@ func TestLabelPatcher(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{2},
@@ -173,7 +173,7 @@ func TestLabelPatcher(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{5},
@@ -193,8 +193,8 @@ func TestLabelPatcher(t *testing.T) {
 				return ctx
 			},
 			Batches: []v1beta1.ReleaseBatch{
-				{CanaryReplicas: intstr.FromInt(2)},
-				{CanaryReplicas: intstr.FromInt(5)},
+				{CanaryReplicas: intstr.FromInt32(2)},
+				{CanaryReplicas: intstr.FromInt32(5)},
 			},
 			expectedPatched: []int{2, 3},
 		},
@@ -213,8 +213,8 @@ func TestLabelPatcher(t *testing.T) {
 				return ctx
 			},
 			Batches: []v1beta1.ReleaseBatch{
-				{CanaryReplicas: intstr.FromInt(2)},
-				{CanaryReplicas: intstr.FromInt(5)},
+				{CanaryReplicas: intstr.FromInt32(2)},
+				{CanaryReplicas: intstr.FromInt32(5)},
 			},
 			expectedPatched: []int{2, 3},
 		},
@@ -233,10 +233,30 @@ func TestLabelPatcher(t *testing.T) {
 				return ctx
 			},
 			Batches: []v1beta1.ReleaseBatch{
-				{CanaryReplicas: intstr.FromInt(2)},
-				{CanaryReplicas: intstr.FromInt(5)},
+				{CanaryReplicas: intstr.FromInt32(2)},
+				{CanaryReplicas: intstr.FromInt32(5)},
 			},
 			expectedPatched: []int{3, 2},
+		},
+		"batch-id out of range, equal to no pods are labelled": {
+			batchContext: func() *batchcontext.BatchContext {
+				ctx := &batchcontext.BatchContext{
+					RolloutID:              "rollout-1",
+					UpdateRevision:         "version-1",
+					PlannedUpdatedReplicas: 5,
+					CurrentBatch:           1,
+					Replicas:               10,
+				}
+				pods := generatePods(1, 5, 3,
+					"rollout-1", strconv.Itoa(3), ctx.UpdateRevision)
+				ctx.Pods = pods
+				return ctx
+			},
+			Batches: []v1beta1.ReleaseBatch{
+				{CanaryReplicas: intstr.FromInt32(2)},
+				{CanaryReplicas: intstr.FromInt32(5)},
+			},
+			expectedPatched: []int{2, 3},
 		},
 	}
 
@@ -257,7 +277,7 @@ func TestLabelPatcher(t *testing.T) {
 			patched := make([]int, ctx.CurrentBatch+1)
 			for _, pod := range podList.Items {
 				if pod.Labels[v1beta1.RolloutIDLabel] == ctx.RolloutID {
-					if batchID, err := strconv.Atoi(pod.Labels[v1beta1.RolloutBatchIDLabel]); err == nil {
+					if batchID, err := strconv.Atoi(pod.Labels[v1beta1.RolloutBatchIDLabel]); err == nil && batchID <= len(patched) {
 						patched[batchID-1]++
 					}
 				}
@@ -353,7 +373,7 @@ func TestDeploymentPatch(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{5},
@@ -373,7 +393,7 @@ func TestDeploymentPatch(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{5},
@@ -393,7 +413,7 @@ func TestDeploymentPatch(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{5},
@@ -413,7 +433,7 @@ func TestDeploymentPatch(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{7},
@@ -433,7 +453,7 @@ func TestDeploymentPatch(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{2},
@@ -453,7 +473,7 @@ func TestDeploymentPatch(t *testing.T) {
 			},
 			Batches: []v1beta1.ReleaseBatch{
 				{
-					CanaryReplicas: intstr.FromInt(5),
+					CanaryReplicas: intstr.FromInt32(5),
 				},
 			},
 			expectedPatched: []int{5},
@@ -473,8 +493,8 @@ func TestDeploymentPatch(t *testing.T) {
 				return ctx
 			},
 			Batches: []v1beta1.ReleaseBatch{
-				{CanaryReplicas: intstr.FromInt(2)},
-				{CanaryReplicas: intstr.FromInt(5)},
+				{CanaryReplicas: intstr.FromInt32(2)},
+				{CanaryReplicas: intstr.FromInt32(5)},
 			},
 			expectedPatched: []int{2, 3},
 		},
@@ -493,8 +513,8 @@ func TestDeploymentPatch(t *testing.T) {
 				return ctx
 			},
 			Batches: []v1beta1.ReleaseBatch{
-				{CanaryReplicas: intstr.FromInt(2)},
-				{CanaryReplicas: intstr.FromInt(5)},
+				{CanaryReplicas: intstr.FromInt32(2)},
+				{CanaryReplicas: intstr.FromInt32(5)},
 			},
 			expectedPatched: []int{2, 3},
 		},
@@ -513,8 +533,8 @@ func TestDeploymentPatch(t *testing.T) {
 				return ctx
 			},
 			Batches: []v1beta1.ReleaseBatch{
-				{CanaryReplicas: intstr.FromInt(2)},
-				{CanaryReplicas: intstr.FromInt(5)},
+				{CanaryReplicas: intstr.FromInt32(2)},
+				{CanaryReplicas: intstr.FromInt32(5)},
 			},
 			expectedPatched: []int{3, 2},
 		},

@@ -20,6 +20,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -371,5 +372,434 @@ func checkBatchReleaseEqual(c client.WithWatch, t *testing.T, key client.ObjectK
 	}
 	if !reflect.DeepEqual(expect.Spec, obj.Spec) {
 		t.Fatalf("expect(%s), but get(%s)", util.DumpJSON(expect.Spec), util.DumpJSON(obj.Spec))
+	}
+}
+
+func TestDoCanaryJump(t *testing.T) {
+	tests := []struct {
+		name              string
+		rollout           *v1beta1.Rollout
+		commonStatus      *v1beta1.CommonStatus
+		updatedReplicas   int32
+		steps             []v1beta1.CanaryStep
+		expectedJumped    bool
+		expectedStatus    *v1beta1.CommonStatus
+		expectedLogOutput string
+	}{
+		{
+			name: "jump to next step normally",
+			rollout: &v1beta1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-rollout",
+				},
+				Spec: v1beta1.RolloutSpec{
+					Strategy: v1beta1.RolloutStrategy{
+						Canary: &v1beta1.CanaryStrategy{
+							Steps: []v1beta1.CanaryStep{
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+							},
+						},
+					},
+				},
+			},
+			commonStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    3, // jump to step 3
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+				LastUpdateTime:   &metav1.Time{Time: time.Now()},
+			},
+			updatedReplicas: 1,
+			steps: []v1beta1.CanaryStep{
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+			},
+			expectedJumped: true,
+			expectedStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 3,
+				NextStepIndex:    -1, // last step
+				CurrentStepState: v1beta1.CanaryStepStateInit,
+			},
+		},
+		{
+			name: "jump to next step with same replicas",
+			rollout: &v1beta1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-rollout",
+				},
+				Spec: v1beta1.RolloutSpec{
+					Strategy: v1beta1.RolloutStrategy{
+						Canary: &v1beta1.CanaryStrategy{
+							Steps: []v1beta1.CanaryStep{
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}}, // same as first step
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+							},
+						},
+					},
+				},
+			},
+			commonStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    2, // jump to step 2
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+			updatedReplicas: 1,
+			steps: []v1beta1.CanaryStep{
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}}, // same as first step
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+			},
+			expectedJumped: false,
+			expectedStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    2,
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+		},
+		{
+			name: "jump to TrafficRouting state",
+			rollout: &v1beta1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-rollout",
+				},
+				Spec: v1beta1.RolloutSpec{
+					Strategy: v1beta1.RolloutStrategy{
+						Canary: &v1beta1.CanaryStrategy{
+							Steps: []v1beta1.CanaryStep{
+								{Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: 1}},
+								{Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: 1}}, // same as first step
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+							},
+						},
+					},
+				},
+			},
+			updatedReplicas: 4,
+			commonStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    3, // jump to step 3
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+			steps: []v1beta1.CanaryStep{
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "40%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "40%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "40%"}},
+			},
+			expectedJumped: true,
+			expectedStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 3,
+				NextStepIndex:    -1, // last step
+				CurrentStepState: v1beta1.CanaryStepStateTrafficRouting,
+			},
+		},
+		{
+			name: "NextStepIndex is default value, no jump",
+			rollout: &v1beta1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-rollout",
+				},
+				Spec: v1beta1.RolloutSpec{
+					Strategy: v1beta1.RolloutStrategy{
+						Canary: &v1beta1.CanaryStrategy{
+							Steps: []v1beta1.CanaryStep{
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+							},
+						},
+					},
+				},
+			},
+			updatedReplicas: 1,
+			commonStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    2, // normal next step
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+			steps: []v1beta1.CanaryStep{
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+			},
+			expectedJumped: false,
+			expectedStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    2,
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+		},
+		{
+			name: "NextStepIndex is -1, no jump",
+			rollout: &v1beta1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-rollout",
+				},
+				Spec: v1beta1.RolloutSpec{
+					Strategy: v1beta1.RolloutStrategy{
+						Canary: &v1beta1.CanaryStrategy{
+							Steps: []v1beta1.CanaryStep{
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+							},
+						},
+					},
+				},
+			},
+			commonStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    -1, // indicates completion
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+			updatedReplicas: 1,
+			steps: []v1beta1.CanaryStep{
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+			},
+			expectedJumped: false,
+			expectedStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    -1,
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+		},
+		{
+			name: "NextStepIndex out of range, no jump",
+			rollout: &v1beta1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-rollout",
+				},
+				Spec: v1beta1.RolloutSpec{
+					Strategy: v1beta1.RolloutStrategy{
+						Canary: &v1beta1.CanaryStrategy{
+							Steps: []v1beta1.CanaryStep{
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+							},
+						},
+					},
+				},
+			},
+			updatedReplicas: 1,
+			commonStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    5, // out of range
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+			steps: []v1beta1.CanaryStep{
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+			},
+			expectedJumped: false,
+			expectedStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    5,
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+		},
+		{
+			name: "NextStepIndex is 0, no jump",
+			rollout: &v1beta1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-rollout",
+				},
+				Spec: v1beta1.RolloutSpec{
+					Strategy: v1beta1.RolloutStrategy{
+						Canary: &v1beta1.CanaryStrategy{
+							Steps: []v1beta1.CanaryStep{
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+							},
+						},
+					},
+				},
+			},
+			updatedReplicas: 1,
+			commonStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    0, // 0 is not used
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+			steps: []v1beta1.CanaryStep{
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+			},
+			expectedJumped: false,
+			expectedStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    0,
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+		},
+		{
+			name: "CurrentStepIndex out of bounds, trigger Init state",
+			rollout: &v1beta1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-rollout",
+				},
+				Spec: v1beta1.RolloutSpec{
+					Strategy: v1beta1.RolloutStrategy{
+						Canary: &v1beta1.CanaryStrategy{
+							Steps: []v1beta1.CanaryStep{
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+							},
+						},
+					},
+				},
+			},
+			updatedReplicas: 1,
+			commonStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 5, // out of range
+				NextStepIndex:    2,
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+			steps: []v1beta1.CanaryStep{
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+			},
+			expectedJumped: true,
+			expectedStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 2,
+				NextStepIndex:    -1,
+				CurrentStepState: v1beta1.CanaryStepStateInit, // current step replicas set to -1, different from target
+			},
+		},
+		{
+			name: "NextStepIndex out of bounds (negative), no jump",
+			rollout: &v1beta1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-rollout",
+				},
+				Spec: v1beta1.RolloutSpec{
+					Strategy: v1beta1.RolloutStrategy{
+						Canary: &v1beta1.CanaryStrategy{
+							Steps: []v1beta1.CanaryStep{
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+							},
+						},
+					},
+				},
+			},
+			updatedReplicas: 1,
+			commonStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    -2, // negative and not -1
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+			steps: []v1beta1.CanaryStep{
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+			},
+			expectedJumped: false,
+			expectedStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    -2,
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+		},
+		{
+			name: "nil status",
+			rollout: &v1beta1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-rollout",
+				},
+				Spec: v1beta1.RolloutSpec{
+					Strategy: v1beta1.RolloutStrategy{
+						Canary: &v1beta1.CanaryStrategy{
+							Steps: []v1beta1.CanaryStep{
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+								{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+							},
+						},
+					},
+				},
+			},
+			commonStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    3, // jump to step 3
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+				LastUpdateTime:   &metav1.Time{Time: time.Now()},
+			},
+			steps: []v1beta1.CanaryStep{
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"}},
+				{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"}},
+			},
+			expectedJumped: false,
+			expectedStatus: &v1beta1.CommonStatus{
+				CurrentStepIndex: 1,
+				NextStepIndex:    3,
+				CurrentStepState: v1beta1.CanaryStepStateReady,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// save original status for comparison
+			originalStatus := tt.commonStatus.DeepCopy()
+
+			var newStatus v1beta1.RolloutStatus
+			if tt.updatedReplicas > 0 {
+				newStatus = v1beta1.RolloutStatus{
+					CanaryStatus: &v1beta1.CanaryStatus{
+						CommonStatus:        *tt.commonStatus,
+						CanaryRevision:      "new-version",
+						CanaryReplicas:      tt.updatedReplicas,
+						CanaryReadyReplicas: tt.updatedReplicas,
+					},
+				}
+			}
+
+			// execute test
+			jumped := doStepJump(tt.rollout, &newStatus, tt.steps, 10)
+
+			// verify results
+			if jumped != tt.expectedJumped {
+				t.Errorf("doStepJump() jumped = %v, want %v", jumped, tt.expectedJumped)
+			}
+
+			// verify status update
+			if tt.expectedStatus != nil && newStatus.CanaryStatus != nil {
+				tt.commonStatus = &newStatus.CanaryStatus.CommonStatus
+
+				if tt.commonStatus.CurrentStepIndex != tt.expectedStatus.CurrentStepIndex {
+					t.Errorf("CurrentStepIndex = %v, want %v", tt.commonStatus.CurrentStepIndex, tt.expectedStatus.CurrentStepIndex)
+				}
+
+				if tt.expectedStatus.NextStepIndex != tt.commonStatus.NextStepIndex {
+					t.Errorf("NextStepIndex = %v, want: %v", tt.commonStatus.NextStepIndex, tt.expectedStatus.NextStepIndex)
+				}
+
+				if tt.commonStatus.CurrentStepState != tt.expectedStatus.CurrentStepState {
+					t.Errorf("CurrentStepState = %v, want %v", tt.commonStatus.CurrentStepState, tt.expectedStatus.CurrentStepState)
+				}
+
+				// check if LastUpdateTime is updated
+				if jumped {
+					if tt.commonStatus.LastUpdateTime == nil {
+						t.Errorf("LastUpdateTime was not set")
+					} else if originalStatus.LastUpdateTime != nil &&
+						!tt.commonStatus.LastUpdateTime.After(originalStatus.LastUpdateTime.Time) {
+						t.Errorf("LastUpdateTime was not updated")
+					}
+				}
+			}
+		})
 	}
 }
