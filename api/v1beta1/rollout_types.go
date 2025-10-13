@@ -456,7 +456,8 @@ type BlueGreenStatus struct {
 	UpdatedReadyReplicas int32 `json:"updatedReadyReplicas"`
 }
 
-// GetSubStatus returns the ethier canary or bluegreen status
+// GetSubStatus returns the either canary or blueGreen status
+// TODO: It will be gradually deprecated in the future, moving towards using UnifiedStatus to read status uniformly
 func (r *RolloutStatus) GetSubStatus() *CommonStatus {
 	if r.CanaryStatus == nil && r.BlueGreenStatus == nil {
 		return nil

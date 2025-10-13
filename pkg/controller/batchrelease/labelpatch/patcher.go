@@ -147,10 +147,18 @@ func (r *realPatcher) patchPodBatchLabel(pods []*corev1.Pod, ctx *batchcontext.B
 
 		podBatchID, err := strconv.Atoi(labels[v1beta1.RolloutBatchIDLabel])
 		if err != nil {
-			klog.InfoS("Pod batchID is not a number, skip patching", "pod", klog.KObj(pod), "rollout", r.logKey)
+			klog.InfoS("Pod batchID is not a number, will overwrite it", "pod", klog.KObj(pod),
+				"rollout", r.logKey, "batchID", labels[v1beta1.RolloutBatchIDLabel])
+			updatedButUnpatchedPods = append(updatedButUnpatchedPods, pod)
 			continue
 		}
-		plannedUpdatedReplicasForBatches[podBatchID-1]--
+		if podBatchID > 0 && podBatchID <= len(plannedUpdatedReplicasForBatches) {
+			plannedUpdatedReplicasForBatches[podBatchID-1]--
+		} else {
+			klog.InfoS("Pod batchID is not valid, will overwrite it", "pod", klog.KObj(pod),
+				"rollout", r.logKey, "batchID", labels[v1beta1.RolloutBatchIDLabel])
+			updatedButUnpatchedPods = append(updatedButUnpatchedPods, pod)
+		}
 	}
 	klog.InfoS("updatedButUnpatchedPods amount calculated", "amount", len(updatedButUnpatchedPods),
 		"rollout", r.logKey, "plan", plannedUpdatedReplicasForBatches)
