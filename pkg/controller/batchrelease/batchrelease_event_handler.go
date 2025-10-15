@@ -134,6 +134,8 @@ func (w workloadEventHandler) Update(ctx context.Context, evt event.UpdateEvent,
 		gvk = util.ControllerKruiseKindCS
 	case *kruiseappsv1alpha1.DaemonSet:
 		gvk = util.ControllerKruiseKindDS
+	case *appsv1.DaemonSet:
+		gvk = util.ControllerKindDS
 	case *appsv1.Deployment:
 		gvk = util.ControllerKindDep
 	case *appsv1.StatefulSet:
@@ -187,6 +189,8 @@ func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface,
 		gvk = util.ControllerKruiseKindCS
 	case *kruiseappsv1alpha1.DaemonSet:
 		gvk = util.ControllerKruiseKindDS
+	case *appsv1.DaemonSet:
+		gvk = util.ControllerKindDS
 	case *appsv1.Deployment:
 		gvk = util.ControllerKindDep
 	case *appsv1.StatefulSet:

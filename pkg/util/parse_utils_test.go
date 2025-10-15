@@ -242,6 +242,56 @@ var (
 			AvailableReplicas:  7,
 		},
 	}
+
+	nativeDaemonSetParse = appsv1.DaemonSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: appsv1.SchemeGroupVersion.String(),
+			Kind:       "DaemonSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:  "unit-test",
+			Name:       "native-daemonset-demo",
+			Generation: 10,
+			UID:        uuid.NewUUID(),
+			Annotations: map[string]string{
+				"rollouts.kruise.io/unit-test-anno":         "true",
+				DaemonSetCanaryRevisionAnnotation:           "canary-revision-hash",
+				DaemonSetStableRevisionAnnotation:           "stable-revision-hash",
+			},
+			Labels: map[string]string{
+				"rollouts.kruise.io/unit-test-label": "true",
+			},
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "demo",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "demo",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "main",
+							Image: "busybox:1.32",
+						},
+					},
+				},
+			},
+		},
+		Status: appsv1.DaemonSetStatus{
+			ObservedGeneration:     int64(10),
+			DesiredNumberScheduled: 5,
+			NumberReady:            4,
+			UpdatedNumberScheduled: 3,
+			NumberAvailable:        4,
+		},
+	}
 )
 
 func TestStatefulSetParse(t *testing.T) {
@@ -320,6 +370,12 @@ func TestWorkloadParse(t *testing.T) {
 				return deployment.DeepCopy()
 			},
 		},
+		{
+			name: "native daemonset parse",
+			Get: func() client.Object {
+				return nativeDaemonSetParse.DeepCopy()
+			},
+		},
 	}
 
 	for _, cs := range cases {
@@ -378,7 +434,203 @@ func TestWorkloadParse(t *testing.T) {
 					Expect(reflect.DeepEqual(statefulsetInfo.Status.UpdateRevision, o.Status.UpdateRevision)).Should(BeTrue())
 					Expect(statefulsetInfo.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 0))
 				}
+			case *appsv1.DaemonSet:
+				// Test GetReplicas for DaemonSet (should return DesiredNumberScheduled)
+				Expect(GetReplicas(object)).Should(BeNumerically("==", o.Status.DesiredNumberScheduled))
+				
+				// Test getSelector for DaemonSet
+				selector, err := metav1.LabelSelectorAsSelector(o.Spec.Selector)
+				Expect(err).NotTo(HaveOccurred())
+				parsedSelector, err := getSelector(object)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reflect.DeepEqual(parsedSelector, selector)).Should(BeTrue())
+				
+				// Test ParseWorkload for DaemonSet
+				daemonsetInfo := ParseWorkload(object)
+				{
+					Expect(reflect.DeepEqual(daemonsetInfo.ObjectMeta, o.ObjectMeta)).Should(BeTrue())
+					Expect(reflect.DeepEqual(daemonsetInfo.Generation, o.Generation)).Should(BeTrue())
+					Expect(reflect.DeepEqual(daemonsetInfo.Replicas, o.Status.DesiredNumberScheduled)).Should(BeTrue())
+					Expect(reflect.DeepEqual(daemonsetInfo.Status.Replicas, o.Status.DesiredNumberScheduled)).Should(BeTrue())
+					Expect(reflect.DeepEqual(daemonsetInfo.Status.ReadyReplicas, o.Status.NumberReady)).Should(BeTrue())
+					Expect(reflect.DeepEqual(daemonsetInfo.Status.AvailableReplicas, o.Status.NumberAvailable)).Should(BeTrue())
+					Expect(reflect.DeepEqual(daemonsetInfo.Status.UpdatedReplicas, o.Status.UpdatedNumberScheduled)).Should(BeTrue())
+					Expect(reflect.DeepEqual(daemonsetInfo.Status.ObservedGeneration, o.Status.ObservedGeneration)).Should(BeTrue())
+					Expect(reflect.DeepEqual(daemonsetInfo.Status.StableRevision, o.Annotations[DaemonSetStableRevisionAnnotation])).Should(BeTrue())
+					Expect(reflect.DeepEqual(daemonsetInfo.Status.UpdateRevision, o.Annotations[DaemonSetCanaryRevisionAnnotation])).Should(BeTrue())
+					Expect(daemonsetInfo.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 0))
+				}
+				
+				// Test GetMetadata for DaemonSet
+				metadata := GetMetadata(object)
+				Expect(reflect.DeepEqual(*metadata, o.ObjectMeta)).Should(BeTrue())
+				
+				// Test GetTypeMeta for DaemonSet
+				typeMeta := GetTypeMeta(object)
+				Expect(reflect.DeepEqual(*typeMeta, o.TypeMeta)).Should(BeTrue())
 			}
 		})
 	}
+}
+func TestNativeDaemonSetParse(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	cases := []struct {
+		name                string
+		getDaemonSet        func() *appsv1.DaemonSet
+		expectedReplicas    int32
+		expectedStable      string
+		expectedCanary      string
+		expectedObserved    int64
+		expectedReady       int32
+		expectedAvailable   int32
+		expectedUpdated     int32
+	}{
+		{
+			name: "native daemonset with revision annotations",
+			getDaemonSet: func() *appsv1.DaemonSet {
+				return nativeDaemonSetParse.DeepCopy()
+			},
+			expectedReplicas:  5,
+			expectedStable:    "stable-revision-hash",
+			expectedCanary:    "canary-revision-hash",
+			expectedObserved:  10,
+			expectedReady:     4,
+			expectedAvailable: 4,
+			expectedUpdated:   3,
+		},
+		{
+			name: "native daemonset without revision annotations",
+			getDaemonSet: func() *appsv1.DaemonSet {
+				ds := nativeDaemonSetParse.DeepCopy()
+				delete(ds.Annotations, DaemonSetCanaryRevisionAnnotation)
+				delete(ds.Annotations, DaemonSetStableRevisionAnnotation)
+				return ds
+			},
+			expectedReplicas:  5,
+			expectedStable:    "",
+			expectedCanary:    "",
+			expectedObserved:  10,
+			expectedReady:     4,
+			expectedAvailable: 4,
+			expectedUpdated:   3,
+		},
+		{
+			name: "native daemonset with different status values",
+			getDaemonSet: func() *appsv1.DaemonSet {
+				ds := nativeDaemonSetParse.DeepCopy()
+				ds.Status.DesiredNumberScheduled = 10
+				ds.Status.NumberReady = 8
+				ds.Status.NumberAvailable = 9
+				ds.Status.UpdatedNumberScheduled = 7
+				ds.Status.ObservedGeneration = 15
+				ds.Annotations[DaemonSetCanaryRevisionAnnotation] = "new-canary-hash"
+				ds.Annotations[DaemonSetStableRevisionAnnotation] = "new-stable-hash"
+				return ds
+			},
+			expectedReplicas:  10,
+			expectedStable:    "new-stable-hash",
+			expectedCanary:    "new-canary-hash",
+			expectedObserved:  15,
+			expectedReady:     8,
+			expectedAvailable: 9,
+			expectedUpdated:   7,
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			daemonSet := cs.getDaemonSet()
+
+			// Test GetReplicas
+			replicas := GetReplicas(daemonSet)
+			Expect(replicas).Should(BeNumerically("==", cs.expectedReplicas))
+
+			// Test ParseWorkloadStatus
+			status := ParseWorkloadStatus(daemonSet)
+			Expect(status.Replicas).Should(BeNumerically("==", cs.expectedReplicas))
+			Expect(status.ReadyReplicas).Should(BeNumerically("==", cs.expectedReady))
+			Expect(status.AvailableReplicas).Should(BeNumerically("==", cs.expectedAvailable))
+			Expect(status.UpdatedReplicas).Should(BeNumerically("==", cs.expectedUpdated))
+			Expect(status.ObservedGeneration).Should(BeNumerically("==", cs.expectedObserved))
+			Expect(status.StableRevision).Should(Equal(cs.expectedStable))
+			Expect(status.UpdateRevision).Should(Equal(cs.expectedCanary))
+			Expect(status.UpdatedReadyReplicas).Should(BeNumerically("==", 0)) // DaemonSet doesn't have UpdatedReadyReplicas
+
+			// Test getSelector
+			expectedSelector, err := metav1.LabelSelectorAsSelector(daemonSet.Spec.Selector)
+			Expect(err).NotTo(HaveOccurred())
+			actualSelector, err := getSelector(daemonSet)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(reflect.DeepEqual(actualSelector, expectedSelector)).Should(BeTrue())
+
+			// Test GetMetadata
+			metadata := GetMetadata(daemonSet)
+			Expect(reflect.DeepEqual(*metadata, daemonSet.ObjectMeta)).Should(BeTrue())
+
+			// Test GetTypeMeta
+			typeMeta := GetTypeMeta(daemonSet)
+			Expect(reflect.DeepEqual(*typeMeta, daemonSet.TypeMeta)).Should(BeTrue())
+
+			// Test ParseWorkload
+			workloadInfo := ParseWorkload(daemonSet)
+			Expect(workloadInfo).NotTo(BeNil())
+			Expect(workloadInfo.Replicas).Should(BeNumerically("==", cs.expectedReplicas))
+			Expect(reflect.DeepEqual(workloadInfo.ObjectMeta, daemonSet.ObjectMeta)).Should(BeTrue())
+			Expect(reflect.DeepEqual(workloadInfo.TypeMeta, daemonSet.TypeMeta)).Should(BeTrue())
+			Expect(workloadInfo.Status.Replicas).Should(BeNumerically("==", cs.expectedReplicas))
+			Expect(workloadInfo.Status.ReadyReplicas).Should(BeNumerically("==", cs.expectedReady))
+			Expect(workloadInfo.Status.AvailableReplicas).Should(BeNumerically("==", cs.expectedAvailable))
+			Expect(workloadInfo.Status.UpdatedReplicas).Should(BeNumerically("==", cs.expectedUpdated))
+			Expect(workloadInfo.Status.ObservedGeneration).Should(BeNumerically("==", cs.expectedObserved))
+			Expect(workloadInfo.Status.StableRevision).Should(Equal(cs.expectedStable))
+			Expect(workloadInfo.Status.UpdateRevision).Should(Equal(cs.expectedCanary))
+		})
+	}
+}
+
+func TestNativeDaemonSetUnstructuredParse(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	t.Run("native daemonset unstructured parse", func(t *testing.T) {
+		// Convert native DaemonSet to unstructured
+		ds := nativeDaemonSetParse.DeepCopy()
+		object, err := runtime.DefaultUnstructuredConverter.ToUnstructured(ds)
+		Expect(err).NotTo(HaveOccurred())
+		unstructuredDS := &unstructured.Unstructured{Object: object}
+
+		// Test getSelector with unstructured
+		expectedSelector, err := metav1.LabelSelectorAsSelector(ds.Spec.Selector)
+		Expect(err).NotTo(HaveOccurred())
+		actualSelector, err := getSelector(unstructuredDS)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(actualSelector.String()).Should(Equal(expectedSelector.String()))
+
+		// Test GetMetadata with unstructured
+		metadata := GetMetadata(unstructuredDS)
+		Expect(metadata.Name).Should(Equal(ds.Name))
+		Expect(metadata.Namespace).Should(Equal(ds.Namespace))
+		Expect(metadata.Generation).Should(Equal(ds.Generation))
+
+		// Test GetTypeMeta with unstructured
+		typeMeta := GetTypeMeta(unstructuredDS)
+		Expect(typeMeta.APIVersion).Should(Equal(ds.TypeMeta.APIVersion))
+		Expect(typeMeta.Kind).Should(Equal(ds.TypeMeta.Kind))
+
+		// Note: GetReplicas and ParseWorkload with unstructured DaemonSet will use the generic
+		// unstructured parsing which looks for spec.replicas (which DaemonSet doesn't have).
+		// This is expected behavior - in practice, unstructured parsing is used for workloads
+		// that follow the standard spec.replicas pattern, not DaemonSets.
+		
+		// Test GetReplicas with unstructured (will return default value of 1 since DaemonSet has no spec.replicas)
+		replicas := GetReplicas(unstructuredDS)
+		Expect(replicas).Should(BeNumerically("==", 1)) // Default value when spec.replicas is not found
+
+		// Test ParseWorkload with unstructured
+		workloadInfo := ParseWorkload(unstructuredDS)
+		Expect(workloadInfo).NotTo(BeNil())
+		Expect(workloadInfo.Replicas).Should(BeNumerically("==", 1)) // Default value
+		// Status parsing should work correctly from unstructured
+		Expect(workloadInfo.Status.ObservedGeneration).Should(BeNumerically("==", ds.Status.ObservedGeneration))
+	})
 }

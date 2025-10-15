@@ -11,16 +11,20 @@ import (
 	"math/rand"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
-	apps "k8s.io/api/apps/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 var namespace string = "unit-test"
+
 var demoRollout rolloutv1beta1.Rollout = rolloutv1beta1.Rollout{
 	ObjectMeta: metav1.ObjectMeta{
 		Namespace:   namespace,
@@ -41,11 +45,59 @@ var demoRollout rolloutv1beta1.Rollout = rolloutv1beta1.Rollout{
 	Status: rolloutv1beta1.RolloutStatus{},
 }
 
+var nativeDaemonSet = apps.DaemonSet{
+	TypeMeta: metav1.TypeMeta{
+		APIVersion: apps.SchemeGroupVersion.String(),
+		Kind:       "DaemonSet",
+	},
+	ObjectMeta: metav1.ObjectMeta{
+		Namespace:  namespace,
+		Name:       "daemonset-demo",
+		Generation: 10,
+		UID:        uuid.NewUUID(),
+		Annotations: map[string]string{
+			"rollouts.kruise.io/unit-test-anno": "true",
+		},
+		Labels: map[string]string{
+			"rollouts.kruise.io/unit-test-label": "true",
+		},
+	},
+	Spec: apps.DaemonSetSpec{
+		Selector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				"app": "demo",
+			},
+		},
+		Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"app": "demo",
+				},
+			},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{
+						Name:  "main",
+						Image: "busybox:1.32",
+					},
+				},
+			},
+		},
+	},
+	Status: apps.DaemonSetStatus{
+		ObservedGeneration:     10,
+		DesiredNumberScheduled: 5,
+		NumberReady:            4,
+		UpdatedNumberScheduled: 3,
+		NumberAvailable:        4,
+	},
+}
+
 func TestGetWorkloadForRef(t *testing.T) {
 	cases := []struct {
 		name           string
 		getRollout     func() *rolloutv1beta1.Rollout
-		getWorkload    func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet)
+		getWorkload    func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision)
 		expectWorkload func() *Workload
 		err            error
 	}{
@@ -60,8 +112,8 @@ func TestGetWorkloadForRef(t *testing.T) {
 				}
 				return rollout
 			},
-			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet) {
-				return nil, nil, cloneset.DeepCopy()
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
+				return nil, nil, cloneset.DeepCopy(), nil, nil
 			},
 			expectWorkload: func() *Workload {
 				return &Workload{
@@ -100,10 +152,10 @@ func TestGetWorkloadForRef(t *testing.T) {
 				}
 				return rollout
 			},
-			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet) {
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
 				cs := cloneset.DeepCopy()
 				cs.Annotations[InRolloutProgressingAnnotation] = "true"
-				return nil, nil, cs
+				return nil, nil, cs, nil, nil
 			},
 			expectWorkload: func() *Workload {
 				return &Workload{
@@ -143,13 +195,13 @@ func TestGetWorkloadForRef(t *testing.T) {
 				}
 				return rollout
 			},
-			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet) {
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
 				cs := cloneset.DeepCopy()
 				cs.Annotations[InRolloutProgressingAnnotation] = "true"
 				cs.Status.CurrentRevision = "version2"
 				cs.Status.UpdateRevision = "version2"
 				cs.Status.UpdatedReplicas = 5
-				return nil, nil, cs
+				return nil, nil, cs, nil, nil
 			},
 			expectWorkload: func() *Workload {
 				return &Workload{
@@ -190,14 +242,14 @@ func TestGetWorkloadForRef(t *testing.T) {
 				}
 				return rollout
 			},
-			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet) {
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
 				dep := deployment.DeepCopy()
 				dep.Labels[rolloutv1alpha1.DeploymentStableRevisionLabel] = "stable"
 				rs := generateRS(*dep)
 				rs.Namespace = namespace
 				rs.Spec.Replicas = dep.Spec.Replicas
 				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "cd68dc9"
-				return dep, &rs, nil
+				return dep, &rs, nil, nil, nil
 			},
 			expectWorkload: func() *Workload {
 				return &Workload{
@@ -236,7 +288,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 				}
 				return rollout
 			},
-			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet) {
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
 				dep := deployment.DeepCopy()
 				dep.Labels[rolloutv1alpha1.DeploymentStableRevisionLabel] = "stable"
 				dep.Annotations[InRolloutProgressingAnnotation] = "true"
@@ -244,7 +296,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 				rs.Namespace = namespace
 				rs.Spec.Replicas = dep.Spec.Replicas
 				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "cd68dc9"
-				return dep, &rs, nil
+				return dep, &rs, nil, nil, nil
 			},
 			expectWorkload: func() *Workload {
 				return &Workload{
@@ -277,7 +329,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 				}
 				return rollout
 			},
-			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet) {
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
 				dep := deployment.DeepCopy()
 				dep.Labels[rolloutv1alpha1.DeploymentStableRevisionLabel] = "stable"
 				dep.Annotations[InRolloutProgressingAnnotation] = "true"
@@ -286,7 +338,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 				rs.Spec.Replicas = dep.Spec.Replicas
 				// the newst revision is stable
 				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "stable"
-				return dep, &rs, nil
+				return dep, &rs, nil, nil, nil
 			},
 			expectWorkload: func() *Workload {
 				return &Workload{
@@ -320,7 +372,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 				}
 				return rollout
 			},
-			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet) {
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
 				dep := deployment.DeepCopy()
 				// modify generation
 				dep.Generation = 12
@@ -330,7 +382,217 @@ func TestGetWorkloadForRef(t *testing.T) {
 				rs.Namespace = namespace
 				rs.Spec.Replicas = dep.Spec.Replicas
 				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "c9dcf87d5"
-				return dep, &rs, nil
+				return dep, &rs, nil, nil, nil
+			},
+			expectWorkload: func() *Workload {
+				return &Workload{
+					IsStatusConsistent: false,
+				}
+			},
+		},
+		{
+			name: "native daemonset, not in rollout progress",
+			getRollout: func() *rolloutv1beta1.Rollout {
+				rollout := demoRollout.DeepCopy()
+				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "daemonset-demo",
+				}
+				rollout.Spec.Strategy = rolloutv1beta1.RolloutStrategy{
+					Canary: &rolloutv1beta1.CanaryStrategy{},
+				}
+				return rollout
+			},
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
+				return nil, nil, nil, nativeDaemonSet.DeepCopy(), nil
+			},
+			expectWorkload: func() *Workload {
+				return &Workload{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "DaemonSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      "daemonset-demo",
+						Annotations: map[string]string{
+							"rollouts.kruise.io/unit-test-anno": "true",
+						},
+						Labels: map[string]string{
+							"rollouts.kruise.io/unit-test-label": "true",
+						},
+					},
+					Replicas:           5,
+					RevisionLabelKey:   apps.ControllerRevisionHashLabelKey,
+					IsStatusConsistent: true,
+				}
+			},
+		},
+		{
+			name: "native daemonset in rollout progress",
+			getRollout: func() *rolloutv1beta1.Rollout {
+				rollout := demoRollout.DeepCopy()
+				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "daemonset-demo",
+				}
+				rollout.Spec.Strategy = rolloutv1beta1.RolloutStrategy{
+					Canary: &rolloutv1beta1.CanaryStrategy{},
+				}
+				return rollout
+			},
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
+				ds := nativeDaemonSet.DeepCopy()
+				ds.Annotations[InRolloutProgressingAnnotation] = "true"
+
+				// Create ControllerRevisions
+				revisions := []*apps.ControllerRevision{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "daemonset-demo-rev2",
+							Namespace: namespace,
+							Labels: map[string]string{
+								apps.ControllerRevisionHashLabelKey: "rev2hash",
+							},
+							OwnerReferences: []metav1.OwnerReference{
+								{
+									APIVersion: "apps/v1",
+									Kind:       "DaemonSet",
+									Name:       "daemonset-demo",
+									UID:        ds.UID,
+									Controller: pointer.Bool(true),
+								},
+							},
+						},
+						Revision: 2,
+					},
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "daemonset-demo-rev1",
+							Namespace: namespace,
+							Labels: map[string]string{
+								apps.ControllerRevisionHashLabelKey: "rev1hash",
+							},
+							OwnerReferences: []metav1.OwnerReference{
+								{
+									APIVersion: "apps/v1",
+									Kind:       "DaemonSet",
+									Name:       "daemonset-demo",
+									UID:        ds.UID,
+									Controller: pointer.Bool(true),
+								},
+							},
+						},
+						Revision: 1,
+					},
+				}
+				return nil, nil, nil, ds, revisions
+			},
+			expectWorkload: func() *Workload {
+				return &Workload{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "DaemonSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      "daemonset-demo",
+					},
+					Replicas:             5,
+					StableRevision:       "rev1hash",
+					CanaryRevision:       "rev2hash",
+					PodTemplateHash:      "rev2hash",
+					RevisionLabelKey:     apps.ControllerRevisionHashLabelKey,
+					IsStatusConsistent:   true,
+					InRolloutProgressing: true,
+				}
+			},
+		},
+		{
+			name: "native daemonset in rollback",
+			getRollout: func() *rolloutv1beta1.Rollout {
+				rollout := demoRollout.DeepCopy()
+				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "daemonset-demo",
+				}
+				rollout.Spec.Strategy = rolloutv1beta1.RolloutStrategy{
+					Canary: &rolloutv1beta1.CanaryStrategy{},
+				}
+				return rollout
+			},
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
+				ds := nativeDaemonSet.DeepCopy()
+				ds.Annotations[InRolloutProgressingAnnotation] = "true"
+
+				// Create ControllerRevisions where stable and canary are the same (rollback scenario)
+				revisions := []*apps.ControllerRevision{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "daemonset-demo-rev1",
+							Namespace: namespace,
+							Labels: map[string]string{
+								apps.ControllerRevisionHashLabelKey: "rev1hash",
+							},
+							OwnerReferences: []metav1.OwnerReference{
+								{
+									APIVersion: "apps/v1",
+									Kind:       "DaemonSet",
+									Name:       "daemonset-demo",
+									UID:        ds.UID,
+									Controller: pointer.Bool(true),
+								},
+							},
+						},
+						Revision: 1,
+					},
+				}
+				return nil, nil, nil, ds, revisions
+			},
+			expectWorkload: func() *Workload {
+				return &Workload{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "DaemonSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      "daemonset-demo",
+					},
+					Replicas:             5,
+					StableRevision:       "rev1hash",
+					CanaryRevision:       "rev1hash",
+					PodTemplateHash:      "rev1hash",
+					RevisionLabelKey:     apps.ControllerRevisionHashLabelKey,
+					IsStatusConsistent:   true,
+					InRolloutProgressing: true,
+					IsInRollback:         true,
+				}
+			},
+		},
+		{
+			name: "native daemonset not consistent",
+			getRollout: func() *rolloutv1beta1.Rollout {
+				rollout := demoRollout.DeepCopy()
+				rollout.Spec.WorkloadRef = rolloutv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "daemonset-demo",
+				}
+				rollout.Spec.Strategy = rolloutv1beta1.RolloutStrategy{
+					Canary: &rolloutv1beta1.CanaryStrategy{},
+				}
+				return rollout
+			},
+			getWorkload: func() (*apps.Deployment, *apps.ReplicaSet, *appsv1alpha1.CloneSet, *apps.DaemonSet, []*apps.ControllerRevision) {
+				ds := nativeDaemonSet.DeepCopy()
+				// modify generation to make it inconsistent
+				ds.Generation = 12
+				ds.Annotations[InRolloutProgressingAnnotation] = "true"
+				return nil, nil, nil, ds, nil
 			},
 			expectWorkload: func() *Workload {
 				return &Workload{
@@ -342,16 +604,24 @@ func TestGetWorkloadForRef(t *testing.T) {
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			rollout := cs.getRollout()
-			dp, rs, cloneset := cs.getWorkload()
+			dp, rs, cloneset, daemonset, revisions := cs.getWorkload()
 			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rollout).Build()
 			if dp != nil {
-				_ = cli.Create(context.TODO(), rs)
+				_ = cli.Create(context.TODO(), dp)
 			}
 			if rs != nil {
-				_ = cli.Create(context.TODO(), dp)
+				_ = cli.Create(context.TODO(), rs)
 			}
 			if cloneset != nil {
 				_ = cli.Create(context.TODO(), cloneset)
+			}
+			if daemonset != nil {
+				_ = cli.Create(context.TODO(), daemonset)
+			}
+			if revisions != nil {
+				for _, rev := range revisions {
+					_ = cli.Create(context.TODO(), rev)
+				}
 			}
 			finder := NewControllerFinder(cli)
 			workload, err := finder.GetWorkloadForRef(rollout)
@@ -447,5 +717,273 @@ func newDControllerRef(d *apps.Deployment) *metav1.OwnerReference {
 		Name:       d.GetName(),
 		UID:        d.GetUID(),
 		Controller: &isController,
+	}
+}
+
+func TestGetControllerRevisionsForDaemonSet(t *testing.T) {
+	cases := []struct {
+		name                string
+		daemonSet           *apps.DaemonSet
+		controllerRevisions []*apps.ControllerRevision
+		expectedCount       int
+		expectedOrder       []int64 // expected revision numbers in order
+	}{
+		{
+			name:                "no controller revisions",
+			daemonSet:           nativeDaemonSet.DeepCopy(),
+			controllerRevisions: []*apps.ControllerRevision{},
+			expectedCount:       0,
+			expectedOrder:       []int64{},
+		},
+		{
+			name:      "single controller revision",
+			daemonSet: nativeDaemonSet.DeepCopy(),
+			controllerRevisions: []*apps.ControllerRevision{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "daemonset-demo-rev1",
+						Namespace: namespace,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion: "apps/v1",
+								Kind:       "DaemonSet",
+								Name:       "daemonset-demo",
+								UID:        nativeDaemonSet.UID,
+								Controller: pointer.Bool(true),
+							},
+						},
+					},
+					Revision: 1,
+				},
+			},
+			expectedCount: 1,
+			expectedOrder: []int64{1},
+		},
+		{
+			name:      "multiple controller revisions sorted by revision number",
+			daemonSet: nativeDaemonSet.DeepCopy(),
+			controllerRevisions: []*apps.ControllerRevision{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "daemonset-demo-rev1",
+						Namespace: namespace,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion: "apps/v1",
+								Kind:       "DaemonSet",
+								Name:       "daemonset-demo",
+								UID:        nativeDaemonSet.UID,
+								Controller: pointer.Bool(true),
+							},
+						},
+					},
+					Revision: 1,
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "daemonset-demo-rev3",
+						Namespace: namespace,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion: "apps/v1",
+								Kind:       "DaemonSet",
+								Name:       "daemonset-demo",
+								UID:        nativeDaemonSet.UID,
+								Controller: pointer.Bool(true),
+							},
+						},
+					},
+					Revision: 3,
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "daemonset-demo-rev2",
+						Namespace: namespace,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion: "apps/v1",
+								Kind:       "DaemonSet",
+								Name:       "daemonset-demo",
+								UID:        nativeDaemonSet.UID,
+								Controller: pointer.Bool(true),
+							},
+						},
+					},
+					Revision: 2,
+				},
+			},
+			expectedCount: 3,
+			expectedOrder: []int64{3, 2, 1}, // should be sorted in descending order
+		},
+		{
+			name:      "controller revisions with different owners",
+			daemonSet: nativeDaemonSet.DeepCopy(),
+			controllerRevisions: []*apps.ControllerRevision{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "daemonset-demo-rev1",
+						Namespace: namespace,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion: "apps/v1",
+								Kind:       "DaemonSet",
+								Name:       "daemonset-demo",
+								UID:        nativeDaemonSet.UID,
+								Controller: pointer.Bool(true),
+							},
+						},
+					},
+					Revision: 1,
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "other-daemonset-rev1",
+						Namespace: namespace,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion: "apps/v1",
+								Kind:       "DaemonSet",
+								Name:       "other-daemonset",
+								UID:        "different-uid",
+								Controller: pointer.Bool(true),
+							},
+						},
+					},
+					Revision: 2,
+				},
+			},
+			expectedCount: 1, // only one should match our DaemonSet
+			expectedOrder: []int64{1},
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			// Create fake client with DaemonSet and ControllerRevisions
+			objects := []client.Object{cs.daemonSet}
+			for _, rev := range cs.controllerRevisions {
+				objects = append(objects, rev)
+			}
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+			finder := NewControllerFinder(cli)
+
+			// Call the function
+			revisions, err := finder.getControllerRevisionsForDaemonSet(cs.daemonSet)
+
+			// Verify results
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if len(revisions) != cs.expectedCount {
+				t.Fatalf("expected %d revisions, got %d", cs.expectedCount, len(revisions))
+			}
+
+			// Verify order
+			for i, expectedRevision := range cs.expectedOrder {
+				if revisions[i].Revision != expectedRevision {
+					t.Fatalf("expected revision %d at index %d, got %d", expectedRevision, i, revisions[i].Revision)
+				}
+			}
+		})
+	}
+}
+
+func TestPatchDaemonSetRevisionAnnotations(t *testing.T) {
+	cases := []struct {
+		name                string
+		daemonSet           *apps.DaemonSet
+		stableRevision      string
+		canaryRevision      string
+		expectPatch         bool
+		expectedAnnotations map[string]string
+	}{
+		{
+			name:           "add annotations to daemonset without annotations",
+			daemonSet:      nativeDaemonSet.DeepCopy(),
+			stableRevision: "stable-hash",
+			canaryRevision: "canary-hash",
+			expectPatch:    true,
+			expectedAnnotations: map[string]string{
+				"rollouts.kruise.io/unit-test-anno": "true",
+				DaemonSetStableRevisionAnnotation:   "stable-hash",
+				DaemonSetCanaryRevisionAnnotation:   "canary-hash",
+			},
+		},
+		{
+			name: "update existing annotations",
+			daemonSet: func() *apps.DaemonSet {
+				ds := nativeDaemonSet.DeepCopy()
+				ds.Annotations[DaemonSetStableRevisionAnnotation] = "old-stable"
+				ds.Annotations[DaemonSetCanaryRevisionAnnotation] = "old-canary"
+				return ds
+			}(),
+			stableRevision: "new-stable",
+			canaryRevision: "new-canary",
+			expectPatch:    true,
+			expectedAnnotations: map[string]string{
+				"rollouts.kruise.io/unit-test-anno": "true",
+				DaemonSetStableRevisionAnnotation:   "new-stable",
+				DaemonSetCanaryRevisionAnnotation:   "new-canary",
+			},
+		},
+		{
+			name: "no patch needed when annotations are already correct",
+			daemonSet: func() *apps.DaemonSet {
+				ds := nativeDaemonSet.DeepCopy()
+				ds.Annotations[DaemonSetStableRevisionAnnotation] = "correct-stable"
+				ds.Annotations[DaemonSetCanaryRevisionAnnotation] = "correct-canary"
+				return ds
+			}(),
+			stableRevision: "correct-stable",
+			canaryRevision: "correct-canary",
+			expectPatch:    false,
+			expectedAnnotations: map[string]string{
+				"rollouts.kruise.io/unit-test-anno": "true",
+				DaemonSetStableRevisionAnnotation:   "correct-stable",
+				DaemonSetCanaryRevisionAnnotation:   "correct-canary",
+			},
+		},
+		{
+			name: "add only canary revision",
+			daemonSet: func() *apps.DaemonSet {
+				ds := nativeDaemonSet.DeepCopy()
+				ds.Annotations[DaemonSetStableRevisionAnnotation] = "existing-stable"
+				return ds
+			}(),
+			stableRevision: "", // empty, should not be updated
+			canaryRevision: "new-canary",
+			expectPatch:    true,
+			expectedAnnotations: map[string]string{
+				"rollouts.kruise.io/unit-test-anno": "true",
+				DaemonSetStableRevisionAnnotation:   "existing-stable",
+				DaemonSetCanaryRevisionAnnotation:   "new-canary",
+			},
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			// Create fake client with DaemonSet
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cs.daemonSet).Build()
+			finder := NewControllerFinder(cli)
+
+			// Call the function
+			err := finder.patchDaemonSetRevisionAnnotations(cs.daemonSet, cs.stableRevision, cs.canaryRevision)
+
+			// Verify no error
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Verify annotations
+			for key, expectedValue := range cs.expectedAnnotations {
+				if actualValue, exists := cs.daemonSet.Annotations[key]; !exists {
+					t.Fatalf("expected annotation %s to exist", key)
+				} else if actualValue != expectedValue {
+					t.Fatalf("expected annotation %s to be %s, got %s", key, expectedValue, actualValue)
+				}
+			}
+		})
 	}
 }

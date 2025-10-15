@@ -30,6 +30,7 @@ import (
 	v12 "k8s.io/api/admissionregistration/v1"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -310,6 +311,55 @@ var (
 			ObservedGeneration: 31,
 			CurrentRevision:    "test-name-" + "121212",
 			UpdateRevision:     "test-name-" + "123123",
+		},
+	}
+
+	nativeDaemonSetDemo = &apps.DaemonSet{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "DaemonSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "echoserver",
+			Labels:      map[string]string{},
+			Annotations: map[string]string{},
+		},
+		Spec: apps.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "echoserver",
+				},
+			},
+			UpdateStrategy: apps.DaemonSetUpdateStrategy{
+				Type: apps.RollingUpdateDaemonSetStrategyType,
+				RollingUpdate: &apps.RollingUpdateDaemonSet{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+				},
+			},
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "echoserver",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "echoserver",
+							Image: "echoserver:v1",
+						},
+					},
+				},
+			},
+		},
+		Status: apps.DaemonSetStatus{
+			CurrentNumberScheduled: 10,
+			NumberMisscheduled:     0,
+			DesiredNumberScheduled: 10,
+			NumberReady:            10,
+			ObservedGeneration:     1,
+			UpdatedNumberScheduled: 10,
+			NumberAvailable:        10,
 		},
 	}
 
@@ -851,6 +901,675 @@ func TestHandlerDaemonSet(t *testing.T) {
 			if !reflect.DeepEqual(newObj, cs.expectObj()) {
 				by, _ := json.Marshal(newObj)
 				t.Fatalf("handlerDaemonSet failed, and new(%s)", string(by))
+			}
+		})
+	}
+}
+
+func TestHandlerNativeDaemonSet(t *testing.T) {
+	cases := []struct {
+		name       string
+		getObjs    func() (*apps.DaemonSet, *apps.DaemonSet)
+		expectObj  func() *apps.DaemonSet
+		getRollout func() *appsv1beta1.Rollout
+		isError    bool
+	}{
+		{
+			name: "native daemonSet image v1->v2, matched rollout",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet no change, matched rollout",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet rolloutID change, no template change",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				oldObj.Annotations[appsv1beta1.RolloutIDLabel] = "old-id"
+				newObj.Annotations[appsv1beta1.RolloutIDLabel] = "new-id"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Annotations[appsv1beta1.RolloutIDLabel] = "new-id"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet rolloutID no change, template change",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				oldObj.Annotations[appsv1beta1.RolloutIDLabel] = "same-id"
+				newObj.Annotations[appsv1beta1.RolloutIDLabel] = "same-id"
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Annotations[appsv1beta1.RolloutIDLabel] = "same-id"
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				// Should not modify update strategy when rollout ID hasn't changed
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet rolloutID change, template change",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				oldObj.Annotations[appsv1beta1.RolloutIDLabel] = "old-id"
+				newObj.Annotations[appsv1beta1.RolloutIDLabel] = "new-id"
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Annotations[appsv1beta1.RolloutIDLabel] = "new-id"
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet image v1->v2, no matched rollout",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "other-name",
+				}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet image v1->v2, matched rollout with empty release",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				obj.Spec.Strategy = appsv1beta1.RolloutStrategy{}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet with rollout disabled status",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				obj.Status.Phase = appsv1beta1.RolloutPhaseDisabled
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet with rollout deletion timestamp",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				// Create rollout with deletion timestamp set
+				now := metav1.Now()
+				obj.DeletionTimestamp = &now
+				// Add finalizers to prevent immediate deletion in fake client
+				obj.Finalizers = []string{"test-finalizer"}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet with already OnDelete strategy",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				oldObj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet with nil annotations",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				oldObj.Annotations = nil
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Annotations = nil
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations = map[string]string{
+					util.InRolloutProgressingAnnotation: `{"rolloutName":"rollout-demo"}`,
+				}
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet with multiple environment variables change",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Env = []v1.EnvVar{
+					{Name: "ENV1", Value: "value1"},
+					{Name: "ENV2", Value: "value2"},
+				}
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Env = []v1.EnvVar{
+					{Name: "ENV1", Value: "value1"},
+					{Name: "ENV2", Value: "value2"},
+				}
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet with empty rolloutID becomes non-empty",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				// oldObj has no rolloutID (empty)
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Annotations[appsv1beta1.RolloutIDLabel] = "new-rollout-id"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Annotations[appsv1beta1.RolloutIDLabel] = "new-rollout-id"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+		},
+		{
+			name: "native daemonSet with traffic routing strategy",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				obj.Spec.Strategy.Canary = &appsv1beta1.CanaryStrategy{
+					TrafficRoutings: []appsv1beta1.TrafficRoutingRef{
+						{
+							Service: "echoserver",
+							Ingress: &appsv1beta1.IngressTrafficRouting{
+								Name: "echoserver",
+							},
+						},
+					},
+				}
+				return obj
+			},
+		},
+	}
+
+	decoder := admission.NewDecoder(scheme)
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			client := fake.NewClientBuilder().WithScheme(scheme).Build()
+			h := WorkloadHandler{
+				Client:  client,
+				Decoder: decoder,
+				Finder:  util.NewControllerFinder(client),
+			}
+			rollout := cs.getRollout()
+			if err := client.Create(context.TODO(), rollout); err != nil {
+				t.Errorf(err.Error())
+			}
+
+			oldObj, newObj := cs.getObjs()
+			_, err := h.handleNativeDaemonSet(newObj, oldObj)
+			if cs.isError && err == nil {
+				t.Fatal("handleNativeDaemonSet failed")
+			} else if !cs.isError && err != nil {
+				t.Fatalf(err.Error())
+			}
+			if !reflect.DeepEqual(newObj, cs.expectObj()) {
+				by, _ := json.Marshal(newObj)
+				expectedBy, _ := json.Marshal(cs.expectObj())
+				t.Fatalf("handleNativeDaemonSet failed\nExpected: %s\nActual: %s", string(expectedBy), string(by))
+			}
+		})
+	}
+}
+
+func TestHandlerNativeDaemonSetErrorCases(t *testing.T) {
+	cases := []struct {
+		name       string
+		getObjs    func() (*apps.DaemonSet, *apps.DaemonSet)
+		getRollout func() *appsv1beta1.Rollout
+		setupError func(*fake.ClientBuilder) *fake.ClientBuilder
+		isError    bool
+	}{
+		{
+			name: "native daemonSet with invalid rollout reference",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "invalid/version", // Invalid API version
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+			isError: false, // Should not error, just no match
+		},
+		{
+			name: "native daemonSet with mismatched kind",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment", // Wrong kind
+					Name:       "echoserver",
+				}
+				return obj
+			},
+			isError: false, // Should not error, just no match
+		},
+		{
+			name: "native daemonSet with mismatched name",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "different-name", // Wrong name
+				}
+				return obj
+			},
+			isError: false, // Should not error, just no match
+		},
+	}
+
+	decoder := admission.NewDecoder(scheme)
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			clientBuilder := fake.NewClientBuilder().WithScheme(scheme)
+			if cs.setupError != nil {
+				clientBuilder = cs.setupError(clientBuilder)
+			}
+			client := clientBuilder.Build()
+
+			h := WorkloadHandler{
+				Client:  client,
+				Decoder: decoder,
+				Finder:  util.NewControllerFinder(client),
+			}
+
+			rollout := cs.getRollout()
+			if err := client.Create(context.TODO(), rollout); err != nil {
+				t.Errorf(err.Error())
+			}
+
+			oldObj, newObj := cs.getObjs()
+			changed, err := h.handleNativeDaemonSet(newObj, oldObj)
+
+			if cs.isError {
+				if err == nil {
+					t.Fatal("handleNativeDaemonSet should have failed")
+				}
+				return
+			} else if !cs.isError && err != nil {
+				t.Fatalf("handleNativeDaemonSet failed with error: %v", err)
+			}
+
+			// For error cases that don't match rollout, should return false (no changes)
+			if !changed {
+				// Verify that the daemonset wasn't modified
+				_, expected := cs.getObjs()
+				expected.Spec.Template.Spec.Containers[0].Image = "echoserver:v2" // Apply the image change but no rollout logic
+				if !reflect.DeepEqual(newObj, expected) {
+					t.Fatalf("handleNativeDaemonSet should not have modified the daemonset when no rollout matches")
+				}
+			}
+		})
+	}
+}
+
+func TestHandlerNativeDaemonSetTemplateComparison(t *testing.T) {
+	cases := []struct {
+		name        string
+		getObjs     func() (*apps.DaemonSet, *apps.DaemonSet)
+		expectObj   func() *apps.DaemonSet
+		getRollout  func() *appsv1beta1.Rollout
+		shouldEnter bool
+	}{
+		{
+			name: "native daemonSet with only label change (no effective change)",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				oldObj.Spec.Template.Labels = map[string]string{
+					"app":     "echoserver",
+					"version": "v1",
+				}
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Labels = map[string]string{
+					"app":     "echoserver",
+					"version": "v1.1",
+				}
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Labels = map[string]string{
+					"app":     "echoserver",
+					"version": "v1.1",
+				}
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+			shouldEnter: true, // Should enter rollout because labels changed
+		},
+		{
+			name: "native daemonSet with image change",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+			shouldEnter: true, // Should enter rollout because image changed
+		},
+		{
+			name: "native daemonSet with resource requirements change",
+			getObjs: func() (*apps.DaemonSet, *apps.DaemonSet) {
+				oldObj := nativeDaemonSetDemo.DeepCopy()
+				newObj := nativeDaemonSetDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Resources = v1.ResourceRequirements{
+					Limits: v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse("500m"),
+						v1.ResourceMemory: resource.MustParse("512Mi"),
+					},
+				}
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.DaemonSet {
+				obj := nativeDaemonSetDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Resources = v1.ResourceRequirements{
+					Limits: v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse("500m"),
+						v1.ResourceMemory: resource.MustParse("512Mi"),
+					},
+				}
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
+				return obj
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.WorkloadRef = appsv1beta1.ObjectRef{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "echoserver",
+				}
+				return obj
+			},
+			shouldEnter: true, // Should enter rollout because resources changed
+		},
+	}
+
+	decoder := admission.NewDecoder(scheme)
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			client := fake.NewClientBuilder().WithScheme(scheme).Build()
+			h := WorkloadHandler{
+				Client:  client,
+				Decoder: decoder,
+				Finder:  util.NewControllerFinder(client),
+			}
+			rollout := cs.getRollout()
+			if err := client.Create(context.TODO(), rollout); err != nil {
+				t.Errorf(err.Error())
+			}
+
+			oldObj, newObj := cs.getObjs()
+			changed, err := h.handleNativeDaemonSet(newObj, oldObj)
+			if err != nil {
+				t.Fatalf("handleNativeDaemonSet failed with error: %v", err)
+			}
+
+			if changed != cs.shouldEnter {
+				t.Fatalf("handleNativeDaemonSet returned changed=%v, expected=%v", changed, cs.shouldEnter)
+			}
+
+			if !reflect.DeepEqual(newObj, cs.expectObj()) {
+				by, _ := json.Marshal(newObj)
+				expectedBy, _ := json.Marshal(cs.expectObj())
+				t.Fatalf("handleNativeDaemonSet template comparison failed\nExpected: %s\nActual: %s", string(expectedBy), string(by))
 			}
 		})
 	}

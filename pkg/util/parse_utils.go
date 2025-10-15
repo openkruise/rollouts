@@ -222,6 +222,17 @@ func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 			StableRevision:     o.Status.CurrentRevision,
 		}
 
+	case *apps.DaemonSet:
+		return &WorkloadStatus{
+			Replicas:           o.Status.DesiredNumberScheduled,
+			ReadyReplicas:      o.Status.NumberReady,
+			AvailableReplicas:  o.Status.NumberAvailable,
+			UpdatedReplicas:    o.Status.UpdatedNumberScheduled,
+			ObservedGeneration: o.Status.ObservedGeneration,
+			UpdateRevision:     o.Annotations[DaemonSetCanaryRevisionAnnotation],
+			StableRevision:     o.Annotations[DaemonSetStableRevisionAnnotation],
+		}
+
 	case *appsv1alpha1.DaemonSet:
 		return &WorkloadStatus{
 			Replicas:           o.Status.DesiredNumberScheduled,
@@ -263,6 +274,8 @@ func GetReplicas(object client.Object) int32 {
 	case *appsv1beta1.StatefulSet:
 		replicas = *o.Spec.Replicas
 	// DesiredNumberScheduled type is int
+	case *apps.DaemonSet:
+		replicas = o.Status.DesiredNumberScheduled
 	case *appsv1alpha1.DaemonSet:
 		replicas = o.Status.DesiredNumberScheduled
 	case *unstructured.Unstructured:
@@ -304,6 +317,8 @@ func getSelector(object client.Object) (labels.Selector, error) {
 		return metav1.LabelSelectorAsSelector(o.Spec.Selector)
 	case *appsv1beta1.StatefulSet:
 		return metav1.LabelSelectorAsSelector(o.Spec.Selector)
+	case *apps.DaemonSet:
+		return metav1.LabelSelectorAsSelector(o.Spec.Selector)
 	case *appsv1alpha1.DaemonSet:
 		return metav1.LabelSelectorAsSelector(o.Spec.Selector)
 	case *unstructured.Unstructured:
@@ -324,6 +339,8 @@ func GetMetadata(object client.Object) *metav1.ObjectMeta {
 		return &o.ObjectMeta
 	case *appsv1beta1.StatefulSet:
 		return &o.ObjectMeta
+	case *apps.DaemonSet:
+		return &o.ObjectMeta
 	case *appsv1alpha1.DaemonSet:
 		return &o.ObjectMeta
 	case *unstructured.Unstructured:
@@ -343,6 +360,8 @@ func GetTypeMeta(object client.Object) *metav1.TypeMeta {
 	case *apps.StatefulSet:
 		return &o.TypeMeta
 	case *appsv1beta1.StatefulSet:
+		return &o.TypeMeta
+	case *apps.DaemonSet:
 		return &o.TypeMeta
 	case *appsv1alpha1.DaemonSet:
 		return &o.TypeMeta
