@@ -909,7 +909,7 @@ func TestCalculateBatchContext_WithRolloutID(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	daemon := daemonDemo.DeepCopy()
-	
+
 	// Create a simple pod for the test
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1010,7 +1010,7 @@ func TestCalculateBatchContext_WithPodsBeingDeleted(t *testing.T) {
 					UID:        daemon.UID,
 				},
 			},
-			DeletionTimestamp: &deletionTime, // Being deleted
+			DeletionTimestamp: &deletionTime,              // Being deleted
 			Finalizers:        []string{"test.finalizer"}, // Required for fake client
 		},
 		Status: corev1.PodStatus{
@@ -1209,7 +1209,7 @@ func TestCalculateBatchContext_ListOwnedPodsError(t *testing.T) {
 	// Force an error by setting buildController to nil to simulate a failure scenario
 	rc := builtController.(*realController)
 	rc.pods = nil
-	
+
 	// Create a release with rollout ID but with no pods available to simulate error conditions
 	releaseWithRolloutID := batchReleaseDemo.DeepCopy()
 	releaseWithRolloutID.Spec.ReleasePlan.RolloutID = "test-rollout-id"

@@ -497,10 +497,10 @@ func TestGetEmptyObjectWithKey(t *testing.T) {
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			emptyObj := GetEmptyObjectWithKey(cs.inputObj)
-			
+
 			// Check that the returned object is of the correct type
 			Expect(reflect.TypeOf(emptyObj)).Should(Equal(reflect.TypeOf(cs.expectedObj)))
-			
+
 			// Check that name and namespace are preserved
 			Expect(emptyObj.GetName()).Should(Equal(cs.inputObj.GetName()))
 			Expect(emptyObj.GetNamespace()).Should(Equal(cs.inputObj.GetNamespace()))

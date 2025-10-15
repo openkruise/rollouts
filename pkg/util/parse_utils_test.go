@@ -254,9 +254,9 @@ var (
 			Generation: 10,
 			UID:        uuid.NewUUID(),
 			Annotations: map[string]string{
-				"rollouts.kruise.io/unit-test-anno":         "true",
-				DaemonSetCanaryRevisionAnnotation:           "canary-revision-hash",
-				DaemonSetStableRevisionAnnotation:           "stable-revision-hash",
+				"rollouts.kruise.io/unit-test-anno": "true",
+				DaemonSetCanaryRevisionAnnotation:   "canary-revision-hash",
+				DaemonSetStableRevisionAnnotation:   "stable-revision-hash",
 			},
 			Labels: map[string]string{
 				"rollouts.kruise.io/unit-test-label": "true",
@@ -437,14 +437,14 @@ func TestWorkloadParse(t *testing.T) {
 			case *appsv1.DaemonSet:
 				// Test GetReplicas for DaemonSet (should return DesiredNumberScheduled)
 				Expect(GetReplicas(object)).Should(BeNumerically("==", o.Status.DesiredNumberScheduled))
-				
+
 				// Test getSelector for DaemonSet
 				selector, err := metav1.LabelSelectorAsSelector(o.Spec.Selector)
 				Expect(err).NotTo(HaveOccurred())
 				parsedSelector, err := getSelector(object)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(reflect.DeepEqual(parsedSelector, selector)).Should(BeTrue())
-				
+
 				// Test ParseWorkload for DaemonSet
 				daemonsetInfo := ParseWorkload(object)
 				{
@@ -460,11 +460,11 @@ func TestWorkloadParse(t *testing.T) {
 					Expect(reflect.DeepEqual(daemonsetInfo.Status.UpdateRevision, o.Annotations[DaemonSetCanaryRevisionAnnotation])).Should(BeTrue())
 					Expect(daemonsetInfo.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 0))
 				}
-				
+
 				// Test GetMetadata for DaemonSet
 				metadata := GetMetadata(object)
 				Expect(reflect.DeepEqual(*metadata, o.ObjectMeta)).Should(BeTrue())
-				
+
 				// Test GetTypeMeta for DaemonSet
 				typeMeta := GetTypeMeta(object)
 				Expect(reflect.DeepEqual(*typeMeta, o.TypeMeta)).Should(BeTrue())
@@ -476,15 +476,15 @@ func TestNativeDaemonSetParse(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	cases := []struct {
-		name                string
-		getDaemonSet        func() *appsv1.DaemonSet
-		expectedReplicas    int32
-		expectedStable      string
-		expectedCanary      string
-		expectedObserved    int64
-		expectedReady       int32
-		expectedAvailable   int32
-		expectedUpdated     int32
+		name              string
+		getDaemonSet      func() *appsv1.DaemonSet
+		expectedReplicas  int32
+		expectedStable    string
+		expectedCanary    string
+		expectedObserved  int64
+		expectedReady     int32
+		expectedAvailable int32
+		expectedUpdated   int32
 	}{
 		{
 			name: "native daemonset with revision annotations",
@@ -621,7 +621,7 @@ func TestNativeDaemonSetUnstructuredParse(t *testing.T) {
 		// unstructured parsing which looks for spec.replicas (which DaemonSet doesn't have).
 		// This is expected behavior - in practice, unstructured parsing is used for workloads
 		// that follow the standard spec.replicas pattern, not DaemonSets.
-		
+
 		// Test GetReplicas with unstructured (will return default value of 1 since DaemonSet has no spec.replicas)
 		replicas := GetReplicas(unstructuredDS)
 		Expect(replicas).Should(BeNumerically("==", 1)) // Default value when spec.replicas is not found
