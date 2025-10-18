@@ -409,6 +409,13 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1beta1.O
 func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rolloutv1beta1.ObjectRef) (*Workload, error) {
 	ok, _ := verifyGroupKind(ref, ControllerKindSts.Kind, []string{ControllerKindSts.Group})
 	if !ok {
+		ok, _ = verifyGroupKind(ref, ControllerKruiseKindSts.Kind, []string{ControllerKruiseKindSts.Group, ControllerKruiseOldKindSts.Group})
+	}
+	if !ok {
+		ok, _ = verifyGroupKind(ref, ControllerKruiseOldKindSts.Kind, []string{ControllerKruiseOldKindSts.Group})
+	}
+
+	if !ok {
 		return nil, nil
 	}
 
