@@ -136,8 +136,11 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 
 	var specBody string
 	// If batchPartition == nil, workload should be promoted;
-	if release.Spec.ReleasePlan.BatchPartition == nil && !utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) {
-		specBody = `,"spec":{"updateStrategy":{"rollingUpdate":{"partition":null}}}`
+	if release.Spec.ReleasePlan.BatchPartition == nil {
+		if !(utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) &&
+			!control.ShouldWaitResume(release)) {
+			specBody = `,"spec":{"updateStrategy":{"rollingUpdate":{"partition":null}}}`
+		}
 	}
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}%s}`, util.BatchReleaseControlAnnotation, specBody)
 	clone := util.GetEmptyObjectWithKey(rc.object)

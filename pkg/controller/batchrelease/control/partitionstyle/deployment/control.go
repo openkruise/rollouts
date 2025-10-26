@@ -144,7 +144,11 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	patchData := patch.NewDeploymentPatch()
 	if release.Spec.ReleasePlan.BatchPartition == nil {
 		strategy := util.GetDeploymentStrategy(rc.object)
-		if !utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) {
+		// This condition is only met when a rollout is canceled during the release process.
+		if utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) &&
+			!control.ShouldWaitResume(release) {
+			patchData.UpdatePaused(true)
+		} else {
 			patchData.UpdatePaused(false)
 		}
 		if rc.object.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
