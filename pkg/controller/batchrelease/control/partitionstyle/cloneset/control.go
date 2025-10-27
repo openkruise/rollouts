@@ -122,7 +122,9 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 
 	// if batchPartition == nil, workload should be promoted.
 	if release.Spec.ReleasePlan.BatchPartition == nil {
-		if utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) {
+		// This condition is only met when a rollout is canceled during the release process.
+		if utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) &&
+			!control.ShouldWaitResume(release) {
 			specBody = `,"spec":{"updateStrategy":{"paused":false}}`
 		} else {
 			specBody = `,"spec":{"updateStrategy":{"partition":null,"paused":false}}`

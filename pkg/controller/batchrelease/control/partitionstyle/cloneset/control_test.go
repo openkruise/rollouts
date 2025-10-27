@@ -20,11 +20,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/feature"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -322,6 +325,140 @@ func TestRealController(t *testing.T) {
 	stableInfo := controller.GetWorkloadInfo()
 	Expect(stableInfo).ShouldNot(BeNil())
 	checkWorkloadInfo(stableInfo, clone)
+}
+
+func TestFinalize(t *testing.T) {
+	cases := []struct {
+		name            string
+		workload        func() *kruiseappsv1alpha1.CloneSet
+		release         func() *v1beta1.BatchRelease
+		featureGateFunc func()
+		expected        func() *kruiseappsv1alpha1.CloneSet
+	}{
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=false, rollout is done",
+			workload: func() *kruiseappsv1alpha1.CloneSet {
+				obj := cloneDemo.DeepCopy()
+				return obj
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.WaitResumeFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=false", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *kruiseappsv1alpha1.CloneSet {
+				obj := cloneDemo.DeepCopy()
+				obj.Spec.UpdateStrategy = kruiseappsv1alpha1.CloneSetUpdateStrategy{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+				}
+				return obj
+			},
+		},
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=false, rollout is incomplete",
+			workload: func() *kruiseappsv1alpha1.CloneSet {
+				obj := cloneDemo.DeepCopy()
+				return obj
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.ImmediateFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=false", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *kruiseappsv1alpha1.CloneSet {
+				obj := cloneDemo.DeepCopy()
+				obj.Spec.UpdateStrategy = kruiseappsv1alpha1.CloneSetUpdateStrategy{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+				}
+				return obj
+			},
+		},
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=true, rollout is done",
+			workload: func() *kruiseappsv1alpha1.CloneSet {
+				obj := cloneDemo.DeepCopy()
+				return obj
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.WaitResumeFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=true", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *kruiseappsv1alpha1.CloneSet {
+				obj := cloneDemo.DeepCopy()
+				obj.Spec.UpdateStrategy = kruiseappsv1alpha1.CloneSetUpdateStrategy{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+				}
+				return obj
+			},
+		},
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=true, rollout is incomplete",
+			workload: func() *kruiseappsv1alpha1.CloneSet {
+				obj := cloneDemo.DeepCopy()
+				return obj
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.ImmediateFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=true", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *kruiseappsv1alpha1.CloneSet {
+				obj := cloneDemo.DeepCopy()
+				obj.Spec.UpdateStrategy = kruiseappsv1alpha1.CloneSetUpdateStrategy{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+					Partition:      &intstr.IntOrString{Type: intstr.String, StrVal: "100%"},
+				}
+				return obj
+			},
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			br := cs.release()
+			obj := cs.workload()
+			cli := fake.NewClientBuilder().WithScheme(scheme).Build()
+			_ = cli.Create(context.TODO(), obj)
+			control := realController{
+				client: cli,
+				key:    types.NamespacedName{Namespace: obj.Namespace, Name: obj.Name},
+			}
+			c, err := control.BuildController()
+			if err != nil {
+				t.Fatalf("BuildController failed: %s", err.Error())
+			}
+			cs.featureGateFunc()
+			err = c.Finalize(br)
+			if err != nil {
+				t.Fatalf("BuildController failed: %s", err.Error())
+			}
+			fetch := &kruiseappsv1alpha1.CloneSet{}
+			err = cli.Get(context.TODO(), cloneKey, fetch)
+			if err != nil {
+				t.Fatalf("Get failed: %s", err.Error())
+			}
+			if !reflect.DeepEqual(fetch.Spec.UpdateStrategy, cs.expected().Spec.UpdateStrategy) {
+				t.Fatalf("expect(%s) but get(%s)", util.DumpJSON(cs.expected().Spec.UpdateStrategy), util.DumpJSON(fetch.Spec.UpdateStrategy))
+			}
+		})
+	}
 }
 
 func checkWorkloadInfo(stableInfo *util.WorkloadInfo, clone *kruiseappsv1alpha1.CloneSet) {

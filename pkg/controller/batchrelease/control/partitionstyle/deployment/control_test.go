@@ -20,11 +20,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/feature"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -359,6 +362,158 @@ func TestRealController(t *testing.T) {
 	workloadInfo := controller.GetWorkloadInfo()
 	Expect(workloadInfo).ShouldNot(BeNil())
 	checkWorkloadInfo(workloadInfo, clone)
+}
+
+func TestFinalize(t *testing.T) {
+	cases := []struct {
+		name            string
+		workload        func() *apps.Deployment
+		release         func() *v1beta1.BatchRelease
+		featureGateFunc func()
+		expected        func() *apps.Deployment
+	}{
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=false, rollout is done",
+			workload: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Annotations[v1alpha1.DeploymentStrategyAnnotation] = `{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":1,"maxSurge":"20%"}}`
+				obj.Annotations[util.BatchReleaseControlAnnotation] = getControlInfo(releaseDemo)
+				obj.Spec.Paused = true
+				obj.Spec.Strategy = apps.DeploymentStrategy{
+					Type: apps.RecreateDeploymentStrategyType,
+				}
+				return obj
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.WaitResumeFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=false", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Paused = false
+				return obj
+			},
+		},
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=false, rollout is incomplete",
+			workload: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Annotations[v1alpha1.DeploymentStrategyAnnotation] = `{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":1,"maxSurge":"20%"}}`
+				obj.Annotations[util.BatchReleaseControlAnnotation] = getControlInfo(releaseDemo)
+				obj.Spec.Paused = true
+				obj.Spec.Strategy = apps.DeploymentStrategy{
+					Type: apps.RecreateDeploymentStrategyType,
+				}
+				return obj
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.ImmediateFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=false", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Paused = false
+				return obj
+			},
+		},
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=true, rollout is done",
+			workload: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Annotations[v1alpha1.DeploymentStrategyAnnotation] = `{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":1,"maxSurge":"20%"}}`
+				obj.Annotations[util.BatchReleaseControlAnnotation] = getControlInfo(releaseDemo)
+				obj.Spec.Paused = true
+				obj.Spec.Strategy = apps.DeploymentStrategy{
+					Type: apps.RecreateDeploymentStrategyType,
+				}
+				return obj
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.WaitResumeFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=true", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Paused = false
+				return obj
+			},
+		},
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=true, rollout is incomplete",
+			workload: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Annotations[v1alpha1.DeploymentStrategyAnnotation] = `{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":1,"maxSurge":"20%"}}`
+				obj.Annotations[util.BatchReleaseControlAnnotation] = getControlInfo(releaseDemo)
+				obj.Spec.Paused = true
+				obj.Spec.Strategy = apps.DeploymentStrategy{
+					Type: apps.RecreateDeploymentStrategyType,
+				}
+				return obj
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.ImmediateFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=true", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Paused = true
+				return obj
+			},
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			br := cs.release()
+			obj := cs.workload()
+			cli := fake.NewClientBuilder().WithScheme(scheme).Build()
+			_ = cli.Create(context.TODO(), obj)
+			control := realController{
+				client: cli,
+				key:    types.NamespacedName{Namespace: obj.Namespace, Name: obj.Name},
+			}
+			c, err := control.BuildController()
+			if err != nil {
+				t.Fatalf("BuildController failed: %s", err.Error())
+			}
+			cs.featureGateFunc()
+			err = c.Finalize(br)
+			if err != nil {
+				t.Fatalf("BuildController failed: %s", err.Error())
+			}
+			fetch := &apps.Deployment{}
+			err = cli.Get(context.TODO(), deploymentKey, fetch)
+			if err != nil {
+				t.Fatalf("Get failed: %s", err.Error())
+			}
+			if !reflect.DeepEqual(fetch.Spec.Strategy, cs.expected().Spec.Strategy) {
+				t.Fatalf("expect(%s) but get(%s)", util.DumpJSON(cs.expected().Spec.Strategy), util.DumpJSON(fetch.Spec.Strategy))
+			}
+			if fetch.Spec.Paused != cs.expected().Spec.Paused {
+				t.Fatalf("expect(%v) but get(%v)", cs.expected().Spec.Paused, fetch.Spec.Paused)
+			}
+		})
+	}
 }
 
 func checkWorkloadInfo(stableInfo *util.WorkloadInfo, clone *apps.Deployment) {
