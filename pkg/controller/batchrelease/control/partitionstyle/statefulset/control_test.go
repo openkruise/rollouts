@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
@@ -27,11 +28,6 @@ import (
 	appsv1pub "github.com/openkruise/kruise-api/apps/pub"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseappsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
-	rolloutapi "github.com/openkruise/rollouts/api"
-	"github.com/openkruise/rollouts/api/v1beta1"
-	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
-	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
-	"github.com/openkruise/rollouts/pkg/util"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,6 +39,14 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	rolloutapi "github.com/openkruise/rollouts/api"
+	"github.com/openkruise/rollouts/api/v1beta1"
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/labelpatch"
+	"github.com/openkruise/rollouts/pkg/feature"
+	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 var (
@@ -614,6 +618,139 @@ func TestRealController(t *testing.T) {
 	stableInfo := controller.GetWorkloadInfo()
 	Expect(stableInfo).ShouldNot(BeNil())
 	checkWorkloadInfo(stableInfo, sts)
+}
+
+func TestFinalize(t *testing.T) {
+	cases := []struct {
+		name            string
+		workload        func() *kruiseappsv1beta1.StatefulSet
+		release         func() *v1beta1.BatchRelease
+		featureGateFunc func()
+		expected        func() *kruiseappsv1beta1.StatefulSet
+	}{
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=false, rollout is done",
+			workload: func() *kruiseappsv1beta1.StatefulSet {
+				sts := stsDemo.DeepCopy()
+				sts.Spec.UpdateStrategy.RollingUpdate.Paused = false
+				return sts
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.WaitResumeFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=false", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *kruiseappsv1beta1.StatefulSet {
+				sts := stsDemo.DeepCopy()
+				sts.Spec.UpdateStrategy.RollingUpdate.Paused = false
+				sts.Spec.UpdateStrategy.RollingUpdate.Partition = nil
+				return sts
+			},
+		},
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=false, rollout is incomplete",
+			workload: func() *kruiseappsv1beta1.StatefulSet {
+				sts := stsDemo.DeepCopy()
+				sts.Spec.UpdateStrategy.RollingUpdate.Paused = false
+				return sts
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.ImmediateFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=false", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *kruiseappsv1beta1.StatefulSet {
+				sts := stsDemo.DeepCopy()
+				sts.Spec.UpdateStrategy.RollingUpdate.Paused = false
+				sts.Spec.UpdateStrategy.RollingUpdate.Partition = nil
+				return sts
+			},
+		},
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=true, rollout is done",
+			workload: func() *kruiseappsv1beta1.StatefulSet {
+				sts := stsDemo.DeepCopy()
+				sts.Spec.UpdateStrategy.RollingUpdate.Paused = false
+				return sts
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.WaitResumeFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=true", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *kruiseappsv1beta1.StatefulSet {
+				sts := stsDemo.DeepCopy()
+				sts.Spec.UpdateStrategy.RollingUpdate.Paused = false
+				sts.Spec.UpdateStrategy.RollingUpdate.Partition = nil
+				return sts
+			},
+		},
+		{
+			name: "featureGate KeepWorkloadPausedOnRolloutDeletion=true, rollout is incomplete",
+			workload: func() *kruiseappsv1beta1.StatefulSet {
+				sts := stsDemo.DeepCopy()
+				sts.Spec.UpdateStrategy.RollingUpdate.Paused = false
+				return sts
+			},
+			release: func() *v1beta1.BatchRelease {
+				release := releaseDemo.DeepCopy()
+				release.Spec.ReleasePlan.BatchPartition = nil
+				release.Spec.ReleasePlan.FinalizingPolicy = v1beta1.ImmediateFinalizingPolicyType
+				return release
+			},
+			featureGateFunc: func() {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=true", feature.KeepWorkloadPausedOnRolloutDeletion))
+			},
+			expected: func() *kruiseappsv1beta1.StatefulSet {
+				sts := stsDemo.DeepCopy()
+				sts.Spec.UpdateStrategy.RollingUpdate.Paused = false
+				return sts
+			},
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			br := cs.release()
+			sts := cs.workload()
+			cli := fake.NewClientBuilder().WithScheme(scheme).Build()
+			_ = cli.Create(context.TODO(), sts)
+			control := realController{
+				client: cli,
+				gvk:    sts.GetObjectKind().GroupVersionKind(),
+				key:    types.NamespacedName{Namespace: sts.Namespace, Name: sts.Name},
+			}
+			c, err := control.BuildController()
+			if err != nil {
+				t.Fatalf("BuildController failed: %s", err.Error())
+			}
+			cs.featureGateFunc()
+			err = c.Finalize(br)
+			if err != nil {
+				t.Fatalf("BuildController failed: %s", err.Error())
+			}
+			fetch := &kruiseappsv1beta1.StatefulSet{}
+			err = cli.Get(context.TODO(), stsKey, fetch)
+			if err != nil {
+				t.Fatalf("Get failed: %s", err.Error())
+			}
+			if !reflect.DeepEqual(fetch.Spec.UpdateStrategy.RollingUpdate, cs.expected().Spec.UpdateStrategy.RollingUpdate) {
+				t.Fatalf("expect(%s) but get(%s)", util.DumpJSON(cs.expected().Spec.UpdateStrategy.RollingUpdate), util.DumpJSON(fetch.Spec.UpdateStrategy.RollingUpdate))
+			}
+		})
+	}
 }
 
 func checkWorkloadInfo(stableInfo *util.WorkloadInfo, sts *kruiseappsv1beta1.StatefulSet) {
