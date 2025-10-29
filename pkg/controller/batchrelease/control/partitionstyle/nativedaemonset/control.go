@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/openkruise/rollouts/pkg/feature"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -178,11 +180,13 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	var specBody string
 	// if batchPartition == nil, workload should be promoted to use the original update strategy
 	if release.Spec.ReleasePlan.BatchPartition == nil {
-		updateStrategy := apps.DaemonSetUpdateStrategy{
-			Type: apps.RollingUpdateDaemonSetStrategyType,
+		if !(utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) && !control.ShouldWaitResume(release)) {
+			updateStrategy := apps.DaemonSetUpdateStrategy{
+				Type: apps.RollingUpdateDaemonSetStrategyType,
+			}
+			strategyBytes, _ := json.Marshal(updateStrategy)
+			specBody = fmt.Sprintf(`,"spec":{"updateStrategy":%s}`, string(strategyBytes))
 		}
-		strategyBytes, _ := json.Marshal(updateStrategy)
-		specBody = fmt.Sprintf(`,"spec":{"updateStrategy":%s}`, string(strategyBytes))
 	}
 
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null,"%s":null,"%s":null,"%s":null,"%s":null}}%s}`,

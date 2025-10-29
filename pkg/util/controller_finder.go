@@ -112,8 +112,11 @@ func (r *ControllerFinder) canaryStyleFinders() []ControllerFinderFunc {
 	return []ControllerFinderFunc{r.getDeployment}
 }
 
+// Note: getStatefulSetLikeWorkload is placed last because it has broader matching criteria.
+// If placed earlier in the chain, it may incorrectly match other workload types (e.g., DaemonSets)
+// and prevent their specific finders from being reached.
 func (r *ControllerFinder) partitionStyleFinders() []ControllerFinderFunc {
-	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment, r.getStatefulSetLikeWorkload, r.getKruiseDaemonSet, r.getNativeDaemonSet}
+	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment, r.getKruiseDaemonSet, r.getNativeDaemonSet, r.getStatefulSetLikeWorkload}
 }
 
 func (r *ControllerFinder) bluegreenStyleFinders() []ControllerFinderFunc {
@@ -407,18 +410,6 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1beta1.O
 }
 
 func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rolloutv1beta1.ObjectRef) (*Workload, error) {
-	ok, _ := verifyGroupKind(ref, ControllerKindSts.Kind, []string{ControllerKindSts.Group})
-	if !ok {
-		ok, _ = verifyGroupKind(ref, ControllerKruiseKindSts.Kind, []string{ControllerKruiseKindSts.Group, ControllerKruiseOldKindSts.Group})
-	}
-	if !ok {
-		ok, _ = verifyGroupKind(ref, ControllerKruiseOldKindSts.Kind, []string{ControllerKruiseOldKindSts.Group})
-	}
-
-	if !ok {
-		return nil, nil
-	}
-
 	if ref == nil {
 		return nil, nil
 	}
