@@ -40,6 +40,7 @@ import (
 	rolloutapi "github.com/openkruise/rollouts/api"
 	br "github.com/openkruise/rollouts/pkg/controller/batchrelease"
 	"github.com/openkruise/rollouts/pkg/controller/deployment"
+	"github.com/openkruise/rollouts/pkg/controller/nativedaemonset"
 	"github.com/openkruise/rollouts/pkg/controller/rollout"
 	"github.com/openkruise/rollouts/pkg/controller/rollouthistory"
 	"github.com/openkruise/rollouts/pkg/controller/trafficrouting"
@@ -142,6 +143,10 @@ func main() {
 	}
 	if err = deployment.Add(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "advanceddeployment")
+		os.Exit(1)
+	}
+	if err = nativedaemonset.Add(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "nativedaemonset")
 		os.Exit(1)
 	}
 

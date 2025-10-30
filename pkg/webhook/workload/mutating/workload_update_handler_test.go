@@ -926,6 +926,7 @@ func TestHandlerNativeDaemonSet(t *testing.T) {
 				obj := nativeDaemonSetDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
 			},
@@ -973,6 +974,7 @@ func TestHandlerNativeDaemonSet(t *testing.T) {
 				obj := nativeDaemonSetDemo.DeepCopy()
 				obj.Annotations[appsv1beta1.RolloutIDLabel] = "new-id"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
 			},
@@ -1028,6 +1030,7 @@ func TestHandlerNativeDaemonSet(t *testing.T) {
 				obj.Annotations[appsv1beta1.RolloutIDLabel] = "new-id"
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
 			},
@@ -1124,6 +1127,7 @@ func TestHandlerNativeDaemonSet(t *testing.T) {
 				obj := nativeDaemonSetDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
 			},
@@ -1157,6 +1161,7 @@ func TestHandlerNativeDaemonSet(t *testing.T) {
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.OnDeleteDaemonSetStrategyType)
 				return obj
 			},
 			getRollout: func() *appsv1beta1.Rollout {
@@ -1183,7 +1188,8 @@ func TestHandlerNativeDaemonSet(t *testing.T) {
 				obj := nativeDaemonSetDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations = map[string]string{
-					util.InRolloutProgressingAnnotation: `{"rolloutName":"rollout-demo"}`,
+					util.InRolloutProgressingAnnotation:  `{"rolloutName":"rollout-demo"}`,
+					util.DaemonSetOriginalUpdateStrategy: string(apps.RollingUpdateDaemonSetStrategyType),
 				}
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
@@ -1216,6 +1222,7 @@ func TestHandlerNativeDaemonSet(t *testing.T) {
 					{Name: "ENV2", Value: "value2"},
 				}
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
 			},
@@ -1242,6 +1249,7 @@ func TestHandlerNativeDaemonSet(t *testing.T) {
 				obj := nativeDaemonSetDemo.DeepCopy()
 				obj.Annotations[appsv1beta1.RolloutIDLabel] = "new-rollout-id"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
 			},
@@ -1267,6 +1275,7 @@ func TestHandlerNativeDaemonSet(t *testing.T) {
 				obj := nativeDaemonSetDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
 			},
@@ -1464,6 +1473,7 @@ func TestHandlerNativeDaemonSetTemplateComparison(t *testing.T) {
 					"version": "v1.1",
 				}
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
 			},
@@ -1490,6 +1500,7 @@ func TestHandlerNativeDaemonSetTemplateComparison(t *testing.T) {
 				obj := nativeDaemonSetDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
 			},
@@ -1526,6 +1537,7 @@ func TestHandlerNativeDaemonSetTemplateComparison(t *testing.T) {
 					},
 				}
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
 				obj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 				return obj
 			},

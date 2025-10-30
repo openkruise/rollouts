@@ -181,20 +181,27 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	// if batchPartition == nil, workload should be promoted to use the original update strategy
 	if release.Spec.ReleasePlan.BatchPartition == nil {
 		if !(utilfeature.DefaultMutableFeatureGate.Enabled(feature.KeepWorkloadPausedOnRolloutDeletion) && !control.ShouldWaitResume(release)) {
+			// Read the original update strategy from annotation, default to RollingUpdate if not found
+			originalStrategyType := apps.RollingUpdateDaemonSetStrategyType
+			if originalStrategy, exists := rc.object.Annotations[util.DaemonSetOriginalUpdateStrategy]; exists {
+				originalStrategyType = apps.DaemonSetUpdateStrategyType(originalStrategy)
+			}
+
 			updateStrategy := apps.DaemonSetUpdateStrategy{
-				Type: apps.RollingUpdateDaemonSetStrategyType,
+				Type: originalStrategyType,
 			}
 			strategyBytes, _ := json.Marshal(updateStrategy)
 			specBody = fmt.Sprintf(`,"spec":{"updateStrategy":%s}`, string(strategyBytes))
 		}
 	}
 
-	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null,"%s":null,"%s":null,"%s":null,"%s":null}}%s}`,
+	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null,"%s":null,"%s":null,"%s":null,"%s":null,"%s":null}}%s}`,
 		util.BatchReleaseControlAnnotation,
 		util.DaemonSetCanaryRevisionAnnotation,
 		util.DaemonSetStableRevisionAnnotation,
 		util.DaemonSetPartitionAnnotation,
 		util.DaemonSetBatchRevisionAnnotation,
+		util.DaemonSetOriginalUpdateStrategy,
 		specBody)
 
 	daemon := util.GetEmptyObjectWithKey(rc.object)

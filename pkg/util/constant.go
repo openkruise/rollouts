@@ -55,6 +55,8 @@ const (
 	// DaemonSetBatchRevisionAnnotation is the annotation key for update revision used by each batch
 	// This is very important for continuous release, because update revision must be consistent with each partition
 	DaemonSetBatchRevisionAnnotation = "rollouts.kruise.io/daemonset-batch-revision"
+	// DaemonSetOriginalUpdateStrategy is the original update strategy type for the native daemonSet
+	DaemonSetOriginalUpdateStrategy = "rollouts.kruise.io/daemonset-original-update-strategy"
 )
 
 const (
