@@ -24,7 +24,6 @@ import (
 	"sort"
 	"time"
 
-	daemonsetutil "github.com/openkruise/rollouts/pkg/controller/nativedaemonset/util"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -41,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	daemonsetutil "github.com/openkruise/rollouts/pkg/controller/nativedaemonset/util"
 	"github.com/openkruise/rollouts/pkg/util"
 	clientutil "github.com/openkruise/rollouts/pkg/util/client"
 )
