@@ -53,6 +53,7 @@ var (
 		&ControllerKindRS,
 		&ControllerKindDep,
 		&ControllerKindSts,
+		&ControllerKindDS, // Add this for native DaemonSet
 		&ControllerKruiseKindCS,
 		&ControllerKruiseKindSts,
 		&ControllerKruiseOldKindSts,
@@ -240,6 +241,8 @@ func GetEmptyWorkloadObject(gvk schema.GroupVersionKind) client.Object {
 		return &appsv1alpha1.CloneSet{}
 	case ControllerKindSts:
 		return &apps.StatefulSet{}
+	case ControllerKindDS:
+		return &apps.DaemonSet{}
 	case ControllerKruiseKindSts, ControllerKruiseOldKindSts:
 		return &appsv1beta1.StatefulSet{}
 	default:
@@ -387,6 +390,8 @@ func GetEmptyObjectWithKey(object client.Object) client.Object {
 		empty = &apps.ReplicaSet{}
 	case *apps.StatefulSet:
 		empty = &apps.StatefulSet{}
+	case *apps.DaemonSet:
+		empty = &apps.DaemonSet{}
 	case *appsv1alpha1.CloneSet:
 		empty = &appsv1alpha1.CloneSet{}
 	case *appsv1beta1.StatefulSet:

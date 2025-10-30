@@ -112,8 +112,11 @@ func (r *ControllerFinder) canaryStyleFinders() []ControllerFinderFunc {
 	return []ControllerFinderFunc{r.getDeployment}
 }
 
+// Note: getStatefulSetLikeWorkload is placed last because it has broader matching criteria.
+// If placed earlier in the chain, it may incorrectly match other workload types (e.g., DaemonSets)
+// and prevent their specific finders from being reached.
 func (r *ControllerFinder) partitionStyleFinders() []ControllerFinderFunc {
-	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment, r.getStatefulSetLikeWorkload, r.getKruiseDaemonSet}
+	return []ControllerFinderFunc{r.getKruiseCloneSet, r.getAdvancedDeployment, r.getKruiseDaemonSet, r.getNativeDaemonSet, r.getStatefulSetLikeWorkload}
 }
 
 func (r *ControllerFinder) bluegreenStyleFinders() []ControllerFinderFunc {
@@ -124,6 +127,7 @@ var (
 	ControllerKindRS           = apps.SchemeGroupVersion.WithKind("ReplicaSet")
 	ControllerKindDep          = apps.SchemeGroupVersion.WithKind("Deployment")
 	ControllerKindSts          = apps.SchemeGroupVersion.WithKind("StatefulSet")
+	ControllerKindDS           = apps.SchemeGroupVersion.WithKind("DaemonSet") // Add this for native DaemonSet
 	ControllerKruiseKindCS     = appsv1alpha1.SchemeGroupVersion.WithKind("CloneSet")
 	ControllerKruiseKindDS     = appsv1alpha1.SchemeGroupVersion.WithKind("DaemonSet")
 	ControllerKruiseKindSts    = appsv1beta1.SchemeGroupVersion.WithKind("StatefulSet")
@@ -213,6 +217,84 @@ func (r *ControllerFinder) getKruiseDaemonSet(namespace string, ref *rolloutv1be
 	// if daemonSet.Status.CurrentRevision == cloneSet.Status.UpdateRevision && cloneSet.Status.UpdatedReplicas != cloneSet.Status.Replicas {
 	// 	workload.IsInRollback = true
 	// }
+	return workload, nil
+}
+
+// getNativeDaemonSet returns the native DaemonSet referenced by the provided controllerRef.
+func (r *ControllerFinder) getNativeDaemonSet(namespace string, ref *rolloutv1beta1.ObjectRef) (*Workload, error) {
+	// This error is irreversible, so there is no need to return error
+	ok, _ := verifyGroupKind(ref, ControllerKindDS.Kind, []string{ControllerKindDS.Group})
+	if !ok {
+		return nil, nil
+	}
+	daemonSet := &apps.DaemonSet{}
+	err := r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: ref.Name}, daemonSet)
+	if err != nil {
+		// when error is NotFound, it is ok here.
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if daemonSet.Generation != daemonSet.Status.ObservedGeneration {
+		return &Workload{IsStatusConsistent: false}, nil
+	}
+
+	workload := &Workload{
+		RevisionLabelKey:   apps.ControllerRevisionHashLabelKey, // Use ControllerRevision hash label key
+		ObjectMeta:         daemonSet.ObjectMeta,
+		TypeMeta:           daemonSet.TypeMeta,
+		Replicas:           daemonSet.Status.DesiredNumberScheduled,
+		IsStatusConsistent: true,
+	}
+
+	// not in rollout progressing
+	if _, ok := workload.Annotations[InRolloutProgressingAnnotation]; !ok {
+		return workload, nil
+	}
+
+	// Get ControllerRevisions for this DaemonSet
+	revisions, err := r.getControllerRevisionsForDaemonSet(daemonSet)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set CanaryRevision and StableRevision based on ControllerRevisions
+	if len(revisions) > 0 {
+		// CanaryRevision: revision with the highest number (newest)
+		latestRevision := revisions[0]
+		if hash, exists := latestRevision.Labels[apps.ControllerRevisionHashLabelKey]; exists {
+			workload.CanaryRevision = hash
+			workload.PodTemplateHash = hash // Use the same hash for pod template
+		}
+
+		// StableRevision: revision with the second-highest number (previous)
+		if len(revisions) > 1 {
+			secondLatestRevision := revisions[1]
+			if hash, exists := secondLatestRevision.Labels[apps.ControllerRevisionHashLabelKey]; exists {
+				workload.StableRevision = hash
+			}
+		} else {
+			// If there's only one revision, it's both stable and canary
+			workload.StableRevision = workload.CanaryRevision
+		}
+	}
+
+	// in rollout progressing
+	workload.InRolloutProgressing = true
+
+	// For rollback detection in native DaemonSet:
+	// If stable revision equals canary revision, it means we're rolling back
+	if workload.StableRevision != "" && workload.StableRevision == workload.CanaryRevision {
+		workload.IsInRollback = true
+	}
+
+	// Update DaemonSet annotations for stable and canary revisions
+	err = r.patchDaemonSetRevisionAnnotations(daemonSet, workload.StableRevision, workload.CanaryRevision)
+	if err != nil {
+		return nil, err
+	}
+
 	return workload, nil
 }
 
@@ -455,4 +537,76 @@ func verifyGroupKind(ref *rolloutv1beta1.ObjectRef, expectedKind string, expecte
 	}
 
 	return false, nil
+}
+
+// getControllerRevisionsForDaemonSet returns ControllerRevisions for the given DaemonSet,
+// sorted by revision number in descending order (newest first)
+func (r *ControllerFinder) getControllerRevisionsForDaemonSet(daemonSet *apps.DaemonSet) ([]*apps.ControllerRevision, error) {
+	// List all ControllerRevisions in the same namespace
+	revisionList := &apps.ControllerRevisionList{}
+
+	err := r.List(context.TODO(), revisionList, utilclient.DisableDeepCopy,
+		&client.ListOptions{Namespace: daemonSet.Namespace})
+	if err != nil {
+		return nil, err
+	}
+
+	var revisions []*apps.ControllerRevision
+	for i := range revisionList.Items {
+		revision := &revisionList.Items[i]
+		// Check if this ControllerRevision is owned by the DaemonSet
+		if ref := metav1.GetControllerOf(revision); ref != nil {
+			if ref.Name == daemonSet.Name && ref.Kind == "DaemonSet" {
+				revisions = append(revisions, revision)
+			}
+		}
+	}
+
+	// Sort by revision number in descending order (newest first)
+	sort.Slice(revisions, func(i, j int) bool {
+		return revisions[i].Revision > revisions[j].Revision
+	})
+
+	return revisions, nil
+}
+
+// patchDaemonSetRevisionAnnotations patches DaemonSet annotations for stable and canary revisions
+func (r *ControllerFinder) patchDaemonSetRevisionAnnotations(daemonSet *apps.DaemonSet, stableRevision, canaryRevision string) error {
+
+	annotationsToUpdate := make(map[string]string)
+
+	// Check and collect canary revision annotation
+	if canaryRevision != "" {
+		if daemonSet.Annotations == nil {
+			annotationsToUpdate[DaemonSetCanaryRevisionAnnotation] = canaryRevision
+		} else if existingCanary, exists := daemonSet.Annotations[DaemonSetCanaryRevisionAnnotation]; !exists || existingCanary != canaryRevision {
+			annotationsToUpdate[DaemonSetCanaryRevisionAnnotation] = canaryRevision
+		}
+	}
+
+	// Check and collect stable revision annotation
+	if stableRevision != "" {
+		if daemonSet.Annotations == nil {
+			annotationsToUpdate[DaemonSetStableRevisionAnnotation] = stableRevision
+		} else if existingStable, exists := daemonSet.Annotations[DaemonSetStableRevisionAnnotation]; !exists || existingStable != stableRevision {
+			annotationsToUpdate[DaemonSetStableRevisionAnnotation] = stableRevision
+		}
+	}
+
+	// Patch the DaemonSet if annotations need to be changed
+	if len(annotationsToUpdate) > 0 {
+		patch := client.MergeFrom(daemonSet.DeepCopy())
+
+		if daemonSet.Annotations == nil {
+			daemonSet.Annotations = make(map[string]string)
+		}
+
+		for key, value := range annotationsToUpdate {
+			daemonSet.Annotations[key] = value
+		}
+
+		return r.Patch(context.TODO(), daemonSet, patch)
+	}
+
+	return nil
 }

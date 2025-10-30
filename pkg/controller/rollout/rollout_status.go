@@ -304,6 +304,8 @@ func (r *RolloutReconciler) patchWorkloadRolloutWebhookLabel(rollout *v1beta1.Ro
 		workloadType = util.StatefulSetType
 	case util.ControllerKruiseKindDS.Kind:
 		workloadType = util.DaemonSetType
+	case util.ControllerKindDS.Kind:
+		workloadType = util.DaemonSetType
 	}
 	if workload.Labels[util.WorkloadTypeLabel] == "" && workloadType != "" {
 		workloadGVK := schema.FromAPIVersionAndKind(workload.APIVersion, workload.Kind)

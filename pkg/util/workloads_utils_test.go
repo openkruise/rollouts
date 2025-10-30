@@ -29,6 +29,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -336,4 +337,308 @@ func TestFilterCanaryAndStableReplicaSet(t *testing.T) {
 			}
 		})
 	}
+}
+func TestGetEmptyWorkloadObject(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	cases := []struct {
+		name        string
+		gvk         schema.GroupVersionKind
+		expectedObj client.Object
+		shouldBeNil bool
+	}{
+		{
+			name:        "native daemonset",
+			gvk:         ControllerKindDS,
+			expectedObj: &appsv1.DaemonSet{},
+			shouldBeNil: false,
+		},
+		{
+			name:        "kruise daemonset",
+			gvk:         ControllerKruiseKindDS,
+			expectedObj: &kruiseappsv1alpha1.DaemonSet{},
+			shouldBeNil: false,
+		},
+		{
+			name:        "native deployment",
+			gvk:         ControllerKindDep,
+			expectedObj: &appsv1.Deployment{},
+			shouldBeNil: false,
+		},
+		{
+			name:        "native statefulset",
+			gvk:         ControllerKindSts,
+			expectedObj: &appsv1.StatefulSet{},
+			shouldBeNil: false,
+		},
+		{
+			name:        "kruise cloneset",
+			gvk:         ControllerKruiseKindCS,
+			expectedObj: &kruiseappsv1alpha1.CloneSet{},
+			shouldBeNil: false,
+		},
+		{
+			name:        "kruise statefulset",
+			gvk:         ControllerKruiseKindSts,
+			expectedObj: &appsv1beta1.StatefulSet{},
+			shouldBeNil: false,
+		},
+		{
+			name:        "replicaset",
+			gvk:         ControllerKindRS,
+			expectedObj: &appsv1.ReplicaSet{},
+			shouldBeNil: false,
+		},
+		{
+			name: "unsupported workload",
+			gvk: schema.GroupVersionKind{
+				Group:   "custom.io",
+				Version: "v1",
+				Kind:    "CustomWorkload",
+			},
+			expectedObj: nil,
+			shouldBeNil: true,
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			obj := GetEmptyWorkloadObject(cs.gvk)
+			if cs.shouldBeNil {
+				Expect(obj).Should(BeNil())
+			} else {
+				Expect(obj).NotTo(BeNil())
+				Expect(reflect.TypeOf(obj)).Should(Equal(reflect.TypeOf(cs.expectedObj)))
+			}
+		})
+	}
+}
+
+func TestGetEmptyObjectWithKey(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	cases := []struct {
+		name        string
+		inputObj    client.Object
+		expectedObj client.Object
+	}{
+		{
+			name: "native daemonset",
+			inputObj: &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-daemonset",
+					Namespace: "test-namespace",
+				},
+			},
+			expectedObj: &appsv1.DaemonSet{},
+		},
+		{
+			name: "kruise daemonset",
+			inputObj: &kruiseappsv1alpha1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kruise-daemonset",
+					Namespace: "test-namespace",
+				},
+			},
+			expectedObj: &kruiseappsv1alpha1.DaemonSet{},
+		},
+		{
+			name: "native deployment",
+			inputObj: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment",
+					Namespace: "test-namespace",
+				},
+			},
+			expectedObj: &appsv1.Deployment{},
+		},
+		{
+			name: "native statefulset",
+			inputObj: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-statefulset",
+					Namespace: "test-namespace",
+				},
+			},
+			expectedObj: &appsv1.StatefulSet{},
+		},
+		{
+			name: "kruise cloneset",
+			inputObj: &kruiseappsv1alpha1.CloneSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cloneset",
+					Namespace: "test-namespace",
+				},
+			},
+			expectedObj: &kruiseappsv1alpha1.CloneSet{},
+		},
+		{
+			name: "pod",
+			inputObj: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "test-namespace",
+				},
+			},
+			expectedObj: &corev1.Pod{},
+		},
+		{
+			name: "service",
+			inputObj: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: "test-namespace",
+				},
+			},
+			expectedObj: &corev1.Service{},
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			emptyObj := GetEmptyObjectWithKey(cs.inputObj)
+
+			// Check that the returned object is of the correct type
+			Expect(reflect.TypeOf(emptyObj)).Should(Equal(reflect.TypeOf(cs.expectedObj)))
+
+			// Check that name and namespace are preserved
+			Expect(emptyObj.GetName()).Should(Equal(cs.inputObj.GetName()))
+			Expect(emptyObj.GetNamespace()).Should(Equal(cs.inputObj.GetNamespace()))
+		})
+	}
+}
+
+func TestIsSupportedWorkload(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	cases := []struct {
+		name        string
+		gvk         schema.GroupVersionKind
+		isSupported bool
+	}{
+		{
+			name:        "native daemonset",
+			gvk:         ControllerKindDS,
+			isSupported: true,
+		},
+		{
+			name:        "kruise daemonset",
+			gvk:         ControllerKruiseKindDS,
+			isSupported: true,
+		},
+		{
+			name:        "native deployment",
+			gvk:         ControllerKindDep,
+			isSupported: true,
+		},
+		{
+			name:        "native statefulset",
+			gvk:         ControllerKindSts,
+			isSupported: true,
+		},
+		{
+			name:        "kruise cloneset",
+			gvk:         ControllerKruiseKindCS,
+			isSupported: true,
+		},
+		{
+			name:        "kruise statefulset",
+			gvk:         ControllerKruiseKindSts,
+			isSupported: true,
+		},
+		{
+			name:        "kruise old statefulset",
+			gvk:         ControllerKruiseOldKindSts,
+			isSupported: true,
+		},
+		{
+			name:        "replicaset",
+			gvk:         ControllerKindRS,
+			isSupported: true,
+		},
+		{
+			name: "unsupported workload",
+			gvk: schema.GroupVersionKind{
+				Group:   "custom.io",
+				Version: "v1",
+				Kind:    "CustomWorkload",
+			},
+			isSupported: false,
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			supported := IsSupportedWorkload(cs.gvk)
+			Expect(supported).Should(Equal(cs.isSupported))
+		})
+	}
+}
+
+func TestNativeDaemonSetIntegration(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	t.Run("native daemonset in ownership chain", func(t *testing.T) {
+		// Create a test scenario where a native DaemonSet is part of an ownership chain
+		parentWorkload := &kruiseappsv1alpha1.CloneSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "parent-cloneset",
+				Namespace: "test-namespace",
+				UID:       "parent-uid",
+			},
+		}
+		parentWorkload.SetGroupVersionKind(ControllerKruiseKindCS)
+
+		nativeDaemonSet := &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "child-daemonset",
+				Namespace: "test-namespace",
+				UID:       "child-uid",
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(parentWorkload, parentWorkload.GetObjectKind().GroupVersionKind()),
+				},
+			},
+		}
+		nativeDaemonSet.SetGroupVersionKind(ControllerKindDS)
+
+		objects := []client.Object{parentWorkload, nativeDaemonSet}
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+
+		// Test IsOwnedBy
+		owned, err := IsOwnedBy(cli, nativeDaemonSet, parentWorkload)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(owned).Should(BeTrue())
+
+		// Test GetOwnerWorkload
+		owner, err := GetOwnerWorkload(cli, nativeDaemonSet)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(owner).NotTo(BeNil())
+		Expect(owner.GetName()).Should(Equal(parentWorkload.GetName()))
+		Expect(owner.GetUID()).Should(Equal(parentWorkload.GetUID()))
+	})
+
+	t.Run("native daemonset as top-level workload", func(t *testing.T) {
+		// Create a test scenario where a native DaemonSet is the top-level workload
+		nativeDaemonSet := &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "top-level-daemonset",
+				Namespace: "test-namespace",
+				UID:       "daemonset-uid",
+				Annotations: map[string]string{
+					InRolloutProgressingAnnotation: "true",
+				},
+			},
+		}
+		nativeDaemonSet.SetGroupVersionKind(ControllerKindDS)
+
+		objects := []client.Object{nativeDaemonSet}
+		cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+
+		// Test GetOwnerWorkload - should return the DaemonSet itself
+		owner, err := GetOwnerWorkload(cli, nativeDaemonSet)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(owner).NotTo(BeNil())
+		Expect(owner.GetName()).Should(Equal(nativeDaemonSet.GetName()))
+		Expect(owner.GetUID()).Should(Equal(nativeDaemonSet.GetUID()))
+	})
 }

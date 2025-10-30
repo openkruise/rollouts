@@ -76,6 +76,11 @@ func AddWorkloadWatcher(cs cache.Cache, c controller.Controller, handler handler
 	if err != nil {
 		return err
 	}
+	// Watch changes to Native DaemonSet, use unstructured informer
+	err = c.Watch(source.Kind(cs, &apps.DaemonSet{}), handler)
+	if err != nil {
+		return err
+	}
 	// Watch changes to CloneSet if it has the CRD
 	if DiscoverGVK(ControllerKruiseKindCS) {
 		err := c.Watch(source.Kind(cs, &kruiseappsv1alpha1.CloneSet{}), handler)

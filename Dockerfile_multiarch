@@ -1,7 +1,7 @@
 # Build the manager binary
 ARG BASE_IMAGE=alpine
 ARG BASE_IMAGE_VERION=3.17
-FROM --platform=$BUILDPLATFORM golang:1.19-alpine3.17 as builder
+FROM --platform=$BUILDPLATFORM golang:1.19-alpine3.17 AS builder
 
 WORKDIR /workspace
 
