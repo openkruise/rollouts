@@ -18,7 +18,7 @@ package control
 
 import "k8s.io/apimachinery/pkg/util/intstr"
 
-// OriginalDeploymentStrategy stores part of the fileds of a workload,
+// OriginalDeploymentStrategy stores part of the fields of a workload,
 // so that it can be restored when finalizing.
 // It is only used for BlueGreen Release
 // Similar to DeploymentStrategy, it is an annotation used in workload
