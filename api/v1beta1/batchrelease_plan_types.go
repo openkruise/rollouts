@@ -129,6 +129,10 @@ type BatchReleaseCanaryStatus struct {
 	CurrentBatchState BatchReleaseBatchStateType `json:"batchState,omitempty"`
 	// The current batch the rollout is working on/blocked, it starts from 0
 	CurrentBatch int32 `json:"currentBatch"`
+	// BatchStartTime is the start timestamp of the current batch.
+	// This field is updated when a batch starts processing.
+	// +optional
+	BatchStartTime *metav1.Time `json:"batchStartTime,omitempty"`
 	// BatchReadyTime is the ready timestamp of the current batch or the last batch.
 	// This field is updated once a batch ready, and the batches[x].pausedSeconds
 	// relies on this field to calculate the real-time duration.
