@@ -556,7 +556,7 @@ func (r *ControllerFinder) getControllerRevisionsForDaemonSet(daemonSet *apps.Da
 		revision := &revisionList.Items[i]
 		// Check if this ControllerRevision is owned by the DaemonSet
 		if ref := metav1.GetControllerOf(revision); ref != nil {
-			if ref.Name == daemonSet.Name && ref.Kind == "DaemonSet" {
+			if ref.UID == daemonSet.UID {
 				revisions = append(revisions, revision)
 			}
 		}
