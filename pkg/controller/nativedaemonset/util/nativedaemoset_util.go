@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -167,4 +168,57 @@ func GetPodDeletionCost(pod *corev1.Pod) int32 {
 	}
 
 	return int32(cost)
+}
+
+// SlowStartBatch tries to call the provided function a total of 'count' times,
+// starting slow to check for errors, then speeding up if calls succeed.
+//
+// It groups the calls into batches, starting with a group of initialBatchSize.
+// Within each batch, it may call the function multiple times concurrently with its index.
+//
+// If a whole batch succeeds, the next batch may get exponentially larger.
+// If there are any failures in a batch, all remaining batches are skipped
+// after waiting for the current batch to complete.
+//
+// It returns the number of successful calls to the function.
+func SlowStartBatch(count int, initialBatchSize int, fn func(index int) error) (int, error) {
+	remaining := count
+	successes := 0
+	index := 0
+
+	for batchSize := IntMin(remaining, initialBatchSize); batchSize > 0; batchSize = IntMin(2*batchSize, remaining) {
+		errCh := make(chan error, batchSize)
+		var wg sync.WaitGroup
+		wg.Add(batchSize)
+
+		for i := 0; i < batchSize; i++ {
+			go func(idx int) {
+				defer wg.Done()
+				if err := fn(idx); err != nil {
+					errCh <- err
+				}
+			}(index)
+			index++
+		}
+
+		wg.Wait()
+		curSuccesses := batchSize - len(errCh)
+		successes += curSuccesses
+
+		if len(errCh) > 0 {
+			return successes, <-errCh
+		}
+
+		remaining -= batchSize
+	}
+
+	return successes, nil
+}
+
+// IntMin returns the minimum of two integers
+func IntMin(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
