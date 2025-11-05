@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -966,5 +967,391 @@ func BenchmarkApplyDeletionConstraints(b *testing.B) {
 		ApplyDeletionConstraints(5, 3, 10)
 		ApplyDeletionConstraints(10, 15, 7)
 		ApplyDeletionConstraints(20, 5, 25)
+	}
+}
+
+// Test SortPodsForDeletion function
+func TestSortPodsForDeletion(t *testing.T) {
+	now := time.Now()
+	
+	tests := []struct {
+		name     string
+		pods     []*corev1.Pod
+		expected []string // expected order of pod names after sorting
+	}{
+		{
+			name: "pending pods first",
+			pods: []*corev1.Pod{
+				createPodWithStatus("pod-running", corev1.PodRunning, corev1.ConditionTrue, "", now.Add(-1*time.Hour)),
+				createPodWithStatus("pod-pending", corev1.PodPending, corev1.ConditionFalse, "", now.Add(-2*time.Hour)),
+				createPodWithStatus("pod-running2", corev1.PodRunning, corev1.ConditionTrue, "", now.Add(-3*time.Hour)),
+			},
+			expected: []string{"pod-pending", "pod-running", "pod-running2"},
+		},
+		{
+			name: "not ready pods before ready pods",
+			pods: []*corev1.Pod{
+				createPodWithStatus("pod-ready", corev1.PodRunning, corev1.ConditionTrue, "", now.Add(-1*time.Hour)),
+				createPodWithStatus("pod-not-ready", corev1.PodRunning, corev1.ConditionFalse, "", now.Add(-2*time.Hour)),
+				createPodWithStatus("pod-unknown", corev1.PodRunning, corev1.ConditionUnknown, "", now.Add(-3*time.Hour)),
+			},
+			expected: []string{"pod-not-ready", "pod-unknown", "pod-ready"},
+		},
+		{
+			name: "low deletion cost pods first",
+			pods: []*corev1.Pod{
+				createPodWithStatus("pod-low-cost", corev1.PodRunning, corev1.ConditionTrue, "10", now.Add(-1*time.Hour)),
+				createPodWithStatus("pod-high-cost", corev1.PodRunning, corev1.ConditionTrue, "100", now.Add(-2*time.Hour)),
+				createPodWithStatus("pod-no-cost", corev1.PodRunning, corev1.ConditionTrue, "", now.Add(-3*time.Hour)),
+			},
+			expected: []string{"pod-no-cost", "pod-low-cost", "pod-high-cost"},
+		},
+		{
+			name: "newer pods before older pods (same readiness and cost)",
+			pods: []*corev1.Pod{
+				createPodWithStatus("pod-old", corev1.PodRunning, corev1.ConditionTrue, "", now.Add(-3*time.Hour)),
+				createPodWithStatus("pod-new", corev1.PodRunning, corev1.ConditionTrue, "", now.Add(-1*time.Hour)),
+				createPodWithStatus("pod-middle", corev1.PodRunning, corev1.ConditionTrue, "", now.Add(-2*time.Hour)),
+			},
+			expected: []string{"pod-new", "pod-middle", "pod-old"},
+		},
+		{
+			name: "complex priority ordering",
+			pods: []*corev1.Pod{
+				createPodWithStatus("pod-ready-old", corev1.PodRunning, corev1.ConditionTrue, "", now.Add(-5*time.Hour)),
+				createPodWithStatus("pod-pending-new", corev1.PodPending, corev1.ConditionFalse, "", now.Add(-1*time.Hour)),
+				createPodWithStatus("pod-not-ready-middle", corev1.PodRunning, corev1.ConditionFalse, "", now.Add(-3*time.Hour)),
+				createPodWithStatus("pod-high-cost-ready", corev1.PodRunning, corev1.ConditionTrue, "200", now.Add(-4*time.Hour)),
+				createPodWithStatus("pod-ready-new", corev1.PodRunning, corev1.ConditionTrue, "", now.Add(-2*time.Hour)),
+			},
+			expected: []string{"pod-pending-new", "pod-not-ready-middle", "pod-ready-new", "pod-ready-old", "pod-high-cost-ready"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Make a copy to avoid modifying the original slice
+			podsCopy := make([]*corev1.Pod, len(test.pods))
+			copy(podsCopy, test.pods)
+			
+			SortPodsForDeletion(podsCopy)
+			
+			actualOrder := make([]string, len(podsCopy))
+			for i, pod := range podsCopy {
+				actualOrder[i] = pod.Name
+			}
+			
+			assert.Equal(t, test.expected, actualOrder)
+		})
+	}
+}
+
+// Test GetPodReadiness function
+func TestGetPodReadiness(t *testing.T) {
+	tests := []struct {
+		name     string
+		pod      *corev1.Pod
+		expected bool
+	}{
+		{
+			name: "pod ready",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Conditions: []corev1.PodCondition{
+						{
+							Type:   corev1.PodReady,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "pod not ready",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Conditions: []corev1.PodCondition{
+						{
+							Type:   corev1.PodReady,
+							Status: corev1.ConditionFalse,
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "pod ready status unknown",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Conditions: []corev1.PodCondition{
+						{
+							Type:   corev1.PodReady,
+							Status: corev1.ConditionUnknown,
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "no ready condition",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Conditions: []corev1.PodCondition{
+						{
+							Type:   corev1.PodScheduled,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "no conditions",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Conditions: []corev1.PodCondition{},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "multiple conditions with ready true",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Conditions: []corev1.PodCondition{
+						{
+							Type:   corev1.PodScheduled,
+							Status: corev1.ConditionTrue,
+						},
+						{
+							Type:   corev1.PodReady,
+							Status: corev1.ConditionTrue,
+						},
+						{
+							Type:   corev1.PodInitialized,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := GetPodReadiness(test.pod)
+			assert.Equal(t, test.expected, result)
+		})
+	}
+}
+
+// Test GetPodDeletionCost function
+func TestGetPodDeletionCost(t *testing.T) {
+	tests := []struct {
+		name     string
+		pod      *corev1.Pod
+		expected int32
+	}{
+		{
+			name: "no annotations",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: nil,
+				},
+			},
+			expected: 0,
+		},
+		{
+			name: "empty annotations",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name: "no deletion cost annotation",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						"other-annotation": "value",
+					},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name: "valid positive deletion cost",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						PodDeletionCostAnnotation: "100",
+					},
+				},
+			},
+			expected: 100,
+		},
+		{
+			name: "valid negative deletion cost",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						PodDeletionCostAnnotation: "-50",
+					},
+				},
+			},
+			expected: -50,
+		},
+		{
+			name: "zero deletion cost",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						PodDeletionCostAnnotation: "0",
+					},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name: "invalid deletion cost - non-numeric",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "default",
+					Annotations: map[string]string{
+						PodDeletionCostAnnotation: "invalid",
+					},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name: "invalid deletion cost - float",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "default",
+					Annotations: map[string]string{
+						PodDeletionCostAnnotation: "10.5",
+					},
+				},
+			},
+			expected: 0, // ParseInt will fail on float, return 0
+		},
+		{
+			name: "invalid deletion cost - empty string",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "default",
+					Annotations: map[string]string{
+						PodDeletionCostAnnotation: "",
+					},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name: "large deletion cost",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						PodDeletionCostAnnotation: "2147483647", // max int32
+					},
+				},
+			},
+			expected: 2147483647,
+		},
+		{
+			name: "large negative deletion cost",
+			pod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						PodDeletionCostAnnotation: "-2147483648", // min int32
+					},
+				},
+			},
+			expected: -2147483648,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := GetPodDeletionCost(test.pod)
+			assert.Equal(t, test.expected, result)
+		})
+	}
+}
+
+// Helper function to create pods with specific status for testing
+func createPodWithStatus(name string, phase corev1.PodPhase, readyStatus corev1.ConditionStatus, deletionCost string, creationTime time.Time) *corev1.Pod {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              name,
+			Namespace:         "default",
+			CreationTimestamp: metav1.NewTime(creationTime),
+			Annotations:       make(map[string]string),
+		},
+		Status: corev1.PodStatus{
+			Phase: phase,
+			Conditions: []corev1.PodCondition{
+				{
+					Type:   corev1.PodReady,
+					Status: readyStatus,
+				},
+			},
+		},
+	}
+	
+	if deletionCost != "" {
+		pod.Annotations[PodDeletionCostAnnotation] = deletionCost
+	}
+	
+	return pod
+}
+
+// Benchmark for SortPodsForDeletion
+func BenchmarkSortPodsForDeletion(b *testing.B) {
+	now := time.Now()
+	pods := make([]*corev1.Pod, 100)
+	
+	for i := 0; i < 100; i++ {
+		phase := corev1.PodRunning
+		if i%10 == 0 {
+			phase = corev1.PodPending
+		}
+		
+		readyStatus := corev1.ConditionTrue
+		if i%5 == 0 {
+			readyStatus = corev1.ConditionFalse
+		}
+		
+		deletionCost := ""
+		if i%7 == 0 {
+			deletionCost = "100"
+		}
+		
+		pods[i] = createPodWithStatus(
+			fmt.Sprintf("pod-%d", i),
+			phase,
+			readyStatus,
+			deletionCost,
+			now.Add(-time.Duration(i)*time.Minute),
+		)
+	}
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Make a copy for each iteration
+		podsCopy := make([]*corev1.Pod, len(pods))
+		copy(podsCopy, pods)
+		SortPodsForDeletion(podsCopy)
 	}
 }

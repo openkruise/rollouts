@@ -49,6 +49,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/openkruise/rollouts/pkg/util"
+	expectations "github.com/openkruise/rollouts/pkg/util/expectation"
 )
 
 const (
@@ -58,6 +59,15 @@ const (
 )
 
 // Helper functions for creating test objects
+
+// createTestReconciler creates a test ReconcileNativeDaemonSet with all required fields
+func createTestReconciler(client client.Client) *ReconcileNativeDaemonSet {
+	return &ReconcileNativeDaemonSet{
+		Client:        client,
+		eventRecorder: record.NewFakeRecorder(10),
+		expectations:  expectations.NewResourceExpectations(),
+	}
+}
 func createTestDaemonSet(name, namespace string, annotations map[string]string) *appsv1.DaemonSet {
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -161,20 +171,17 @@ func TestNewReconciler(t *testing.T) {
 	r := &ReconcileNativeDaemonSet{
 		Client:        client,
 		eventRecorder: recorder,
+		expectations:  expectations.NewResourceExpectations(),
 	}
 
 	assert.NotNil(t, r.Client)
 	assert.NotNil(t, r.eventRecorder)
+	assert.NotNil(t, r.expectations)
 }
 
 func TestReconcile_DaemonSetNotFound(t *testing.T) {
 	client := createFakeClient()
-	recorder := record.NewFakeRecorder(10)
-
-	r := &ReconcileNativeDaemonSet{
-		Client:        client,
-		eventRecorder: recorder,
-	}
+	r := createTestReconciler(client)
 
 	req := reconcile.Request{
 		NamespacedName: types.NamespacedName{
@@ -191,12 +198,7 @@ func TestReconcile_DaemonSetNotFound(t *testing.T) {
 func TestReconcile_NoPartitionAnnotation(t *testing.T) {
 	ds := createTestDaemonSet(testDSName, testNamespace, map[string]string{})
 	client := createFakeClient(ds)
-	recorder := record.NewFakeRecorder(10)
-
-	r := &ReconcileNativeDaemonSet{
-		Client:        client,
-		eventRecorder: recorder,
-	}
+	r := createTestReconciler(client)
 
 	req := reconcile.Request{
 		NamespacedName: types.NamespacedName{
@@ -223,12 +225,7 @@ func TestReconcile_WithPartitionAnnotation(t *testing.T) {
 	pod3 := createTestPod("pod-3", testNamespace, testDSName, "old-revision", true, nil)
 
 	client := createFakeClient(ds, pod1, pod2, pod3)
-	recorder := record.NewFakeRecorder(10)
-
-	r := &ReconcileNativeDaemonSet{
-		Client:        client,
-		eventRecorder: recorder,
-	}
+	r := createTestReconciler(client)
 
 	req := reconcile.Request{
 		NamespacedName: types.NamespacedName{
@@ -260,6 +257,7 @@ func TestReconcile_InvalidPartition(t *testing.T) {
 	r := &ReconcileNativeDaemonSet{
 		Client:        client,
 		eventRecorder: recorder,
+		expectations:  expectations.NewResourceExpectations(),
 	}
 
 	req := reconcile.Request{
@@ -295,6 +293,7 @@ func TestReconcile_PodsBeingDeleted(t *testing.T) {
 	r := &ReconcileNativeDaemonSet{
 		Client:        client,
 		eventRecorder: recorder,
+		expectations:  expectations.NewResourceExpectations(),
 	}
 
 	req := reconcile.Request{
@@ -310,7 +309,9 @@ func TestReconcile_PodsBeingDeleted(t *testing.T) {
 }
 
 func TestAnalyzePods(t *testing.T) {
-	r := &ReconcileNativeDaemonSet{}
+	r := &ReconcileNativeDaemonSet{
+		expectations: expectations.NewResourceExpectations(),
+	}
 	ds := createTestDaemonSet(testDSName, testNamespace, map[string]string{})
 
 	tests := []struct {
@@ -393,7 +394,6 @@ func TestAnalyzePods(t *testing.T) {
 
 func TestExecutePodDeletion(t *testing.T) {
 	ds := createTestDaemonSet(testDSName, testNamespace, map[string]string{})
-	recorder := record.NewFakeRecorder(10)
 
 	tests := []struct {
 		name         string
@@ -455,13 +455,15 @@ func TestExecutePodDeletion(t *testing.T) {
 				objects = append(objects, pod)
 			}
 			client := createFakeClient(objects...)
+			recorder := record.NewFakeRecorder(10)
 
 			r := &ReconcileNativeDaemonSet{
 				Client:        client,
 				eventRecorder: recorder,
+				expectations:  expectations.NewResourceExpectations(),
 			}
 
-			err := r.executePodDeletion(test.podsToDelete, test.needToDelete, ds)
+			err := r.executePodDeletion(context.TODO(), test.podsToDelete, test.needToDelete, ds)
 
 			if test.expectError {
 				assert.Error(t, err)
@@ -546,9 +548,10 @@ func TestProcessBatch(t *testing.T) {
 			r := &ReconcileNativeDaemonSet{
 				Client:        client,
 				eventRecorder: recorder,
+				expectations:  expectations.NewResourceExpectations(),
 			}
 
-			result, err := r.processBatch(test.ds, test.pods, test.desiredReplicas)
+			result, err := r.processBatch(context.TODO(), test.ds, test.pods, test.desiredReplicas)
 
 			if test.expectError {
 				assert.Error(t, err)
@@ -587,6 +590,7 @@ func TestReconcile_ComplexScenarios(t *testing.T) {
 		r := &ReconcileNativeDaemonSet{
 			Client:        client,
 			eventRecorder: recorder,
+			expectations:  expectations.NewResourceExpectations(),
 		}
 
 		req := reconcile.Request{
@@ -638,6 +642,7 @@ func TestReconcile_ComplexScenarios(t *testing.T) {
 		r := &ReconcileNativeDaemonSet{
 			Client:        client,
 			eventRecorder: recorder,
+			expectations:  expectations.NewResourceExpectations(),
 		}
 
 		req := reconcile.Request{
@@ -670,6 +675,7 @@ func TestReconcile_EdgeCases(t *testing.T) {
 		r := &ReconcileNativeDaemonSet{
 			Client:        client,
 			eventRecorder: recorder,
+			expectations:  expectations.NewResourceExpectations(),
 		}
 
 		req := reconcile.Request{
@@ -699,6 +705,7 @@ func TestReconcile_EdgeCases(t *testing.T) {
 		r := &ReconcileNativeDaemonSet{
 			Client:        client,
 			eventRecorder: recorder,
+			expectations:  expectations.NewResourceExpectations(),
 		}
 
 		req := reconcile.Request{
@@ -726,6 +733,7 @@ func TestReconcile_EdgeCases(t *testing.T) {
 		r := &ReconcileNativeDaemonSet{
 			Client:        client,
 			eventRecorder: recorder,
+			expectations:  expectations.NewResourceExpectations(),
 		}
 
 		req := reconcile.Request{
@@ -759,6 +767,7 @@ func TestReconcile_ErrorHandling(t *testing.T) {
 		r := &ReconcileNativeDaemonSet{
 			Client:        client,
 			eventRecorder: recorder,
+			expectations:  expectations.NewResourceExpectations(),
 		}
 
 		req := reconcile.Request{
@@ -788,12 +797,13 @@ func TestReconcile_ErrorHandling(t *testing.T) {
 		r := &ReconcileNativeDaemonSet{
 			Client:        client,
 			eventRecorder: recorder,
+			expectations:  expectations.NewResourceExpectations(),
 		}
 
 		// Call executePodDeletion directly to test the error path
-		err := r.executePodDeletion([]*corev1.Pod{pod}, 1, ds)
+		err := r.executePodDeletion(context.TODO(), []*corev1.Pod{pod}, 1, ds)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to delete pod")
+		assert.Contains(t, err.Error(), "mock delete error")
 	})
 }
 
@@ -810,6 +820,7 @@ func TestAdd(t *testing.T) {
 	reconciler := &ReconcileNativeDaemonSet{
 		Client:        mgr.GetClient(),
 		eventRecorder: record.NewFakeRecorder(10),
+		expectations:  expectations.NewResourceExpectations(),
 	}
 
 	err := add(mgr, reconciler)
@@ -919,41 +930,76 @@ func (c *errorClient) Delete(ctx context.Context, obj client.Object, opts ...cli
 	return c.Client.Delete(ctx, obj, opts...)
 }
 
-// Test pod sorting by creation timestamp
-func TestPodSortingByCreationTimestamp(t *testing.T) {
+// Test pod sorting by deletion priority
+func TestPodSortingByDeletionPriority(t *testing.T) {
 	now := time.Now()
 
-	// Create pods with different creation timestamps
-	pod1 := createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil)
+	// Create pods with different priorities for deletion
+	// 1. Pending pod (highest priority)
+	pod1 := createTestPod("pod-pending", testNamespace, testDSName, "old-revision", true, nil)
 	pod1.CreationTimestamp = metav1.NewTime(now.Add(-3 * time.Hour))
+	pod1.Status.Phase = corev1.PodPending
 
-	pod2 := createTestPod("pod-2", testNamespace, testDSName, "old-revision", true, nil)
-	pod2.CreationTimestamp = metav1.NewTime(now.Add(-1 * time.Hour))
+	// 2. Not ready pod
+	pod2 := createTestPod("pod-not-ready", testNamespace, testDSName, "old-revision", true, nil)
+	pod2.CreationTimestamp = metav1.NewTime(now.Add(-2 * time.Hour))
+	pod2.Status.Conditions = []corev1.PodCondition{
+		{Type: corev1.PodReady, Status: corev1.ConditionFalse},
+	}
 
-	pod3 := createTestPod("pod-3", testNamespace, testDSName, "old-revision", true, nil)
-	pod3.CreationTimestamp = metav1.NewTime(now.Add(-2 * time.Hour))
+	// 3. High deletion cost pod (lower priority for deletion)
+	pod3 := createTestPod("pod-high-cost", testNamespace, testDSName, "old-revision", true, nil)
+	pod3.CreationTimestamp = metav1.NewTime(now.Add(-4 * time.Hour))
+	pod3.Annotations = map[string]string{
+		"controller.kubernetes.io/pod-deletion-cost": "100",
+	}
+	pod3.Status.Conditions = []corev1.PodCondition{
+		{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+	}
+
+	// 4. Newer ready pod (should be deleted before older ready pod)
+	pod4 := createTestPod("pod-ready-new", testNamespace, testDSName, "old-revision", true, nil)
+	pod4.CreationTimestamp = metav1.NewTime(now.Add(-1 * time.Hour))
+	pod4.Status.Conditions = []corev1.PodCondition{
+		{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+	}
+
+	// 5. Older ready pod (lowest priority)
+	pod5 := createTestPod("pod-ready-old", testNamespace, testDSName, "old-revision", true, nil)
+	pod5.CreationTimestamp = metav1.NewTime(now.Add(-5 * time.Hour))
+	pod5.Status.Conditions = []corev1.PodCondition{
+		{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+	}
 
 	ds := createTestDaemonSet(testDSName, testNamespace, map[string]string{})
-	client := createFakeClient(ds, pod1, pod2, pod3)
+	client := createFakeClient(ds, pod1, pod2, pod3, pod4, pod5)
 	recorder := record.NewFakeRecorder(10)
 
 	r := &ReconcileNativeDaemonSet{
 		Client:        client,
 		eventRecorder: recorder,
+		expectations:  expectations.NewResourceExpectations(),
 	}
 
-	// Delete 2 pods - should delete oldest first (pod1, then pod3)
-	podsToDelete := []*corev1.Pod{pod1, pod2, pod3}
-	err := r.executePodDeletion(podsToDelete, 2, ds)
+	// Delete 3 pods - should delete in priority order: pending, not-ready, newer ready pod
+	// High cost pod should be deleted last due to low priority
+	podsToDelete := []*corev1.Pod{pod1, pod2, pod3, pod4, pod5}
+	err := r.executePodDeletion(context.TODO(), podsToDelete, 3, ds)
 	assert.NoError(t, err)
 
 	// Check remaining pods
 	var podList corev1.PodList
 	err = client.List(context.TODO(), &podList)
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(podList.Items))
-	// pod2 should remain as it's the newest
-	assert.Equal(t, "pod-2", podList.Items[0].Name)
+	assert.Equal(t, 2, len(podList.Items))
+	
+	// The remaining pods should be the high-cost pod and older ready pod
+	remainingNames := make(map[string]bool)
+	for _, pod := range podList.Items {
+		remainingNames[pod.Name] = true
+	}
+	assert.True(t, remainingNames["pod-high-cost"])
+	assert.True(t, remainingNames["pod-ready-old"])
 }
 
 // Test constants and global variables
@@ -965,7 +1011,9 @@ func TestConstants(t *testing.T) {
 
 // Test revision consistency checking
 func TestRevisionConsistencyChecking(t *testing.T) {
-	r := &ReconcileNativeDaemonSet{}
+	r := &ReconcileNativeDaemonSet{
+		expectations: expectations.NewResourceExpectations(),
+	}
 	ds := createTestDaemonSet(testDSName, testNamespace, map[string]string{})
 
 	tests := []struct {
@@ -1094,6 +1142,7 @@ func BenchmarkReconcile(b *testing.B) {
 	r := &ReconcileNativeDaemonSet{
 		Client:        client,
 		eventRecorder: recorder,
+		expectations:  expectations.NewResourceExpectations(),
 	}
 
 	req := reconcile.Request{
@@ -1110,7 +1159,9 @@ func BenchmarkReconcile(b *testing.B) {
 }
 
 func BenchmarkAnalyzePods(b *testing.B) {
-	r := &ReconcileNativeDaemonSet{}
+	r := &ReconcileNativeDaemonSet{
+		expectations: expectations.NewResourceExpectations(),
+	}
 	ds := createTestDaemonSet(testDSName, testNamespace, map[string]string{})
 
 	pods := []*corev1.Pod{}
@@ -1127,4 +1178,72 @@ func BenchmarkAnalyzePods(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _, _, _ = r.analyzePods(pods, testRevision, 75, ds)
 	}
+}
+
+// Test expectations mechanism
+func TestExpectationsMechanism(t *testing.T) {
+	t.Run("expectations satisfied", func(t *testing.T) {
+		annotations := map[string]string{
+			util.DaemonSetPartitionAnnotation:     "0", // Need to update all pods
+			util.DaemonSetBatchRevisionAnnotation: testRevision,
+		}
+		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
+		pod := createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil)
+
+		client := createFakeClient(ds, pod)
+		recorder := record.NewFakeRecorder(10)
+
+		r := &ReconcileNativeDaemonSet{
+			Client:        client,
+			eventRecorder: recorder,
+			expectations:  expectations.NewResourceExpectations(),
+		}
+
+		req := reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      testDSName,
+				Namespace: testNamespace,
+			},
+		}
+
+		// First reconcile should proceed normally and delete the pod
+		result, err := r.Reconcile(context.TODO(), req)
+		assert.NoError(t, err)
+		assert.Equal(t, reconcile.Result{RequeueAfter: DefaultRetryDuration}, result)
+	})
+
+	t.Run("expectations not satisfied - requeue", func(t *testing.T) {
+		annotations := map[string]string{
+			util.DaemonSetPartitionAnnotation:     "1",
+			util.DaemonSetBatchRevisionAnnotation: testRevision,
+		}
+		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
+		pod := createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil)
+
+		client := createFakeClient(ds, pod)
+		recorder := record.NewFakeRecorder(10)
+
+		r := &ReconcileNativeDaemonSet{
+			Client:        client,
+			eventRecorder: recorder,
+			expectations:  expectations.NewResourceExpectations(),
+		}
+
+		dsKey := fmt.Sprintf("%s/%s", testNamespace, testDSName)
+		
+		// Set an expectation that hasn't been satisfied
+		r.expectations.Expect(dsKey, expectations.Delete, "test-uid")
+
+		req := reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      testDSName,
+				Namespace: testNamespace,
+			},
+		}
+
+		// Should requeue due to unsatisfied expectations
+		result, err := r.Reconcile(context.TODO(), req)
+		assert.NoError(t, err)
+		assert.Equal(t, reconcile.Result{RequeueAfter: DefaultRetryDuration}, result)
+	})
 }

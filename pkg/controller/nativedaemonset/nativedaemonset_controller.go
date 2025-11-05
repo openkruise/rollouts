@@ -20,13 +20,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"reflect"
-	"sort"
+	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -43,6 +43,7 @@ import (
 	daemonsetutil "github.com/openkruise/rollouts/pkg/controller/nativedaemonset/util"
 	"github.com/openkruise/rollouts/pkg/util"
 	clientutil "github.com/openkruise/rollouts/pkg/util/client"
+	expectations "github.com/openkruise/rollouts/pkg/util/expectation"
 )
 
 func init() {
@@ -79,6 +80,7 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 	return &ReconcileNativeDaemonSet{
 		Client:        mgr.GetClient(),
 		eventRecorder: recorder,
+		expectations:  expectations.NewResourceExpectations(),
 	}, nil
 }
 
@@ -87,10 +89,14 @@ type ReconcileNativeDaemonSet struct {
 	// client interface
 	client.Client
 	eventRecorder record.EventRecorder
+	// A TTLCache of pod creates/deletes each ds expects to see
+	expectations expectations.Expectations
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
+	reconciler := r.(*ReconcileNativeDaemonSet)
+
 	// Create a new controller
 	c, err := controller.New(ControllerName, mgr, controller.Options{
 		Reconciler: r, MaxConcurrentReconciles: concurrentReconciles})
@@ -98,26 +104,73 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch for changes to DaemonSet with specific annotations
+	// Watch for changes to DaemonSet partition annotation ONLY
 	updateHandler := func(e event.UpdateEvent) bool {
 		oldObject := e.ObjectOld.(*appsv1.DaemonSet)
 		newObject := e.ObjectNew.(*appsv1.DaemonSet)
-		if len(oldObject.Annotations) != len(newObject.Annotations) || !reflect.DeepEqual(oldObject.Annotations, newObject.Annotations) {
-			klog.V(3).Infof("Observed updated Annotation for native DaemonSet: %s/%s", newObject.Namespace, newObject.Name)
+
+		oldPartition := oldObject.Annotations[util.DaemonSetPartitionAnnotation]
+		newPartition := newObject.Annotations[util.DaemonSetPartitionAnnotation]
+
+		// Only trigger reconcile when partition annotation changes
+		if oldPartition != newPartition {
+			klog.Infof("Observed updated partition for DaemonSet: %s/%s (partition: %s -> %s)",
+				newObject.Namespace, newObject.Name, oldPartition, newPartition)
 			return true
 		}
 		return false
 	}
 
 	// Watch for changes to DaemonSet
-	return c.Watch(source.Kind(mgr.GetCache(), &appsv1.DaemonSet{}), &handler.EnqueueRequestForObject{}, predicate.Funcs{UpdateFunc: updateHandler})
+	if err = c.Watch(source.Kind(mgr.GetCache(), &appsv1.DaemonSet{}),
+		&handler.EnqueueRequestForObject{},
+		predicate.Funcs{UpdateFunc: updateHandler}); err != nil {
+		return err
+	}
+
+	// Watch for pod deletions to update expectations only
+	// Do NOT trigger reconcile on pod deletion
+	podDeletePredicate := predicate.Funcs{
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			pod := e.Object.(*corev1.Pod)
+			for _, ownerRef := range pod.OwnerReferences {
+				if ownerRef.Kind == "DaemonSet" &&
+					ownerRef.APIVersion == "apps/v1" &&
+					ownerRef.Controller != nil && *ownerRef.Controller {
+
+					dsKey := fmt.Sprintf("%s/%s", pod.Namespace, ownerRef.Name)
+
+					// Only observe deletions for DaemonSets we actually manage
+					// This prevents interfering with other DaemonSet controllers
+					dsExpectations := reconciler.expectations.GetExpectations(dsKey)
+					if len(dsExpectations) > 0 {
+						reconciler.expectations.Observe(dsKey, expectations.Delete, string(pod.UID))
+						klog.Infof("Observed pod deletion for managed DaemonSet %s, pod: %s/%s", dsKey, pod.Namespace, pod.Name)
+					}
+					break // Found the controlling DaemonSet, no need to check other owners
+				}
+			}
+			// Always return false to prevent enqueueing
+			return false
+		},
+		CreateFunc:  func(e event.CreateEvent) bool { return false },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return false },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
+	}
+
+	// Watch pods with a handler that never enqueues
+	return c.Watch(source.Kind(mgr.GetCache(), &corev1.Pod{}),
+		&handler.EnqueueRequestForObject{},
+		podDeletePredicate)
 }
 
 // Reconcile reads that state of the cluster for a DaemonSet object and makes changes based on the annotations
 // to implement progressive delivery by deleting pods according to batch requirements.
-func (r *ReconcileNativeDaemonSet) Reconcile(_ context.Context, request reconcile.Request) (reconcile.Result, error) {
+func (r *ReconcileNativeDaemonSet) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	dsKey := request.NamespacedName.String()
+
 	daemon := new(appsv1.DaemonSet)
-	err := r.Get(context.TODO(), request.NamespacedName, daemon)
+	err := r.Get(ctx, request.NamespacedName, daemon)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Object not found, return.
@@ -134,6 +187,19 @@ func (r *ReconcileNativeDaemonSet) Reconcile(_ context.Context, request reconcil
 		return reconcile.Result{}, nil
 	}
 
+	// Check expectations first
+	satisfied, timeoutDuration, rest := r.expectations.SatisfiedExpectations(dsKey)
+	if !satisfied {
+		if timeoutDuration >= expectations.ExpectationTimeout {
+			klog.Warningf("Unsatisfied time of expectation exceeds %v, delete key and continue, key: %s, rest: %v",
+				expectations.ExpectationTimeout, dsKey, rest)
+			r.expectations.DeleteExpectations(dsKey)
+		} else {
+			klog.Infof("Expectations not satisfied, requeuing DaemonSet %s/%s, rest: %v, timeoutDuration: %v", daemon.Namespace, daemon.Name, rest, timeoutDuration)
+			return reconcile.Result{RequeueAfter: DefaultRetryDuration}, nil
+		}
+	}
+
 	// Get all pods owned by this DaemonSet using ListOwnedPods utility function
 	pods, err := util.ListOwnedPods(r.Client, daemon)
 	if err != nil {
@@ -146,10 +212,11 @@ func (r *ReconcileNativeDaemonSet) Reconcile(_ context.Context, request reconcil
 		return ctrl.Result{}, err
 	}
 
-	klog.Infof("Processing DaemonSet %s/%s with desired updated replicas: %d", daemon.Namespace, daemon.Name, desiredUpdatedReplicas)
+	klog.Infof("Processing DaemonSet %s/%s with partition: %s, desired updated replicas: %d",
+		daemon.Namespace, daemon.Name, partitionStr, desiredUpdatedReplicas)
 
 	// Process the pods according to partition requirements
-	result, err := r.processBatch(daemon, pods, desiredUpdatedReplicas)
+	result, err := r.processBatch(ctx, daemon, pods, desiredUpdatedReplicas)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -195,47 +262,84 @@ func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevisio
 	return podsToDelete, needToDelete, false, nil
 }
 
-// executePodDeletion executes the actual pod deletion based on analysis
-func (r *ReconcileNativeDaemonSet) executePodDeletion(podsToDelete []*corev1.Pod, needToDelete int32, daemon *appsv1.DaemonSet) error {
+// executePodDeletion executes the actual pod deletion based on analysis using expectations mechanism
+func (r *ReconcileNativeDaemonSet) executePodDeletion(ctx context.Context, podsToDelete []*corev1.Pod, needToDelete int32, daemon *appsv1.DaemonSet) error {
+	dsKey := fmt.Sprintf("%s/%s", daemon.Namespace, daemon.Name)
+
 	if needToDelete <= 0 {
 		klog.Infof("No pods need to be deleted")
 		return nil
 	}
 
-	maxUnavailable := daemonsetutil.GetMaxUnavailable(daemon)
-	klog.Infof("Planning to delete %d pods (maxUnavailable: %d)", needToDelete, maxUnavailable)
+	// Sort pods by deletion priority (pending, not ready, high cost, newer pods first)
+	daemonsetutil.SortPodsForDeletion(podsToDelete)
 
-	// Sort pods by creation timestamp to delete oldest first
-	sort.Slice(podsToDelete, func(i, j int) bool {
-		return podsToDelete[i].CreationTimestamp.Before(&podsToDelete[j].CreationTimestamp)
-	})
+	// Limit the number of pods to delete based on needToDelete
+	actualPodsToDelete := podsToDelete
+	if int32(len(podsToDelete)) > needToDelete {
+		actualPodsToDelete = podsToDelete[:needToDelete]
+	}
 
-	for i := int32(0); i < needToDelete && i < int32(len(podsToDelete)); i++ {
-		pod := podsToDelete[i]
-		klog.Infof("About to delete pod %s/%s (currentRevision=%s targetRevision=%s)",
-			pod.Namespace, pod.Name,
-			pod.Labels[appsv1.ControllerRevisionHashLabelKey], daemon.Annotations[util.DaemonSetBatchRevisionAnnotation])
+	deleteDiff := len(actualPodsToDelete)
 
-		err := r.Delete(context.TODO(), pod)
-		if err != nil {
-			return fmt.Errorf("failed to delete pod %s/%s: %v", pod.Namespace, pod.Name, err)
-		}
+	// Set expectations for pod deletions BEFORE actually deleting
+	for _, pod := range actualPodsToDelete {
+		r.expectations.Expect(dsKey, expectations.Delete, string(pod.UID))
+	}
 
-		r.eventRecorder.Event(daemon, corev1.EventTypeNormal, "PodDeleted",
-			fmt.Sprintf("Deleted pod %s/%s for batch update", pod.Namespace, pod.Name))
+	klog.Infof("Pods to delete for DaemonSet %s/%s, count: %d", daemon.Namespace, daemon.Name, deleteDiff)
 
-		klog.Infof("Successfully deleted pod %s/%s", pod.Namespace, pod.Name)
+	// error channel to communicate back failures. make the buffer big enough to avoid any blocking
+	errCh := make(chan error, deleteDiff)
+	deleteWait := sync.WaitGroup{}
+	deleteWait.Add(deleteDiff)
+
+	for i := 0; i < deleteDiff; i++ {
+		go func(ix int) {
+			defer deleteWait.Done()
+			pod := actualPodsToDelete[ix]
+
+			klog.Infof("About to delete pod %s/%s for DaemonSet %s/%s (currentRevision=%s)",
+				pod.Namespace, pod.Name, daemon.Namespace, daemon.Name, pod.Labels[appsv1.ControllerRevisionHashLabelKey])
+
+			if err := r.Delete(ctx, pod); err != nil {
+				// On deletion failure, observe immediately to decrease expectation
+				r.expectations.Observe(dsKey, expectations.Delete, string(pod.UID))
+				if !errors.IsNotFound(err) {
+					klog.Infof("Failed deletion, decremented expectations for DaemonSet %s/%s, pod: %s/%s", daemon.Namespace, daemon.Name, pod.Namespace, pod.Name)
+					errCh <- err
+					utilruntime.HandleError(err)
+				} else {
+					// NotFound means pod is already deleted, which is fine
+					klog.Infof("Pod already deleted (NotFound): %s/%s", pod.Namespace, pod.Name)
+				}
+			} else {
+				// On successful deletion, the expectation will be observed by the Pod Delete watch handler
+				r.eventRecorder.Event(daemon, corev1.EventTypeNormal, "PodDeleted",
+					fmt.Sprintf("Deleted pod %s/%s for batch update", pod.Namespace, pod.Name))
+				klog.Infof("Successfully deleted pod %s/%s for DaemonSet %s/%s", pod.Namespace, pod.Name, daemon.Namespace, daemon.Name)
+			}
+		}(i)
+	}
+
+	deleteWait.Wait()
+
+	// Collect errors if any for proper reporting/retry logic in the controller
+	close(errCh)
+	if len(errCh) > 0 {
+		// Return the first error encountered
+		return <-errCh
 	}
 
 	return nil
 }
 
 // processBatch handles the actual pod deletion logic based on batch requirements
-func (r *ReconcileNativeDaemonSet) processBatch(daemon *appsv1.DaemonSet, pods []*corev1.Pod, desiredReplicas int32) (reconcile.Result, error) {
+func (r *ReconcileNativeDaemonSet) processBatch(ctx context.Context, daemon *appsv1.DaemonSet, pods []*corev1.Pod, desiredReplicas int32) (reconcile.Result, error) {
 
 	// Check if there are pods being deleted, if so, exit immediately
 	if daemonsetutil.HasPodsBeingDeleted(pods) {
-		klog.Infof("Pods are being deleted, requeue after %v", DefaultRetryDuration)
+		klog.Infof("Pods are being deleted for DaemonSet %s/%s, requeue after %v", daemon.Namespace, daemon.Name, DefaultRetryDuration)
 		return reconcile.Result{RequeueAfter: DefaultRetryDuration}, nil
 	}
 
@@ -247,19 +351,19 @@ func (r *ReconcileNativeDaemonSet) processBatch(daemon *appsv1.DaemonSet, pods [
 
 	// If batch is completed, don't requeue unless there are external changes
 	if batchCompleted {
-		klog.Infof("Batch is completed, not requeueing")
+		klog.Infof("Batch is completed for DaemonSet %s/%s, not requeueing", daemon.Namespace, daemon.Name)
 		return reconcile.Result{}, nil
 	}
 
 	// Execute pod deletion based on analysis
-	err = r.executePodDeletion(podsToDelete, needToDelete, daemon)
+	err = r.executePodDeletion(ctx, podsToDelete, needToDelete, daemon)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	// Only requeue if we actually did some work (deleted pods)
 	if needToDelete > 0 {
-		klog.Infof("Deleted %d pods, requeue after %v to check progress", needToDelete, DefaultRetryDuration)
+		klog.Infof("Deleted %d pods for DaemonSet %s/%s, requeue after %v to check progress", needToDelete, daemon.Namespace, daemon.Name, DefaultRetryDuration)
 		return reconcile.Result{RequeueAfter: DefaultRetryDuration}, nil
 	}
 

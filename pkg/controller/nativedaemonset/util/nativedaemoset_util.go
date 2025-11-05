@@ -18,11 +18,18 @@ package util
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
+)
+
+const (
+	// PodDeletionCostAnnotation is the annotation key for pod deletion cost
+	PodDeletionCostAnnotation = "controller.kubernetes.io/pod-deletion-cost"
 )
 
 // HasPodsBeingDeleted checks if there are any pods currently being deleted
@@ -86,4 +93,80 @@ func ApplyDeletionConstraints(needToDelete int32, maxUnavailable int32, availabl
 	}
 
 	return needToDelete
+}
+
+// SortPodsForDeletion sorts pods by deletion priority
+//
+//	order (highest to lowest priority for deletion):
+//
+// 1. Pending pods (if any)
+// 2. Pods with Ready=false/unknown (if any)
+// 3. Pods with low deletion cost annotation (if any)
+// 4. Newer pods (by creation timestamp)
+// Ready pods are deleted last
+func SortPodsForDeletion(pods []*corev1.Pod) {
+	sort.Slice(pods, func(i, j int) bool {
+		podI, podJ := pods[i], pods[j]
+
+		// Get pod readiness status
+		readyI := GetPodReadiness(podI)
+		readyJ := GetPodReadiness(podJ)
+
+		// 1. Pending pods first
+		if podI.Status.Phase == corev1.PodPending && podJ.Status.Phase != corev1.PodPending {
+			return true
+		}
+		if podI.Status.Phase != corev1.PodPending && podJ.Status.Phase == corev1.PodPending {
+			return false
+		}
+
+		// 2. Not ready pods before ready pods
+		if !readyI && readyJ {
+			return true
+		}
+		if readyI && !readyJ {
+			return false
+		}
+
+		// 3. Compare deletion cost (lower cost = higher priority for deletion)
+		costI := GetPodDeletionCost(podI)
+		costJ := GetPodDeletionCost(podJ)
+		if costI != costJ {
+			return costI < costJ
+		}
+
+		// 4. Newer pods first (newer creation timestamp = higher priority for deletion)
+		return podI.CreationTimestamp.After(podJ.CreationTimestamp.Time)
+	})
+}
+
+// GetPodReadiness returns true if the pod is ready
+func GetPodReadiness(pod *corev1.Pod) bool {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
+// GetPodDeletionCost returns the deletion cost of a pod
+// Lower cost means higher priority for deletion
+func GetPodDeletionCost(pod *corev1.Pod) int32 {
+	if pod.Annotations == nil {
+		return 0
+	}
+
+	costStr, exists := pod.Annotations[PodDeletionCostAnnotation]
+	if !exists {
+		return 0
+	}
+
+	cost, err := strconv.ParseInt(costStr, 10, 32)
+	if err != nil {
+		klog.Infof("Invalid pod deletion cost annotation for pod %s/%s: %s", pod.Namespace, pod.Name, costStr)
+		return 0
+	}
+
+	return int32(cost)
 }
