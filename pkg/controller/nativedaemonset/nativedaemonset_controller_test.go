@@ -992,7 +992,7 @@ func TestPodSortingByDeletionPriority(t *testing.T) {
 	err = client.List(context.TODO(), &podList)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(podList.Items))
-	
+
 	// The remaining pods should be the high-cost pod and older ready pod
 	remainingNames := make(map[string]bool)
 	for _, pod := range podList.Items {
@@ -1230,7 +1230,7 @@ func TestExpectationsMechanism(t *testing.T) {
 		}
 
 		dsKey := fmt.Sprintf("%s/%s", testNamespace, testDSName)
-		
+
 		// Set an expectation that hasn't been satisfied
 		r.expectations.Expect(dsKey, expectations.Delete, "test-uid")
 

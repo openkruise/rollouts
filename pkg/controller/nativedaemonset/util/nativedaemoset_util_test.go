@@ -973,7 +973,7 @@ func BenchmarkApplyDeletionConstraints(b *testing.B) {
 // Test SortPodsForDeletion function
 func TestSortPodsForDeletion(t *testing.T) {
 	now := time.Now()
-	
+
 	tests := []struct {
 		name     string
 		pods     []*corev1.Pod
@@ -1033,14 +1033,14 @@ func TestSortPodsForDeletion(t *testing.T) {
 			// Make a copy to avoid modifying the original slice
 			podsCopy := make([]*corev1.Pod, len(test.pods))
 			copy(podsCopy, test.pods)
-			
+
 			SortPodsForDeletion(podsCopy)
-			
+
 			actualOrder := make([]string, len(podsCopy))
 			for i, pod := range podsCopy {
 				actualOrder[i] = pod.Name
 			}
-			
+
 			assert.Equal(t, test.expected, actualOrder)
 		})
 	}
@@ -1309,11 +1309,11 @@ func createPodWithStatus(name string, phase corev1.PodPhase, readyStatus corev1.
 			},
 		},
 	}
-	
+
 	if deletionCost != "" {
 		pod.Annotations[PodDeletionCostAnnotation] = deletionCost
 	}
-	
+
 	return pod
 }
 
@@ -1321,23 +1321,23 @@ func createPodWithStatus(name string, phase corev1.PodPhase, readyStatus corev1.
 func BenchmarkSortPodsForDeletion(b *testing.B) {
 	now := time.Now()
 	pods := make([]*corev1.Pod, 100)
-	
+
 	for i := 0; i < 100; i++ {
 		phase := corev1.PodRunning
 		if i%10 == 0 {
 			phase = corev1.PodPending
 		}
-		
+
 		readyStatus := corev1.ConditionTrue
 		if i%5 == 0 {
 			readyStatus = corev1.ConditionFalse
 		}
-		
+
 		deletionCost := ""
 		if i%7 == 0 {
 			deletionCost = "100"
 		}
-		
+
 		pods[i] = createPodWithStatus(
 			fmt.Sprintf("pod-%d", i),
 			phase,
@@ -1346,7 +1346,7 @@ func BenchmarkSortPodsForDeletion(b *testing.B) {
 			now.Add(-time.Duration(i)*time.Minute),
 		)
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Make a copy for each iteration
