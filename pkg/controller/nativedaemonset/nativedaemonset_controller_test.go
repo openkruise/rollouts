@@ -321,7 +321,6 @@ func TestAnalyzePods(t *testing.T) {
 		desiredUpdatedReplicas int32
 		expectedToDelete       int
 		expectedNeedToDelete   int32
-		expectedBatchCompleted bool
 		expectError            bool
 	}{
 		{
@@ -334,7 +333,6 @@ func TestAnalyzePods(t *testing.T) {
 			desiredUpdatedReplicas: 2,
 			expectedToDelete:       0,
 			expectedNeedToDelete:   0,
-			expectedBatchCompleted: true,
 		},
 		{
 			name: "need to delete one pod",
@@ -347,7 +345,6 @@ func TestAnalyzePods(t *testing.T) {
 			desiredUpdatedReplicas: 2,
 			expectedToDelete:       2,
 			expectedNeedToDelete:   1,
-			expectedBatchCompleted: false,
 		},
 		{
 			name: "already have enough updated pods",
@@ -360,7 +357,6 @@ func TestAnalyzePods(t *testing.T) {
 			desiredUpdatedReplicas: 2,
 			expectedToDelete:       1,
 			expectedNeedToDelete:   0,
-			expectedBatchCompleted: true,
 		},
 		{
 			name: "no revision label on pods",
@@ -372,13 +368,12 @@ func TestAnalyzePods(t *testing.T) {
 			desiredUpdatedReplicas: 2,
 			expectedToDelete:       2,
 			expectedNeedToDelete:   1, // Limited by maxUnavailable = 1
-			expectedBatchCompleted: false,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			podsToDelete, needToDelete, batchCompleted, err := r.analyzePods(test.pods, test.updateRevision, test.desiredUpdatedReplicas, ds)
+			podsToDelete, needToDelete, err := r.analyzePods(test.pods, test.updateRevision, test.desiredUpdatedReplicas, ds)
 
 			if test.expectError {
 				assert.Error(t, err)
@@ -386,7 +381,6 @@ func TestAnalyzePods(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, test.expectedToDelete, len(podsToDelete))
 				assert.Equal(t, test.expectedNeedToDelete, needToDelete)
-				assert.Equal(t, test.expectedBatchCompleted, batchCompleted)
 			}
 		})
 	}
@@ -1059,16 +1053,14 @@ func TestRevisionConsistencyChecking(t *testing.T) {
 				createTestPod("pod-1", testNamespace, testDSName, test.podRevision, test.hasLabel, nil),
 			}
 
-			podsToDelete, needToDelete, batchCompleted, err := r.analyzePods(pods, test.targetRevision, 1, ds)
+			podsToDelete, needToDelete, err := r.analyzePods(pods, test.targetRevision, 1, ds)
 			assert.NoError(t, err)
 
 			if test.shouldMatch {
 				// Pod matches, so batch should be completed
-				assert.True(t, batchCompleted)
 				assert.Equal(t, int32(0), needToDelete)
 			} else {
 				// Pod doesn't match, so it should be marked for deletion
-				assert.False(t, batchCompleted)
 				assert.Equal(t, 1, len(podsToDelete))
 				assert.Equal(t, int32(1), needToDelete)
 			}
@@ -1176,7 +1168,7 @@ func BenchmarkAnalyzePods(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _, _ = r.analyzePods(pods, testRevision, 75, ds)
+		_, _, _ = r.analyzePods(pods, testRevision, 75, ds)
 	}
 }
 

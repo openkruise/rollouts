@@ -225,8 +225,8 @@ func (r *ReconcileNativeDaemonSet) Reconcile(ctx context.Context, request reconc
 }
 
 // analyzePods analyzes the current pod state and determines how many pods need to be deleted
-// Returns: podsToDelete slice, needToDelete count, batchCompleted bool, error
-func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevision string, desiredUpdatedReplicas int32, daemon *appsv1.DaemonSet) ([]*corev1.Pod, int32, bool, error) {
+// Returns: podsToDelete slice, needToDelete count, error
+func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevision string, desiredUpdatedReplicas int32, daemon *appsv1.DaemonSet) ([]*corev1.Pod, int32, error) {
 	updatedPods := int32(0)
 	podsToDelete := make([]*corev1.Pod, 0)
 
@@ -243,8 +243,8 @@ func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevisio
 
 	// Check if we already have enough updated pods
 	if updatedPods >= desiredUpdatedReplicas {
-		klog.Infof("Batch completed: have %d updated pods >= %d desired, marking batch as completed", updatedPods, desiredUpdatedReplicas)
-		return podsToDelete, 0, true, nil
+		klog.Infof("Batch completed: have %d updated pods >= %d desired", updatedPods, desiredUpdatedReplicas)
+		return podsToDelete, 0, nil
 	}
 
 	// Calculate how many pods need to be deleted
@@ -259,7 +259,7 @@ func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevisio
 	// Apply constraints
 	needToDelete = daemonsetutil.ApplyDeletionConstraints(needToDelete, maxUnavailable, len(podsToDelete))
 
-	return podsToDelete, needToDelete, false, nil
+	return podsToDelete, needToDelete, nil
 }
 
 // executePodDeletion executes the actual pod deletion based on analysis using expectations mechanism
@@ -344,13 +344,13 @@ func (r *ReconcileNativeDaemonSet) processBatch(ctx context.Context, daemon *app
 	}
 
 	// Analyze pods and determine what needs to be done
-	podsToDelete, needToDelete, batchCompleted, err := r.analyzePods(pods, daemon.Annotations[util.DaemonSetBatchRevisionAnnotation], desiredReplicas, daemon)
+	podsToDelete, needToDelete, err := r.analyzePods(pods, daemon.Annotations[util.DaemonSetBatchRevisionAnnotation], desiredReplicas, daemon)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// If batch is completed, don't requeue unless there are external changes
-	if batchCompleted {
+	// If no pods need to be deleted, batch is completed
+	if needToDelete == 0 {
 		klog.Infof("Batch is completed for DaemonSet %s/%s, not requeueing", daemon.Namespace, daemon.Name)
 		return reconcile.Result{}, nil
 	}
