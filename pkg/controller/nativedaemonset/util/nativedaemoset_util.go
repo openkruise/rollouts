@@ -95,10 +95,8 @@ func ApplyDeletionConstraints(needToDelete int32, maxUnavailable int32, availabl
 	return needToDelete
 }
 
-// SortPodsForDeletion sorts pods by deletion priority
-//
-//	order (highest to lowest priority for deletion):
-//
+// SortPodsForDeletion sorts pods by deletion priority order
+// (highest to lowest priority for deletion):
 // 1. Pending pods (if any)
 // 2. Pods with Ready=false/unknown (if any)
 // 3. Pods with low deletion cost annotation (if any)
