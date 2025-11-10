@@ -255,8 +255,7 @@ var (
 			UID:        uuid.NewUUID(),
 			Annotations: map[string]string{
 				"rollouts.kruise.io/unit-test-anno": "true",
-				DaemonSetCanaryRevisionAnnotation:   "canary-revision-hash",
-				DaemonSetStableRevisionAnnotation:   "stable-revision-hash",
+				DaemonSetRevisionAnnotation:         `{"canary-revision":"canary-revision-hash","stable-revision":"stable-revision-hash"}`,
 			},
 			Labels: map[string]string{
 				"rollouts.kruise.io/unit-test-label": "true",
@@ -456,8 +455,9 @@ func TestWorkloadParse(t *testing.T) {
 					Expect(reflect.DeepEqual(daemonsetInfo.Status.AvailableReplicas, o.Status.NumberAvailable)).Should(BeTrue())
 					Expect(reflect.DeepEqual(daemonsetInfo.Status.UpdatedReplicas, o.Status.UpdatedNumberScheduled)).Should(BeTrue())
 					Expect(reflect.DeepEqual(daemonsetInfo.Status.ObservedGeneration, o.Status.ObservedGeneration)).Should(BeTrue())
-					Expect(reflect.DeepEqual(daemonsetInfo.Status.StableRevision, o.Annotations[DaemonSetStableRevisionAnnotation])).Should(BeTrue())
-					Expect(reflect.DeepEqual(daemonsetInfo.Status.UpdateRevision, o.Annotations[DaemonSetCanaryRevisionAnnotation])).Should(BeTrue())
+					canaryRevision, stableRevision := ParseDaemonSetRevision(o.Annotations)
+					Expect(reflect.DeepEqual(daemonsetInfo.Status.StableRevision, stableRevision)).Should(BeTrue())
+					Expect(reflect.DeepEqual(daemonsetInfo.Status.UpdateRevision, canaryRevision)).Should(BeTrue())
 					Expect(daemonsetInfo.Status.UpdatedReadyReplicas).Should(BeNumerically("==", 0))
 				}
 
@@ -503,8 +503,7 @@ func TestNativeDaemonSetParse(t *testing.T) {
 			name: "native daemonset without revision annotations",
 			getDaemonSet: func() *appsv1.DaemonSet {
 				ds := nativeDaemonSetParse.DeepCopy()
-				delete(ds.Annotations, DaemonSetCanaryRevisionAnnotation)
-				delete(ds.Annotations, DaemonSetStableRevisionAnnotation)
+				delete(ds.Annotations, DaemonSetRevisionAnnotation)
 				return ds
 			},
 			expectedReplicas:  5,
@@ -524,8 +523,7 @@ func TestNativeDaemonSetParse(t *testing.T) {
 				ds.Status.NumberAvailable = 9
 				ds.Status.UpdatedNumberScheduled = 7
 				ds.Status.ObservedGeneration = 15
-				ds.Annotations[DaemonSetCanaryRevisionAnnotation] = "new-canary-hash"
-				ds.Annotations[DaemonSetStableRevisionAnnotation] = "new-stable-hash"
+				SetDaemonSetRevision(ds.Annotations, "new-canary-hash", "new-stable-hash")
 				return ds
 			},
 			expectedReplicas:  10,

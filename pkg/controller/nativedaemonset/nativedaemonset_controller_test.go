@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,6 +48,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	daemonsetutil "github.com/openkruise/rollouts/pkg/controller/nativedaemonset/util"
 	"github.com/openkruise/rollouts/pkg/util"
 	expectations "github.com/openkruise/rollouts/pkg/util/expectation"
 )
@@ -222,10 +224,8 @@ func TestReconcile_NoPartitionAnnotation(t *testing.T) {
 }
 
 func TestReconcile_WithPartitionAnnotation(t *testing.T) {
-	annotations := map[string]string{
-		util.DaemonSetPartitionAnnotation:     "1",
-		util.DaemonSetBatchRevisionAnnotation: testRevision,
-	}
+	annotations := map[string]string{}
+	util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
 	ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 
 	// Create test pods
@@ -255,10 +255,8 @@ func TestReconcile_WithPartitionAnnotation(t *testing.T) {
 }
 
 func TestReconcile_InvalidPartition(t *testing.T) {
-	annotations := map[string]string{
-		util.DaemonSetPartitionAnnotation:     "invalid",
-		util.DaemonSetBatchRevisionAnnotation: testRevision,
-	}
+	annotations := map[string]string{}
+	util.SetDaemonSetAdvancedControl(annotations, "invalid", testRevision)
 	ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 	client := createFakeClient(ds)
 	r := createTestReconciler(client)
@@ -277,10 +275,8 @@ func TestReconcile_InvalidPartition(t *testing.T) {
 }
 
 func TestReconcile_PodsBeingDeleted(t *testing.T) {
-	annotations := map[string]string{
-		util.DaemonSetPartitionAnnotation:     "1",
-		util.DaemonSetBatchRevisionAnnotation: testRevision,
-	}
+	annotations := map[string]string{}
+	util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
 	ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 
 	// Create pods with one being deleted
@@ -306,10 +302,8 @@ func TestReconcile_PodsBeingDeleted(t *testing.T) {
 }
 
 func TestReconcile_ExpectationsNotSatisfied(t *testing.T) {
-	annotations := map[string]string{
-		util.DaemonSetPartitionAnnotation:     "1",
-		util.DaemonSetBatchRevisionAnnotation: testRevision,
-	}
+	annotations := map[string]string{}
+	util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
 	ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 	pod := createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil)
 
@@ -515,9 +509,11 @@ func TestProcessBatch(t *testing.T) {
 		},
 		{
 			name: "batch completed - no requeue",
-			ds: createTestDaemonSet(testDSName, testNamespace, map[string]string{
-				util.DaemonSetBatchRevisionAnnotation: testRevision,
-			}),
+			ds: func() *appsv1.DaemonSet {
+				annotations := map[string]string{}
+				util.SetDaemonSetAdvancedControl(annotations, "2", testRevision)
+				return createTestDaemonSet(testDSName, testNamespace, annotations)
+			}(),
 			pods: []*corev1.Pod{
 				createTestPod("pod-1", testNamespace, testDSName, testRevision, true, nil),
 				createTestPod("pod-2", testNamespace, testDSName, testRevision, true, nil),
@@ -528,9 +524,11 @@ func TestProcessBatch(t *testing.T) {
 		},
 		{
 			name: "need to delete pods - requeue",
-			ds: createTestDaemonSet(testDSName, testNamespace, map[string]string{
-				util.DaemonSetBatchRevisionAnnotation: testRevision,
-			}),
+			ds: func() *appsv1.DaemonSet {
+				annotations := map[string]string{}
+				util.SetDaemonSetAdvancedControl(annotations, "2", testRevision)
+				return createTestDaemonSet(testDSName, testNamespace, annotations)
+			}(),
 			pods: []*corev1.Pod{
 				createTestPod("pod-1", testNamespace, testDSName, testRevision, true, nil),
 				createTestPod("pod-2", testNamespace, testDSName, "old-revision", true, nil),
@@ -574,10 +572,8 @@ func TestProcessBatch(t *testing.T) {
 
 func TestReconcile_ComplexScenarios(t *testing.T) {
 	t.Run("integration test with maxUnavailable constraint", func(t *testing.T) {
-		annotations := map[string]string{
-			util.DaemonSetPartitionAnnotation:     "1",
-			util.DaemonSetBatchRevisionAnnotation: testRevision,
-		}
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
 		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 		// Set maxUnavailable to 2
 		ds.Spec.UpdateStrategy.RollingUpdate.MaxUnavailable = &intstr.IntOrString{Type: intstr.Int, IntVal: 2}
@@ -611,10 +607,8 @@ func TestReconcile_ComplexScenarios(t *testing.T) {
 	})
 
 	t.Run("percentage maxUnavailable", func(t *testing.T) {
-		annotations := map[string]string{
-			util.DaemonSetPartitionAnnotation:     "2",
-			util.DaemonSetBatchRevisionAnnotation: testRevision,
-		}
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "2", testRevision)
 		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 		ds.Status.DesiredNumberScheduled = 10
 		// Set maxUnavailable to 25%
@@ -653,10 +647,8 @@ func TestReconcile_ComplexScenarios(t *testing.T) {
 
 func TestReconcile_EdgeCases(t *testing.T) {
 	t.Run("zero partition", func(t *testing.T) {
-		annotations := map[string]string{
-			util.DaemonSetPartitionAnnotation:     "0",
-			util.DaemonSetBatchRevisionAnnotation: testRevision,
-		}
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "0", testRevision)
 		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 
 		pod1 := createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil)
@@ -678,10 +670,8 @@ func TestReconcile_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("partition greater than pod count", func(t *testing.T) {
-		annotations := map[string]string{
-			util.DaemonSetPartitionAnnotation:     "10",
-			util.DaemonSetBatchRevisionAnnotation: testRevision,
-		}
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "10", testRevision)
 		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 
 		pod1 := createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil)
@@ -702,10 +692,8 @@ func TestReconcile_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("no pods", func(t *testing.T) {
-		annotations := map[string]string{
-			util.DaemonSetPartitionAnnotation:     "1",
-			util.DaemonSetBatchRevisionAnnotation: testRevision,
-		}
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
 		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 
 		client := createFakeClient(ds)
@@ -726,10 +714,8 @@ func TestReconcile_EdgeCases(t *testing.T) {
 
 func TestReconcile_ErrorHandling(t *testing.T) {
 	t.Run("client error during pod listing", func(t *testing.T) {
-		annotations := map[string]string{
-			util.DaemonSetPartitionAnnotation:     "1",
-			util.DaemonSetBatchRevisionAnnotation: testRevision,
-		}
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
 		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 
 		// Create a client that will error on List operations
@@ -793,19 +779,20 @@ func TestAdd(t *testing.T) {
 // Test DaemonSet watch handlers
 func TestDaemonSetWatchHandlers(t *testing.T) {
 	t.Run("update handler - partition annotation change", func(t *testing.T) {
-		oldDS := createTestDaemonSet("test-ds", testNamespace, map[string]string{
-			util.DaemonSetPartitionAnnotation: "1",
-		})
-		newDS := createTestDaemonSet("test-ds", testNamespace, map[string]string{
-			util.DaemonSetPartitionAnnotation: "2",
-		})
+		oldDSAnnotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(oldDSAnnotations, "1", testRevision)
+		oldDS := createTestDaemonSet("test-ds", testNamespace, oldDSAnnotations)
+
+		newDSAnnotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(newDSAnnotations, "2", testRevision)
+		newDS := createTestDaemonSet("test-ds", testNamespace, newDSAnnotations)
 
 		updateHandler := func(e event.UpdateEvent) bool {
 			oldObject := e.ObjectOld.(*appsv1.DaemonSet)
 			newObject := e.ObjectNew.(*appsv1.DaemonSet)
 
-			oldPartition := oldObject.Annotations[util.DaemonSetPartitionAnnotation]
-			newPartition := newObject.Annotations[util.DaemonSetPartitionAnnotation]
+			oldPartition := oldObject.Annotations[util.DaemonSetAdvancedControlAnnotation]
+			newPartition := newObject.Annotations[util.DaemonSetAdvancedControlAnnotation]
 
 			return oldPartition != newPartition
 		}
@@ -818,21 +805,24 @@ func TestDaemonSetWatchHandlers(t *testing.T) {
 	})
 
 	t.Run("update handler - no partition change", func(t *testing.T) {
-		oldDS := createTestDaemonSet("test-ds", testNamespace, map[string]string{
-			util.DaemonSetPartitionAnnotation: "1",
-			"other-annotation":                "value1",
-		})
-		newDS := createTestDaemonSet("test-ds", testNamespace, map[string]string{
-			util.DaemonSetPartitionAnnotation: "1",
-			"other-annotation":                "value2",
-		})
+		oldDSAnnotations := map[string]string{
+			"other-annotation": "value1",
+		}
+		util.SetDaemonSetAdvancedControl(oldDSAnnotations, "1", testRevision)
+		oldDS := createTestDaemonSet("test-ds", testNamespace, oldDSAnnotations)
+
+		newDSAnnotations := map[string]string{
+			"other-annotation": "value2",
+		}
+		util.SetDaemonSetAdvancedControl(newDSAnnotations, "1", testRevision)
+		newDS := createTestDaemonSet("test-ds", testNamespace, newDSAnnotations)
 
 		updateHandler := func(e event.UpdateEvent) bool {
 			oldObject := e.ObjectOld.(*appsv1.DaemonSet)
 			newObject := e.ObjectNew.(*appsv1.DaemonSet)
 
-			oldPartition := oldObject.Annotations[util.DaemonSetPartitionAnnotation]
-			newPartition := newObject.Annotations[util.DaemonSetPartitionAnnotation]
+			oldPartition := oldObject.Annotations[util.DaemonSetAdvancedControlAnnotation]
+			newPartition := newObject.Annotations[util.DaemonSetAdvancedControlAnnotation]
 
 			return oldPartition != newPartition
 		}
@@ -845,13 +835,13 @@ func TestDaemonSetWatchHandlers(t *testing.T) {
 	})
 
 	t.Run("create handler - with partition annotation", func(t *testing.T) {
-		ds := createTestDaemonSet("test-ds", testNamespace, map[string]string{
-			util.DaemonSetPartitionAnnotation: "1",
-		})
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
+		ds := createTestDaemonSet("test-ds", testNamespace, annotations)
 
 		createHandler := func(e event.CreateEvent) bool {
 			dsObj := e.Object.(*appsv1.DaemonSet)
-			_, hasPartition := dsObj.Annotations[util.DaemonSetPartitionAnnotation]
+			_, hasPartition := dsObj.Annotations[util.DaemonSetAdvancedControlAnnotation]
 			return hasPartition
 		}
 
@@ -866,7 +856,7 @@ func TestDaemonSetWatchHandlers(t *testing.T) {
 
 		createHandler := func(e event.CreateEvent) bool {
 			dsObj := e.Object.(*appsv1.DaemonSet)
-			_, hasPartition := dsObj.Annotations[util.DaemonSetPartitionAnnotation]
+			_, hasPartition := dsObj.Annotations[util.DaemonSetAdvancedControlAnnotation]
 			return hasPartition
 		}
 
@@ -1022,10 +1012,8 @@ func TestConstants(t *testing.T) {
 
 // Benchmark tests
 func BenchmarkReconcile(b *testing.B) {
-	annotations := map[string]string{
-		util.DaemonSetPartitionAnnotation:     "2",
-		util.DaemonSetBatchRevisionAnnotation: testRevision,
-	}
+	annotations := map[string]string{}
+	util.SetDaemonSetAdvancedControl(annotations, "2", testRevision)
 	ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 
 	pods := []*corev1.Pod{}
@@ -1081,13 +1069,400 @@ func BenchmarkAnalyzePods(b *testing.B) {
 	}
 }
 
+// Test JSON annotation parsing functions
+func TestDaemonSetAnnotationParsing(t *testing.T) {
+	t.Run("ParseDaemonSetAdvancedControl", func(t *testing.T) {
+		tests := []struct {
+			name              string
+			annotations       map[string]string
+			expectedPartition string
+			expectedRevision  string
+		}{
+			{
+				name:              "no annotations",
+				annotations:       map[string]string{},
+				expectedPartition: "",
+				expectedRevision:  "",
+			},
+			{
+				name:              "empty annotation",
+				annotations:       map[string]string{util.DaemonSetAdvancedControlAnnotation: ""},
+				expectedPartition: "",
+				expectedRevision:  "",
+			},
+			{
+				name: "valid annotation",
+				annotations: func() map[string]string {
+					annotations := map[string]string{}
+					util.SetDaemonSetAdvancedControl(annotations, "2", "test-revision-123")
+					return annotations
+				}(),
+				expectedPartition: "2",
+				expectedRevision:  "test-revision-123",
+			},
+			{
+				name:              "invalid JSON",
+				annotations:       map[string]string{util.DaemonSetAdvancedControlAnnotation: "invalid-json"},
+				expectedPartition: "",
+				expectedRevision:  "",
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				partition, revision := util.ParseDaemonSetAdvancedControl(test.annotations)
+				assert.Equal(t, test.expectedPartition, partition)
+				assert.Equal(t, test.expectedRevision, revision)
+			})
+		}
+	})
+
+	t.Run("SetDaemonSetAdvancedControl", func(t *testing.T) {
+		annotations := make(map[string]string)
+		util.SetDaemonSetAdvancedControl(annotations, "3", "revision-456")
+
+		partition, revision := util.ParseDaemonSetAdvancedControl(annotations)
+		assert.Equal(t, "3", partition)
+		assert.Equal(t, "revision-456", revision)
+		assert.Contains(t, annotations, util.DaemonSetAdvancedControlAnnotation)
+		assert.NotEmpty(t, annotations[util.DaemonSetAdvancedControlAnnotation])
+	})
+}
+
+// Test utility functions from daemonsetutil package
+func TestDaemonSetUtilFunctions(t *testing.T) {
+	t.Run("CalculateDesiredUpdatedReplicas", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			partition   string
+			totalPods   int
+			expected    int32
+			expectError bool
+		}{
+			{
+				name:        "valid partition",
+				partition:   "2",
+				totalPods:   5,
+				expected:    3, // 5 - 2
+				expectError: false,
+			},
+			{
+				name:        "zero partition",
+				partition:   "0",
+				totalPods:   3,
+				expected:    3, // 3 - 0
+				expectError: false,
+			},
+			{
+				name:        "partition equals total pods",
+				partition:   "5",
+				totalPods:   5,
+				expected:    0, // 5 - 5
+				expectError: false,
+			},
+			{
+				name:        "partition greater than total pods",
+				partition:   "10",
+				totalPods:   5,
+				expected:    0, // max(0, 5 - 10)
+				expectError: false,
+			},
+			{
+				name:        "invalid partition",
+				partition:   "invalid",
+				totalPods:   5,
+				expected:    0,
+				expectError: true,
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				result, err := daemonsetutil.CalculateDesiredUpdatedReplicas(test.partition, test.totalPods)
+				if test.expectError {
+					assert.Error(t, err)
+				} else {
+					assert.NoError(t, err)
+					assert.Equal(t, test.expected, result)
+				}
+			})
+		}
+	})
+
+	t.Run("GetMaxUnavailable", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			maxUnavail *intstr.IntOrString
+			desired    int32
+			expected   int32
+		}{
+			{
+				name:       "default maxUnavailable",
+				maxUnavail: nil,
+				desired:    5,
+				expected:   1, // default value
+			},
+			{
+				name:       "integer maxUnavailable",
+				maxUnavail: &intstr.IntOrString{Type: intstr.Int, IntVal: 3},
+				desired:    5,
+				expected:   3,
+			},
+			{
+				name:       "percentage maxUnavailable",
+				maxUnavail: &intstr.IntOrString{Type: intstr.String, StrVal: "25%"},
+				desired:    8,
+				expected:   2, // 25% of 8 = 2
+			},
+			{
+				name:       "percentage maxUnavailable rounding down",
+				maxUnavail: &intstr.IntOrString{Type: intstr.String, StrVal: "30%"},
+				desired:    7,
+				expected:   2, // 30% of 7 = 2.1, rounded down to 2
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				ds := createTestDaemonSet(testDSName, testNamespace, map[string]string{})
+				ds.Status.DesiredNumberScheduled = test.desired
+				if test.maxUnavail != nil {
+					ds.Spec.UpdateStrategy.RollingUpdate.MaxUnavailable = test.maxUnavail
+				}
+
+				result := daemonsetutil.GetMaxUnavailable(ds)
+				assert.Equal(t, test.expected, result)
+			})
+		}
+	})
+
+	t.Run("ApplyDeletionConstraints", func(t *testing.T) {
+		tests := []struct {
+			name              string
+			needToDelete      int32
+			maxUnavailable    int32
+			availablePodCount int
+			expected          int32
+		}{
+			{
+				name:              "no constraints",
+				needToDelete:      2,
+				maxUnavailable:    5,
+				availablePodCount: 10,
+				expected:          2,
+			},
+			{
+				name:              "maxUnavailable constraint",
+				needToDelete:      5,
+				maxUnavailable:    3,
+				availablePodCount: 10,
+				expected:          3,
+			},
+			{
+				name:              "available pod count constraint",
+				needToDelete:      5,
+				maxUnavailable:    10,
+				availablePodCount: 3,
+				expected:          3,
+			},
+			{
+				name:              "both constraints - maxUnavailable is smaller",
+				needToDelete:      10,
+				maxUnavailable:    2,
+				availablePodCount: 5,
+				expected:          2,
+			},
+			{
+				name:              "both constraints - available pods is smaller",
+				needToDelete:      10,
+				maxUnavailable:    5,
+				availablePodCount: 3,
+				expected:          3,
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				result := daemonsetutil.ApplyDeletionConstraints(test.needToDelete, test.maxUnavailable, test.availablePodCount)
+				assert.Equal(t, test.expected, result)
+			})
+		}
+	})
+
+	t.Run("HasPodsBeingDeleted", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			pods     []*corev1.Pod
+			expected bool
+		}{
+			{
+				name: "no pods being deleted",
+				pods: []*corev1.Pod{
+					createTestPod("pod-1", testNamespace, testDSName, testRevision, true, nil),
+					createTestPod("pod-2", testNamespace, testDSName, testRevision, true, nil),
+				},
+				expected: false,
+			},
+			{
+				name: "one pod being deleted",
+				pods: []*corev1.Pod{
+					createTestPod("pod-1", testNamespace, testDSName, testRevision, true, nil),
+					createTestPod("pod-2", testNamespace, testDSName, testRevision, true, &metav1.Time{Time: time.Now()}),
+				},
+				expected: true,
+			},
+			{
+				name: "all pods being deleted",
+				pods: []*corev1.Pod{
+					createTestPod("pod-1", testNamespace, testDSName, testRevision, true, &metav1.Time{Time: time.Now()}),
+					createTestPod("pod-2", testNamespace, testDSName, testRevision, true, &metav1.Time{Time: time.Now()}),
+				},
+				expected: true,
+			},
+			{
+				name:     "empty pod list",
+				pods:     []*corev1.Pod{},
+				expected: false,
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				result := daemonsetutil.HasPodsBeingDeleted(test.pods)
+				assert.Equal(t, test.expected, result)
+			})
+		}
+	})
+
+	t.Run("SortPodsForDeletion", func(t *testing.T) {
+		// Create pods with different states
+		pendingPod := createTestPod("pending-pod", testNamespace, testDSName, "old-revision", true, nil)
+		pendingPod.Status.Phase = corev1.PodPending
+
+		notReadyPod := createTestPod("not-ready-pod", testNamespace, testDSName, "old-revision", true, nil)
+		notReadyPod.Status.Conditions = []corev1.PodCondition{
+			{
+				Type:   corev1.PodReady,
+				Status: corev1.ConditionFalse,
+			},
+		}
+
+		readyPod := createTestPod("ready-pod", testNamespace, testDSName, "old-revision", true, nil)
+		readyPod.Status.Conditions = []corev1.PodCondition{
+			{
+				Type:   corev1.PodReady,
+				Status: corev1.ConditionTrue,
+			},
+		}
+
+		highCostPod := createTestPod("high-cost-pod", testNamespace, testDSName, "old-revision", true, nil)
+		if highCostPod.Annotations == nil {
+			highCostPod.Annotations = make(map[string]string)
+		}
+		highCostPod.Annotations[daemonsetutil.PodDeletionCostAnnotation] = "100"
+		highCostPod.Status.Conditions = []corev1.PodCondition{
+			{
+				Type:   corev1.PodReady,
+				Status: corev1.ConditionTrue,
+			},
+		}
+
+		lowCostPod := createTestPod("low-cost-pod", testNamespace, testDSName, "old-revision", true, nil)
+		if lowCostPod.Annotations == nil {
+			lowCostPod.Annotations = make(map[string]string)
+		}
+		lowCostPod.Annotations[daemonsetutil.PodDeletionCostAnnotation] = "10"
+		lowCostPod.Status.Conditions = []corev1.PodCondition{
+			{
+				Type:   corev1.PodReady,
+				Status: corev1.ConditionTrue,
+			},
+		}
+
+		// Create newer pod (should be deleted before older ones)
+		newerPod := createTestPod("newer-pod", testNamespace, testDSName, "old-revision", true, nil)
+		newerPod.CreationTimestamp = metav1.Time{Time: time.Now().Add(time.Hour)}
+		newerPod.Status.Conditions = []corev1.PodCondition{
+			{
+				Type:   corev1.PodReady,
+				Status: corev1.ConditionTrue,
+			},
+		}
+
+		pods := []*corev1.Pod{highCostPod, readyPod, notReadyPod, pendingPod, lowCostPod, newerPod}
+
+		// Sort pods
+		daemonsetutil.SortPodsForDeletion(pods)
+
+		// Verify sort order based on actual implementation:
+		// 1. Pending pods first
+		assert.Equal(t, corev1.PodPending, pods[0].Status.Phase)
+		// 2. Not ready pods
+		assert.Equal(t, corev1.ConditionFalse, pods[1].Status.Conditions[0].Status)
+		// 3. Among ready pods, lower cost first, then newer timestamp, then regular pods
+		// Let's just verify the general sorting categories work correctly
+
+		// Check that pending pod is first
+		assert.Equal(t, "pending-pod", pods[0].Name)
+		// Check that not-ready pod is second
+		assert.Equal(t, "not-ready-pod", pods[1].Name)
+
+		// The remaining pods should be ready pods in some order based on cost and timestamp
+		readyPods := pods[2:]
+		for _, pod := range readyPods {
+			for _, condition := range pod.Status.Conditions {
+				if condition.Type == corev1.PodReady {
+					assert.Equal(t, corev1.ConditionTrue, condition.Status, "Remaining pods should be ready")
+					break
+				}
+			}
+		}
+	})
+
+	t.Run("SlowStartBatch", func(t *testing.T) {
+		t.Run("all operations succeed", func(t *testing.T) {
+			var callCount int32
+			successCount, err := daemonsetutil.SlowStartBatch(5, 1, func(index int) error {
+				atomic.AddInt32(&callCount, 1)
+				return nil
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 5, successCount)
+			assert.Equal(t, int32(5), atomic.LoadInt32(&callCount))
+		})
+
+		t.Run("operation fails", func(t *testing.T) {
+			var callCount int32
+			successCount, err := daemonsetutil.SlowStartBatch(5, 1, func(index int) error {
+				atomic.AddInt32(&callCount, 1)
+				if index == 2 {
+					return fmt.Errorf("operation failed at index %d", index)
+				}
+				return nil
+			})
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "operation failed at index 2")
+			assert.Less(t, successCount, 5) // Should stop on first failure
+		})
+
+		t.Run("zero count", func(t *testing.T) {
+			var callCount int32
+			successCount, err := daemonsetutil.SlowStartBatch(0, 1, func(index int) error {
+				atomic.AddInt32(&callCount, 1)
+				return nil
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, 0, successCount)
+			assert.Equal(t, int32(0), atomic.LoadInt32(&callCount))
+		})
+	})
+}
+
 // Test expectations mechanism
 func TestExpectationsMechanism(t *testing.T) {
 	t.Run("expectations satisfied", func(t *testing.T) {
-		annotations := map[string]string{
-			util.DaemonSetPartitionAnnotation:     "0", // Need to update all pods
-			util.DaemonSetBatchRevisionAnnotation: testRevision,
-		}
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "0", testRevision) // Need to update all pods
 		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 		pod := createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil)
 
@@ -1108,10 +1483,8 @@ func TestExpectationsMechanism(t *testing.T) {
 	})
 
 	t.Run("expectations not satisfied - requeue", func(t *testing.T) {
-		annotations := map[string]string{
-			util.DaemonSetPartitionAnnotation:     "1",
-			util.DaemonSetBatchRevisionAnnotation: testRevision,
-		}
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
 		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 		pod := createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil)
 
@@ -1137,10 +1510,8 @@ func TestExpectationsMechanism(t *testing.T) {
 	})
 
 	t.Run("expectations timeout - continue processing", func(t *testing.T) {
-		annotations := map[string]string{
-			util.DaemonSetPartitionAnnotation:     "1",
-			util.DaemonSetBatchRevisionAnnotation: testRevision,
-		}
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
 		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
 		pod := createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil)
 

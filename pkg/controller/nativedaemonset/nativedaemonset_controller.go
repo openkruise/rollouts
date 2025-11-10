@@ -108,8 +108,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		oldObject := e.ObjectOld.(*appsv1.DaemonSet)
 		newObject := e.ObjectNew.(*appsv1.DaemonSet)
 
-		oldPartition := oldObject.Annotations[util.DaemonSetPartitionAnnotation]
-		newPartition := newObject.Annotations[util.DaemonSetPartitionAnnotation]
+		oldPartition := oldObject.Annotations[util.DaemonSetAdvancedControlAnnotation]
+		newPartition := newObject.Annotations[util.DaemonSetAdvancedControlAnnotation]
 
 		// Only trigger reconcile when partition annotation changes
 		if oldPartition != newPartition {
@@ -123,7 +123,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Filter DaemonSets on controller restart - only process those with partition annotation
 	createHandler := func(e event.CreateEvent) bool {
 		ds := e.Object.(*appsv1.DaemonSet)
-		_, hasPartition := ds.Annotations[util.DaemonSetPartitionAnnotation]
+		_, hasPartition := ds.Annotations[util.DaemonSetAdvancedControlAnnotation]
 		if hasPartition {
 			klog.Infof("Observed DaemonSet with partition annotation on controller restart: %s/%s", ds.Namespace, ds.Name)
 			return true
@@ -195,8 +195,8 @@ func (r *ReconcileNativeDaemonSet) Reconcile(ctx context.Context, request reconc
 	}
 
 	// Check for partition annotation
-	partitionStr, hasPartition := daemon.Annotations[util.DaemonSetPartitionAnnotation]
-	if !hasPartition {
+	partitionStr, _ := util.ParseDaemonSetAdvancedControl(daemon.Annotations)
+	if partitionStr == "" {
 		// No partition annotation, nothing to do
 		return reconcile.Result{}, nil
 	}
@@ -351,7 +351,8 @@ func (r *ReconcileNativeDaemonSet) processBatch(ctx context.Context, daemon *app
 	}
 
 	// Analyze pods and determine what needs to be done
-	podsToDelete, needToDelete, err := r.analyzePods(pods, daemon.Annotations[util.DaemonSetBatchRevisionAnnotation], desiredReplicas, daemon)
+	_, batchRevision := util.ParseDaemonSetAdvancedControl(daemon.Annotations)
+	podsToDelete, needToDelete, err := r.analyzePods(pods, batchRevision, desiredReplicas, daemon)
 	if err != nil {
 		return reconcile.Result{}, err
 	}

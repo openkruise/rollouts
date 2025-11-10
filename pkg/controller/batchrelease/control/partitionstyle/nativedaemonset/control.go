@@ -134,11 +134,11 @@ func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 // The actual pod deletion is handled by the advanced-daemonset-controller.
 func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	// Check if the DaemonSet already has the partition annotation
-	currentPartitionStr, hasPartition := rc.object.Annotations[util.DaemonSetPartitionAnnotation]
+	currentPartitionStr, _ := util.ParseDaemonSetAdvancedControl(rc.object.Annotations)
 	desiredPartitionStr := ctx.DesiredPartition.String()
 
 	// If annotation is missing or doesn't equal desired value, patch the DaemonSet
-	if !hasPartition || currentPartitionStr != desiredPartitionStr {
+	if currentPartitionStr != desiredPartitionStr {
 		klog.Infof("Updating partition annotation for DaemonSet %s/%s: %s -> %s",
 			rc.object.Namespace, rc.object.Name, currentPartitionStr, desiredPartitionStr)
 		return rc.patchBatchAnnotations(ctx)
@@ -152,13 +152,14 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 
 // patchBatchAnnotations patches the DaemonSet with batch control annotations
 func (rc *realController) patchBatchAnnotations(ctx *batchcontext.BatchContext) error {
+	// Use SetDaemonSetAdvancedControl to set annotations
+	annotations := make(map[string]string)
+	util.SetDaemonSetAdvancedControl(annotations, ctx.DesiredPartition.String(), ctx.UpdateRevision)
+
 	// Create patch with batch annotations
 	patch := map[string]interface{}{
 		"metadata": map[string]interface{}{
-			"annotations": map[string]interface{}{
-				util.DaemonSetPartitionAnnotation:     ctx.DesiredPartition.String(),
-				util.DaemonSetBatchRevisionAnnotation: ctx.UpdateRevision,
-			},
+			"annotations": annotations,
 		},
 	}
 
@@ -195,12 +196,10 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 		}
 	}
 
-	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null,"%s":null,"%s":null,"%s":null,"%s":null,"%s":null}}%s}`,
+	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null,"%s":null,"%s":null,"%s":null}}%s}`,
 		util.BatchReleaseControlAnnotation,
-		util.DaemonSetCanaryRevisionAnnotation,
-		util.DaemonSetStableRevisionAnnotation,
-		util.DaemonSetPartitionAnnotation,
-		util.DaemonSetBatchRevisionAnnotation,
+		util.DaemonSetRevisionAnnotation,
+		util.DaemonSetAdvancedControlAnnotation,
 		util.DaemonSetOriginalUpdateStrategy,
 		specBody)
 
