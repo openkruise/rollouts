@@ -319,7 +319,7 @@ func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevisio
 			break
 		}
 
-		// Terminating pods count towards unavailable but we don't issue another delete
+		// Terminating pods count towards unavailable, but we don't issue another delete
 		if !pod.DeletionTimestamp.IsZero() {
 			unavailableCount++
 			klog.V(4).Infof("Pod %s/%s is terminating, counting towards unavailable (%d/%d)",
@@ -328,7 +328,6 @@ func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevisio
 		}
 
 		// If pod is not ready, it can be deleted without consuming additional maxUnavailable quota
-		// This enables streaming deletion - we can keep deleting not-ready pods
 		if !util.IsPodReady(pod) {
 			actualNeedToDelete++
 			klog.V(4).Infof("Pod %s/%s is not ready, can delete without consuming additional quota", pod.Namespace, pod.Name)
