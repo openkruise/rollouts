@@ -379,7 +379,7 @@ func TestAnalyzePods(t *testing.T) {
 			},
 			updateRevision:         testRevision,
 			desiredUpdatedReplicas: 2,
-			expectedToDelete:       2,
+			expectedToDelete:       1, // actualPodsToDelete length after limiting
 			expectedNeedToDelete:   1,
 		},
 		{
@@ -402,7 +402,7 @@ func TestAnalyzePods(t *testing.T) {
 			},
 			updateRevision:         testRevision,
 			desiredUpdatedReplicas: 2,
-			expectedToDelete:       2,
+			expectedToDelete:       1, // actualPodsToDelete length after limiting
 			expectedNeedToDelete:   1, // Limited by maxUnavailable = 1
 		},
 		{
@@ -414,7 +414,7 @@ func TestAnalyzePods(t *testing.T) {
 			},
 			updateRevision:         testRevision,
 			desiredUpdatedReplicas: 2,
-			expectedToDelete:       2,
+			expectedToDelete:       0, // actualPodsToDelete length = actualNeedToDelete
 			expectedNeedToDelete:   0, // updatedAndNotReadyCount=1 >= maxUnavailable=1, can't delete any ready pods
 		},
 		{
@@ -427,7 +427,7 @@ func TestAnalyzePods(t *testing.T) {
 			},
 			updateRevision:         testRevision,
 			desiredUpdatedReplicas: 3,
-			expectedToDelete:       3,
+			expectedToDelete:       2, // actualPodsToDelete length = actualNeedToDelete
 			expectedNeedToDelete:   2, // needToDelete=2 (3-1), can delete: 1 not-ready (no quota) + 1 ready (unavailableCount: 0->1)
 		},
 		{
@@ -440,7 +440,7 @@ func TestAnalyzePods(t *testing.T) {
 			},
 			updateRevision:         testRevision,
 			desiredUpdatedReplicas: 3,
-			expectedToDelete:       3,
+			expectedToDelete:       0, // actualPodsToDelete length = actualNeedToDelete
 			expectedNeedToDelete:   0, // updatedAndNotReadyCount=1 >= maxUnavailable=1, can't delete any ready pods
 		},
 		{
@@ -456,7 +456,7 @@ func TestAnalyzePods(t *testing.T) {
 			}(),
 			updateRevision:         testRevision,
 			desiredUpdatedReplicas: 3,
-			expectedToDelete:       3,
+			expectedToDelete:       0, // actualPodsToDelete length = actualNeedToDelete
 			expectedNeedToDelete:   0, // terminatingCount=1 >= maxUnavailable=1, cannot delete more
 		},
 		{
@@ -473,7 +473,7 @@ func TestAnalyzePods(t *testing.T) {
 			}(),
 			updateRevision:         testRevision,
 			desiredUpdatedReplicas: 4,
-			expectedToDelete:       4,
+			expectedToDelete:       0, // actualPodsToDelete length = actualNeedToDelete
 			expectedNeedToDelete:   0, // terminatingCount=3 >= maxUnavailable=1, cannot delete any more
 		},
 		{
@@ -488,7 +488,7 @@ func TestAnalyzePods(t *testing.T) {
 			}(),
 			updateRevision:         testRevision,
 			desiredUpdatedReplicas: 4,
-			expectedToDelete:       3,
+			expectedToDelete:       3, // actualPodsToDelete length = actualNeedToDelete
 			expectedNeedToDelete:   3, // Can delete: 2 not-ready pods (no quota) + 1 ready pod (unavailableCount: 0->1, maxUnavailable=1)
 		},
 		{
@@ -504,7 +504,7 @@ func TestAnalyzePods(t *testing.T) {
 			}(),
 			updateRevision:         testRevision,
 			desiredUpdatedReplicas: 3,
-			expectedToDelete:       3,
+			expectedToDelete:       1, // actualPodsToDelete length = actualNeedToDelete
 			expectedNeedToDelete:   1, // Terminating counts (unavailableCount=1), can delete 1 not-ready pod (no additional quota)
 		},
 		{
@@ -519,7 +519,7 @@ func TestAnalyzePods(t *testing.T) {
 			}(),
 			updateRevision:         testRevision,
 			desiredUpdatedReplicas: 3,
-			expectedToDelete:       2,
+			expectedToDelete:       0, // actualPodsToDelete length = actualNeedToDelete
 			expectedNeedToDelete:   0, // updatedAndNotReadyCount=1 >= maxUnavailable=1, cannot delete any ready pods
 		},
 	}
@@ -545,14 +545,12 @@ func TestExecutePodDeletion(t *testing.T) {
 	tests := []struct {
 		name         string
 		podsToDelete []*corev1.Pod
-		needToDelete int32
 		expectError  bool
 		expectEvents int
 	}{
 		{
 			name:         "no pods to delete",
 			podsToDelete: []*corev1.Pod{},
-			needToDelete: 0,
 			expectError:  false,
 			expectEvents: 0,
 		},
@@ -561,7 +559,6 @@ func TestExecutePodDeletion(t *testing.T) {
 			podsToDelete: []*corev1.Pod{
 				createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil),
 			},
-			needToDelete: 1,
 			expectError:  false,
 			expectEvents: 1,
 		},
@@ -571,27 +568,8 @@ func TestExecutePodDeletion(t *testing.T) {
 				createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil),
 				createTestPod("pod-2", testNamespace, testDSName, "old-revision", true, nil),
 			},
-			needToDelete: 2,
 			expectError:  false,
 			expectEvents: 2,
-		},
-		{
-			name: "need to delete more pods than available",
-			podsToDelete: []*corev1.Pod{
-				createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil),
-			},
-			needToDelete: 3,
-			expectError:  false,
-			expectEvents: 1, // Only one pod can be deleted
-		},
-		{
-			name: "negative needToDelete",
-			podsToDelete: []*corev1.Pod{
-				createTestPod("pod-1", testNamespace, testDSName, "old-revision", true, nil),
-			},
-			needToDelete: -1,
-			expectError:  false,
-			expectEvents: 0,
 		},
 	}
 
@@ -610,7 +588,7 @@ func TestExecutePodDeletion(t *testing.T) {
 				expectations:  expectations.NewResourceExpectations(),
 			}
 
-			err := r.executePodDeletion(context.TODO(), test.podsToDelete, test.needToDelete, ds)
+			err := r.executePodDeletion(context.TODO(), test.podsToDelete, ds)
 
 			if test.expectError {
 				assert.Error(t, err)
@@ -976,7 +954,7 @@ func TestReconcile_ErrorHandling(t *testing.T) {
 		r := createTestReconciler(client)
 
 		// Call executePodDeletion directly to test the error path
-		err := r.executePodDeletion(context.TODO(), []*corev1.Pod{pod}, 1, ds)
+		err := r.executePodDeletion(context.TODO(), []*corev1.Pod{pod}, ds)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "mock delete error")
 	})

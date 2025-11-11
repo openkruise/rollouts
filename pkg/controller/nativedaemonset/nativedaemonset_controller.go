@@ -120,11 +120,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		}
 
 		// Trigger reconcile when any status field changes (only if partition annotation exists)
-		if newPartition != "" {
-			if !reflect.DeepEqual(oldObject.Status, newObject.Status) {
-				klog.V(4).Infof("Observed status change for DaemonSet: %s/%s", newObject.Namespace, newObject.Name)
-				return true
-			}
+		if newPartition != "" && !reflect.DeepEqual(oldObject.Status, newObject.Status) {
+			klog.V(4).Infof("Observed status change for DaemonSet: %s/%s", newObject.Namespace, newObject.Name)
+			return true
 		}
 
 		return false
@@ -282,7 +280,7 @@ func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevisio
 	for _, pod := range pods {
 		if util.IsConsistentWithRevision(pod.GetLabels(), updateRevision) {
 			updatedPods++
-			klog.Infof("Pod %s/%s matches update revision %s, counting as updated", pod.Namespace, pod.Name, updateRevision)
+			klog.V(5).Infof("Pod %s/%s matches update revision %s, counting as updated", pod.Namespace, pod.Name, updateRevision)
 			// Count updated pods that are not ready
 			if !util.IsPodReady(pod) {
 				updatedAndNotReadyCount++
@@ -307,6 +305,10 @@ func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevisio
 
 	klog.Infof("Current status - updatedPods: %d, desired: %d, needToDelete: %d, updatedAndNotReady: %d, maxUnavailable: %d",
 		updatedPods, desiredUpdatedReplicas, needToDelete, updatedAndNotReadyCount, maxUnavailable)
+
+	// Sort pods by deletion priority BEFORE calculating actualNeedToDelete
+	// (pending, not ready, high cost, newer pods first)
+	daemonsetutil.SortPodsForDeletion(podsToDelete)
 
 	// Apply maxUnavailable constraint using streaming deletion logic
 	// Start with unavailable count from updated pods that are not ready
@@ -351,26 +353,19 @@ func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevisio
 	klog.Infof("After maxUnavailable constraint - actualNeedToDelete: %d, unavailableCount: %d, maxUnavailable: %d",
 		actualNeedToDelete, unavailableCount, maxUnavailable)
 
-	return podsToDelete, actualNeedToDelete, nil
+	// Limit the number of pods to delete based on actualNeedToDelete
+	// podsToDelete is already sorted by priority
+	actualPodsToDelete := podsToDelete
+	if int32(len(podsToDelete)) > actualNeedToDelete {
+		actualPodsToDelete = podsToDelete[:actualNeedToDelete]
+	}
+
+	return actualPodsToDelete, actualNeedToDelete, nil
 }
 
 // executePodDeletion executes the actual pod deletion based on analysis using expectations mechanism
-func (r *ReconcileNativeDaemonSet) executePodDeletion(ctx context.Context, podsToDelete []*corev1.Pod, needToDelete int32, daemon *appsv1.DaemonSet) error {
+func (r *ReconcileNativeDaemonSet) executePodDeletion(ctx context.Context, actualPodsToDelete []*corev1.Pod, daemon *appsv1.DaemonSet) error {
 	dsKey := fmt.Sprintf("%s/%s", daemon.Namespace, daemon.Name)
-
-	if needToDelete <= 0 {
-		klog.Infof("No pods need to be deleted")
-		return nil
-	}
-
-	// Sort pods by deletion priority (pending, not ready, high cost, newer pods first)
-	daemonsetutil.SortPodsForDeletion(podsToDelete)
-
-	// Limit the number of pods to delete based on needToDelete
-	actualPodsToDelete := podsToDelete
-	if int32(len(podsToDelete)) > needToDelete {
-		actualPodsToDelete = podsToDelete[:needToDelete]
-	}
 
 	deleteDiff := len(actualPodsToDelete)
 
@@ -422,7 +417,7 @@ func (r *ReconcileNativeDaemonSet) processBatch(ctx context.Context, daemon *app
 
 	// Analyze pods and determine what needs to be done
 	_, batchRevision := util.ParseDaemonSetAdvancedControl(daemon.Annotations)
-	podsToDelete, needToDelete, err := r.analyzePods(pods, batchRevision, desiredReplicas, daemon)
+	actualPodsToDelete, needToDelete, err := r.analyzePods(pods, batchRevision, desiredReplicas, daemon)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -434,7 +429,7 @@ func (r *ReconcileNativeDaemonSet) processBatch(ctx context.Context, daemon *app
 	}
 
 	// Execute pod deletion based on analysis
-	err = r.executePodDeletion(ctx, podsToDelete, needToDelete, daemon)
+	err = r.executePodDeletion(ctx, actualPodsToDelete, daemon)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
