@@ -26,6 +26,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
+
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 const (
@@ -221,4 +223,76 @@ func IntMin(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// ClassifyPods classifies pods into updated and to-be-deleted categories
+// Returns: updatedPods count, updatedAndNotReadyCount, podsToDelete slice
+func ClassifyPods(pods []*corev1.Pod, updateRevision string) (int32, int32, []*corev1.Pod) {
+	var updatedPods int32
+	var updatedAndNotReadyCount int32
+	podsToDelete := make([]*corev1.Pod, 0)
+
+	for _, pod := range pods {
+		if util.IsConsistentWithRevision(pod.GetLabels(), updateRevision) {
+			updatedPods++
+			klog.V(5).Infof("Pod %s/%s matches update revision %s, counting as updated", pod.Namespace, pod.Name, updateRevision)
+			if !util.IsPodReady(pod) {
+				updatedAndNotReadyCount++
+			}
+		} else {
+			podsToDelete = append(podsToDelete, pod)
+		}
+	}
+
+	return updatedPods, updatedAndNotReadyCount, podsToDelete
+}
+
+// CalculateDeletionQuota calculates how many pods can be deleted considering maxUnavailable constraint
+// Returns: actualNeedToDelete count
+func CalculateDeletionQuota(
+	sortedPodsToDelete []*corev1.Pod,
+	needToDelete int32,
+	updatedAndNotReadyCount int32,
+	maxUnavailable int32,
+) int32 {
+	var actualNeedToDelete int32
+	unavailableCount := updatedAndNotReadyCount
+
+	for _, pod := range sortedPodsToDelete {
+		if actualNeedToDelete >= needToDelete {
+			break
+		}
+
+		// Terminating pods count towards unavailable, but we don't issue another delete
+		if !pod.DeletionTimestamp.IsZero() {
+			unavailableCount++
+			klog.V(4).Infof("Pod %s/%s is terminating, counting towards unavailable (%d/%d)",
+				pod.Namespace, pod.Name, unavailableCount, maxUnavailable)
+			continue
+		}
+
+		// Not ready pods can be deleted without consuming additional maxUnavailable quota
+		if !util.IsPodReady(pod) {
+			actualNeedToDelete++
+			klog.V(4).Infof("Pod %s/%s is not ready, can delete without consuming additional quota", pod.Namespace, pod.Name)
+			continue
+		}
+
+		// For ready pods, check if we have quota left
+		if unavailableCount >= maxUnavailable {
+			klog.Infof("Reached maxUnavailable limit (%d), cannot delete more ready pods", maxUnavailable)
+			break
+		}
+
+		// Delete this ready pod and it will become unavailable
+		unavailableCount++
+		actualNeedToDelete++
+		klog.V(4).Infof("Pod %s/%s is ready, deleting and will become unavailable (%d/%d)",
+			pod.Namespace, pod.Name, unavailableCount, maxUnavailable)
+	}
+
+	klog.Infof("After maxUnavailable constraint - actualNeedToDelete: %d, unavailableCount: %d, maxUnavailable: %d",
+		actualNeedToDelete, unavailableCount, maxUnavailable)
+
+	return actualNeedToDelete
 }

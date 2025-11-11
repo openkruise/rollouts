@@ -1626,3 +1626,242 @@ func TestSlowStartBatch_BatchSizeProgression(t *testing.T) {
 		t.Logf("Batch sizes observed: %v", batchSizes)
 	})
 }
+
+// Helper function to create test pods
+func createTestPodForUtil(name, namespace, revision string, hasRevisionLabel bool, ready bool, deletionTimestamp *metav1.Time) *corev1.Pod {
+	labels := make(map[string]string)
+	if hasRevisionLabel && revision != "" {
+		labels[appsv1.ControllerRevisionHashLabelKey] = revision
+	}
+
+	conditions := []corev1.PodCondition{}
+	if ready {
+		conditions = append(conditions, corev1.PodCondition{
+			Type:   corev1.PodReady,
+			Status: corev1.ConditionTrue,
+		})
+	} else {
+		conditions = append(conditions, corev1.PodCondition{
+			Type:   corev1.PodReady,
+			Status: corev1.ConditionFalse,
+		})
+	}
+
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              name,
+			Namespace:         namespace,
+			Labels:            labels,
+			DeletionTimestamp: deletionTimestamp,
+		},
+		Status: corev1.PodStatus{
+			Phase:      corev1.PodRunning,
+			Conditions: conditions,
+		},
+	}
+}
+
+func TestClassifyPods(t *testing.T) {
+	testRevision := "test-revision-123"
+
+	tests := []struct {
+		name                            string
+		pods                            []*corev1.Pod
+		updateRevision                  string
+		expectedUpdatedPods             int32
+		expectedUpdatedAndNotReadyCount int32
+		expectedPodsToDeleteCount       int
+	}{
+		{
+			name:                            "empty pod list",
+			pods:                            []*corev1.Pod{},
+			updateRevision:                  testRevision,
+			expectedUpdatedPods:             0,
+			expectedUpdatedAndNotReadyCount: 0,
+			expectedPodsToDeleteCount:       0,
+		},
+		{
+			name: "all pods updated and ready",
+			pods: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", testRevision, true, true, nil),
+				createTestPodForUtil("pod-2", "default", testRevision, true, true, nil),
+			},
+			updateRevision:                  testRevision,
+			expectedUpdatedPods:             2,
+			expectedUpdatedAndNotReadyCount: 0,
+			expectedPodsToDeleteCount:       0,
+		},
+		{
+			name: "mixed updated and old pods",
+			pods: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", testRevision, true, true, nil),
+				createTestPodForUtil("pod-2", "default", "old-revision", true, true, nil),
+				createTestPodForUtil("pod-3", "default", "old-revision", true, true, nil),
+			},
+			updateRevision:                  testRevision,
+			expectedUpdatedPods:             1,
+			expectedUpdatedAndNotReadyCount: 0,
+			expectedPodsToDeleteCount:       2,
+		},
+		{
+			name: "updated pods with not ready",
+			pods: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", testRevision, true, true, nil),
+				createTestPodForUtil("pod-2", "default", testRevision, true, false, nil),
+				createTestPodForUtil("pod-3", "default", "old-revision", true, true, nil),
+			},
+			updateRevision:                  testRevision,
+			expectedUpdatedPods:             2,
+			expectedUpdatedAndNotReadyCount: 1,
+			expectedPodsToDeleteCount:       1,
+		},
+		{
+			name: "pods without revision label",
+			pods: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", "", false, true, nil),
+				createTestPodForUtil("pod-2", "default", "", false, true, nil),
+			},
+			updateRevision:                  testRevision,
+			expectedUpdatedPods:             0,
+			expectedUpdatedAndNotReadyCount: 0,
+			expectedPodsToDeleteCount:       2,
+		},
+		{
+			name: "all updated but all not ready",
+			pods: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", testRevision, true, false, nil),
+				createTestPodForUtil("pod-2", "default", testRevision, true, false, nil),
+			},
+			updateRevision:                  testRevision,
+			expectedUpdatedPods:             2,
+			expectedUpdatedAndNotReadyCount: 2,
+			expectedPodsToDeleteCount:       0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updatedPods, updatedAndNotReadyCount, podsToDelete := ClassifyPods(tt.pods, tt.updateRevision)
+
+			assert.Equal(t, tt.expectedUpdatedPods, updatedPods, "updatedPods mismatch")
+			assert.Equal(t, tt.expectedUpdatedAndNotReadyCount, updatedAndNotReadyCount, "updatedAndNotReadyCount mismatch")
+			assert.Equal(t, tt.expectedPodsToDeleteCount, len(podsToDelete), "podsToDelete count mismatch")
+		})
+	}
+}
+
+func TestCalculateDeletionQuota(t *testing.T) {
+	tests := []struct {
+		name                       string
+		sortedPodsToDelete         []*corev1.Pod
+		needToDelete               int32
+		updatedAndNotReadyCount    int32
+		maxUnavailable             int32
+		expectedActualNeedToDelete int32
+	}{
+		{
+			name:                       "empty pod list",
+			sortedPodsToDelete:         []*corev1.Pod{},
+			needToDelete:               5,
+			updatedAndNotReadyCount:    0,
+			maxUnavailable:             3,
+			expectedActualNeedToDelete: 0,
+		},
+		{
+			name: "all ready pods within quota",
+			sortedPodsToDelete: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", "old", true, true, nil),
+				createTestPodForUtil("pod-2", "default", "old", true, true, nil),
+			},
+			needToDelete:               2,
+			updatedAndNotReadyCount:    0,
+			maxUnavailable:             3,
+			expectedActualNeedToDelete: 2,
+		},
+		{
+			name: "ready pods exceed maxUnavailable",
+			sortedPodsToDelete: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", "old", true, true, nil),
+				createTestPodForUtil("pod-2", "default", "old", true, true, nil),
+				createTestPodForUtil("pod-3", "default", "old", true, true, nil),
+			},
+			needToDelete:               3,
+			updatedAndNotReadyCount:    0,
+			maxUnavailable:             2,
+			expectedActualNeedToDelete: 2,
+		},
+		{
+			name: "not ready pods don't consume quota",
+			sortedPodsToDelete: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", "old", true, false, nil),
+				createTestPodForUtil("pod-2", "default", "old", true, false, nil),
+				createTestPodForUtil("pod-3", "default", "old", true, true, nil),
+			},
+			needToDelete:               3,
+			updatedAndNotReadyCount:    0,
+			maxUnavailable:             1,
+			expectedActualNeedToDelete: 3, // 2 not ready + 1 ready
+		},
+		{
+			name: "terminating pods count towards unavailable",
+			sortedPodsToDelete: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", "old", true, true, &metav1.Time{Time: time.Now()}),
+				createTestPodForUtil("pod-2", "default", "old", true, true, nil),
+				createTestPodForUtil("pod-3", "default", "old", true, true, nil),
+			},
+			needToDelete:               3,
+			updatedAndNotReadyCount:    0,
+			maxUnavailable:             2,
+			expectedActualNeedToDelete: 1, // 1 terminating (counted) + 1 ready (can delete)
+		},
+		{
+			name: "updated not ready blocks deletion",
+			sortedPodsToDelete: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", "old", true, true, nil),
+				createTestPodForUtil("pod-2", "default", "old", true, true, nil),
+			},
+			needToDelete:               2,
+			updatedAndNotReadyCount:    2,
+			maxUnavailable:             2,
+			expectedActualNeedToDelete: 0, // updatedAndNotReadyCount already at maxUnavailable
+		},
+		{
+			name: "mixed scenario",
+			sortedPodsToDelete: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", "old", true, false, nil),                           // not ready
+				createTestPodForUtil("pod-2", "default", "old", true, true, &metav1.Time{Time: time.Now()}), // terminating
+				createTestPodForUtil("pod-3", "default", "old", true, true, nil),                            // ready
+				createTestPodForUtil("pod-4", "default", "old", true, true, nil),                            // ready
+			},
+			needToDelete:               4,
+			updatedAndNotReadyCount:    1,
+			maxUnavailable:             3,
+			expectedActualNeedToDelete: 2, // 1 not ready + 1 terminating (skip) + 1 ready (unavailableCount: 1->2->3, stop)
+		},
+		{
+			name: "needToDelete limits deletion",
+			sortedPodsToDelete: []*corev1.Pod{
+				createTestPodForUtil("pod-1", "default", "old", true, false, nil),
+				createTestPodForUtil("pod-2", "default", "old", true, false, nil),
+				createTestPodForUtil("pod-3", "default", "old", true, true, nil),
+			},
+			needToDelete:               2,
+			updatedAndNotReadyCount:    0,
+			maxUnavailable:             5,
+			expectedActualNeedToDelete: 2, // Limited by needToDelete
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actualNeedToDelete := CalculateDeletionQuota(
+				tt.sortedPodsToDelete,
+				tt.needToDelete,
+				tt.updatedAndNotReadyCount,
+				tt.maxUnavailable,
+			)
+
+			assert.Equal(t, tt.expectedActualNeedToDelete, actualNeedToDelete, "actualNeedToDelete mismatch")
+		})
+	}
+}

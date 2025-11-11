@@ -269,92 +269,37 @@ func (r *ReconcileNativeDaemonSet) Reconcile(ctx context.Context, request reconc
 	return result, nil
 }
 
-// analyzePods analyzes the current pod state and determines how many pods need to be deleted
-// Returns: podsToDelete slice, needToDelete count, error
+// analyzePods analyzes the current pod state and determines which pods should be deleted
+// Returns: actualPodsToDelete (sorted and limited), actualNeedToDelete count, error
 func (r *ReconcileNativeDaemonSet) analyzePods(pods []*corev1.Pod, updateRevision string, desiredUpdatedReplicas int32, daemon *appsv1.DaemonSet) ([]*corev1.Pod, int32, error) {
-	updatedPods := int32(0)
-	podsToDelete := make([]*corev1.Pod, 0)
-	updatedAndNotReadyCount := int32(0)
+	// Step 1: Classify pods into updated and to-be-deleted
+	updatedPods, updatedAndNotReadyCount, podsToDelete := daemonsetutil.ClassifyPods(pods, updateRevision)
 
-	// Count updated pods and identify pods to delete
-	for _, pod := range pods {
-		if util.IsConsistentWithRevision(pod.GetLabels(), updateRevision) {
-			updatedPods++
-			klog.V(5).Infof("Pod %s/%s matches update revision %s, counting as updated", pod.Namespace, pod.Name, updateRevision)
-			// Count updated pods that are not ready
-			if !util.IsPodReady(pod) {
-				updatedAndNotReadyCount++
-			}
-		} else {
-			// Pods without the label or with an old revision need to be deleted
-			podsToDelete = append(podsToDelete, pod)
-		}
-	}
-
-	// Check if we already have enough updated pods
+	// Step 2: Check if batch is already completed
 	if updatedPods >= desiredUpdatedReplicas {
 		klog.Infof("Batch completed: have %d updated pods >= %d desired", updatedPods, desiredUpdatedReplicas)
 		return podsToDelete, 0, nil
 	}
 
-	// Calculate how many pods need to be deleted
+	// Step 3: Calculate how many pods need to be deleted
 	needToDelete := desiredUpdatedReplicas - updatedPods
-
-	// Get maxUnavailable constraint
 	maxUnavailable := daemonsetutil.GetMaxUnavailable(daemon)
 
 	klog.Infof("Current status - updatedPods: %d, desired: %d, needToDelete: %d, updatedAndNotReady: %d, maxUnavailable: %d",
 		updatedPods, desiredUpdatedReplicas, needToDelete, updatedAndNotReadyCount, maxUnavailable)
 
-	// Sort pods by deletion priority BEFORE calculating actualNeedToDelete
-	// (pending, not ready, high cost, newer pods first)
+	// Step 4: Sort pods by deletion priority (pending, not ready, low cost, newer pods first)
 	daemonsetutil.SortPodsForDeletion(podsToDelete)
 
-	// Apply maxUnavailable constraint using streaming deletion logic
-	// Start with unavailable count from updated pods that are not ready
-	var actualNeedToDelete int32
-	unavailableCount := updatedAndNotReadyCount
+	// Step 5: Calculate actual deletion count considering maxUnavailable constraint
+	actualNeedToDelete := daemonsetutil.CalculateDeletionQuota(
+		podsToDelete,
+		needToDelete,
+		updatedAndNotReadyCount,
+		maxUnavailable,
+	)
 
-	for _, pod := range podsToDelete {
-		// Already reached the desired number of deletions
-		if actualNeedToDelete >= needToDelete {
-			break
-		}
-
-		// Terminating pods count towards unavailable, but we don't issue another delete
-		if !pod.DeletionTimestamp.IsZero() {
-			unavailableCount++
-			klog.V(4).Infof("Pod %s/%s is terminating, counting towards unavailable (%d/%d)",
-				pod.Namespace, pod.Name, unavailableCount, maxUnavailable)
-			continue
-		}
-
-		// If pod is not ready, it can be deleted without consuming additional maxUnavailable quota
-		if !util.IsPodReady(pod) {
-			actualNeedToDelete++
-			klog.V(4).Infof("Pod %s/%s is not ready, can delete without consuming additional quota", pod.Namespace, pod.Name)
-			continue
-		}
-
-		// For ready pods, check if we have quota left
-		// unavailableCount will increase by 1 after deleting this ready pod
-		if unavailableCount >= maxUnavailable {
-			klog.Infof("Reached maxUnavailable limit (%d), cannot delete more ready pods", maxUnavailable)
-			break
-		}
-
-		// Delete this ready pod and it will become unavailable
-		unavailableCount++
-		actualNeedToDelete++
-		klog.V(4).Infof("Pod %s/%s is ready, deleting and will become unavailable (%d/%d)",
-			pod.Namespace, pod.Name, unavailableCount, maxUnavailable)
-	}
-
-	klog.Infof("After maxUnavailable constraint - actualNeedToDelete: %d, unavailableCount: %d, maxUnavailable: %d",
-		actualNeedToDelete, unavailableCount, maxUnavailable)
-
-	// Limit the number of pods to delete based on actualNeedToDelete
-	// podsToDelete is already sorted by priority
+	// Step 6: Limit the pods list to actual deletion count
 	actualPodsToDelete := podsToDelete
 	if int32(len(podsToDelete)) > actualNeedToDelete {
 		actualPodsToDelete = podsToDelete[:actualNeedToDelete]
