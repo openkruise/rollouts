@@ -114,11 +114,28 @@ func createTestDaemonSet(name, namespace string, annotations map[string]string) 
 }
 
 func createTestPod(name, namespace, dsName, revision string, hasRevisionLabel bool, deletionTimestamp *metav1.Time) *corev1.Pod {
+	return createTestPodWithReadiness(name, namespace, dsName, revision, hasRevisionLabel, deletionTimestamp, true)
+}
+
+func createTestPodWithReadiness(name, namespace, dsName, revision string, hasRevisionLabel bool, deletionTimestamp *metav1.Time, ready bool) *corev1.Pod {
 	labels := map[string]string{
 		"app": dsName,
 	}
 	if hasRevisionLabel && revision != "" {
 		labels[appsv1.ControllerRevisionHashLabelKey] = revision
+	}
+
+	conditions := []corev1.PodCondition{}
+	if ready {
+		conditions = append(conditions, corev1.PodCondition{
+			Type:   corev1.PodReady,
+			Status: corev1.ConditionTrue,
+		})
+	} else {
+		conditions = append(conditions, corev1.PodCondition{
+			Type:   corev1.PodReady,
+			Status: corev1.ConditionFalse,
+		})
 	}
 
 	pod := &corev1.Pod{
@@ -147,7 +164,8 @@ func createTestPod(name, namespace, dsName, revision string, hasRevisionLabel bo
 			},
 		},
 		Status: corev1.PodStatus{
-			Phase: corev1.PodRunning,
+			Phase:      corev1.PodRunning,
+			Conditions: conditions,
 		},
 	}
 	return pod
@@ -245,7 +263,7 @@ func TestReconcile_WithPartitionAnnotation(t *testing.T) {
 
 	result, err := r.Reconcile(context.TODO(), req)
 	assert.NoError(t, err)
-	assert.Equal(t, reconcile.Result{RequeueAfter: DefaultRetryDuration}, result)
+	assert.Equal(t, reconcile.Result{}, result)
 
 	// Verify that one pod was deleted
 	var podList corev1.PodList
@@ -298,7 +316,7 @@ func TestReconcile_PodsBeingDeleted(t *testing.T) {
 
 	result, err := r.Reconcile(context.TODO(), req)
 	assert.NoError(t, err)
-	assert.Equal(t, reconcile.Result{RequeueAfter: DefaultRetryDuration}, result)
+	assert.Equal(t, reconcile.Result{}, result)
 }
 
 func TestReconcile_ExpectationsNotSatisfied(t *testing.T) {
@@ -386,6 +404,123 @@ func TestAnalyzePods(t *testing.T) {
 			desiredUpdatedReplicas: 2,
 			expectedToDelete:       2,
 			expectedNeedToDelete:   1, // Limited by maxUnavailable = 1
+		},
+		{
+			name: "streaming deletion with not-ready updated pods",
+			pods: []*corev1.Pod{
+				createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, false),  // updated but not ready
+				createTestPodWithReadiness("pod-2", testNamespace, testDSName, "old-revision", true, nil, true), // old and ready
+				createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, nil, true), // old and ready
+			},
+			updateRevision:         testRevision,
+			desiredUpdatedReplicas: 2,
+			expectedToDelete:       2,
+			expectedNeedToDelete:   0, // updatedAndNotReadyCount=1 >= maxUnavailable=1, can't delete any ready pods
+		},
+		{
+			name: "streaming deletion with not-ready old pods",
+			pods: []*corev1.Pod{
+				createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, true),    // updated and ready
+				createTestPodWithReadiness("pod-2", testNamespace, testDSName, "old-revision", true, nil, false), // old and not ready
+				createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, nil, true),  // old and ready
+				createTestPodWithReadiness("pod-4", testNamespace, testDSName, "old-revision", true, nil, true),  // old and ready
+			},
+			updateRevision:         testRevision,
+			desiredUpdatedReplicas: 3,
+			expectedToDelete:       3,
+			expectedNeedToDelete:   2, // needToDelete=2 (3-1), can delete: 1 not-ready (no quota) + 1 ready (unavailableCount: 0->1)
+		},
+		{
+			name: "streaming deletion maxUnavailable reached",
+			pods: []*corev1.Pod{
+				createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, false),  // updated but not ready
+				createTestPodWithReadiness("pod-2", testNamespace, testDSName, "old-revision", true, nil, true), // old and ready
+				createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, nil, true), // old and ready
+				createTestPodWithReadiness("pod-4", testNamespace, testDSName, "old-revision", true, nil, true), // old and ready
+			},
+			updateRevision:         testRevision,
+			desiredUpdatedReplicas: 3,
+			expectedToDelete:       3,
+			expectedNeedToDelete:   0, // updatedAndNotReadyCount=1 >= maxUnavailable=1, can't delete any ready pods
+		},
+		{
+			name: "terminating pods block deletion when maxUnavailable reached",
+			pods: func() []*corev1.Pod {
+				now := metav1.Now()
+				return []*corev1.Pod{
+					createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, true),    // updated and ready
+					createTestPodWithReadiness("pod-2", testNamespace, testDSName, "old-revision", true, &now, true), // old, terminating, ready - counts as unavailable
+					createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, nil, true),  // old and ready
+					createTestPodWithReadiness("pod-4", testNamespace, testDSName, "old-revision", true, nil, true),  // old and ready
+				}
+			}(),
+			updateRevision:         testRevision,
+			desiredUpdatedReplicas: 3,
+			expectedToDelete:       3,
+			expectedNeedToDelete:   0, // terminatingCount=1 >= maxUnavailable=1, cannot delete more
+		},
+		{
+			name: "multiple terminating pods block deletion",
+			pods: func() []*corev1.Pod {
+				now := metav1.Now()
+				return []*corev1.Pod{
+					createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, true),    // updated and ready
+					createTestPodWithReadiness("pod-2", testNamespace, testDSName, "old-revision", true, &now, true), // old, terminating, ready
+					createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, &now, true), // old, terminating, ready
+					createTestPodWithReadiness("pod-4", testNamespace, testDSName, "old-revision", true, &now, true), // old, terminating, ready
+					createTestPodWithReadiness("pod-5", testNamespace, testDSName, "old-revision", true, nil, true),  // old and ready
+				}
+			}(),
+			updateRevision:         testRevision,
+			desiredUpdatedReplicas: 4,
+			expectedToDelete:       4,
+			expectedNeedToDelete:   0, // terminatingCount=3 >= maxUnavailable=1, cannot delete any more
+		},
+		{
+			name: "not ready old pods can be deleted without consuming quota",
+			pods: func() []*corev1.Pod {
+				return []*corev1.Pod{
+					createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, true),    // updated and ready
+					createTestPodWithReadiness("pod-2", testNamespace, testDSName, "old-revision", true, nil, false), // old and not ready
+					createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, nil, false), // old and not ready
+					createTestPodWithReadiness("pod-4", testNamespace, testDSName, "old-revision", true, nil, true),  // old and ready
+				}
+			}(),
+			updateRevision:         testRevision,
+			desiredUpdatedReplicas: 4,
+			expectedToDelete:       3,
+			expectedNeedToDelete:   3, // Can delete: 2 not-ready pods (no quota) + 1 ready pod (unavailableCount: 0->1, maxUnavailable=1)
+		},
+		{
+			name: "terminating and not-ready pods together",
+			pods: func() []*corev1.Pod {
+				now := metav1.Now()
+				return []*corev1.Pod{
+					createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, true),    // updated and ready
+					createTestPodWithReadiness("pod-2", testNamespace, testDSName, "old-revision", true, &now, true), // old, terminating, ready
+					createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, nil, false), // old and not ready
+					createTestPodWithReadiness("pod-4", testNamespace, testDSName, "old-revision", true, nil, true),  // old and ready
+				}
+			}(),
+			updateRevision:         testRevision,
+			desiredUpdatedReplicas: 3,
+			expectedToDelete:       3,
+			expectedNeedToDelete:   1, // Terminating counts (unavailableCount=1), can delete 1 not-ready pod (no additional quota)
+		},
+		{
+			name: "updated not-ready pod blocks ready pod deletion",
+			pods: func() []*corev1.Pod {
+				return []*corev1.Pod{
+					createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, false),  // updated but not ready
+					createTestPodWithReadiness("pod-2", testNamespace, testDSName, testRevision, true, nil, true),   // updated and ready
+					createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, nil, true), // old and ready
+					createTestPodWithReadiness("pod-4", testNamespace, testDSName, "old-revision", true, nil, true), // old and ready
+				}
+			}(),
+			updateRevision:         testRevision,
+			desiredUpdatedReplicas: 3,
+			expectedToDelete:       2,
+			expectedNeedToDelete:   0, // updatedAndNotReadyCount=1 >= maxUnavailable=1, cannot delete any ready pods
 		},
 	}
 
@@ -496,7 +631,7 @@ func TestProcessBatch(t *testing.T) {
 		expectError     bool
 	}{
 		{
-			name: "pods being deleted - requeue",
+			name: "pods being deleted - no requeue",
 			ds:   createTestDaemonSet(testDSName, testNamespace, map[string]string{}),
 			pods: func() []*corev1.Pod {
 				pod := createTestPod("pod-1", testNamespace, testDSName, testRevision, true, &metav1.Time{Time: time.Now()})
@@ -504,7 +639,7 @@ func TestProcessBatch(t *testing.T) {
 				return []*corev1.Pod{pod}
 			}(),
 			desiredReplicas: 1,
-			expectRequeue:   true,
+			expectRequeue:   false,
 			expectError:     false,
 		},
 		{
@@ -523,7 +658,7 @@ func TestProcessBatch(t *testing.T) {
 			expectError:     false,
 		},
 		{
-			name: "need to delete pods - requeue",
+			name: "need to delete pods - no requeue",
 			ds: func() *appsv1.DaemonSet {
 				annotations := map[string]string{}
 				util.SetDaemonSetAdvancedControl(annotations, "2", testRevision)
@@ -534,7 +669,7 @@ func TestProcessBatch(t *testing.T) {
 				createTestPod("pod-2", testNamespace, testDSName, "old-revision", true, nil),
 			},
 			desiredReplicas: 2,
-			expectRequeue:   true,
+			expectRequeue:   false,
 			expectError:     false,
 		},
 	}
@@ -560,11 +695,8 @@ func TestProcessBatch(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				if test.expectRequeue {
-					assert.Equal(t, DefaultRetryDuration, result.RequeueAfter)
-				} else {
-					assert.Equal(t, reconcile.Result{}, result)
-				}
+				// All cases now return Result{} without requeue
+				assert.Equal(t, reconcile.Result{}, result)
 			}
 		})
 	}
@@ -579,11 +711,13 @@ func TestReconcile_ComplexScenarios(t *testing.T) {
 		ds.Spec.UpdateStrategy.RollingUpdate.MaxUnavailable = &intstr.IntOrString{Type: intstr.Int, IntVal: 2}
 
 		// Create pods - need to update 4 pods but maxUnavailable is 2
-		pod1 := createTestPod("pod-1", testNamespace, testDSName, testRevision, true, nil)
-		pod2 := createTestPod("pod-2", testNamespace, testDSName, "old-revision", true, nil)
-		pod3 := createTestPod("pod-3", testNamespace, testDSName, "old-revision", true, nil)
-		pod4 := createTestPod("pod-4", testNamespace, testDSName, "old-revision", true, nil)
-		pod5 := createTestPod("pod-5", testNamespace, testDSName, "old-revision", true, nil)
+		// pod-1 is updated and ready, so upgradeAndNotReadyCount = 0
+		// We can delete up to maxUnavailable (2) ready pods
+		pod1 := createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, true)
+		pod2 := createTestPodWithReadiness("pod-2", testNamespace, testDSName, "old-revision", true, nil, true)
+		pod3 := createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, nil, true)
+		pod4 := createTestPodWithReadiness("pod-4", testNamespace, testDSName, "old-revision", true, nil, true)
+		pod5 := createTestPodWithReadiness("pod-5", testNamespace, testDSName, "old-revision", true, nil, true)
 
 		client := createFakeClient(ds, pod1, pod2, pod3, pod4, pod5)
 		r := createTestReconciler(client)
@@ -597,7 +731,7 @@ func TestReconcile_ComplexScenarios(t *testing.T) {
 
 		result, err := r.Reconcile(context.TODO(), req)
 		assert.NoError(t, err)
-		assert.Equal(t, reconcile.Result{RequeueAfter: DefaultRetryDuration}, result)
+		assert.Equal(t, reconcile.Result{}, result)
 
 		// Verify that only maxUnavailable pods were deleted
 		var podList corev1.PodList
@@ -641,7 +775,99 @@ func TestReconcile_ComplexScenarios(t *testing.T) {
 
 		result, err := r.Reconcile(context.TODO(), req)
 		assert.NoError(t, err)
-		assert.Equal(t, reconcile.Result{RequeueAfter: DefaultRetryDuration}, result)
+		assert.Equal(t, reconcile.Result{}, result)
+	})
+
+	t.Run("terminating pods block deletion when maxUnavailable reached", func(t *testing.T) {
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
+		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
+		// Set maxUnavailable to 3
+		ds.Spec.UpdateStrategy.RollingUpdate.MaxUnavailable = &intstr.IntOrString{Type: intstr.Int, IntVal: 3}
+
+		// Create pods: 1 updated, 3 terminating old pods, 2 ready old pods
+		// Scenario: 3 pods were deleted but stuck in Terminating state
+		// Terminating pods count towards unavailable, so unavailableCount = 3 >= maxUnavailable = 3
+		// Cannot delete any more ready pods
+		now := metav1.Now()
+		pod1 := createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, true)
+		pod2 := createTestPodWithReadiness("pod-2", testNamespace, testDSName, "old-revision", true, &now, true)
+		pod2.Finalizers = []string{"test-finalizer"} // Prevent actual deletion
+		pod3 := createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, &now, true)
+		pod3.Finalizers = []string{"test-finalizer"}
+		pod4 := createTestPodWithReadiness("pod-4", testNamespace, testDSName, "old-revision", true, &now, true)
+		pod4.Finalizers = []string{"test-finalizer"}
+		pod5 := createTestPodWithReadiness("pod-5", testNamespace, testDSName, "old-revision", true, nil, true)
+		pod6 := createTestPodWithReadiness("pod-6", testNamespace, testDSName, "old-revision", true, nil, true)
+
+		client := createFakeClient(ds, pod1, pod2, pod3, pod4, pod5, pod6)
+		r := createTestReconciler(client)
+
+		req := reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      testDSName,
+				Namespace: testNamespace,
+			},
+		}
+
+		result, err := r.Reconcile(context.TODO(), req)
+		assert.NoError(t, err)
+		assert.Equal(t, reconcile.Result{}, result)
+
+		// Terminating pods count towards unavailable (3), so cannot delete any more ready pods
+		var podList corev1.PodList
+		err = client.List(context.TODO(), &podList)
+		assert.NoError(t, err)
+		// All 6 pods should still exist: 1 updated + 3 terminating + 2 ready old
+		assert.Equal(t, 6, len(podList.Items))
+
+		// Count how many are terminating
+		terminatingCount := 0
+		for _, pod := range podList.Items {
+			if !pod.DeletionTimestamp.IsZero() {
+				terminatingCount++
+			}
+		}
+		assert.Equal(t, 3, terminatingCount, "Should still have 3 terminating pods")
+	})
+
+	t.Run("streaming deletion with not ready pods", func(t *testing.T) {
+		annotations := map[string]string{}
+		util.SetDaemonSetAdvancedControl(annotations, "1", testRevision)
+		ds := createTestDaemonSet(testDSName, testNamespace, annotations)
+		// Set maxUnavailable to 2
+		ds.Spec.UpdateStrategy.RollingUpdate.MaxUnavailable = &intstr.IntOrString{Type: intstr.Int, IntVal: 2}
+
+		// Create pods: 1 updated, 2 not ready old pods, 3 ready old pods
+		// Not ready pods can be deleted without consuming quota
+		pod1 := createTestPodWithReadiness("pod-1", testNamespace, testDSName, testRevision, true, nil, true)
+		pod2 := createTestPodWithReadiness("pod-2", testNamespace, testDSName, "old-revision", true, nil, false)
+		pod3 := createTestPodWithReadiness("pod-3", testNamespace, testDSName, "old-revision", true, nil, false)
+		pod4 := createTestPodWithReadiness("pod-4", testNamespace, testDSName, "old-revision", true, nil, true)
+		pod5 := createTestPodWithReadiness("pod-5", testNamespace, testDSName, "old-revision", true, nil, true)
+		pod6 := createTestPodWithReadiness("pod-6", testNamespace, testDSName, "old-revision", true, nil, true)
+
+		client := createFakeClient(ds, pod1, pod2, pod3, pod4, pod5, pod6)
+		r := createTestReconciler(client)
+
+		req := reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      testDSName,
+				Namespace: testNamespace,
+			},
+		}
+
+		result, err := r.Reconcile(context.TODO(), req)
+		assert.NoError(t, err)
+		assert.Equal(t, reconcile.Result{}, result)
+
+		// Should delete: 2 not ready pods (no quota) + 2 ready pods (maxUnavailable=2)
+		// Total: 4 pods deleted
+		var podList corev1.PodList
+		err = client.List(context.TODO(), &podList)
+		assert.NoError(t, err)
+		// Should have 2 pods remaining: 1 updated + 1 old ready
+		assert.Equal(t, 2, len(podList.Items))
 	})
 }
 
@@ -666,7 +892,7 @@ func TestReconcile_EdgeCases(t *testing.T) {
 
 		result, err := r.Reconcile(context.TODO(), req)
 		assert.NoError(t, err)
-		assert.Equal(t, reconcile.Result{RequeueAfter: DefaultRetryDuration}, result)
+		assert.Equal(t, reconcile.Result{}, result)
 	})
 
 	t.Run("partition greater than pod count", func(t *testing.T) {
@@ -1479,7 +1705,7 @@ func TestExpectationsMechanism(t *testing.T) {
 		// First reconcile should proceed normally and delete the pod
 		result, err := r.Reconcile(context.TODO(), req)
 		assert.NoError(t, err)
-		assert.Equal(t, reconcile.Result{RequeueAfter: DefaultRetryDuration}, result)
+		assert.Equal(t, reconcile.Result{}, result)
 	})
 
 	t.Run("expectations not satisfied - requeue", func(t *testing.T) {
