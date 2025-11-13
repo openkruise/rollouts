@@ -906,16 +906,14 @@ func TestPatchDaemonSetRevisionAnnotations(t *testing.T) {
 			expectPatch:    true,
 			expectedAnnotations: map[string]string{
 				"rollouts.kruise.io/unit-test-anno": "true",
-				DaemonSetStableRevisionAnnotation:   "stable-hash",
-				DaemonSetCanaryRevisionAnnotation:   "canary-hash",
+				DaemonSetRevisionAnnotation:         `{"canary-revision":"canary-hash","stable-revision":"stable-hash"}`,
 			},
 		},
 		{
 			name: "update existing annotations",
 			daemonSet: func() *apps.DaemonSet {
 				ds := nativeDaemonSet.DeepCopy()
-				ds.Annotations[DaemonSetStableRevisionAnnotation] = "old-stable"
-				ds.Annotations[DaemonSetCanaryRevisionAnnotation] = "old-canary"
+				SetDaemonSetRevision(ds.Annotations, "old-canary", "old-stable")
 				return ds
 			}(),
 			stableRevision: "new-stable",
@@ -923,16 +921,14 @@ func TestPatchDaemonSetRevisionAnnotations(t *testing.T) {
 			expectPatch:    true,
 			expectedAnnotations: map[string]string{
 				"rollouts.kruise.io/unit-test-anno": "true",
-				DaemonSetStableRevisionAnnotation:   "new-stable",
-				DaemonSetCanaryRevisionAnnotation:   "new-canary",
+				DaemonSetRevisionAnnotation:         `{"canary-revision":"new-canary","stable-revision":"new-stable"}`,
 			},
 		},
 		{
 			name: "no patch needed when annotations are already correct",
 			daemonSet: func() *apps.DaemonSet {
 				ds := nativeDaemonSet.DeepCopy()
-				ds.Annotations[DaemonSetStableRevisionAnnotation] = "correct-stable"
-				ds.Annotations[DaemonSetCanaryRevisionAnnotation] = "correct-canary"
+				SetDaemonSetRevision(ds.Annotations, "correct-canary", "correct-stable")
 				return ds
 			}(),
 			stableRevision: "correct-stable",
@@ -940,24 +936,22 @@ func TestPatchDaemonSetRevisionAnnotations(t *testing.T) {
 			expectPatch:    false,
 			expectedAnnotations: map[string]string{
 				"rollouts.kruise.io/unit-test-anno": "true",
-				DaemonSetStableRevisionAnnotation:   "correct-stable",
-				DaemonSetCanaryRevisionAnnotation:   "correct-canary",
+				DaemonSetRevisionAnnotation:         `{"canary-revision":"correct-canary","stable-revision":"correct-stable"}`,
 			},
 		},
 		{
 			name: "add only canary revision",
 			daemonSet: func() *apps.DaemonSet {
 				ds := nativeDaemonSet.DeepCopy()
-				ds.Annotations[DaemonSetStableRevisionAnnotation] = "existing-stable"
+				SetDaemonSetRevision(ds.Annotations, "", "existing-stable")
 				return ds
 			}(),
-			stableRevision: "", // empty, should not be updated
+			stableRevision: "existing-stable", // keep existing stable
 			canaryRevision: "new-canary",
 			expectPatch:    true,
 			expectedAnnotations: map[string]string{
 				"rollouts.kruise.io/unit-test-anno": "true",
-				DaemonSetStableRevisionAnnotation:   "existing-stable",
-				DaemonSetCanaryRevisionAnnotation:   "new-canary",
+				DaemonSetRevisionAnnotation:         `{"canary-revision":"new-canary","stable-revision":"existing-stable"}`,
 			},
 		},
 	}

@@ -223,14 +223,15 @@ func ParseWorkloadStatus(object client.Object) *WorkloadStatus {
 		}
 
 	case *apps.DaemonSet:
+		canaryRevision, stableRevision := ParseDaemonSetRevision(o.Annotations)
 		return &WorkloadStatus{
 			Replicas:           o.Status.DesiredNumberScheduled,
 			ReadyReplicas:      o.Status.NumberReady,
 			AvailableReplicas:  o.Status.NumberAvailable,
 			UpdatedReplicas:    o.Status.UpdatedNumberScheduled,
 			ObservedGeneration: o.Status.ObservedGeneration,
-			UpdateRevision:     o.Annotations[DaemonSetCanaryRevisionAnnotation],
-			StableRevision:     o.Annotations[DaemonSetStableRevisionAnnotation],
+			UpdateRevision:     canaryRevision,
+			StableRevision:     stableRevision,
 		}
 
 	case *appsv1alpha1.DaemonSet:
@@ -443,4 +444,92 @@ func unmarshalIntStr(m interface{}) *intstr.IntOrString {
 	data, _ := json.Marshal(m)
 	_ = json.Unmarshal(data, field)
 	return field
+}
+
+// DaemonSetRevisionInfo holds revision information for DaemonSet
+type DaemonSetRevisionInfo struct {
+	CanaryRevision string `json:"canary-revision,omitempty"`
+	StableRevision string `json:"stable-revision,omitempty"`
+}
+
+// DaemonSetAdvancedControlInfo holds advanced control parameters for DaemonSet
+type DaemonSetAdvancedControlInfo struct {
+	Partition     string `json:"partition,omitempty"`
+	BatchRevision string `json:"batch-revision,omitempty"`
+}
+
+// ParseDaemonSetRevision parses the DaemonSetRevisionAnnotation and returns canary and stable revisions
+func ParseDaemonSetRevision(annotations map[string]string) (canaryRevision, stableRevision string) {
+	if annotations == nil {
+		return "", ""
+	}
+
+	revisionStr, exists := annotations[DaemonSetRevisionAnnotation]
+	if !exists || revisionStr == "" {
+		return "", ""
+	}
+
+	var info DaemonSetRevisionInfo
+	if err := json.Unmarshal([]byte(revisionStr), &info); err != nil {
+		return "", ""
+	}
+
+	return info.CanaryRevision, info.StableRevision
+}
+
+// SetDaemonSetRevision sets the DaemonSetRevisionAnnotation with canary and stable revisions
+func SetDaemonSetRevision(annotations map[string]string, canaryRevision, stableRevision string) {
+	if annotations == nil {
+		return
+	}
+
+	info := DaemonSetRevisionInfo{
+		CanaryRevision: canaryRevision,
+		StableRevision: stableRevision,
+	}
+
+	data, err := json.Marshal(info)
+	if err != nil {
+		return
+	}
+
+	annotations[DaemonSetRevisionAnnotation] = string(data)
+}
+
+// ParseDaemonSetAdvancedControl parses the DaemonSetAdvancedControlAnnotation and returns partition and batch revision
+func ParseDaemonSetAdvancedControl(annotations map[string]string) (partition, batchRevision string) {
+	if annotations == nil {
+		return "", ""
+	}
+
+	controlStr, exists := annotations[DaemonSetAdvancedControlAnnotation]
+	if !exists || controlStr == "" {
+		return "", ""
+	}
+
+	var info DaemonSetAdvancedControlInfo
+	if err := json.Unmarshal([]byte(controlStr), &info); err != nil {
+		return "", ""
+	}
+
+	return info.Partition, info.BatchRevision
+}
+
+// SetDaemonSetAdvancedControl sets the DaemonSetAdvancedControlAnnotation with partition and batch revision
+func SetDaemonSetAdvancedControl(annotations map[string]string, partition, batchRevision string) {
+	if annotations == nil {
+		return
+	}
+
+	info := DaemonSetAdvancedControlInfo{
+		Partition:     partition,
+		BatchRevision: batchRevision,
+	}
+
+	data, err := json.Marshal(info)
+	if err != nil {
+		return
+	}
+
+	annotations[DaemonSetAdvancedControlAnnotation] = string(data)
 }

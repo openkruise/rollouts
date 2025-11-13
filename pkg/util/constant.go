@@ -46,15 +46,16 @@ const (
 	WorkloadTypeLabel = "rollouts.kruise.io/workload-type"
 	// DeploymentRevisionAnnotation is the revision annotation of a deployment's replica sets which records its rollout sequence
 	DeploymentRevisionAnnotation = "deployment.kubernetes.io/revision"
-	// DaemonSetCanaryRevisionAnnotation is the annotation key for canary revision
-	DaemonSetCanaryRevisionAnnotation = "rollouts.kruise.io/daemonset-canary-revision"
-	// DaemonSetStableRevisionAnnotation is the annotation key for stable revision
-	DaemonSetStableRevisionAnnotation = "rollouts.kruise.io/daemonset-stable-revision"
-	// DaemonSetPartitionAnnotation is the annotation key for daemonset partition, which is the number of pods with old version.
-	DaemonSetPartitionAnnotation = "rollouts.kruise.io/daemonset-partition"
-	// DaemonSetBatchRevisionAnnotation is the annotation key for update revision used by each batch
-	// This is very important for continuous release, because update revision must be consistent with each partition
-	DaemonSetBatchRevisionAnnotation = "rollouts.kruise.io/daemonset-batch-revision"
+	// DaemonSetRevisionAnnotation contains revision information in key=value format
+	// Including canary-revision and stable-revision
+	DaemonSetRevisionAnnotation = "rollouts.kruise.io/daemonset-revision"
+	// DaemonSetAdvancedControlAnnotation contains advanced control parameters in key=value format
+	// Including partition and batch-revision
+	// Partition is the number of pods with old version
+	// Batch-revision is very important for continuous release, because update revision must be consistent with each partition
+	DaemonSetAdvancedControlAnnotation = "rollouts.kruise.io/daemonset-advanced-control"
+	// DaemonSetOriginalUpdateStrategy is the original update strategy type for the native daemonSet
+	DaemonSetOriginalUpdateStrategy = "rollouts.kruise.io/daemonset-original-update-strategy"
 )
 
 const (
