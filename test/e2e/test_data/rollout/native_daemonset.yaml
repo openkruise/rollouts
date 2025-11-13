@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: test-daemonset
+  namespace: default
+  labels:
+    app: test-daemonset
+spec:
+  selector:
+    matchLabels:
+      name: test-daemonset
+  template:
+    metadata:
+      labels:
+        name: test-daemonset
+    spec:
+      containers:
+      - name: test-container
+        image: cilium/echoserver:latest
+        env:
+        - name: VERSION
+          value: version1
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
