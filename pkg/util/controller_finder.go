@@ -556,7 +556,7 @@ func (r *ControllerFinder) getControllerRevisionsForDaemonSet(daemonSet *apps.Da
 		revision := &revisionList.Items[i]
 		// Check if this ControllerRevision is owned by the DaemonSet
 		if ref := metav1.GetControllerOf(revision); ref != nil {
-			if ref.Name == daemonSet.Name && ref.Kind == "DaemonSet" {
+			if ref.UID == daemonSet.UID {
 				revisions = append(revisions, revision)
 			}
 		}
@@ -573,37 +573,27 @@ func (r *ControllerFinder) getControllerRevisionsForDaemonSet(daemonSet *apps.Da
 // patchDaemonSetRevisionAnnotations patches DaemonSet annotations for stable and canary revisions
 func (r *ControllerFinder) patchDaemonSetRevisionAnnotations(daemonSet *apps.DaemonSet, stableRevision, canaryRevision string) error {
 
-	annotationsToUpdate := make(map[string]string)
+	// Check if revision annotations need to be updated
+	existingCanary, existingStable := ParseDaemonSetRevision(daemonSet.Annotations)
+	needsUpdate := false
 
-	// Check and collect canary revision annotation
-	if canaryRevision != "" {
-		if daemonSet.Annotations == nil {
-			annotationsToUpdate[DaemonSetCanaryRevisionAnnotation] = canaryRevision
-		} else if existingCanary, exists := daemonSet.Annotations[DaemonSetCanaryRevisionAnnotation]; !exists || existingCanary != canaryRevision {
-			annotationsToUpdate[DaemonSetCanaryRevisionAnnotation] = canaryRevision
-		}
+	if canaryRevision != "" && existingCanary != canaryRevision {
+		needsUpdate = true
 	}
-
-	// Check and collect stable revision annotation
-	if stableRevision != "" {
-		if daemonSet.Annotations == nil {
-			annotationsToUpdate[DaemonSetStableRevisionAnnotation] = stableRevision
-		} else if existingStable, exists := daemonSet.Annotations[DaemonSetStableRevisionAnnotation]; !exists || existingStable != stableRevision {
-			annotationsToUpdate[DaemonSetStableRevisionAnnotation] = stableRevision
-		}
+	if stableRevision != "" && existingStable != stableRevision {
+		needsUpdate = true
 	}
 
 	// Patch the DaemonSet if annotations need to be changed
-	if len(annotationsToUpdate) > 0 {
+	if needsUpdate {
 		patch := client.MergeFrom(daemonSet.DeepCopy())
 
 		if daemonSet.Annotations == nil {
 			daemonSet.Annotations = make(map[string]string)
 		}
 
-		for key, value := range annotationsToUpdate {
-			daemonSet.Annotations[key] = value
-		}
+		// Use the new revision annotation format
+		SetDaemonSetRevision(daemonSet.Annotations, canaryRevision, stableRevision)
 
 		return r.Patch(context.TODO(), daemonSet, patch)
 	}

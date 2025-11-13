@@ -444,8 +444,13 @@ func TestInitialize(t *testing.T) {
 	// Check that the update strategy is now OnDelete
 	assert.Equal(t, apps.OnDeleteDaemonSetStrategyType, updatedDaemon.Spec.UpdateStrategy.Type)
 
-	// Check that the control annotation is set
+	// Check that the control annotation is set with proper JSON structure
 	assert.Contains(t, updatedDaemon.Annotations, util.BatchReleaseControlAnnotation)
+
+	// Verify the annotation contains the correct BatchRelease reference
+	controlAnnotation := updatedDaemon.Annotations[util.BatchReleaseControlAnnotation]
+	assert.Contains(t, controlAnnotation, "release-demo")
+	assert.Contains(t, controlAnnotation, "606132e0-85ef-460e-8a04-438496a92951")
 }
 
 func TestInitializeAlreadyControlled(t *testing.T) {
@@ -472,6 +477,47 @@ func TestInitializeAlreadyControlled(t *testing.T) {
 
 	// Should remain OnDelete since it was already controlled
 	assert.Equal(t, apps.OnDeleteDaemonSetStrategyType, updatedDaemon.Spec.UpdateStrategy.Type)
+}
+
+func TestInitializeWithRollingUpdateStrategy(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = apps.AddToScheme(scheme)
+	_ = v1beta1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	daemon := daemonDemo.DeepCopy()
+	// Remove control annotation and set RollingUpdate strategy
+	delete(daemon.Annotations, util.BatchReleaseControlAnnotation)
+	daemon.Spec.UpdateStrategy.Type = apps.RollingUpdateDaemonSetStrategyType
+
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(daemon).Build()
+	key := types.NamespacedName{Name: "daemon-demo", Namespace: "default"}
+	gvk := schema.FromAPIVersionAndKind("apps/v1", "DaemonSet")
+
+	controller := NewController(cli, key, gvk)
+	builtController, _ := controller.BuildController()
+
+	err := builtController.Initialize(batchReleaseDemo)
+	assert.NoError(t, err)
+
+	// Verify the DaemonSet was updated correctly
+	updatedDaemon := &apps.DaemonSet{}
+	err = cli.Get(context.TODO(), key, updatedDaemon)
+	assert.NoError(t, err)
+
+	// Check that the update strategy is now OnDelete
+	assert.Equal(t, apps.OnDeleteDaemonSetStrategyType, updatedDaemon.Spec.UpdateStrategy.Type)
+
+	// Check that the control annotation is set with proper JSON structure
+	assert.Contains(t, updatedDaemon.Annotations, util.BatchReleaseControlAnnotation)
+
+	// Verify the annotation contains the correct BatchRelease reference
+	controlAnnotation := updatedDaemon.Annotations[util.BatchReleaseControlAnnotation]
+	assert.Contains(t, controlAnnotation, "release-demo")
+	assert.Contains(t, controlAnnotation, "606132e0-85ef-460e-8a04-438496a92951")
+
+	// Note: The Initialize method does not save the original strategy in the current implementation
+	// The original strategy saving would need to be implemented if required
 }
 
 func TestInitialize_PatchError(t *testing.T) {
@@ -506,8 +552,7 @@ func TestUpgradeBatchFirstTime(t *testing.T) {
 
 	daemon := daemonDemo.DeepCopy()
 	// Remove batch annotations to simulate first time
-	delete(daemon.Annotations, util.DaemonSetPartitionAnnotation)
-	delete(daemon.Annotations, util.DaemonSetBatchRevisionAnnotation)
+	delete(daemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
 
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(daemon).Build()
 	key := types.NamespacedName{Name: "daemon-demo", Namespace: "default"}
@@ -526,13 +571,20 @@ func TestUpgradeBatchFirstTime(t *testing.T) {
 	err := builtController.UpgradeBatch(ctx)
 	assert.NoError(t, err)
 
-	// Verify the DaemonSet has the batch annotations
+	// Verify the DaemonSet has the batch annotations with JSON format
 	updatedDaemon := &apps.DaemonSet{}
 	err = cli.Get(context.TODO(), key, updatedDaemon)
 	assert.NoError(t, err)
 
-	assert.Equal(t, "3", updatedDaemon.Annotations[util.DaemonSetPartitionAnnotation])
-	assert.Equal(t, "update-revision-123", updatedDaemon.Annotations[util.DaemonSetBatchRevisionAnnotation])
+	partition, batchRevision := util.ParseDaemonSetAdvancedControl(updatedDaemon.Annotations)
+	assert.Equal(t, "3", partition)
+	assert.Equal(t, "update-revision-123", batchRevision)
+
+	// Verify the annotation exists and is in JSON format
+	assert.Contains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
+	controlAnnotation := updatedDaemon.Annotations[util.DaemonSetAdvancedControlAnnotation]
+	assert.Contains(t, controlAnnotation, `"partition":"3"`)
+	assert.Contains(t, controlAnnotation, `"batch-revision":"update-revision-123"`)
 }
 
 func TestUpgradeBatchSamePartition(t *testing.T) {
@@ -542,9 +594,8 @@ func TestUpgradeBatchSamePartition(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	daemon := daemonDemo.DeepCopy()
-	// Set existing batch annotations with the same partition
-	daemon.Annotations[util.DaemonSetPartitionAnnotation] = "3"
-	daemon.Annotations[util.DaemonSetBatchRevisionAnnotation] = "update-revision-123"
+	// Set existing batch annotations with the same partition using JSON format
+	util.SetDaemonSetAdvancedControl(daemon.Annotations, "3", "update-revision-123")
 
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(daemon).Build()
 	key := types.NamespacedName{Name: "daemon-demo", Namespace: "default"}
@@ -563,13 +614,17 @@ func TestUpgradeBatchSamePartition(t *testing.T) {
 	err := builtController.UpgradeBatch(ctx)
 	assert.NoError(t, err)
 
-	// Verify the DaemonSet annotations remain unchanged
+	// Verify the DaemonSet annotations remain unchanged (no additional patch call)
 	updatedDaemon := &apps.DaemonSet{}
 	err = cli.Get(context.TODO(), key, updatedDaemon)
 	assert.NoError(t, err)
 
-	assert.Equal(t, "3", updatedDaemon.Annotations[util.DaemonSetPartitionAnnotation])
-	assert.Equal(t, "update-revision-123", updatedDaemon.Annotations[util.DaemonSetBatchRevisionAnnotation])
+	partition, batchRevision := util.ParseDaemonSetAdvancedControl(updatedDaemon.Annotations)
+	assert.Equal(t, "3", partition)
+	assert.Equal(t, "update-revision-123", batchRevision)
+
+	// Verify the annotation is still in JSON format
+	assert.Contains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
 }
 
 func TestUpgradeBatchDifferentPartition(t *testing.T) {
@@ -580,8 +635,7 @@ func TestUpgradeBatchDifferentPartition(t *testing.T) {
 
 	daemon := daemonDemo.DeepCopy()
 	// Set existing batch annotations with different partition
-	daemon.Annotations[util.DaemonSetPartitionAnnotation] = "3"
-	daemon.Annotations[util.DaemonSetBatchRevisionAnnotation] = "old-revision"
+	util.SetDaemonSetAdvancedControl(daemon.Annotations, "3", "old-revision")
 
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(daemon).Build()
 	key := types.NamespacedName{Name: "daemon-demo", Namespace: "default"}
@@ -605,8 +659,15 @@ func TestUpgradeBatchDifferentPartition(t *testing.T) {
 	err = cli.Get(context.TODO(), key, updatedDaemon)
 	assert.NoError(t, err)
 
-	assert.Equal(t, "1", updatedDaemon.Annotations[util.DaemonSetPartitionAnnotation])
-	assert.Equal(t, "update-revision-123", updatedDaemon.Annotations[util.DaemonSetBatchRevisionAnnotation])
+	partition, batchRevision := util.ParseDaemonSetAdvancedControl(updatedDaemon.Annotations)
+	assert.Equal(t, "1", partition)
+	assert.Equal(t, "update-revision-123", batchRevision)
+
+	// Verify the annotation was updated with new JSON format
+	assert.Contains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
+	controlAnnotation := updatedDaemon.Annotations[util.DaemonSetAdvancedControlAnnotation]
+	assert.Contains(t, controlAnnotation, `"partition":"1"`)
+	assert.Contains(t, controlAnnotation, `"batch-revision":"update-revision-123"`)
 }
 
 func TestPatchBatchAnnotations_PatchError(t *testing.T) {
@@ -644,10 +705,8 @@ func TestFinalizeWithBatchPartitionNil(t *testing.T) {
 
 	daemon := daemonDemo.DeepCopy()
 	// Add all batch annotations
-	daemon.Annotations[util.DaemonSetPartitionAnnotation] = "2"
-	daemon.Annotations[util.DaemonSetBatchRevisionAnnotation] = "update-revision-123"
-	daemon.Annotations[util.DaemonSetCanaryRevisionAnnotation] = "canary-revision-123"
-	daemon.Annotations[util.DaemonSetStableRevisionAnnotation] = "stable-revision-123"
+	util.SetDaemonSetAdvancedControl(daemon.Annotations, "2", "update-revision-123")
+	util.SetDaemonSetRevision(daemon.Annotations, "canary-revision-123", "stable-revision-123")
 
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(daemon).Build()
 	key := types.NamespacedName{Name: "daemon-demo", Namespace: "default"}
@@ -673,10 +732,144 @@ func TestFinalizeWithBatchPartitionNil(t *testing.T) {
 
 	// Check that all batch annotations are removed
 	assert.NotContains(t, updatedDaemon.Annotations, util.BatchReleaseControlAnnotation)
-	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetCanaryRevisionAnnotation)
-	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetStableRevisionAnnotation)
-	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetPartitionAnnotation)
-	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetBatchRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetOriginalUpdateStrategy)
+}
+
+func TestFinalizeWithOriginalRollingUpdateStrategy(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = apps.AddToScheme(scheme)
+	_ = v1beta1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	daemon := daemonDemo.DeepCopy()
+	// Add all batch annotations including original strategy
+	util.SetDaemonSetAdvancedControl(daemon.Annotations, "2", "update-revision-123")
+
+	util.SetDaemonSetRevision(daemon.Annotations, "canary-revision-123", "stable-revision-123")
+
+	daemon.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.RollingUpdateDaemonSetStrategyType)
+
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(daemon).Build()
+	key := types.NamespacedName{Name: "daemon-demo", Namespace: "default"}
+	gvk := schema.FromAPIVersionAndKind("apps/v1", "DaemonSet")
+
+	controller := NewController(cli, key, gvk)
+	builtController, _ := controller.BuildController()
+
+	// Create a batch release with nil BatchPartition (indicating completion)
+	completedBatchRelease := batchReleaseDemo.DeepCopy()
+	completedBatchRelease.Spec.ReleasePlan.BatchPartition = nil
+
+	err := builtController.Finalize(completedBatchRelease)
+	assert.NoError(t, err)
+
+	// Verify the DaemonSet was updated correctly
+	updatedDaemon := &apps.DaemonSet{}
+	err = cli.Get(context.TODO(), key, updatedDaemon)
+	assert.NoError(t, err)
+
+	// Check that the update strategy is restored to the original RollingUpdate
+	assert.Equal(t, apps.RollingUpdateDaemonSetStrategyType, updatedDaemon.Spec.UpdateStrategy.Type)
+
+	// Check that all batch annotations are removed including original strategy
+	assert.NotContains(t, updatedDaemon.Annotations, util.BatchReleaseControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetOriginalUpdateStrategy)
+}
+
+func TestFinalizeWithOriginalOnDeleteStrategy(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = apps.AddToScheme(scheme)
+	_ = v1beta1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	daemon := daemonDemo.DeepCopy()
+	// Add all batch annotations including original OnDelete strategy
+	util.SetDaemonSetAdvancedControl(daemon.Annotations, "2", "update-revision-123")
+
+	util.SetDaemonSetRevision(daemon.Annotations, "canary-revision-123", "stable-revision-123")
+
+	daemon.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(apps.OnDeleteDaemonSetStrategyType)
+
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(daemon).Build()
+	key := types.NamespacedName{Name: "daemon-demo", Namespace: "default"}
+	gvk := schema.FromAPIVersionAndKind("apps/v1", "DaemonSet")
+
+	controller := NewController(cli, key, gvk)
+	builtController, _ := controller.BuildController()
+
+	// Create a batch release with nil BatchPartition (indicating completion)
+	completedBatchRelease := batchReleaseDemo.DeepCopy()
+	completedBatchRelease.Spec.ReleasePlan.BatchPartition = nil
+
+	err := builtController.Finalize(completedBatchRelease)
+	assert.NoError(t, err)
+
+	// Verify the DaemonSet was updated correctly
+	updatedDaemon := &apps.DaemonSet{}
+	err = cli.Get(context.TODO(), key, updatedDaemon)
+	assert.NoError(t, err)
+
+	// Check that the update strategy is restored to the original OnDelete
+	assert.Equal(t, apps.OnDeleteDaemonSetStrategyType, updatedDaemon.Spec.UpdateStrategy.Type)
+
+	// Check that all batch annotations are removed including original strategy
+	assert.NotContains(t, updatedDaemon.Annotations, util.BatchReleaseControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetOriginalUpdateStrategy)
+}
+
+func TestFinalizeWithMissingOriginalStrategy(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = apps.AddToScheme(scheme)
+	_ = v1beta1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	daemon := daemonDemo.DeepCopy()
+	// Add all batch annotations but no original strategy annotation
+	util.SetDaemonSetAdvancedControl(daemon.Annotations, "2", "update-revision-123")
+
+	util.SetDaemonSetRevision(daemon.Annotations, "canary-revision-123", "stable-revision-123")
+
+	// Intentionally not setting util.DaemonSetOriginalUpdateStrategy
+
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(daemon).Build()
+	key := types.NamespacedName{Name: "daemon-demo", Namespace: "default"}
+	gvk := schema.FromAPIVersionAndKind("apps/v1", "DaemonSet")
+
+	controller := NewController(cli, key, gvk)
+	builtController, _ := controller.BuildController()
+
+	// Create a batch release with nil BatchPartition (indicating completion)
+	completedBatchRelease := batchReleaseDemo.DeepCopy()
+	completedBatchRelease.Spec.ReleasePlan.BatchPartition = nil
+
+	err := builtController.Finalize(completedBatchRelease)
+	assert.NoError(t, err)
+
+	// Verify the DaemonSet was updated correctly
+	updatedDaemon := &apps.DaemonSet{}
+	err = cli.Get(context.TODO(), key, updatedDaemon)
+	assert.NoError(t, err)
+
+	// Check that the update strategy defaults to RollingUpdate when annotation is missing
+	assert.Equal(t, apps.RollingUpdateDaemonSetStrategyType, updatedDaemon.Spec.UpdateStrategy.Type)
+
+	// Check that all batch annotations are removed
+	assert.NotContains(t, updatedDaemon.Annotations, util.BatchReleaseControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetOriginalUpdateStrategy)
 }
 
 func TestFinalizeWithBatchPartitionNotNil(t *testing.T) {
@@ -687,10 +880,9 @@ func TestFinalizeWithBatchPartitionNotNil(t *testing.T) {
 
 	daemon := daemonDemo.DeepCopy()
 	// Add all batch annotations
-	daemon.Annotations[util.DaemonSetPartitionAnnotation] = "2"
-	daemon.Annotations[util.DaemonSetBatchRevisionAnnotation] = "update-revision-123"
-	daemon.Annotations[util.DaemonSetCanaryRevisionAnnotation] = "canary-revision-123"
-	daemon.Annotations[util.DaemonSetStableRevisionAnnotation] = "stable-revision-123"
+	util.SetDaemonSetAdvancedControl(daemon.Annotations, "2", "update-revision-123")
+
+	util.SetDaemonSetRevision(daemon.Annotations, "canary-revision-123", "stable-revision-123")
 
 	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(daemon).Build()
 	key := types.NamespacedName{Name: "daemon-demo", Namespace: "default"}
@@ -714,10 +906,10 @@ func TestFinalizeWithBatchPartitionNotNil(t *testing.T) {
 
 	// Check that all batch annotations are removed
 	assert.NotContains(t, updatedDaemon.Annotations, util.BatchReleaseControlAnnotation)
-	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetCanaryRevisionAnnotation)
-	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetStableRevisionAnnotation)
-	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetPartitionAnnotation)
-	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetBatchRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetRevisionAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
+	assert.NotContains(t, updatedDaemon.Annotations, util.DaemonSetAdvancedControlAnnotation)
 
 	// Update strategy should remain OnDelete since batch is not complete
 	assert.Equal(t, apps.OnDeleteDaemonSetStrategyType, updatedDaemon.Spec.UpdateStrategy.Type)
@@ -749,8 +941,7 @@ func TestFinalize_PatchError(t *testing.T) {
 
 	daemon := daemonDemo.DeepCopy()
 	// Add all batch annotations
-	daemon.Annotations[util.DaemonSetPartitionAnnotation] = "2"
-	daemon.Annotations[util.DaemonSetBatchRevisionAnnotation] = "update-revision-123"
+	util.SetDaemonSetAdvancedControl(daemon.Annotations, "2", "update-revision-123")
 
 	// Don't add daemon to client to cause patch error
 	cli := fake.NewClientBuilder().WithScheme(scheme).Build()

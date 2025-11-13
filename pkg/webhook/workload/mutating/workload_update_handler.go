@@ -508,6 +508,11 @@ func (h *WorkloadHandler) handleNativeDaemonSet(newObj, oldObj *apps.DaemonSet) 
 	}
 
 	// For native DaemonSet, we use OnDelete strategy to enable manual pod deletion for batch control
+	// Store the original update strategy type before changing it
+	if newObj.Annotations == nil {
+		newObj.Annotations = map[string]string{}
+	}
+	newObj.Annotations[util.DaemonSetOriginalUpdateStrategy] = string(newObj.Spec.UpdateStrategy.Type)
 	newObj.Spec.UpdateStrategy.Type = apps.OnDeleteDaemonSetStrategyType
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
