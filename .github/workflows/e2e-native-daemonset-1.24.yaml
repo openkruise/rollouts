@@ -74,6 +74,9 @@ jobs:
           set -ex
           kubectl cluster-info
           IMG=openkruise/kruise-rollout:e2e-${GITHUB_RUN_ID} ./scripts/deploy_kind.sh
+          # Enable KeepWorkloadPausedOnRolloutDeletion feature gate
+          kubectl patch deployment kruise-rollout-controller-manager -n kruise-rollout --type='json' \
+            -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/args/1", "value": "--feature-gates=AdvancedDeployment=true,KeepWorkloadPausedOnRolloutDeletion=true"}]'
           for ((i=1;i<10;i++));
           do
             set +e
