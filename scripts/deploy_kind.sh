@@ -10,6 +10,8 @@ set -e
 make kustomize
 KUSTOMIZE=$(pwd)/bin/kustomize
 (cd config/manager && "${KUSTOMIZE}" edit set image controller="${IMG}")
-"${KUSTOMIZE}" build config/default | sed -e 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' > /tmp/rollout-kustomization.yaml
+"${KUSTOMIZE}" build config/default | \
+  sed -e 's/--feature-gates=AdvancedDeployment=true/--feature-gates=AdvancedDeployment=true,KeepWorkloadPausedOnRolloutDeletion=true/g' \
+  > /tmp/rollout-kustomization.yaml
 echo -e "resources:\n- manager.yaml" > config/manager/kustomization.yaml
 kubectl apply -f /tmp/rollout-kustomization.yaml

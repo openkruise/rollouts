@@ -6987,6 +6987,61 @@ var _ = SIGDescribe("Rollout v1beta1", func() {
 			cond = getRolloutCondition(rollout.Status, v1beta1.RolloutConditionSucceeded)
 			Expect(string(cond.Status)).Should(Equal(string(metav1.ConditionTrue)))
 		})
+
+		It("V1->V2: release 1 and delete rollout cr", func() {
+			By("Creating Rollout...")
+			rollout := &v1beta1.Rollout{}
+			Expect(ReadYamlToObject("./test_data/rollout/rollout_v1beta1_native_daemonset_base.yaml", rollout)).ToNot(HaveOccurred())
+			CreateObject(rollout)
+
+			By("Creating workload and waiting for all pods ready...")
+			// workload
+			workload := &apps.DaemonSet{}
+			Expect(ReadYamlToObject("./test_data/rollout/native_daemonset.yaml", workload)).ToNot(HaveOccurred())
+			CreateObject(workload)
+			WaitNativeDaemonSetPodsReady(workload)
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1beta1.RolloutPhaseHealthy))
+			By("check rollout status success")
+
+			// v1 -> v2, start rollout action
+			By("Update daemonset env VERSION from(version1) -> to(version2)")
+			newEnvs := mergeEnvVar(workload.Spec.Template.Spec.Containers[0].Env, v1.EnvVar{Name: "VERSION", Value: "version2"})
+			workload.Spec.Template.Spec.Containers[0].Env = newEnvs
+			UpdateNativeDaemonSet(workload)
+			time.Sleep(time.Second * 3)
+
+			// wait step 1 complete
+			WaitRolloutStepPaused(rollout.Name, 1)
+			// check workload status & paused
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", 1))
+			By("check daemonset status success, 1 pod updated")
+
+			// check rollout status
+			Expect(GetObject(rollout.Name, rollout)).NotTo(HaveOccurred())
+			Expect(rollout.Status.Phase).Should(Equal(v1beta1.RolloutPhaseProgressing))
+			Expect(rollout.Status.CanaryStatus.CurrentStepIndex).Should(BeNumerically("==", 1))
+			Expect(rollout.Status.CanaryStatus.NextStepIndex).Should(BeNumerically("==", 2))
+
+			// delete rollout CR
+			By("Delete rollout CR")
+			Expect(k8sClient.Delete(context.TODO(), rollout)).NotTo(HaveOccurred())
+			WaitRolloutNotFound(rollout.Name)
+			By("rollout CR deleted")
+
+			// wait 5 seconds and check workload status remains unchanged
+			By("Wait 5 seconds and verify workload status remains paused")
+			time.Sleep(time.Second * 5)
+
+			// check workload status - should still have only 1 pod updated (paused state)
+			Expect(GetObject(workload.Name, workload)).NotTo(HaveOccurred())
+			Expect(workload.Status.UpdatedNumberScheduled).Should(BeNumerically("==", 1))
+			By("Verified: workload remains paused with 1 pod updated after rollout CR deletion")
+		})
 	})
 })
 
