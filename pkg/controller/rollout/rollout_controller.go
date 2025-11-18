@@ -59,6 +59,7 @@ func init() {
 	watchedWorkload.LoadOrStore(util.ControllerKruiseKindSts.String(), struct{}{})
 	watchedWorkload.LoadOrStore(util.ControllerKruiseOldKindSts.String(), struct{}{})
 	watchedWorkload.LoadOrStore(util.ControllerKruiseKindDS.String(), struct{}{})
+	watchedWorkload.LoadOrStore(util.ControllerLWSKind.String(), struct{}{}) // LeaderWorkerSet
 }
 
 // RolloutReconciler reconciles a Rollout object
