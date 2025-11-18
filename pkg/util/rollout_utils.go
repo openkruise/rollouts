@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -197,4 +198,18 @@ func CheckNextBatchIndexWithCorrect(rollout *rolloutv1beta1.Rollout) {
 			klog.Infof("rollout(%s/%s) invalid nextStepIndex(%d), reset to %d", rollout.Namespace, rollout.Name, nextStep, rollout.Status.GetSubStatus().NextStepIndex)
 		}
 	}
+}
+
+func AnnotationsDeepEqual(a, b map[string]string, keysToDelete ...string) bool {
+	for _, key := range keysToDelete {
+		delete(a, key)
+		delete(b, key)
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	if len(a) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(a, b)
 }
