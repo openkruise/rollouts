@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/openkruise/rollouts/pkg/webhook/types"
-
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -39,6 +38,11 @@ var (
 	// HandlerMap contains all admission webhook handlers.
 	HandlerMap   = map[string]types.HandlerGetter{}
 	handlerGates = map[string]GateFunc{}
+
+	initialize func(context.Context, *rest.Config) error = initializeImpl
+
+	newWebhookController = webhookcontroller.New
+	webhookInited        = webhookcontroller.Inited
 )
 
 func addHandlers(m map[string]types.HandlerGetter) {
@@ -105,8 +109,8 @@ func SetupWithManager(mgr manager.Manager) error {
 // +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch;update;patch
 
-func initialize(ctx context.Context, cfg *rest.Config) error {
-	c, err := webhookcontroller.New(cfg, HandlerMap)
+func initializeImpl(ctx context.Context, cfg *rest.Config) error {
+	c, err := newWebhookController(cfg, HandlerMap)
 	if err != nil {
 		return err
 	}
@@ -117,7 +121,7 @@ func initialize(ctx context.Context, cfg *rest.Config) error {
 	timer := time.NewTimer(time.Second * 20)
 	defer timer.Stop()
 	select {
-	case <-webhookcontroller.Inited():
+	case <-webhookInited():
 		return nil
 	case <-timer.C:
 		return fmt.Errorf("failed to start webhook controller for waiting more than 20s")
