@@ -445,6 +445,14 @@ type CanaryStatus struct {
 	CanaryReplicas int32 `json:"canaryReplicas"`
 	// CanaryReadyReplicas the numbers of ready canary revision pods
 	CanaryReadyReplicas int32 `json:"canaryReadyReplicas"`
+	// CurrentStepStartTime is the start timestamp of the current canary step/batch.
+	// This field is updated when a step starts processing.
+	// +optional
+	CurrentStepStartTime *metav1.Time `json:"currentStepStartTime,omitempty"`
+	// CurrentStepEndTime is the end timestamp of the current canary step/batch.
+	// This field is updated when a step completes.
+	// +optional
+	CurrentStepEndTime *metav1.Time `json:"currentStepEndTime,omitempty"`
 }
 
 // BlueGreenStatus status fields that only pertain to the blueGreen rollout

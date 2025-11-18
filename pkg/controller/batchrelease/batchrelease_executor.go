@@ -143,9 +143,19 @@ func (r *Executor) progressBatches(release *v1beta1.BatchRelease, newStatus *v1b
 	default:
 		// for compatibility. if it is an unknown state, should start from beginning.
 		newStatus.CanaryStatus.CurrentBatchState = v1beta1.UpgradingBatchState
+		// Set batch start time when entering a new batch
+		if newStatus.CanaryStatus.BatchStartTime == nil {
+			now := metav1.Now()
+			newStatus.CanaryStatus.BatchStartTime = &now
+		}
 		fallthrough
 
 	case v1beta1.UpgradingBatchState:
+		// Set batch start time when entering upgrading state for the first time
+		if newStatus.CanaryStatus.BatchStartTime == nil {
+			now := metav1.Now()
+			newStatus.CanaryStatus.BatchStartTime = &now
+		}
 		// modify workload replicas/partition based on release plan in this state.
 		err = workloadController.UpgradeBatch()
 		switch {
@@ -262,6 +272,8 @@ func (r *Executor) moveToNextBatch(release *v1beta1.BatchRelease, status *v1beta
 	}
 	if release.Spec.ReleasePlan.BatchPartition == nil || *release.Spec.ReleasePlan.BatchPartition > status.CanaryStatus.CurrentBatch {
 		status.CanaryStatus.CurrentBatch++
+		// Reset batch start time for the new batch
+		status.CanaryStatus.BatchStartTime = nil
 	}
 	status.CanaryStatus.CurrentBatchState = v1beta1.UpgradingBatchState
 	klog.V(3).Infof("BatchRelease(%v) finished one batch, release current batch: %v", klog.KObj(release), status.CanaryStatus.CurrentBatch)

@@ -210,11 +210,13 @@ func isRollbackInBatchSatisfied(workloadInfo *util.WorkloadInfo, release *v1beta
 func signalRePrepareRollback(newStatus *v1beta1.BatchReleaseStatus) {
 	newStatus.Phase = v1beta1.RolloutPhasePreparing
 	newStatus.CanaryStatus.BatchReadyTime = nil
+	newStatus.CanaryStatus.BatchStartTime = nil
 	newStatus.CanaryStatus.CurrentBatchState = v1beta1.UpgradingBatchState
 }
 
 func signalRestartBatch(status *v1beta1.BatchReleaseStatus) {
 	status.CanaryStatus.BatchReadyTime = nil
+	status.CanaryStatus.BatchStartTime = nil
 	status.CanaryStatus.CurrentBatchState = v1beta1.UpgradingBatchState
 }
 
@@ -243,6 +245,7 @@ func signalRecalculate(release *v1beta1.BatchRelease, newStatus *v1beta1.BatchRe
 	klog.Infof("BatchRelease(%v) canary batch changed from %v to %v when the release plan changed, observed-rollout-id: %s, current-rollout-id: %s",
 		client.ObjectKeyFromObject(release), newStatus.CanaryStatus.CurrentBatch, currentBatch, observedRolloutID, release.Spec.ReleasePlan.RolloutID)
 	newStatus.CanaryStatus.BatchReadyTime = nil
+	newStatus.CanaryStatus.BatchStartTime = nil
 	newStatus.CanaryStatus.CurrentBatch = currentBatch
 	newStatus.ObservedRolloutID = release.Spec.ReleasePlan.RolloutID
 	newStatus.CanaryStatus.CurrentBatchState = v1beta1.UpgradingBatchState
