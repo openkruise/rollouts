@@ -1,0 +1,16 @@
+apiVersion: rollouts.kruise.io/v1beta1
+kind: Rollout
+metadata:
+  name: rollouts-demo
+  namespace: kube-system
+spec:
+  workloadRef:
+    apiVersion: apps/v1
+    kind: DaemonSet
+    name: fluentd-elasticsearch
+  strategy:
+    canary:
+      enableExtraWorkloadForCanary: false
+      steps:
+        - replicas: 1
+        - replicas: 100%
