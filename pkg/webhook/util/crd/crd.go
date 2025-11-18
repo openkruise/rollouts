@@ -77,7 +77,7 @@ func Ensure(client apiextensionsclientset.Interface, lister apiextensionslisters
 			newCRD := crd.DeepCopy()
 			newCRD.Spec.Conversion.Webhook = &apiextensionsv1.WebhookConversion{
 				ClientConfig:             webhookConfig.DeepCopy(),
-				ConversionReviewVersions: []string{"v1", "v1beta1"},
+				ConversionReviewVersions: []string{"v1"},
 			}
 			if _, err := client.ApiextensionsV1().CustomResourceDefinitions().Update(context.TODO(), newCRD, metav1.UpdateOptions{}); err != nil {
 				return fmt.Errorf("failed to update CRD %s: %v", newCRD.Name, err)
