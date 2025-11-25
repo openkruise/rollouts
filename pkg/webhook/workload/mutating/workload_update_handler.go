@@ -193,6 +193,19 @@ func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) adm
 }
 
 func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (bool, error) {
+	// if the resources is updated by CD tools(like OCM,Karmada), the uid of new object is empty
+	if len(newObj.GetUID()) == 0 {
+		newObj.SetUID(oldObj.GetUID())
+	}
+
+	// make sure matched Rollout CR always exists
+	rollout, err := h.fetchMatchedRollout(newObj)
+	if err != nil {
+		return false, err
+	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
+		return false, nil
+	}
+
 	// in rollout progressing
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
 		modified := false
@@ -257,12 +270,6 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		return false, nil
 	}
 
-	rollout, err := h.fetchMatchedRollout(newObj)
-	if err != nil {
-		return false, err
-	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
-		return false, nil
-	}
 	rss, err := h.Finder.GetReplicaSetsForDeployment(newObj)
 	if err != nil || len(rss) == 0 {
 		klog.Warningf("Cannot find any activate replicaset for deployment %s/%s, no need to rolling", newObj.Namespace, newObj.Name)
@@ -313,6 +320,11 @@ func (h *WorkloadHandler) handleCloneSet(newObj, oldObj *kruiseappsv1alpha1.Clon
 		return false, nil
 	}
 
+	// if the resources is updated by CD tools(like OCM,Karmada), the uid of new object is empty
+	if len(newObj.GetUID()) == 0 {
+		newObj.SetUID(oldObj.GetUID())
+	}
+
 	rollout, err := h.fetchMatchedRollout(newObj)
 	if err != nil {
 		return false, err
@@ -345,6 +357,11 @@ func (h *WorkloadHandler) handleDaemonSet(newObj, oldObj *kruiseappsv1alpha1.Dae
 		return false, nil
 	} else if newObj.Annotations[appsv1beta1.RolloutIDLabel] == "" && util.EqualIgnoreHash(&oldObj.Spec.Template, &newObj.Spec.Template) {
 		return false, nil
+	}
+
+	// if the resources is updated by CD tools(like OCM,Karmada), the uid of new object is empty
+	if len(newObj.GetUID()) == 0 {
+		newObj.SetUID(oldObj.GetUID())
 	}
 
 	rollout, err := h.fetchMatchedRollout(newObj)
