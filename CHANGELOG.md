@@ -1,5 +1,10 @@
 # Change Log
 
+## v0.6.2
+### Bugfix:
+- Fixed issue where partition deployments got stuck. ([#307](https://github.com/openkruise/rollouts/pull/307),[@AiRanthem](https://github.com/AiRanthem))
+- Compatibility with Karmada when the MutateWebhook newObj UID is empty during workload update. ([#319](https://github.com/openkruise/rollouts/pull/319),[@ivan-cai](https://github.com/ivan-cai))
+
 ## v0.6.1
 ### Key Features:
 - Introduced `rollout-batch-id` labeling for blue-green and canary style releases ([#250](https://github.com/openkruise/rollouts/pull/250),([#251](https://github.com/openkruise/rollouts/pull/251),[#261](https://github.com/openkruise/rollouts/pull/261),[@PersistentJZH](https://github.com/PersistentJZH),[@AiRanthem](https://github.com/AiRanthem)) 
