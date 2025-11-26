@@ -311,6 +311,18 @@ func (s *ClonesetPatch) UpdateMinReadySeconds(seconds int32) *ClonesetPatch {
 	return s
 }
 
+func (s *ClonesetPatch) UpdateProgressDeadlineSeconds(seconds *int32) *ClonesetPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		spec["progressDeadlineSeconds"] = seconds
+	}
+	return s
+}
+
 func (s *ClonesetPatch) UpdatePaused(paused bool) *ClonesetPatch {
 	switch s.PatchType {
 	case types.StrategicMergePatchType, types.MergePatchType:
