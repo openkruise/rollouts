@@ -39,6 +39,7 @@ import (
 	bgdeplopyment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/bluegreenstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle"
 	canarydeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle/deployment"
+	canarylws "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/canarystyle/lws"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/cloneset"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/daemonset"
@@ -227,6 +228,10 @@ func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus
 		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
 			klog.InfoS("Using Deployment canary-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
 			return canarystyle.NewControlPlane(canarydeployment.NewController, r.client, r.recorder, release, newStatus, targetKey), nil
+		}
+		if targetRef.APIVersion == util.ControllerLWSKind.GroupVersion().String() && targetRef.Kind == util.ControllerLWSKind.Kind {
+			klog.InfoS("Using LeaderWorkerSet canary-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+			return canarystyle.NewControlPlane(canarylws.NewController, r.client, r.recorder, release, newStatus, targetKey), nil
 		}
 		fallthrough
 
