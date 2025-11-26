@@ -32,7 +32,21 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 	switch t := dst.(type) {
 	case *v1beta1.Rollout:
 		obj := dst.(*v1beta1.Rollout)
+
+		// metadata
 		obj.ObjectMeta = src.ObjectMeta
+		if src.Spec.DeprecatedRolloutID != "" {
+			if obj.Labels == nil {
+				obj.Labels = map[string]string{}
+			}
+			obj.Labels[v1beta1.RolloutIDLabel] = src.Spec.DeprecatedRolloutID
+		}
+		if obj.Annotations == nil {
+			obj.Annotations = map[string]string{}
+		}
+		obj.Annotations[RolloutStyleAnnotation] = src.Annotations[RolloutStyleAnnotation]
+
+		// spec
 		obj.Spec = v1beta1.RolloutSpec{}
 		srcSpec := src.Spec
 		obj.Spec.WorkloadRef = v1beta1.ObjectRef{
@@ -122,6 +136,8 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 			CanaryReplicas:      src.Status.CanaryStatus.CanaryReplicas,
 			CanaryReadyReplicas: src.Status.CanaryStatus.CanaryReadyReplicas,
 		}
+		obj.Status.CurrentStepState = obj.Status.CanaryStatus.CurrentStepState
+		obj.Status.CurrentStepIndex = obj.Status.CanaryStatus.CurrentStepIndex
 		return nil
 	default:
 		return fmt.Errorf("unsupported type %v", t)
@@ -192,7 +208,8 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 					FailureThreshold: srcV1beta1.Spec.Strategy.Canary.FailureThreshold,
 				},
 			},
-			Disabled: srcV1beta1.Spec.Disabled,
+			DeprecatedRolloutID: srcV1beta1.Labels[v1beta1.RolloutIDLabel],
+			Disabled:            srcV1beta1.Spec.Disabled,
 		}
 		for _, step := range srcV1beta1.Spec.Strategy.Canary.Steps {
 			obj := CanaryStep{
@@ -221,10 +238,14 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 		if dst.Annotations == nil {
 			dst.Annotations = map[string]string{}
 		}
-		if srcV1beta1.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
-			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(CanaryRollingStyle))
+		if style, ok := srcV1beta1.Annotations[RolloutStyleAnnotation]; ok {
+			dst.Annotations[RolloutStyleAnnotation] = style
 		} else {
-			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(PartitionRollingStyle))
+			if srcV1beta1.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
+				dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(CanaryRollingStyle))
+			} else {
+				dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(PartitionRollingStyle))
+			}
 		}
 		if srcV1beta1.Spec.Strategy.Canary.TrafficRoutingRef != "" {
 			dst.Annotations[TrafficRoutingAnnotation] = srcV1beta1.Spec.Strategy.Canary.TrafficRoutingRef
@@ -434,11 +455,13 @@ func (dst *BatchRelease) ConvertFrom(src conversion.Hub) error {
 				dst.Spec.ReleasePlan.PatchPodTemplateMetadata.Labels[k] = v
 			}
 		}
-		if dst.Annotations == nil {
-			dst.Annotations = map[string]string{}
+		if rollingStyle := srcV1beta1.Spec.ReleasePlan.RollingStyle; rollingStyle != "" {
+			if dst.Annotations == nil {
+				dst.Annotations = map[string]string{}
+			}
+			dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(rollingStyle))
+			dst.Spec.ReleasePlan.RollingStyle = RollingStyleType(rollingStyle)
 		}
-		dst.Annotations[RolloutStyleAnnotation] = strings.ToLower(string(srcV1beta1.Spec.ReleasePlan.RollingStyle))
-		dst.Spec.ReleasePlan.RollingStyle = RollingStyleType(srcV1beta1.Spec.ReleasePlan.RollingStyle)
 		dst.Spec.ReleasePlan.EnableExtraWorkloadForCanary = srcV1beta1.Spec.ReleasePlan.EnableExtraWorkloadForCanary
 
 		// status
