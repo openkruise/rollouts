@@ -725,6 +725,11 @@ func TestDeploymentPodTemplateHashLabelPatch(t *testing.T) {
 						{
 							Name:  "nginx",
 							Image: "nginx:1.14.2",
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 80,
+								},
+							},
 						},
 					},
 				},
