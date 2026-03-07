@@ -342,6 +342,11 @@ func TestDeploymentPatch(t *testing.T) {
 						{
 							Name:  "nginx",
 							Image: "nginx:1.14.2",
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 80,
+								},
+							},
 						},
 					},
 				},
@@ -653,6 +658,126 @@ func TestDeploymentPatch(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDeploymentPodTemplateHashLabelPatch(t *testing.T) {
+	podTemplateHash := "user-defined-hash"
+	rs := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "rs-1",
+			UID:  "123",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         "apps/v1",
+					Kind:               "Deployment",
+					Name:               "deploy-1",
+					UID:                types.UID("deploy-1"),
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			},
+		},
+		Spec: appsv1.ReplicaSetSpec{
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app":                                  "nginx",
+						appsv1.DefaultDeploymentUniqueLabelKey: podTemplateHash,
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx",
+							Image: "nginx:1.14.2",
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 80,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	deploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "deploy-1",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(int32(10)),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "nginx",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app":                                  "nginx",
+						appsv1.DefaultDeploymentUniqueLabelKey: podTemplateHash,
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx",
+							Image: "nginx:1.14.2",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	revisionWithLabel := util.ComputeHash(&rs.Spec.Template, nil)
+	templateWithoutLabel := rs.Spec.Template.DeepCopy()
+	delete(templateWithoutLabel.Labels, appsv1.DefaultDeploymentUniqueLabelKey)
+	revisionWithoutLabel := util.ComputeHash(templateWithoutLabel, nil)
+	if revisionWithLabel == revisionWithoutLabel {
+		t.Fatalf("expected revisions to be different when %s label is removed", appsv1.DefaultDeploymentUniqueLabelKey)
+	}
+	updateRevision := util.ComputeHash(&deploy.Spec.Template, nil)
+	if updateRevision != revisionWithLabel {
+		t.Fatalf("expected updateRevision %q to be equal to revisionWithLabel %q", updateRevision, revisionWithLabel)
+	}
+
+	ctx := &batchcontext.BatchContext{
+		RolloutID:              "rollout-1",
+		UpdateRevision:         updateRevision,
+		PlannedUpdatedReplicas: 5,
+		Replicas:               10,
+	}
+	ctx.Pods = generateDeploymentPods(1, ctx.Replicas, 0, "", "")
+	var objects []client.Object
+	for _, pod := range ctx.Pods {
+		objects = append(objects, pod)
+	}
+	objects = append(objects, rs, deploy)
+
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+	patcher := NewLabelPatcher(cli, klog.ObjectRef{Name: "test"}, []v1beta1.ReleaseBatch{{CanaryReplicas: intstr.FromInt32(5)}})
+	if err := patcher.patchPodBatchLabel(ctx.Pods, ctx); err != nil {
+		t.Fatalf("failed to patch pods: %v", err)
+	}
+
+	podList := &corev1.PodList{}
+	if err := cli.List(context.TODO(), podList); err != nil {
+		t.Fatalf("failed to list pods: %v", err)
+	}
+	var patched int
+	for _, pod := range podList.Items {
+		if pod.Labels[appsv1.ControllerRevisionHashLabelKey] != updateRevision {
+			t.Fatalf("expected pod %s/%s to have revision %s, got %s", pod.Namespace, pod.Name, updateRevision, pod.Labels[appsv1.ControllerRevisionHashLabelKey])
+		}
+		if pod.Labels[v1beta1.RolloutIDLabel] == ctx.RolloutID {
+			patched++
+		}
+	}
+	if patched != 5 {
+		t.Fatalf("expected patched: %d, got: %d", 5, patched)
 	}
 }
 
