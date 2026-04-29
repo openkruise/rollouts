@@ -248,7 +248,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 				rs := generateRS(*dep)
 				rs.Namespace = namespace
 				rs.Spec.Replicas = dep.Spec.Replicas
-				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "cd68dc9"
+				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "5697c64697"
 				return dep, &rs, nil, nil, nil
 			},
 			expectWorkload: func() *Workload {
@@ -270,7 +270,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 					},
 					Replicas:           10,
 					StableRevision:     "stable",
-					CanaryRevision:     "cd68dc9",
+					CanaryRevision:     "5697c64697",
 					PodTemplateHash:    "",
 					RevisionLabelKey:   "pod-template-hash",
 					IsStatusConsistent: true,
@@ -295,7 +295,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 				rs := generateRS(*dep)
 				rs.Namespace = namespace
 				rs.Spec.Replicas = dep.Spec.Replicas
-				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "cd68dc9"
+				rs.Labels[apps.DefaultDeploymentUniqueLabelKey] = "5697c64697"
 				return dep, &rs, nil, nil, nil
 			},
 			expectWorkload: func() *Workload {
@@ -310,8 +310,8 @@ func TestGetWorkloadForRef(t *testing.T) {
 					},
 					Replicas:             10,
 					StableRevision:       "stable",
-					CanaryRevision:       "cd68dc9",
-					PodTemplateHash:      "cd68dc9",
+					CanaryRevision:       "5697c64697",
+					PodTemplateHash:      "5697c64697",
 					RevisionLabelKey:     "pod-template-hash",
 					IsStatusConsistent:   true,
 					InRolloutProgressing: true,
@@ -352,7 +352,7 @@ func TestGetWorkloadForRef(t *testing.T) {
 					},
 					Replicas:             10,
 					StableRevision:       "stable",
-					CanaryRevision:       "cd68dc9",
+					CanaryRevision:       "5697c64697",
 					PodTemplateHash:      "stable",
 					RevisionLabelKey:     "pod-template-hash",
 					IsStatusConsistent:   true,

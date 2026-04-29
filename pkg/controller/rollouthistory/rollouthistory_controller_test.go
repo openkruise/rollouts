@@ -34,7 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	rolloutapi "github.com/openkruise/rollouts/api"
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
@@ -45,7 +45,7 @@ func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = kruisev1alpha1.AddToScheme(scheme)
 	_ = rolloutapi.AddToScheme(scheme)
-	_ = v1alpha2.AddToScheme(scheme)
+	_ = gatewayv1.AddToScheme(scheme)
 }
 
 var (
@@ -298,7 +298,7 @@ var (
 		},
 	}
 
-	httpRouteDemo = v1alpha2.HTTPRoute{
+	httpRouteDemo = gatewayv1.HTTPRoute{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "gateway.networking.k8s.io/v1alpha2",
 			Kind:       "HTTPRoute",
@@ -307,9 +307,9 @@ var (
 			Name:      "HTTPRoute-demo",
 			Namespace: "default",
 		},
-		Spec: v1alpha2.HTTPRouteSpec{
-			CommonRouteSpec: v1alpha2.CommonRouteSpec{
-				ParentRefs: []v1alpha2.ParentReference{
+		Spec: gatewayv1.HTTPRouteSpec{
+			CommonRouteSpec: gatewayv1.CommonRouteSpec{
+				ParentRefs: []gatewayv1.ParentReference{
 					{
 						Name: "demo-lb",
 					},
@@ -345,7 +345,7 @@ func TestReconcile(t *testing.T) {
 		getService           func() []*corev1.Service
 		getWorkload          func() []*kruisev1alpha1.CloneSet
 		getIngress           func() []*networkingv1.Ingress
-		getHTTPRoute         func() []*v1alpha2.HTTPRoute
+		getHTTPRoute         func() []*gatewayv1.HTTPRoute
 		getRollout           func() []*rolloutv1alpha1.Rollout
 		getRolloutHistory    func() []*rolloutv1alpha1.RolloutHistory
 		expectRolloutHistory func() []*rolloutv1alpha1.RolloutHistory
@@ -374,8 +374,8 @@ func TestReconcile(t *testing.T) {
 				ingresses := []*networkingv1.Ingress{}
 				return ingresses
 			},
-			getHTTPRoute: func() []*v1alpha2.HTTPRoute {
-				httpRoutes := []*v1alpha2.HTTPRoute{}
+			getHTTPRoute: func() []*gatewayv1.HTTPRoute {
+				httpRoutes := []*gatewayv1.HTTPRoute{}
 				return httpRoutes
 			},
 			getRollout: func() []*rolloutv1alpha1.Rollout {
@@ -482,8 +482,8 @@ func TestReconcile(t *testing.T) {
 				ingresses := []*networkingv1.Ingress{ingressDemo.DeepCopy()}
 				return ingresses
 			},
-			getHTTPRoute: func() []*v1alpha2.HTTPRoute {
-				httpRoutes := []*v1alpha2.HTTPRoute{httpRouteDemo.DeepCopy()}
+			getHTTPRoute: func() []*gatewayv1.HTTPRoute {
+				httpRoutes := []*gatewayv1.HTTPRoute{httpRouteDemo.DeepCopy()}
 				return httpRoutes
 			},
 			getRollout: func() []*rolloutv1alpha1.Rollout {
@@ -615,8 +615,8 @@ func TestReconcile(t *testing.T) {
 				ingresses := []*networkingv1.Ingress{}
 				return ingresses
 			},
-			getHTTPRoute: func() []*v1alpha2.HTTPRoute {
-				httpRoutes := []*v1alpha2.HTTPRoute{}
+			getHTTPRoute: func() []*gatewayv1.HTTPRoute {
+				httpRoutes := []*gatewayv1.HTTPRoute{}
 				return httpRoutes
 			},
 			getRollout: func() []*rolloutv1alpha1.Rollout {
@@ -663,8 +663,8 @@ func TestReconcile(t *testing.T) {
 				ingresses := []*networkingv1.Ingress{}
 				return ingresses
 			},
-			getHTTPRoute: func() []*v1alpha2.HTTPRoute {
-				httpRoutes := []*v1alpha2.HTTPRoute{}
+			getHTTPRoute: func() []*gatewayv1.HTTPRoute {
+				httpRoutes := []*gatewayv1.HTTPRoute{}
 				return httpRoutes
 			},
 			getRollout: func() []*rolloutv1alpha1.Rollout {
@@ -869,8 +869,8 @@ func TestReconcile(t *testing.T) {
 				ingresses := []*networkingv1.Ingress{}
 				return ingresses
 			},
-			getHTTPRoute: func() []*v1alpha2.HTTPRoute {
-				httpRoutes := []*v1alpha2.HTTPRoute{}
+			getHTTPRoute: func() []*gatewayv1.HTTPRoute {
+				httpRoutes := []*gatewayv1.HTTPRoute{}
 				return httpRoutes
 			},
 			getRollout: func() []*rolloutv1alpha1.Rollout {

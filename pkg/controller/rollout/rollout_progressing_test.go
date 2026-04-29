@@ -153,7 +153,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				obj.Status.CanaryStatus.CanaryRevision = "b4bdb86db"
+				obj.Status.CanaryStatus.CanaryRevision = "b867f94b8"
 				obj.Status.CanaryStatus.CurrentStepIndex = 1
 				obj.Status.CanaryStatus.NextStepIndex = 2
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateUpgrade
@@ -167,7 +167,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "b4bdb86db"
+				s.CanaryStatus.CanaryRevision = "b867f94b8"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 1
 				s.CanaryStatus.NextStepIndex = 2
@@ -212,7 +212,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
 				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				obj.Status.CanaryStatus.CanaryRevision = "b4bdb86db"
+				obj.Status.CanaryStatus.CanaryRevision = "b867f94b8"
 				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				obj.Status.CanaryStatus.CurrentStepIndex = 4
 				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStateCompleted
@@ -226,7 +226,7 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 				s.CanaryStatus.ObservedWorkloadGeneration = 2
 				s.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
 				s.CanaryStatus.StableRevision = "pod-template-hash-v1"
-				s.CanaryStatus.CanaryRevision = "b4bdb86db"
+				s.CanaryStatus.CanaryRevision = "b867f94b8"
 				s.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
 				s.CanaryStatus.CurrentStepIndex = 4
 				s.CanaryStatus.NextStepIndex = 0
