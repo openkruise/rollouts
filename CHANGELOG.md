@@ -1,6 +1,10 @@
 # Change Log
 
 ## v0.6.2
+### Docs:
+- Added tutorial documenting progressive delivery support for custom StatefulSet-like workloads via `rollouts.kruise.io/workload-type: statefulset` label ([#242](https://github.com/openkruise/rollouts/issues/242))
+
+
 ### Bugfix:
 - Fixed issue where partition deployments got stuck. ([#307](https://github.com/openkruise/rollouts/pull/307),[@AiRanthem](https://github.com/AiRanthem))
 - Compatibility with Karmada when the MutateWebhook newObj UID is empty during workload update. ([#319](https://github.com/openkruise/rollouts/pull/319),[@ivan-cai](https://github.com/ivan-cai))
