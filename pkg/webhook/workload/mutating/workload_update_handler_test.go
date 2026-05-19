@@ -44,7 +44,9 @@ import (
 	rolloutapi "github.com/openkruise/rollouts/api"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
 
@@ -420,6 +422,32 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 		},
 		{
+			name: "deployment image v1->v2, matched minready rollout keeps deployment unpaused",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.Paused = false
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.Canary.DeploymentStrategy = appsv1beta1.DeploymentStrategyMinReadySeconds
+				return obj
+			},
+		},
+		{
 			name: "deployment image v1->v2, no matched rollout",
 			getObjs: func() (*apps.Deployment, *apps.Deployment) {
 				oldObj := deploymentDemo.DeepCopy()
@@ -539,6 +567,74 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 			getRollout: func() *appsv1beta1.Rollout {
 				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
+			name: "minready deployment in progressing skips recreate mutation",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				newObj := oldObj.DeepCopy()
+				newObj.Spec.Paused = false
+				newObj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				newObj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 2},
+					MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
+				}
+				newObj.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = `{"rollingStyle":"Partition"}`
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				obj.Spec.Paused = false
+				obj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				obj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 2},
+					MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
+				}
+				obj.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = `{"rollingStyle":"Partition"}`
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.Canary.DeploymentStrategy = appsv1beta1.DeploymentStrategyMinReadySeconds
+				return obj
+			},
+		},
+		{
+			name: "minready deployment in progressing without strategy annotation keeps deployment unpaused",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				newObj := oldObj.DeepCopy()
+				newObj.Spec.Paused = false
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				obj.Spec.Paused = false
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+				obj := rolloutDemo.DeepCopy()
+				obj.Spec.Strategy.Canary.DeploymentStrategy = appsv1beta1.DeploymentStrategyMinReadySeconds
+				return obj
 			},
 		},
 		{
@@ -775,6 +871,23 @@ func TestHandlerDeployment(t *testing.T) {
 				t.Fatalf("handlerDeployment failed, and expect(%s) new(%s)", util.DumpJSON(cs.expectObj()), util.DumpJSON(newObj))
 			}
 		})
+	}
+}
+
+func TestShouldSkipRecreateMutationForMinReady(t *testing.T) {
+	rollout := rolloutDemo.DeepCopy()
+	rollout.Spec.Strategy.Canary.DeploymentStrategy = appsv1beta1.DeploymentStrategyMinReadySeconds
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
+	if shouldSkipRecreateMutationForMinReady(rollout) {
+		t.Fatalf("skip returned true while feature gate is disabled")
+	}
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	if !shouldSkipRecreateMutationForMinReady(rollout) {
+		t.Fatalf("skip returned false for MinReadySeconds with feature gate enabled")
+	}
+	rollout.Spec.Strategy.Canary.DeploymentStrategy = appsv1beta1.DeploymentStrategyRecreate
+	if shouldSkipRecreateMutationForMinReady(rollout) {
+		t.Fatalf("skip returned true for Recreate strategy")
 	}
 }
 

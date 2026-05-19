@@ -41,8 +41,10 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
 	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
@@ -238,6 +240,9 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	// in rollout progressing
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
 		modified := false
+		if shouldSkipRecreateMutationForMinReady(rollout) {
+			return false, nil
+		}
 		strategy := util.GetDeploymentStrategy(newObj)
 		// partition
 		if strings.EqualFold(string(strategy.RollingStyle), string(appsv1alpha1.PartitionRollingStyle)) {
@@ -324,8 +329,10 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		newObj.Labels[appsv1alpha1.DeploymentStableRevisionLabel] = stableRS.Labels[apps.DefaultDeploymentUniqueLabelKey]
 	}
 
-	// need set workload paused = true
-	newObj.Spec.Paused = true
+	if !shouldSkipRecreateMutationForMinReady(rollout) {
+		// Partition/Recreate style disables the native Deployment controller.
+		newObj.Spec.Paused = true
+	}
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
 	if newObj.Annotations == nil {
@@ -449,6 +456,12 @@ func isEffectiveDeploymentRevisionChange(oldObj, newObj *apps.Deployment) bool {
 		return false
 	}
 	return true
+}
+
+func shouldSkipRecreateMutationForMinReady(rollout *appsv1beta1.Rollout) bool {
+	return rollout.Spec.Strategy.Canary != nil &&
+		rollout.Spec.Strategy.Canary.DeploymentStrategy == appsv1beta1.DeploymentStrategyMinReadySeconds &&
+		utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy)
 }
 
 func setDeploymentStrategyAnnotation(strategy appsv1alpha1.DeploymentStrategy, d *apps.Deployment) {

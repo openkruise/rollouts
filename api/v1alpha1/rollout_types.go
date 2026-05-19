@@ -105,6 +105,11 @@ type RolloutStrategy struct {
 
 // CanaryStrategy defines parameters for a Replica Based Canary
 type CanaryStrategy struct {
+	// DeploymentStrategy controls how native Deployment workloads are advanced.
+	// Empty means Recreate for backward compatibility.
+	// +kubebuilder:validation:Enum=Recreate;MinReadySeconds
+	// +optional
+	DeploymentStrategy DeploymentStrategyType `json:"deploymentStrategy,omitempty"`
 	// Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%)
 	// +optional
 	Steps []CanaryStep `json:"steps,omitempty"`
@@ -124,6 +129,15 @@ type CanaryStrategy struct {
 	// canary service will not be generated if DisableGenerateCanaryService is true
 	DisableGenerateCanaryService bool `json:"disableGenerateCanaryService,omitempty"`
 }
+
+type DeploymentStrategyType string
+
+const (
+	// DeploymentStrategyRecreate keeps the existing Recreate-based Deployment rollout behavior.
+	DeploymentStrategyRecreate DeploymentStrategyType = "Recreate"
+	// DeploymentStrategyMinReadySeconds uses native RollingUpdate with inflated minReadySeconds.
+	DeploymentStrategyMinReadySeconds DeploymentStrategyType = "MinReadySeconds"
+)
 
 type PatchPodTemplateMetadata struct {
 	// annotations
@@ -219,6 +233,15 @@ const (
 	// Terminating Reason
 	TerminatingReasonInTerminating = "InTerminating"
 	TerminatingReasonCompleted     = "Completed"
+
+	// MinReadyInitialized indicates MinReadySeconds strategy initialization has completed.
+	RolloutConditionMinReadyInitialized RolloutConditionType = "MinReadyInitialized"
+	// RolloutConditionMinReadyBatching indicates MinReadySeconds strategy batch processing is active.
+	RolloutConditionMinReadyBatching RolloutConditionType = "MinReadyBatching"
+	// RolloutConditionMinReadyDegraded indicates MinReadySeconds strategy hit an explicit blocking error.
+	RolloutConditionMinReadyDegraded RolloutConditionType = "MinReadyDegraded"
+	// RolloutConditionMinReadyFinalized indicates MinReadySeconds strategy finalization has completed.
+	RolloutConditionMinReadyFinalized RolloutConditionType = "MinReadyFinalized"
 )
 
 // CanaryStatus status fields that only pertain to the canary rollout

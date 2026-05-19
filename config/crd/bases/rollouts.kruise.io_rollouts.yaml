@@ -104,6 +104,14 @@ spec:
                     description: CanaryStrategy defines parameters for a Replica Based
                       Canary
                     properties:
+                      deploymentStrategy:
+                        description: |-
+                          DeploymentStrategy controls how native Deployment workloads are advanced.
+                          Empty means Recreate for backward compatibility.
+                        enum:
+                        - Recreate
+                        - MinReadySeconds
+                        type: string
                       disableGenerateCanaryService:
                         description: canary service will not be generated if DisableGenerateCanaryService
                           is true
@@ -1182,6 +1190,14 @@ spec:
                     description: CanaryStrategy defines parameters for a Replica Based
                       Canary
                     properties:
+                      deploymentStrategy:
+                        description: |-
+                          DeploymentStrategy controls how native Deployment workloads are advanced.
+                          Empty means Recreate for backward compatibility.
+                        enum:
+                        - Recreate
+                        - MinReadySeconds
+                        type: string
                       disableGenerateCanaryService:
                         description: canary service will not be generated if DisableGenerateCanaryService
                           is true

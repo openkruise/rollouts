@@ -33,6 +33,8 @@ const (
 	// If the rollout CR is deleted during the rollout process, `pause=false` and `partition=0` will be set, causing the workload to complete deployment.
 	// If `KeepWorkloadPausedOnRolloutDeletion` is set, the state during deployment will be preserved(Keep partition > 0), enabling users to perform rollback operations.
 	KeepWorkloadPausedOnRolloutDeletion featuregate.Feature = "KeepWorkloadPausedOnRolloutDeletion"
+	// MinReadySecondsStrategy enables the alpha Deployment MinReadySeconds rollout strategy.
+	MinReadySecondsStrategy featuregate.Feature = "MinReadySecondsStrategy"
 )
 
 var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
@@ -40,6 +42,7 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	AdvancedDeploymentGate:              {Default: false, PreRelease: featuregate.Alpha},
 	AppendServiceSelectorGate:           {Default: false, PreRelease: featuregate.Alpha},
 	KeepWorkloadPausedOnRolloutDeletion: {Default: false, PreRelease: featuregate.Alpha},
+	MinReadySecondsStrategy:             {Default: false, PreRelease: featuregate.Alpha},
 }
 
 func init() {

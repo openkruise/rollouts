@@ -55,6 +55,10 @@ func NewController(cli client.Client, key types.NamespacedName, _ schema.GroupVe
 	}
 }
 
+func NewMinReadyController(cli client.Client, key types.NamespacedName, gvk schema.GroupVersionKind) partitionstyle.Interface {
+	return &MinReadyControl{realController: NewController(cli, key, gvk).(*realController)}
+}
+
 func (rc *realController) GetWorkloadInfo() *util.WorkloadInfo {
 	return rc.WorkloadInfo
 }

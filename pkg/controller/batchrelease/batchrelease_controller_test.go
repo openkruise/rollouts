@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,7 +46,9 @@ import (
 
 	rolloutapi "github.com/openkruise/rollouts/api"
 	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 const TIME_LAYOUT = "2006-01-02 15:04:05"
@@ -209,6 +213,7 @@ var (
 func init() {
 	scheme = runtime.NewScheme()
 	apimachineryruntime.Must(apps.AddToScheme(scheme))
+	apimachineryruntime.Must(policyv1.AddToScheme(scheme))
 	apimachineryruntime.Must(rolloutapi.AddToScheme(scheme))
 	apimachineryruntime.Must(kruiseappsv1alpha1.AddToScheme(scheme))
 
@@ -821,6 +826,166 @@ func TestReconcile_Deployment(t *testing.T) {
 			Expect(newRelease.Status.CanaryStatus.CurrentBatch).Should(Equal(cs.ExpectedBatch))
 			Expect(newRelease.Status.CanaryStatus.CurrentBatchState).Should(Equal(cs.ExpectedState))
 		})
+	}
+}
+
+func TestExecutorRoutesMinReadyDeploymentStrategy(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
+	release := releaseDeploy.DeepCopy()
+	release.Spec.ReleasePlan.RollingStyle = v1beta1.PartitionRollingStyle
+	release.Spec.ReleasePlan.DeploymentStrategy = v1beta1.DeploymentStrategyMinReadySeconds
+	release.Status.Phase = v1beta1.RolloutPhasePreparing
+	deployment := stableDeploy.DeepCopy()
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+
+	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(release, release.Status.DeepCopy())
+	if err != nil {
+		t.Fatalf("getReleaseController failed: %v", err)
+	}
+	err = controller.Initialize()
+	if err == nil || !strings.Contains(err.Error(), "feature gate is disabled") {
+		t.Fatalf("Initialize error = %v, want MinReady feature gate disabled", err)
+	}
+}
+
+func TestMinReadyControlPlaneRecordsInitializedConditionAndEvent(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	release := minReadyRelease()
+	deployment := stableDeploy.DeepCopy()
+	deployment.ResourceVersion = "1"
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+	status := release.Status.DeepCopy()
+	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(release, status)
+	if err != nil {
+		t.Fatalf("getReleaseController failed: %v", err)
+	}
+
+	if err := controller.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	assertCondition(t, status, v1beta1.RolloutConditionMinReadyInitialized, corev1.ConditionTrue, "MinReadyInitialized")
+	assertCondition(t, status, v1beta1.RolloutConditionMinReadyDegraded, corev1.ConditionFalse, "MinReadyHealthy")
+	assertRecordedEvent(t, rec, "MinReadyInitialized")
+}
+
+func TestMinReadyControlPlaneRecordsDegradedForPDB(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	release := minReadyRelease()
+	deployment := stableDeploy.DeepCopy()
+	deployment.ResourceVersion = "1"
+	deployment.Spec.Template.Labels = map[string]string{"app": "busybox"}
+	pdb := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{Name: "sample-pdb", Namespace: deployment.Namespace},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "busybox"}},
+		},
+	}
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment, pdb).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+	status := release.Status.DeepCopy()
+	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(release, status)
+	if err != nil {
+		t.Fatalf("getReleaseController failed: %v", err)
+	}
+
+	err = controller.Initialize()
+	if err == nil || !strings.Contains(err.Error(), "MinReadyDegradedPDBIncompatible") {
+		t.Fatalf("Initialize error = %v, want PDB degraded", err)
+	}
+
+	assertCondition(t, status, v1beta1.RolloutConditionMinReadyDegraded, corev1.ConditionTrue, "MinReadyDegradedPDBIncompatible")
+	assertRecordedEvent(t, rec, "MinReadyDegradedPDBIncompatible")
+}
+
+func BenchmarkRecreateReconcile(b *testing.B) {
+	release := releaseDeploy.DeepCopy()
+	deployment := stableDeploy.DeepCopy()
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+	reconciler := &BatchReleaseReconciler{
+		Client:   cli,
+		recorder: rec,
+		Scheme:   scheme,
+		executor: NewReleasePlanExecutor(cli, rec),
+	}
+	req := reconcile.Request{NamespacedName: client.ObjectKeyFromObject(release)}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = reconciler.Reconcile(context.TODO(), req)
+	}
+}
+
+func BenchmarkMinReadyReconcile(b *testing.B) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	release := minReadyRelease()
+	deployment := stableDeploy.DeepCopy()
+	deployment.ResourceVersion = "1"
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+	reconciler := &BatchReleaseReconciler{
+		Client:   cli,
+		recorder: rec,
+		Scheme:   scheme,
+		executor: NewReleasePlanExecutor(cli, rec),
+	}
+	req := reconcile.Request{NamespacedName: client.ObjectKeyFromObject(release)}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = reconciler.Reconcile(context.TODO(), req)
+	}
+}
+
+func minReadyRelease() *v1beta1.BatchRelease {
+	release := releaseDeploy.DeepCopy()
+	release.Spec.ReleasePlan.RollingStyle = v1beta1.PartitionRollingStyle
+	release.Spec.ReleasePlan.DeploymentStrategy = v1beta1.DeploymentStrategyMinReadySeconds
+	release.Status.Phase = v1beta1.RolloutPhasePreparing
+	return release
+}
+
+func assertCondition(t *testing.T, status *v1beta1.BatchReleaseStatus, condType v1beta1.RolloutConditionType, condStatus corev1.ConditionStatus, reason string) {
+	t.Helper()
+	for _, condition := range status.Conditions {
+		if condition.Type != condType {
+			continue
+		}
+		if condition.Status != condStatus || condition.Reason != reason {
+			t.Fatalf("condition %s = %s/%s, want %s/%s", condType, condition.Status, condition.Reason, condStatus, reason)
+		}
+		return
+	}
+	t.Fatalf("condition %s not found in %#v", condType, status.Conditions)
+}
+
+func assertRecordedEvent(t *testing.T, rec *record.FakeRecorder, want string) {
+	t.Helper()
+	select {
+	case event := <-rec.Events:
+		if !strings.Contains(event, want) {
+			t.Fatalf("event = %q, want containing %q", event, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("event containing %q not recorded", want)
 	}
 }
 

@@ -244,6 +244,10 @@ func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus
 			return partitionstyle.NewControlPlane(cloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
 		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
+			if release.Spec.ReleasePlan.DeploymentStrategy == v1beta1.DeploymentStrategyMinReadySeconds {
+				klog.InfoS("Using Deployment MinReadySeconds partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+				return partitionstyle.NewControlPlane(partitiondeployment.NewMinReadyController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+			}
 			klog.InfoS("Using Deployment partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
 			return partitionstyle.NewControlPlane(partitiondeployment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}

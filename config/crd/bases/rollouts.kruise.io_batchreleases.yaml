@@ -93,6 +93,14 @@ spec:
                       - canaryReplicas
                       type: object
                     type: array
+                  deploymentStrategy:
+                    description: |-
+                      DeploymentStrategy controls how native Deployment workloads are advanced.
+                      Empty means Recreate for backward compatibility.
+                    enum:
+                    - Recreate
+                    - MinReadySeconds
+                    type: string
                   enableExtraWorkloadForCanary:
                     description: |-
                       EnableExtraWorkloadForCanary indicates whether to create extra workload for canary
@@ -377,6 +385,14 @@ spec:
                       - canaryReplicas
                       type: object
                     type: array
+                  deploymentStrategy:
+                    description: |-
+                      DeploymentStrategy controls how native Deployment workloads are advanced.
+                      Empty means Recreate for backward compatibility.
+                    enum:
+                    - Recreate
+                    - MinReadySeconds
+                    type: string
                   enableExtraWorkloadForCanary:
                     description: |-
                       EnableExtraWorkloadForCanary indicates whether to create extra workload for canary

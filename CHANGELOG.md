@@ -1,5 +1,9 @@
 # Change Log
 
+## Unreleased
+### Key Features:
+- Added the alpha Deployment `MinReadySeconds` rollout strategy, including API fields, feature gate, controller routing, observability, documentation, and tests.
+
 ## v0.6.2
 ### Bugfix:
 - Fixed issue where partition deployments got stuck. ([#307](https://github.com/openkruise/rollouts/pull/307),[@AiRanthem](https://github.com/AiRanthem))

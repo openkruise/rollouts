@@ -56,6 +56,11 @@ type ReleasePlan struct {
 	PatchPodTemplateMetadata *PatchPodTemplateMetadata `json:"patchPodTemplateMetadata,omitempty"`
 	// RollingStyle can be "Canary", "Partiton" or "BlueGreen"
 	RollingStyle RollingStyleType `json:"rollingStyle,omitempty"`
+	// DeploymentStrategy controls how native Deployment workloads are advanced.
+	// Empty means Recreate for backward compatibility.
+	// +kubebuilder:validation:Enum=Recreate;MinReadySeconds
+	// +optional
+	DeploymentStrategy DeploymentStrategyType `json:"deploymentStrategy,omitempty"`
 	// EnableExtraWorkloadForCanary indicates whether to create extra workload for canary
 	// True corresponds to RollingStyle "Canary".
 	// False corresponds to RollingStyle "Partiton".

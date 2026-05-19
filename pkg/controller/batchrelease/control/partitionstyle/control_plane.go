@@ -62,14 +62,17 @@ func NewControlPlane(f NewInterfaceFunc, cli client.Client, recorder record.Even
 func (rc *realBatchControlPlane) Initialize() error {
 	controller, err := rc.BuildController()
 	if err != nil {
+		rc.recordMinReadyDegraded("MinReadyInitializeFailed", err)
 		return err
 	}
 
 	// claim workload under our control
 	err = controller.Initialize(rc.release)
 	if err != nil {
+		rc.recordMinReadyDegraded("MinReadyInitializeFailed", err)
 		return err
 	}
+	rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyInitialized, "MinReadyInitialized", "MinReadySeconds strategy initialized")
 
 	// record revision and replicas
 	workloadInfo := controller.GetWorkloadInfo()
@@ -88,20 +91,24 @@ func (rc *realBatchControlPlane) Initialize() error {
 func (rc *realBatchControlPlane) UpgradeBatch() error {
 	controller, err := rc.BuildController()
 	if err != nil {
+		rc.recordMinReadyDegraded("MinReadyBatchingFailed", err)
 		return err
 	}
 
 	if controller.GetWorkloadInfo().Replicas == 0 {
+		rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatching", "MinReadySeconds strategy has no replicas to upgrade")
 		return nil
 	}
 
 	err = rc.countAndUpdateNoNeedUpdateReplicas()
 	if err != nil {
+		rc.recordMinReadyDegraded("MinReadyBatchingFailed", err)
 		return err
 	}
 
 	batchContext, err := controller.CalculateBatchContext(rc.release)
 	if err != nil {
+		rc.recordMinReadyDegraded("MinReadyBatchingFailed", err)
 		return err
 	}
 	klog.Infof("BatchRelease %v calculated context when upgrade batch: %s",
@@ -109,19 +116,27 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 
 	err = controller.UpgradeBatch(batchContext)
 	if err != nil {
+		rc.recordMinReadyDegraded("MinReadyBatchingFailed", err)
 		return err
 	}
 
-	return rc.patcher.PatchPodBatchLabel(batchContext)
+	if err := rc.patcher.PatchPodBatchLabel(batchContext); err != nil {
+		rc.recordMinReadyDegraded("MinReadyBatchingFailed", err)
+		return err
+	}
+	rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatching", "MinReadySeconds strategy advanced the current batch")
+	return nil
 }
 
 func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
 	controller, err := rc.BuildController()
 	if err != nil {
+		rc.recordMinReadyDegraded("MinReadyBatchingFailed", err)
 		return err
 	}
 
 	if controller.GetWorkloadInfo().Replicas == 0 {
+		rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatchReady", "MinReadySeconds strategy batch is ready")
 		return nil
 	}
 
@@ -129,23 +144,38 @@ func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
 	// the target calculated should be consistent with UpgradeBatch.
 	batchContext, err := controller.CalculateBatchContext(rc.release)
 	if err != nil {
+		rc.recordMinReadyDegraded("MinReadyBatchingFailed", err)
 		return err
 	}
 
 	klog.Infof("BatchRelease %v calculated context when check batch ready: %s",
 		klog.KObj(rc.release), batchContext.Log())
 
-	return batchContext.IsBatchReady()
+	if err := batchContext.IsBatchReady(); err != nil {
+		observeMinReadyBatchWait(rc.release, util.GetBatchReleaseCondition(*rc.newStatus, v1beta1.RolloutConditionMinReadyBatching))
+		return err
+	}
+	rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatchReady", "MinReadySeconds strategy batch is ready")
+	return nil
 }
 
 func (rc *realBatchControlPlane) Finalize() error {
 	controller, err := rc.BuildController()
 	if err != nil {
-		return client.IgnoreNotFound(err)
+		if err := client.IgnoreNotFound(err); err != nil {
+			rc.recordMinReadyDegraded("MinReadyFinalizeFailed", err)
+			return err
+		}
+		return nil
 	}
 
 	// release workload control info and clean up resources if it needs
-	return controller.Finalize(rc.release)
+	if err := controller.Finalize(rc.release); err != nil {
+		rc.recordMinReadyDegraded("MinReadyFinalizeFailed", err)
+		return err
+	}
+	rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyFinalized, "MinReadyFinalized", "MinReadySeconds strategy finalized")
+	return nil
 }
 
 func (rc *realBatchControlPlane) SyncWorkloadInformation() (control.WorkloadEventType, *util.WorkloadInfo, error) {
