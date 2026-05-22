@@ -26,7 +26,7 @@ $(TESTBIN):
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 # Run `setup-envtest list` to list available versions.
-ENVTEST_K8S_VERSION ?= 1.28.0
+ENVTEST_K8S_VERSION ?= 1.32.0
 
 ENVTEST ?= $(TESTBIN)/setup-envtest
 
@@ -109,7 +109,7 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 
 
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
-CONTROLLER_GEN_VERSION = v0.14.0
+CONTROLLER_GEN_VERSION = v0.17.2
 controller-gen: ## Download controller-gen locally if necessary.
 ifeq ("$(shell $(CONTROLLER_GEN) --version)", "Version: ${CONTROLLER_GEN_VERSION}")
 else
