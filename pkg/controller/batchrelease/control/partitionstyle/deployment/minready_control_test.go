@@ -27,6 +27,7 @@ import (
 
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/feature"
+	"github.com/openkruise/rollouts/pkg/util"
 	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
@@ -182,15 +183,17 @@ func TestMinReadyUpgradeBatchUpdatesMaxUnavailableOnly(t *testing.T) {
 	}
 }
 
-func TestMinReadyCalculateBatchContextUsesReadyReplicas(t *testing.T) {
+func TestMinReadyCalculateBatchContextUsesUpdatedReadyReplicas(t *testing.T) {
 	release := releaseDemo.DeepCopy()
 	release.Status.CanaryStatus.CurrentBatch = 1
-	release.Status.UpdateRevision = "version-2"
+	updateRevision := util.ComputeHash(&deploymentDemo.Spec.Template, nil)
+	release.Status.UpdateRevision = updateRevision
 	deployment := newMinReadyDeployment()
 	deployment.Status.Replicas = 10
 	deployment.Status.UpdatedReplicas = 5
 	deployment.Status.ReadyReplicas = 5
-	control := newBuiltMinReadyControl(t, deployment)
+	rs := newMinReadyReplicaSet(deployment, updateRevision, 5, 5)
+	control := newBuiltMinReadyControl(t, deployment, rs)
 
 	ctx, err := control.CalculateBatchContext(release)
 	if err != nil {
@@ -201,21 +204,102 @@ func TestMinReadyCalculateBatchContextUsesReadyReplicas(t *testing.T) {
 		t.Fatalf("desired/planned = %d/%d, want 5/5", ctx.DesiredUpdatedReplicas, ctx.PlannedUpdatedReplicas)
 	}
 	if ctx.UpdatedReadyReplicas != 5 {
-		t.Fatalf("UpdatedReadyReplicas = %d, want ReadyReplicas 5", ctx.UpdatedReadyReplicas)
+		t.Fatalf("UpdatedReadyReplicas = %d, want updated RS ready 5", ctx.UpdatedReadyReplicas)
 	}
 	if err := ctx.IsBatchReady(); err != nil {
 		t.Fatalf("IsBatchReady failed: %v", err)
 	}
 }
 
+func TestMinReadyCalculateBatchContextIgnoresOldReadyPods(t *testing.T) {
+	release := releaseDemo.DeepCopy()
+	release.Status.CanaryStatus.CurrentBatch = 1
+	updateRevision := util.ComputeHash(&deploymentDemo.Spec.Template, nil)
+	release.Status.UpdateRevision = updateRevision
+	deployment := newMinReadyDeployment()
+	deployment.Status.Replicas = 10
+	deployment.Status.UpdatedReplicas = 5
+	deployment.Status.ReadyReplicas = 10
+	rs := newMinReadyReplicaSet(deployment, updateRevision, 5, 1)
+	control := newBuiltMinReadyControl(t, deployment, rs)
+
+	ctx, err := control.CalculateBatchContext(release)
+	if err != nil {
+		t.Fatalf("CalculateBatchContext failed: %v", err)
+	}
+	if ctx.UpdatedReadyReplicas != 1 {
+		t.Fatalf("UpdatedReadyReplicas = %d, want 1 from updated RS only", ctx.UpdatedReadyReplicas)
+	}
+	if err := ctx.IsBatchReady(); err == nil {
+		t.Fatalf("IsBatchReady succeeded, want not ready error")
+	}
+}
+
+func TestMinReadyCalculateBatchContextRequiresPodListingForRolloutID(t *testing.T) {
+	release := releaseDemo.DeepCopy()
+	release.Status.CanaryStatus.CurrentBatch = 1
+	release.Spec.ReleasePlan.RolloutID = "rollout-1"
+	updateRevision := util.ComputeHash(&deploymentDemo.Spec.Template, nil)
+	release.Status.UpdateRevision = updateRevision
+	deployment := newMinReadyDeployment()
+	deployment.Status.Replicas = 10
+	deployment.Status.UpdatedReplicas = 5
+	deployment.Status.ReadyReplicas = 5
+	rs := newMinReadyReplicaSet(deployment, updateRevision, 5, 5)
+	control := newBuiltMinReadyControl(t, deployment, rs)
+
+	ctx, err := control.CalculateBatchContext(release)
+	if err != nil {
+		t.Fatalf("CalculateBatchContext failed: %v", err)
+	}
+	if len(ctx.Pods) != 0 {
+		t.Fatalf("Pods = %d, want 0 when no pods exist in cluster", len(ctx.Pods))
+	}
+	if err := ctx.IsBatchReady(); err == nil {
+		t.Fatalf("IsBatchReady succeeded, want batch label not satisfied")
+	}
+}
+
+func TestMinReadyCalculateBatchContextCountsReadyPodsWhenListed(t *testing.T) {
+	release := releaseDemo.DeepCopy()
+	release.Status.CanaryStatus.CurrentBatch = 1
+	release.Spec.ReleasePlan.RolloutID = "rollout-1"
+	updateRevision := util.ComputeHash(&deploymentDemo.Spec.Template, nil)
+	release.Status.UpdateRevision = updateRevision
+	deployment := newMinReadyDeployment()
+	deployment.Status.Replicas = 10
+	deployment.Status.UpdatedReplicas = 5
+	deployment.Status.ReadyReplicas = 10
+	rs := newMinReadyReplicaSet(deployment, updateRevision, 5, 1)
+	pods := newMinReadyUpdatedPods(deployment, rs, updateRevision, "rollout-1", 5, 3)
+	control := newBuiltMinReadyControl(t, deployment, rs, pods[0], pods[1], pods[2], pods[3], pods[4])
+
+	ctx, err := control.CalculateBatchContext(release)
+	if err != nil {
+		t.Fatalf("CalculateBatchContext failed: %v", err)
+	}
+	if len(ctx.Pods) != 5 {
+		t.Fatalf("Pods = %d, want 5 listed pods", len(ctx.Pods))
+	}
+	if ctx.UpdatedReadyReplicas != 3 {
+		t.Fatalf("UpdatedReadyReplicas = %d, want 3 ready updated pods", ctx.UpdatedReadyReplicas)
+	}
+	if err := ctx.IsBatchReady(); err == nil {
+		t.Fatalf("IsBatchReady succeeded, want not ready error")
+	}
+}
+
 func TestMinReadyCalculateBatchContextNotReady(t *testing.T) {
 	release := releaseDemo.DeepCopy()
 	release.Status.CanaryStatus.CurrentBatch = 1
+	updateRevision := util.ComputeHash(&deploymentDemo.Spec.Template, nil)
+	release.Status.UpdateRevision = updateRevision
 	deployment := newMinReadyDeployment()
 	deployment.Status.Replicas = 10
 	deployment.Status.UpdatedReplicas = 5
 	deployment.Status.ReadyReplicas = 4
-	control := newBuiltMinReadyControl(t, deployment)
+	rs := newMinReadyReplicaSet(deployment, updateRevision, 5, 4)
+	control := newBuiltMinReadyControl(t, deployment, rs)
 
 	ctx, err := control.CalculateBatchContext(release)
 	if err != nil {
@@ -229,12 +313,15 @@ func TestMinReadyCalculateBatchContextNotReady(t *testing.T) {
 func TestMinReadyCalculateBatchContextRecomputesAfterScaling(t *testing.T) {
 	release := releaseDemo.DeepCopy()
 	release.Status.CanaryStatus.CurrentBatch = 1
+	updateRevision := util.ComputeHash(&deploymentDemo.Spec.Template, nil)
+	release.Status.UpdateRevision = updateRevision
 	deployment := newMinReadyDeployment()
 	deployment.Spec.Replicas = pointer.Int32(20)
 	deployment.Status.Replicas = 20
 	deployment.Status.UpdatedReplicas = 10
 	deployment.Status.ReadyReplicas = 10
-	control := newBuiltMinReadyControl(t, deployment)
+	rs := newMinReadyReplicaSet(deployment, updateRevision, 10, 10)
+	control := newBuiltMinReadyControl(t, deployment, rs)
 
 	ctx, err := control.CalculateBatchContext(release)
 	if err != nil {

@@ -105,7 +105,7 @@ func TestDeploymentMinReadyControlPlaneRejectsCoveringPDB(t *testing.T) {
 	assertIntegrationEvent(t, recorder, "MinReadyDegradedPDBIncompatible")
 }
 
-func TestDeploymentMinReadyControlPlaneUpgradeBatchUsesReadyReplicas(t *testing.T) {
+func TestDeploymentMinReadyControlPlaneUpgradeBatchUsesUpdatedReadyReplicas(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	release := newIntegrationMinReadyRelease()
 	release.Status.CanaryStatus.CurrentBatch = 1
@@ -113,8 +113,9 @@ func TestDeploymentMinReadyControlPlaneUpgradeBatchUsesReadyReplicas(t *testing.
 	deployment.Status.Replicas = 10
 	deployment.Status.UpdatedReplicas = 5
 	deployment.Status.ReadyReplicas = 5
+	rs := newIntegrationUpdatedReplicaSet(deployment, release.Status.UpdateRevision, 5, 5)
 	recorder := record.NewFakeRecorder(20)
-	cli := newIntegrationClient(release, deployment)
+	cli := newIntegrationClient(release, deployment, rs)
 	status := release.Status.DeepCopy()
 	control := newIntegrationMinReadyControl(cli, recorder, release, status, deployment.Name)
 
@@ -131,6 +132,28 @@ func TestDeploymentMinReadyControlPlaneUpgradeBatchUsesReadyReplicas(t *testing.
 	}
 	assertIntegrationCondition(t, status, v1beta1.RolloutConditionMinReadyBatching, corev1.ConditionTrue, "MinReadyBatchReady")
 	assertIntegrationEvent(t, recorder, "MinReadyBatchReady")
+}
+
+func TestDeploymentMinReadyControlPlaneWaitsForUpdatedReadyReplicas(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	release := newIntegrationMinReadyRelease()
+	release.Status.CanaryStatus.CurrentBatch = 1
+	deployment := newInflatedIntegrationDeployment()
+	deployment.Status.Replicas = 10
+	deployment.Status.UpdatedReplicas = 5
+	deployment.Status.ReadyReplicas = 10
+	rs := newIntegrationUpdatedReplicaSet(deployment, release.Status.UpdateRevision, 5, 1)
+	recorder := record.NewFakeRecorder(20)
+	cli := newIntegrationClient(release, deployment, rs)
+	status := release.Status.DeepCopy()
+	control := newIntegrationMinReadyControl(cli, recorder, release, status, deployment.Name)
+
+	if err := control.UpgradeBatch(); err != nil {
+		t.Fatalf("UpgradeBatch failed: %v", err)
+	}
+	if err := control.EnsureBatchPodsReadyAndLabeled(); err == nil {
+		t.Fatalf("EnsureBatchPodsReadyAndLabeled succeeded, want updated ready wait error")
+	}
 }
 
 func TestDeploymentMinReadyControlPlaneFinalizeRestoresOriginalFields(t *testing.T) {

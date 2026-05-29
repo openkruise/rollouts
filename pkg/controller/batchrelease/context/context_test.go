@@ -125,6 +125,15 @@ func TestIsBatchReady(t *testing.T) {
 			updatedReady: 5,
 			isReady:      false,
 		},
+		"false: rollout-id, no pods listed": {
+			release:      r(p(intstr.FromInt(1)), "1", "version-1"),
+			pods:         nil,
+			labelDesired: 5,
+			desired:      5,
+			updated:      5,
+			updatedReady: 5,
+			isReady:      false,
+		},
 	}
 
 	for name, cs := range cases {

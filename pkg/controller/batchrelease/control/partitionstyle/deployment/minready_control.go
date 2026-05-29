@@ -115,19 +115,30 @@ func (mc *MinReadyControl) Finalize(_ *v1beta1.BatchRelease) error {
 }
 
 func (mc *MinReadyControl) CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {
+	rolloutID := release.Spec.ReleasePlan.RolloutID
+	if rolloutID != "" {
+		if _, err := mc.ListOwnedPods(); err != nil {
+			return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
+		}
+	}
+
 	currentBatch := release.Status.CanaryStatus.CurrentBatch
 	desiredPartition := release.Spec.ReleasePlan.Batches[currentBatch].CanaryReplicas
 	desiredUpdatedReplicas, err := minReadyDesiredUpdatedReplicas(desiredPartition, mc.object)
 	if err != nil {
 		return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
 	}
+	updatedReadyReplicas, err := mc.minReadyUpdatedReadyReplicas(release.Status.UpdateRevision)
+	if err != nil {
+		return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
+	}
 	return &batchcontext.BatchContext{
-		RolloutID:              release.Spec.ReleasePlan.RolloutID,
+		RolloutID:              rolloutID,
 		CurrentBatch:           currentBatch,
 		UpdateRevision:         release.Status.UpdateRevision,
 		Replicas:               mc.Replicas,
 		UpdatedReplicas:        mc.object.Status.UpdatedReplicas,
-		UpdatedReadyReplicas:   mc.object.Status.ReadyReplicas,
+		UpdatedReadyReplicas:   updatedReadyReplicas,
 		PlannedUpdatedReplicas: desiredUpdatedReplicas,
 		DesiredUpdatedReplicas: desiredUpdatedReplicas,
 		DesiredPartition:       desiredPartition,
@@ -219,24 +230,6 @@ func ensureInflatedDeploymentStrategy(deployment *apps.Deployment) error {
 		return fmt.Errorf("%s: maxSurge=%v want %d", EventDegradedDriftDetected, maxSurge, InflatedMaxSurgeInt)
 	}
 	return nil
-}
-
-func minReadyDesiredUpdatedReplicas(desired intstr.IntOrString, deployment *apps.Deployment) (int32, error) {
-	if deployment.Spec.Replicas == nil {
-		return 0, fmt.Errorf("deployment replicas is nil")
-	}
-	replicas := int(*deployment.Spec.Replicas)
-	target, err := intstr.GetScaledValueFromIntOrPercent(&desired, replicas, true)
-	if err != nil {
-		return 0, err
-	}
-	if target < 0 {
-		return 0, nil
-	}
-	if target > replicas {
-		return int32(replicas), nil
-	}
-	return int32(target), nil
 }
 
 type originalDeploymentStrategy struct {

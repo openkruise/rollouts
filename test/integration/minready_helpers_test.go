@@ -86,6 +86,7 @@ func newIntegrationDeployment() *apps.Deployment {
 			Name:            "demo",
 			Namespace:       "default",
 			ResourceVersion: "1",
+			UID:             types.UID("integration-deployment-uid"),
 			Labels:          map[string]string{"app": "demo"},
 		},
 		Spec: apps.DeploymentSpec{
@@ -147,6 +148,36 @@ func newIntegrationClient(objects ...client.Object) client.Client {
 		WithObjects(objects...).
 		WithStatusSubresource(&v1beta1.BatchRelease{}).
 		Build()
+}
+
+func newIntegrationUpdatedReplicaSet(deployment *apps.Deployment, updateRevision string, replicas, readyReplicas int32) *apps.ReplicaSet {
+	return &apps.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      deployment.Name + "-" + updateRevision,
+			Namespace: deployment.Namespace,
+			Labels: map[string]string{
+				apps.DefaultDeploymentUniqueLabelKey: updateRevision,
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: apps.SchemeGroupVersion.String(),
+					Kind:       "Deployment",
+					Name:       deployment.Name,
+					UID:        deployment.UID,
+					Controller: pointer.Bool(true),
+				},
+			},
+		},
+		Spec: apps.ReplicaSetSpec{
+			Replicas: pointer.Int32(replicas),
+			Selector: deployment.Spec.Selector.DeepCopy(),
+			Template: deployment.Spec.Template,
+		},
+		Status: apps.ReplicaSetStatus{
+			Replicas:      replicas,
+			ReadyReplicas: readyReplicas,
+		},
+	}
 }
 
 func newIntegrationMinReadyControl(

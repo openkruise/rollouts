@@ -829,7 +829,7 @@ func TestReconcile_Deployment(t *testing.T) {
 	}
 }
 
-func TestExecutorRoutesMinReadyDeploymentStrategy(t *testing.T) {
+func TestExecutorFallsBackToRecreateWhenMinReadyFeatureGateDisabled(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
 	release := releaseDeploy.DeepCopy()
 	release.Spec.ReleasePlan.RollingStyle = v1beta1.PartitionRollingStyle
@@ -846,9 +846,16 @@ func TestExecutorRoutesMinReadyDeploymentStrategy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getReleaseController failed: %v", err)
 	}
-	err = controller.Initialize()
-	if err == nil || !strings.Contains(err.Error(), "feature gate is disabled") {
-		t.Fatalf("Initialize error = %v, want MinReady feature gate disabled", err)
+	if err := controller.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	got := &apps.Deployment{}
+	if err := cli.Get(context.TODO(), client.ObjectKeyFromObject(deployment), got); err != nil {
+		t.Fatalf("Get deployment failed: %v", err)
+	}
+	if got.Spec.Strategy.Type != apps.RecreateDeploymentStrategyType {
+		t.Fatalf("strategy.type = %q, want Recreate fallback when feature gate disabled", got.Spec.Strategy.Type)
 	}
 }
 

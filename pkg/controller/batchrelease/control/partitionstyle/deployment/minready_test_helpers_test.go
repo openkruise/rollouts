@@ -18,13 +18,18 @@ package deployment
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/openkruise/rollouts/api/v1beta1"
 )
 
 func newMinReadyDeployment() *apps.Deployment {
@@ -33,6 +38,7 @@ func newMinReadyDeployment() *apps.Deployment {
 	maxSurge := intstr.FromInt(1)
 	deployment := deploymentDemo.DeepCopy()
 	deployment.ResourceVersion = "1"
+	deployment.UID = types.UID("minready-deployment-uid")
 	deployment.Spec.MinReadySeconds = 7
 	deployment.Spec.ProgressDeadlineSeconds = &progressDeadline
 	deployment.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
@@ -112,4 +118,83 @@ func assertAnnotation(t *testing.T, annotations map[string]string, key, want str
 	if got := annotations[key]; got != want {
 		t.Fatalf("annotation %s = %q, want %q", key, got, want)
 	}
+}
+
+func newMinReadyReplicaSet(deployment *apps.Deployment, updateRevision string, replicas, readyReplicas int32) *apps.ReplicaSet {
+	return &apps.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-%s", deployment.Name, updateRevision),
+			Namespace: deployment.Namespace,
+			UID:       types.UID(fmt.Sprintf("rs-%s-%s", deployment.Name, updateRevision)),
+			Labels: map[string]string{
+				apps.DefaultDeploymentUniqueLabelKey: updateRevision,
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: apps.SchemeGroupVersion.String(),
+					Kind:       "Deployment",
+					Name:       deployment.Name,
+					UID:        deployment.UID,
+					Controller: pointerBool(true),
+				},
+			},
+		},
+		Spec: apps.ReplicaSetSpec{
+			Replicas: pointerInt32(replicas),
+			Selector: deployment.Spec.Selector.DeepCopy(),
+			Template: deployment.Spec.Template,
+		},
+		Status: apps.ReplicaSetStatus{
+			Replicas:      replicas,
+			ReadyReplicas: readyReplicas,
+		},
+	}
+}
+
+func newMinReadyUpdatedPods(deployment *apps.Deployment, rs *apps.ReplicaSet, updateRevision, rolloutID string, total, ready int) []*corev1.Pod {
+	pods := make([]*corev1.Pod, 0, total)
+	for i := 0; i < total; i++ {
+		readyCondition := corev1.ConditionFalse
+		if i < ready {
+			readyCondition = corev1.ConditionTrue
+		}
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-pod-%d", deployment.Name, i),
+				Namespace: deployment.Namespace,
+				Labels: map[string]string{
+					"app":                                "busybox",
+					apps.DefaultDeploymentUniqueLabelKey: updateRevision,
+				},
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: apps.SchemeGroupVersion.String(),
+						Kind:       "ReplicaSet",
+						Name:       rs.Name,
+						UID:        rs.UID,
+						Controller: pointerBool(true),
+					},
+				},
+			},
+			Status: corev1.PodStatus{
+				Conditions: []corev1.PodCondition{{
+					Type:   corev1.PodReady,
+					Status: readyCondition,
+				}},
+			},
+		}
+		if rolloutID != "" {
+			pod.Labels[v1beta1.RolloutIDLabel] = rolloutID
+		}
+		pods = append(pods, pod)
+	}
+	return pods
+}
+
+func pointerInt32(v int32) *int32 {
+	return &v
+}
+
+func pointerBool(v bool) *bool {
+	return &v
 }

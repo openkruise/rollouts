@@ -151,6 +151,7 @@ var (
 
 func init() {
 	apps.AddToScheme(scheme)
+	corev1.AddToScheme(scheme)
 	rolloutapi.AddToScheme(scheme)
 	kruiseappsv1alpha1.AddToScheme(scheme)
 }
