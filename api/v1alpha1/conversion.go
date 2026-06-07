@@ -44,8 +44,7 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 		obj.Spec.Strategy = v1beta1.RolloutStrategy{
 			Paused: srcSpec.Strategy.Paused,
 			Canary: &v1beta1.CanaryStrategy{
-				DeploymentStrategy: v1beta1.DeploymentStrategyType(srcSpec.Strategy.Canary.DeploymentStrategy),
-				FailureThreshold:   srcSpec.Strategy.Canary.FailureThreshold,
+				FailureThreshold: srcSpec.Strategy.Canary.FailureThreshold,
 			},
 		}
 		for _, step := range srcSpec.Strategy.Canary.Steps {
@@ -190,8 +189,7 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 			Strategy: RolloutStrategy{
 				Paused: srcV1beta1.Spec.Strategy.Paused,
 				Canary: &CanaryStrategy{
-					DeploymentStrategy: DeploymentStrategyType(srcV1beta1.Spec.Strategy.Canary.DeploymentStrategy),
-					FailureThreshold:   srcV1beta1.Spec.Strategy.Canary.FailureThreshold,
+					FailureThreshold: srcV1beta1.Spec.Strategy.Canary.FailureThreshold,
 				},
 			},
 			Disabled: srcV1beta1.Spec.Disabled,
@@ -328,11 +326,10 @@ func (src *BatchRelease) ConvertTo(dst conversion.Hub) error {
 			Name:       srcSpec.TargetRef.WorkloadRef.Name,
 		}
 		obj.Spec.ReleasePlan = v1beta1.ReleasePlan{
-			BatchPartition:     srcSpec.ReleasePlan.BatchPartition,
-			RolloutID:          srcSpec.ReleasePlan.RolloutID,
-			FailureThreshold:   srcSpec.ReleasePlan.FailureThreshold,
-			FinalizingPolicy:   v1beta1.FinalizingPolicyType(srcSpec.ReleasePlan.FinalizingPolicy),
-			DeploymentStrategy: v1beta1.DeploymentStrategyType(srcSpec.ReleasePlan.DeploymentStrategy),
+			BatchPartition:   srcSpec.ReleasePlan.BatchPartition,
+			RolloutID:        srcSpec.ReleasePlan.RolloutID,
+			FailureThreshold: srcSpec.ReleasePlan.FailureThreshold,
+			FinalizingPolicy: v1beta1.FinalizingPolicyType(srcSpec.ReleasePlan.FinalizingPolicy),
 		}
 		for _, batch := range srcSpec.ReleasePlan.Batches {
 			o := v1beta1.ReleaseBatch{
@@ -414,11 +411,10 @@ func (dst *BatchRelease) ConvertFrom(src conversion.Hub) error {
 			Name:       srcSpec.WorkloadRef.Name,
 		}
 		dst.Spec.ReleasePlan = ReleasePlan{
-			BatchPartition:     srcSpec.ReleasePlan.BatchPartition,
-			RolloutID:          srcSpec.ReleasePlan.RolloutID,
-			FailureThreshold:   srcSpec.ReleasePlan.FailureThreshold,
-			FinalizingPolicy:   FinalizingPolicyType(srcSpec.ReleasePlan.FinalizingPolicy),
-			DeploymentStrategy: DeploymentStrategyType(srcSpec.ReleasePlan.DeploymentStrategy),
+			BatchPartition:   srcSpec.ReleasePlan.BatchPartition,
+			RolloutID:        srcSpec.ReleasePlan.RolloutID,
+			FailureThreshold: srcSpec.ReleasePlan.FailureThreshold,
+			FinalizingPolicy: FinalizingPolicyType(srcSpec.ReleasePlan.FinalizingPolicy),
 		}
 		for _, batch := range srcSpec.ReleasePlan.Batches {
 			obj := ReleaseBatch{

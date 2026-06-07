@@ -342,26 +342,6 @@ func (m *mockReleaseManager) createBatchRelease(rollout *v1beta1.Rollout, rollou
 	return br
 }
 
-func TestCanaryReleaseManagerPassesDeploymentStrategyToBatchRelease(t *testing.T) {
-	rollout := &v1beta1.Rollout{
-		ObjectMeta: metav1.ObjectMeta{Name: "my-rollout", Namespace: "default"},
-		Spec: v1beta1.RolloutSpec{
-			WorkloadRef: v1beta1.ObjectRef{APIVersion: "apps/v1", Kind: "Deployment", Name: "my-app"},
-			Strategy: v1beta1.RolloutStrategy{
-				Canary: &v1beta1.CanaryStrategy{
-					DeploymentStrategy: v1beta1.DeploymentStrategyMinReadySeconds,
-					Steps: []v1beta1.CanaryStep{
-						{Replicas: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"}},
-					},
-				},
-			},
-		},
-	}
-
-	br := (&canaryReleaseManager{}).createBatchRelease(rollout, "rollout-id", 0, false)
-	assert.Equal(t, v1beta1.DeploymentStrategyMinReadySeconds, br.Spec.ReleasePlan.DeploymentStrategy)
-}
-
 func TestRunBatchRelease(t *testing.T) {
 	rollout := &v1beta1.Rollout{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-rollout", Namespace: "default", UID: "rollout-uid-12345"},

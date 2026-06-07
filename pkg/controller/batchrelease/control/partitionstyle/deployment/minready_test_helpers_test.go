@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -113,6 +114,39 @@ func assertMinReadyInflated(t *testing.T, deployment *apps.Deployment) {
 	}
 }
 
+func assertMinReadyInflatedWithoutSurgeRequirement(t *testing.T, deployment *apps.Deployment) {
+	t.Helper()
+	if deployment.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
+		t.Fatalf("strategy.type = %q, want RollingUpdate", deployment.Spec.Strategy.Type)
+	}
+	if deployment.Spec.MinReadySeconds != InflatedMinReadySeconds {
+		t.Fatalf("minReadySeconds = %d, want %d", deployment.Spec.MinReadySeconds, InflatedMinReadySeconds)
+	}
+	if deployment.Spec.ProgressDeadlineSeconds == nil || *deployment.Spec.ProgressDeadlineSeconds != InflatedProgressDeadlineSeconds {
+		t.Fatalf("progressDeadlineSeconds = %v, want %d", deployment.Spec.ProgressDeadlineSeconds, InflatedProgressDeadlineSeconds)
+	}
+	if got := deployment.Spec.Strategy.RollingUpdate.MaxUnavailable; got == nil || got.IntVal != 0 {
+		t.Fatalf("maxUnavailable = %v, want 0", got)
+	}
+}
+
+func addMinReadyOriginalAnnotations(deployment *apps.Deployment) {
+	if deployment.Annotations == nil {
+		deployment.Annotations = map[string]string{}
+	}
+	deployment.Annotations[AnnotationOriginalMinReadySeconds] = "7"
+	deployment.Annotations[AnnotationOriginalProgressDeadlineSeconds] = "60"
+	deployment.Annotations[AnnotationOriginalMaxUnavailable] = "25%"
+	deployment.Annotations[AnnotationOriginalMaxSurge] = "1"
+}
+
+func appendPodObjects(objects []interface{}, pods []*corev1.Pod) []interface{} {
+	for _, pod := range pods {
+		objects = append(objects, pod)
+	}
+	return objects
+}
+
 func assertAnnotation(t *testing.T, annotations map[string]string, key, want string) {
 	t.Helper()
 	if got := annotations[key]; got != want {
@@ -178,8 +212,9 @@ func newMinReadyUpdatedPods(deployment *apps.Deployment, rs *apps.ReplicaSet, up
 			},
 			Status: corev1.PodStatus{
 				Conditions: []corev1.PodCondition{{
-					Type:   corev1.PodReady,
-					Status: readyCondition,
+					Type:               corev1.PodReady,
+					Status:             readyCondition,
+					LastTransitionTime: metav1.NewTime(time.Now().Add(-10 * time.Second)),
 				}},
 			},
 		}

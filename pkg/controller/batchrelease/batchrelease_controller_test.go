@@ -833,7 +833,6 @@ func TestExecutorFallsBackToRecreateWhenMinReadyFeatureGateDisabled(t *testing.T
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
 	release := releaseDeploy.DeepCopy()
 	release.Spec.ReleasePlan.RollingStyle = v1beta1.PartitionRollingStyle
-	release.Spec.ReleasePlan.DeploymentStrategy = v1beta1.DeploymentStrategyMinReadySeconds
 	release.Status.Phase = v1beta1.RolloutPhasePreparing
 	deployment := stableDeploy.DeepCopy()
 	rec := record.NewFakeRecorder(100)
@@ -880,11 +879,10 @@ func TestMinReadyControlPlaneRecordsInitializedConditionAndEvent(t *testing.T) {
 	}
 
 	assertCondition(t, status, v1beta1.RolloutConditionMinReadyInitialized, corev1.ConditionTrue, "MinReadyInitialized")
-	assertCondition(t, status, v1beta1.RolloutConditionMinReadyDegraded, corev1.ConditionFalse, "MinReadyHealthy")
 	assertRecordedEvent(t, rec, "MinReadyInitialized")
 }
 
-func TestMinReadyControlPlaneRecordsDegradedForPDB(t *testing.T) {
+func TestMinReadyControlPlaneAllowsPDBCoexistence(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	release := minReadyRelease()
 	deployment := stableDeploy.DeepCopy()
@@ -907,13 +905,11 @@ func TestMinReadyControlPlaneRecordsDegradedForPDB(t *testing.T) {
 		t.Fatalf("getReleaseController failed: %v", err)
 	}
 
-	err = controller.Initialize()
-	if err == nil || !strings.Contains(err.Error(), "MinReadyDegradedPDBIncompatible") {
-		t.Fatalf("Initialize error = %v, want PDB degraded", err)
+	if err := controller.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	assertCondition(t, status, v1beta1.RolloutConditionMinReadyDegraded, corev1.ConditionTrue, "MinReadyDegradedPDBIncompatible")
-	assertRecordedEvent(t, rec, "MinReadyDegradedPDBIncompatible")
+	assertCondition(t, status, v1beta1.RolloutConditionMinReadyInitialized, corev1.ConditionTrue, "MinReadyInitialized")
 }
 
 func BenchmarkRecreateReconcile(b *testing.B) {
@@ -965,7 +961,6 @@ func BenchmarkMinReadyReconcile(b *testing.B) {
 func minReadyRelease() *v1beta1.BatchRelease {
 	release := releaseDeploy.DeepCopy()
 	release.Spec.ReleasePlan.RollingStyle = v1beta1.PartitionRollingStyle
-	release.Spec.ReleasePlan.DeploymentStrategy = v1beta1.DeploymentStrategyMinReadySeconds
 	release.Status.Phase = v1beta1.RolloutPhasePreparing
 	return release
 }

@@ -17,59 +17,49 @@ limitations under the License.
 package deployment
 
 import (
-	"context"
 	"fmt"
+	"time"
 
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openkruise/rollouts/pkg/util"
 )
 
 func (mc *MinReadyControl) minReadyUpdatedReadyReplicas(updateRevision string) (int32, error) {
-	if len(mc.pods) > 0 {
-		return countUpdatedReadyPods(mc.pods, updateRevision), nil
+	original, err := parseOriginalDeploymentStrategy(mc.object.Annotations)
+	if err != nil {
+		return 0, err
 	}
-	return mc.updatedReadyReplicasFromReplicaSet(updateRevision)
+	if _, err := mc.ListOwnedPods(); err != nil {
+		return 0, err
+	}
+	return countUpdatedAvailablePods(mc.pods, updateRevision, originalMinReadySeconds(original), time.Now()), nil
 }
 
-func countUpdatedReadyPods(pods []*corev1.Pod, updateRevision string) int32 {
+func countUpdatedAvailablePods(pods []*corev1.Pod, updateRevision string, minReadySeconds int32, now time.Time) int32 {
 	return int32(util.WrappedPodCount(pods, func(pod *corev1.Pod) bool {
 		if !pod.DeletionTimestamp.IsZero() {
 			return false
 		}
-		return util.IsConsistentWithRevision(pod.Labels, updateRevision) && util.IsPodReady(pod)
+		if !util.IsConsistentWithRevision(pod.Labels, updateRevision) {
+			return false
+		}
+		ready := util.GetPodReadyCondition(pod.Status)
+		if ready == nil || ready.Status != corev1.ConditionTrue {
+			return false
+		}
+		return ready.LastTransitionTime.Add(time.Duration(minReadySeconds)*time.Second).Before(now) ||
+			ready.LastTransitionTime.Add(time.Duration(minReadySeconds)*time.Second).Equal(now)
 	}))
 }
 
-func (mc *MinReadyControl) updatedReadyReplicasFromReplicaSet(updateRevision string) (int32, error) {
-	rsList := &apps.ReplicaSetList{}
-	if err := mc.client.List(context.TODO(), rsList, client.InNamespace(mc.object.Namespace)); err != nil {
-		return 0, fmt.Errorf("list ReplicaSets: %w", err)
+func originalMinReadySeconds(original *originalDeploymentStrategy) int32 {
+	if original.minReadySeconds == nil {
+		return 0
 	}
-
-	var ready int32
-	for i := range rsList.Items {
-		rs := &rsList.Items[i]
-		if !metav1.IsControlledBy(rs, mc.object) {
-			continue
-		}
-		if !replicaSetMatchesUpdateRevision(rs, updateRevision) {
-			continue
-		}
-		ready += rs.Status.ReadyReplicas
-	}
-	return ready, nil
-}
-
-func replicaSetMatchesUpdateRevision(rs *apps.ReplicaSet, updateRevision string) bool {
-	if util.ComputeHash(&rs.Spec.Template, nil) == updateRevision {
-		return true
-	}
-	return util.IsConsistentWithRevision(rs.Labels, updateRevision)
+	return *original.minReadySeconds
 }
 
 func minReadyDesiredUpdatedReplicas(desired intstr.IntOrString, deployment *apps.Deployment) (int32, error) {

@@ -81,13 +81,29 @@ func TestMinReadyFinalizeRestoresKubernetesDefaults(t *testing.T) {
 	}
 }
 
-func TestMinReadyFinalizeNoopWhenAnnotationsAbsent(t *testing.T) {
-	deployment := newInflatedMinReadyDeployment()
+func TestMinReadyFinalizeNoopWhenAnnotationsAbsentAndFieldsRestored(t *testing.T) {
+	deployment := newMinReadyDeployment()
 	deployment.Annotations = nil
 	control := newBuiltMinReadyControl(t, deployment)
 
 	if err := control.Finalize(releaseDemo.DeepCopy()); err != nil {
 		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	got := fetchMinReadyDeployment(t, control)
+	if got.Spec.MinReadySeconds != 7 {
+		t.Fatalf("minReadySeconds = %d, want original value 7", got.Spec.MinReadySeconds)
+	}
+}
+
+func TestMinReadyFinalizeRejectsMissingAnnotationsWhileFieldsInflated(t *testing.T) {
+	deployment := newInflatedMinReadyDeployment()
+	deployment.Annotations = nil
+	control := newBuiltMinReadyControl(t, deployment)
+
+	err := control.Finalize(releaseDemo.DeepCopy())
+	if err == nil || !strings.Contains(err.Error(), "annotation state missing") {
+		t.Fatalf("Finalize error = %v, want missing annotation state error", err)
 	}
 
 	got := fetchMinReadyDeployment(t, control)

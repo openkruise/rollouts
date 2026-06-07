@@ -78,7 +78,6 @@ func newMinReadyE2ERollout(namespace string) *v1beta1.Rollout {
 		Spec: v1beta1.RolloutSpec{
 			WorkloadRef: v1beta1.ObjectRef{APIVersion: "apps/v1", Kind: "Deployment", Name: minReadyE2EDeploymentName},
 			Strategy: v1beta1.RolloutStrategy{Canary: &v1beta1.CanaryStrategy{
-				DeploymentStrategy:           v1beta1.DeploymentStrategyMinReadySeconds,
 				EnableExtraWorkloadForCanary: false,
 				Steps: []v1beta1.CanaryStep{
 					{Replicas: intstrPtr(intstr.FromString("20%")), Pause: v1beta1.RolloutPause{}},

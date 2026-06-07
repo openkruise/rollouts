@@ -39,7 +39,7 @@ func TestMinReadyMetricsRecorders(t *testing.T) {
 	ObserveMinReadyBatchDuration(release, 2*time.Second)
 	SetMinReadyStuckSeconds(release, StuckReasonBatchReadyTimeout, 3)
 	ClearMinReadyStuckSeconds(release, StuckReasonBatchReadyTimeout)
-	RecordMinReadyDegraded(release, DegradedReasonPDBIncompatible)
+	RecordMinReadyDegraded(release, DegradedReasonControllerError)
 
 	assertCounterPositive(t, minReadyBatchesTotal.WithLabelValues("rollout-a", "default", BatchResultSuccess))
 	histogram, ok := minReadyBatchDurationSeconds.WithLabelValues("rollout-a", "default").(prometheus.Metric)
@@ -48,7 +48,7 @@ func TestMinReadyMetricsRecorders(t *testing.T) {
 	}
 	assertHistogramCountPositive(t, histogram)
 	assertGaugeValue(t, minReadyStuckSeconds.WithLabelValues("rollout-a", "default", StuckReasonBatchReadyTimeout), 0)
-	assertCounterPositive(t, minReadyDegradedTotal.WithLabelValues("rollout-a", "default", DegradedReasonPDBIncompatible))
+	assertCounterPositive(t, minReadyDegradedTotal.WithLabelValues("rollout-a", "default", DegradedReasonControllerError))
 }
 
 func assertCounterPositive(t *testing.T, metric interface{ Write(*dto.Metric) error }) {

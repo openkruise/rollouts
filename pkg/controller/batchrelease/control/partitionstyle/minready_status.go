@@ -17,18 +17,28 @@ limitations under the License.
 package partitionstyle
 
 import (
+	"reflect"
 	"strings"
 	"time"
 
+	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
 	brmetrics "github.com/openkruise/rollouts/pkg/controller/batchrelease/metrics"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 func (rc *realBatchControlPlane) isMinReadyRelease() bool {
-	return rc.release.Spec.ReleasePlan.DeploymentStrategy == v1beta1.DeploymentStrategyMinReadySeconds
+	if rc.release == nil || !utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
+		return false
+	}
+	targetRef := rc.release.Spec.WorkloadRef
+	return targetRef.APIVersion == apps.SchemeGroupVersion.String() &&
+		targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() &&
+		rc.release.Spec.ReleasePlan.RollingStyle == v1beta1.PartitionRollingStyle
 }
 
 func (rc *realBatchControlPlane) recordMinReadyNormal(condType v1beta1.RolloutConditionType, reason, message string) {
@@ -38,13 +48,17 @@ func (rc *realBatchControlPlane) recordMinReadyNormal(condType v1beta1.RolloutCo
 	previousCondition := util.GetBatchReleaseCondition(*rc.newStatus, condType)
 	condition := util.NewRolloutCondition(condType, v1.ConditionTrue, reason, message)
 	util.SetBatchReleaseCondition(rc.newStatus, *condition)
-	clearMinReadyDegraded(rc.newStatus)
-	rc.newStatus.Message = ""
+	if reason == "MinReadyFinalized" {
+		clearMinReadyDegraded(rc.newStatus)
+		rc.newStatus.Message = ""
+	}
 	if reason == "MinReadyBatchReady" {
 		observeMinReadyBatchDuration(rc.release, previousCondition)
 		brmetrics.RecordMinReadyBatch(rc.release, brmetrics.BatchResultSuccess)
 	}
-	brmetrics.ClearMinReadyStuckSeconds(rc.release, brmetrics.StuckReasonBatchReadyTimeout)
+	if reason == "MinReadyBatchReady" || reason == "MinReadyFinalized" {
+		brmetrics.ClearMinReadyStuckSeconds(rc.release, brmetrics.StuckReasonBatchReadyTimeout)
+	}
 	rc.Event(rc.release, v1.EventTypeNormal, reason, message)
 }
 
@@ -91,36 +105,41 @@ func clearMinReadyDegraded(status *v1beta1.BatchReleaseStatus) {
 	util.SetBatchReleaseCondition(status, *condition)
 }
 
+type minReadyDegradedReason struct {
+	metric string
+	event  string
+}
+
 func minReadyDegradedMetricReason(message string) string {
-	switch {
-	case strings.Contains(message, "feature gate is disabled"):
-		return brmetrics.DegradedReasonFeatureGateDisabled
-	case strings.Contains(message, "MinReadyDegradedPDBIncompatible"):
-		return brmetrics.DegradedReasonPDBIncompatible
-	case strings.Contains(message, "annotation ") && strings.Contains(message, "missing"):
-		return brmetrics.DegradedReasonMissingAnnotations
-	case strings.Contains(message, "annotation ") && strings.Contains(message, "malformed"):
-		return brmetrics.DegradedReasonMissingAnnotations
-	case strings.Contains(message, "MinReadyDegradedDriftDetected"):
-		return brmetrics.DegradedReasonGitOpsDrift
-	default:
-		return brmetrics.DegradedReasonControllerError
-	}
+	return classifyMinReadyDegradedReason("", message).metric
 }
 
 func minReadyDegradedEventReason(fallback, message string) string {
+	return classifyMinReadyDegradedReason(fallback, message).event
+}
+
+func classifyMinReadyDegradedReason(fallback, message string) minReadyDegradedReason {
+	eventReason := fallback
+	metricReason := brmetrics.DegradedReasonControllerError
 	switch {
 	case strings.Contains(message, "feature gate is disabled"):
-		return "MinReadyFeatureGateDisabled"
-	case strings.Contains(message, "MinReadyDegradedPDBIncompatible"):
-		return "MinReadyDegradedPDBIncompatible"
+		metricReason = brmetrics.DegradedReasonFeatureGateDisabled
+		eventReason = "MinReadyFeatureGateDisabled"
 	case strings.Contains(message, "annotation ") && strings.Contains(message, "missing"):
-		return "MinReadyDegradedMissingAnnotations"
+		metricReason = brmetrics.DegradedReasonMissingAnnotations
+		eventReason = "MinReadyDegradedMissingAnnotations"
+	case strings.Contains(message, "annotation ") && strings.Contains(message, "empty"):
+		metricReason = brmetrics.DegradedReasonMissingAnnotations
+		eventReason = "MinReadyDegradedMissingAnnotations"
 	case strings.Contains(message, "annotation ") && strings.Contains(message, "malformed"):
-		return "MinReadyDegradedMissingAnnotations"
+		metricReason = brmetrics.DegradedReasonMissingAnnotations
+		eventReason = "MinReadyDegradedMissingAnnotations"
 	case strings.Contains(message, "MinReadyDegradedDriftDetected"):
-		return "MinReadyDegradedDriftDetected"
-	default:
-		return fallback
+		metricReason = brmetrics.DegradedReasonGitOpsDrift
+		eventReason = "MinReadyDegradedDriftDetected"
+	}
+	return minReadyDegradedReason{
+		metric: metricReason,
+		event:  eventReason,
 	}
 }

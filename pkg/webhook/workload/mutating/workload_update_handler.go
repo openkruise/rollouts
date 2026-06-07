@@ -41,6 +41,7 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
@@ -241,7 +242,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
 		modified := false
 		if shouldSkipRecreateMutationForMinReady(rollout) {
-			return false, nil
+			return enforceMinReadyInflation(newObj), nil
 		}
 		strategy := util.GetDeploymentStrategy(newObj)
 		// partition
@@ -460,8 +461,34 @@ func isEffectiveDeploymentRevisionChange(oldObj, newObj *apps.Deployment) bool {
 
 func shouldSkipRecreateMutationForMinReady(rollout *appsv1beta1.Rollout) bool {
 	return rollout.Spec.Strategy.Canary != nil &&
-		rollout.Spec.Strategy.Canary.DeploymentStrategy == appsv1beta1.DeploymentStrategyMinReadySeconds &&
+		!rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary &&
 		utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy)
+}
+
+func enforceMinReadyInflation(deployment *apps.Deployment) bool {
+	if !hasMinReadyOriginalAnnotations(deployment.Annotations) {
+		return false
+	}
+	modified := false
+	if deployment.Spec.MinReadySeconds != partitiondeployment.InflatedMinReadySeconds {
+		deployment.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
+		modified = true
+	}
+	if deployment.Spec.ProgressDeadlineSeconds == nil || *deployment.Spec.ProgressDeadlineSeconds != partitiondeployment.InflatedProgressDeadlineSeconds {
+		progressDeadlineSeconds := partitiondeployment.InflatedProgressDeadlineSeconds
+		deployment.Spec.ProgressDeadlineSeconds = &progressDeadlineSeconds
+		modified = true
+	}
+	return modified
+}
+
+func hasMinReadyOriginalAnnotations(annotations map[string]string) bool {
+	for _, key := range partitiondeployment.AllOriginalAnnotations {
+		if _, ok := annotations[key]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func setDeploymentStrategyAnnotation(strategy appsv1alpha1.DeploymentStrategy, d *apps.Deployment) {

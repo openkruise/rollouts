@@ -108,6 +108,23 @@ func TestMinReadyInitializeRejectsPartialOriginalAnnotations(t *testing.T) {
 	}
 }
 
+func TestMinReadyInitializeRejectsEmptyOriginalAnnotations(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	deployment := newMinReadyDeployment()
+	deployment.Annotations = map[string]string{
+		AnnotationOriginalMinReadySeconds:         "",
+		AnnotationOriginalProgressDeadlineSeconds: "30",
+		AnnotationOriginalMaxUnavailable:          "10%",
+		AnnotationOriginalMaxSurge:                "2",
+	}
+	control := newBuiltMinReadyControl(t, deployment)
+
+	err := control.Initialize(releaseDemo.DeepCopy())
+	if err == nil || !strings.Contains(err.Error(), "present but empty") {
+		t.Fatalf("Initialize error = %v, want empty annotation error", err)
+	}
+}
+
 func TestMinReadyInitializeSerializesKubernetesDefaults(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	deployment := newMinReadyDeployment()
@@ -123,7 +140,7 @@ func TestMinReadyInitializeSerializesKubernetesDefaults(t *testing.T) {
 	assertAnnotation(t, got.Annotations, AnnotationOriginalProgressDeadlineSeconds, AnnotationValueKubernetesDefault)
 	assertAnnotation(t, got.Annotations, AnnotationOriginalMaxUnavailable, AnnotationValueKubernetesDefault)
 	assertAnnotation(t, got.Annotations, AnnotationOriginalMaxSurge, AnnotationValueKubernetesDefault)
-	assertMinReadyInflated(t, got)
+	assertMinReadyInflatedWithoutSurgeRequirement(t, got)
 }
 
 func TestMinReadyInitializeRejectsFeatureGateDisabled(t *testing.T) {
@@ -136,7 +153,7 @@ func TestMinReadyInitializeRejectsFeatureGateDisabled(t *testing.T) {
 	}
 }
 
-func TestMinReadyInitializeRejectsCoveringPDB(t *testing.T) {
+func TestMinReadyInitializeAllowsCoveringPDB(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	deployment := newMinReadyDeployment()
 	pdb := &policyv1.PodDisruptionBudget{
@@ -147,9 +164,8 @@ func TestMinReadyInitializeRejectsCoveringPDB(t *testing.T) {
 	}
 	control := newBuiltMinReadyControl(t, deployment, pdb)
 
-	err := control.Initialize(releaseDemo.DeepCopy())
-	if err == nil || !strings.Contains(err.Error(), EventDegradedPDBIncompatible) {
-		t.Fatalf("Initialize error = %v, want PDB incompatible", err)
+	if err := control.Initialize(releaseDemo.DeepCopy()); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 }
 
@@ -183,6 +199,57 @@ func TestMinReadyUpgradeBatchUpdatesMaxUnavailableOnly(t *testing.T) {
 	}
 }
 
+func TestMinReadyUpgradeBatchRejectsStrategyTypeDrift(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	deployment := newInflatedMinReadyDeployment()
+	addMinReadyOriginalAnnotations(deployment)
+	deployment.Spec.Strategy.Type = apps.RecreateDeploymentStrategyType
+	control := newBuiltMinReadyControl(t, deployment)
+	ctx := &batchcontext.BatchContext{
+		CurrentBatch:           1,
+		Replicas:               10,
+		DesiredUpdatedReplicas: 5,
+	}
+
+	err := control.UpgradeBatch(ctx)
+	if err == nil || !strings.Contains(err.Error(), EventDegradedDriftDetected) {
+		t.Fatalf("UpgradeBatch error = %v, want strategy type drift detected", err)
+	}
+}
+
+func TestMinReadyUpgradeBatchRestoresInflatedStrategyFields(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	deployment := newInflatedMinReadyDeployment()
+	addMinReadyOriginalAnnotations(deployment)
+	deployment.Spec.MinReadySeconds = 7
+	deployment.Spec.ProgressDeadlineSeconds = pointer.Int32(60)
+	deployment.Spec.Strategy.RollingUpdate = nil
+	control := newBuiltMinReadyControl(t, deployment)
+	ctx := &batchcontext.BatchContext{
+		CurrentBatch:           1,
+		Replicas:               10,
+		DesiredUpdatedReplicas: 5,
+	}
+
+	if err := control.UpgradeBatch(ctx); err != nil {
+		t.Fatalf("UpgradeBatch failed: %v", err)
+	}
+
+	got := fetchMinReadyDeployment(t, control)
+	if got.Spec.MinReadySeconds != InflatedMinReadySeconds {
+		t.Fatalf("minReadySeconds = %d, want %d", got.Spec.MinReadySeconds, InflatedMinReadySeconds)
+	}
+	if got.Spec.ProgressDeadlineSeconds == nil || *got.Spec.ProgressDeadlineSeconds != InflatedProgressDeadlineSeconds {
+		t.Fatalf("progressDeadlineSeconds = %v, want %d", got.Spec.ProgressDeadlineSeconds, InflatedProgressDeadlineSeconds)
+	}
+	if got.Spec.Strategy.RollingUpdate == nil {
+		t.Fatalf("rollingUpdate is nil, want restored strategy")
+	}
+	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 5 {
+		t.Fatalf("maxUnavailable = %v, want 5", unavailable)
+	}
+}
+
 func TestMinReadyCalculateBatchContextUsesUpdatedReadyReplicas(t *testing.T) {
 	release := releaseDemo.DeepCopy()
 	release.Status.CanaryStatus.CurrentBatch = 1
@@ -192,8 +259,10 @@ func TestMinReadyCalculateBatchContextUsesUpdatedReadyReplicas(t *testing.T) {
 	deployment.Status.Replicas = 10
 	deployment.Status.UpdatedReplicas = 5
 	deployment.Status.ReadyReplicas = 5
+	addMinReadyOriginalAnnotations(deployment)
 	rs := newMinReadyReplicaSet(deployment, updateRevision, 5, 5)
-	control := newBuiltMinReadyControl(t, deployment, rs)
+	pods := newMinReadyUpdatedPods(deployment, rs, updateRevision, "", 5, 5)
+	control := newBuiltMinReadyControl(t, deployment, appendPodObjects([]interface{}{rs}, pods)...)
 
 	ctx, err := control.CalculateBatchContext(release)
 	if err != nil {
@@ -204,7 +273,7 @@ func TestMinReadyCalculateBatchContextUsesUpdatedReadyReplicas(t *testing.T) {
 		t.Fatalf("desired/planned = %d/%d, want 5/5", ctx.DesiredUpdatedReplicas, ctx.PlannedUpdatedReplicas)
 	}
 	if ctx.UpdatedReadyReplicas != 5 {
-		t.Fatalf("UpdatedReadyReplicas = %d, want updated RS ready 5", ctx.UpdatedReadyReplicas)
+		t.Fatalf("UpdatedReadyReplicas = %d, want updated available pods 5", ctx.UpdatedReadyReplicas)
 	}
 	if err := ctx.IsBatchReady(); err != nil {
 		t.Fatalf("IsBatchReady failed: %v", err)
@@ -220,15 +289,17 @@ func TestMinReadyCalculateBatchContextIgnoresOldReadyPods(t *testing.T) {
 	deployment.Status.Replicas = 10
 	deployment.Status.UpdatedReplicas = 5
 	deployment.Status.ReadyReplicas = 10
+	addMinReadyOriginalAnnotations(deployment)
 	rs := newMinReadyReplicaSet(deployment, updateRevision, 5, 1)
-	control := newBuiltMinReadyControl(t, deployment, rs)
+	pods := newMinReadyUpdatedPods(deployment, rs, updateRevision, "", 5, 1)
+	control := newBuiltMinReadyControl(t, deployment, appendPodObjects([]interface{}{rs}, pods)...)
 
 	ctx, err := control.CalculateBatchContext(release)
 	if err != nil {
 		t.Fatalf("CalculateBatchContext failed: %v", err)
 	}
 	if ctx.UpdatedReadyReplicas != 1 {
-		t.Fatalf("UpdatedReadyReplicas = %d, want 1 from updated RS only", ctx.UpdatedReadyReplicas)
+		t.Fatalf("UpdatedReadyReplicas = %d, want 1 from updated available pods only", ctx.UpdatedReadyReplicas)
 	}
 	if err := ctx.IsBatchReady(); err == nil {
 		t.Fatalf("IsBatchReady succeeded, want not ready error")
@@ -245,6 +316,7 @@ func TestMinReadyCalculateBatchContextRequiresPodListingForRolloutID(t *testing.
 	deployment.Status.Replicas = 10
 	deployment.Status.UpdatedReplicas = 5
 	deployment.Status.ReadyReplicas = 5
+	addMinReadyOriginalAnnotations(deployment)
 	rs := newMinReadyReplicaSet(deployment, updateRevision, 5, 5)
 	control := newBuiltMinReadyControl(t, deployment, rs)
 
@@ -270,6 +342,7 @@ func TestMinReadyCalculateBatchContextCountsReadyPodsWhenListed(t *testing.T) {
 	deployment.Status.Replicas = 10
 	deployment.Status.UpdatedReplicas = 5
 	deployment.Status.ReadyReplicas = 10
+	addMinReadyOriginalAnnotations(deployment)
 	rs := newMinReadyReplicaSet(deployment, updateRevision, 5, 1)
 	pods := newMinReadyUpdatedPods(deployment, rs, updateRevision, "rollout-1", 5, 3)
 	control := newBuiltMinReadyControl(t, deployment, rs, pods[0], pods[1], pods[2], pods[3], pods[4])
@@ -298,8 +371,10 @@ func TestMinReadyCalculateBatchContextNotReady(t *testing.T) {
 	deployment.Status.Replicas = 10
 	deployment.Status.UpdatedReplicas = 5
 	deployment.Status.ReadyReplicas = 4
+	addMinReadyOriginalAnnotations(deployment)
 	rs := newMinReadyReplicaSet(deployment, updateRevision, 5, 4)
-	control := newBuiltMinReadyControl(t, deployment, rs)
+	pods := newMinReadyUpdatedPods(deployment, rs, updateRevision, "", 5, 4)
+	control := newBuiltMinReadyControl(t, deployment, appendPodObjects([]interface{}{rs}, pods)...)
 
 	ctx, err := control.CalculateBatchContext(release)
 	if err != nil {
@@ -320,8 +395,10 @@ func TestMinReadyCalculateBatchContextRecomputesAfterScaling(t *testing.T) {
 	deployment.Status.Replicas = 20
 	deployment.Status.UpdatedReplicas = 10
 	deployment.Status.ReadyReplicas = 10
+	addMinReadyOriginalAnnotations(deployment)
 	rs := newMinReadyReplicaSet(deployment, updateRevision, 10, 10)
-	control := newBuiltMinReadyControl(t, deployment, rs)
+	pods := newMinReadyUpdatedPods(deployment, rs, updateRevision, "", 10, 10)
+	control := newBuiltMinReadyControl(t, deployment, appendPodObjects([]interface{}{rs}, pods)...)
 
 	ctx, err := control.CalculateBatchContext(release)
 	if err != nil {
@@ -338,6 +415,7 @@ func TestMinReadyCalculateBatchContextReplicasZero(t *testing.T) {
 	deployment := newMinReadyDeployment()
 	deployment.Spec.Replicas = pointer.Int32(0)
 	deployment.Status.Replicas = 0
+	addMinReadyOriginalAnnotations(deployment)
 	control := newBuiltMinReadyControl(t, deployment)
 
 	ctx, err := control.CalculateBatchContext(release)

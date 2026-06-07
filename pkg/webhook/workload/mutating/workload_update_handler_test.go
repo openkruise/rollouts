@@ -442,9 +442,7 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 			getRollout: func() *appsv1beta1.Rollout {
 				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
-				obj := rolloutDemo.DeepCopy()
-				obj.Spec.Strategy.Canary.DeploymentStrategy = appsv1beta1.DeploymentStrategyMinReadySeconds
-				return obj
+				return rolloutDemo.DeepCopy()
 			},
 		},
 		{
@@ -604,9 +602,7 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 			getRollout: func() *appsv1beta1.Rollout {
 				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
-				obj := rolloutDemo.DeepCopy()
-				obj.Spec.Strategy.Canary.DeploymentStrategy = appsv1beta1.DeploymentStrategyMinReadySeconds
-				return obj
+				return rolloutDemo.DeepCopy()
 			},
 		},
 		{
@@ -632,9 +628,7 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 			getRollout: func() *appsv1beta1.Rollout {
 				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
-				obj := rolloutDemo.DeepCopy()
-				obj.Spec.Strategy.Canary.DeploymentStrategy = appsv1beta1.DeploymentStrategyMinReadySeconds
-				return obj
+				return rolloutDemo.DeepCopy()
 			},
 		},
 		{
@@ -840,6 +834,7 @@ func TestHandlerDeployment(t *testing.T) {
 	decoder := admission.NewDecoder(scheme)
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
+			_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
 			client := fake.NewClientBuilder().WithScheme(scheme).Build()
 			h := WorkloadHandler{
 				Client:  client,
@@ -876,7 +871,6 @@ func TestHandlerDeployment(t *testing.T) {
 
 func TestShouldSkipRecreateMutationForMinReady(t *testing.T) {
 	rollout := rolloutDemo.DeepCopy()
-	rollout.Spec.Strategy.Canary.DeploymentStrategy = appsv1beta1.DeploymentStrategyMinReadySeconds
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
 	if shouldSkipRecreateMutationForMinReady(rollout) {
 		t.Fatalf("skip returned true while feature gate is disabled")
@@ -885,9 +879,9 @@ func TestShouldSkipRecreateMutationForMinReady(t *testing.T) {
 	if !shouldSkipRecreateMutationForMinReady(rollout) {
 		t.Fatalf("skip returned false for MinReadySeconds with feature gate enabled")
 	}
-	rollout.Spec.Strategy.Canary.DeploymentStrategy = appsv1beta1.DeploymentStrategyRecreate
+	rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
 	if shouldSkipRecreateMutationForMinReady(rollout) {
-		t.Fatalf("skip returned true for Recreate strategy")
+		t.Fatalf("skip returned true for canary-style rollout")
 	}
 }
 

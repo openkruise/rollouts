@@ -50,8 +50,8 @@ var _ = SIGDescribe("Deployment MinReadySeconds PDB", func() {
 		time.Sleep(3 * time.Second)
 	})
 
-	KruiseDescribe("MinReadySeconds PDB guard", func() {
-		It("records degraded status and leaves Deployment strategy untouched", func() {
+	KruiseDescribe("MinReadySeconds PDB coexistence", func() {
+		It("continues rollout initialization and leaves Deployment strategy untouched", func() {
 			rollout := newMinReadyE2ERollout(namespace)
 			deployment := newMinReadyE2EDeployment(namespace)
 			pdb := newMinReadyE2EPDB(namespace)
@@ -62,12 +62,12 @@ var _ = SIGDescribe("Deployment MinReadySeconds PDB", func() {
 			waitMinReadyE2EDeploymentReady(namespace)
 			waitMinReadyE2ERolloutPhase(namespace, rollout.Name, v1beta1.RolloutPhaseHealthy)
 			updateMinReadyE2EDeploymentVersion(namespace, "version2")
-			waitMinReadyE2EBatchCondition(namespace, rollout.Name, "MinReadyDegradedPDBIncompatible")
+			waitMinReadyE2EBatchCondition(namespace, rollout.Name, "MinReadyInitialized")
 
 			got := &apps.Deployment{}
 			Expect(k8sClient.Get(context.TODO(), client.ObjectKeyFromObject(deployment), got)).Should(Succeed())
 			Expect(got.Spec.Strategy.Type).Should(Equal(apps.RollingUpdateDeploymentStrategyType))
-			Expect(got.Spec.MinReadySeconds).ShouldNot(Equal(partitiondeployment.InflatedMinReadySeconds))
+			Expect(got.Spec.MinReadySeconds).Should(Equal(partitiondeployment.InflatedMinReadySeconds))
 		})
 	})
 })

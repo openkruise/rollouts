@@ -43,7 +43,11 @@ func (mc *MinReadyControl) BuildController() (partitionstyle.Interface, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &MinReadyControl{realController: built.(*realController)}, nil
+	rc, ok := built.(*realController)
+	if !ok {
+		return nil, fmt.Errorf("MinReadyControl.BuildController: expected *realController, got %T", built)
+	}
+	return &MinReadyControl{realController: rc}, nil
 }
 
 func (mc *MinReadyControl) Initialize(_ *v1beta1.BatchRelease) error {
@@ -56,7 +60,7 @@ func (mc *MinReadyControl) Initialize(_ *v1beta1.BatchRelease) error {
 		return fmt.Errorf("MinReadyControl.Initialize: %w", err)
 	}
 	if hasAnyOriginalAnnotation(original.Annotations) {
-		if err := ensureInflatedDeploymentStrategy(original); err != nil {
+		if err := validateInflatedDeploymentStrategy(original); err != nil {
 			return fmt.Errorf("MinReadyControl.Initialize: %w", err)
 		}
 	}
@@ -66,10 +70,7 @@ func (mc *MinReadyControl) Initialize(_ *v1beta1.BatchRelease) error {
 }
 
 func (mc *MinReadyControl) UpgradeBatch(ctx *batchcontext.BatchContext) error {
-	if mc.object.Spec.Strategy.RollingUpdate == nil {
-		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: rollingUpdate is nil", ctx.CurrentBatch)
-	}
-	if err := ensureInflatedDeploymentStrategy(mc.object); err != nil {
+	if err := mc.ensureInflatedDeploymentStrategy(); err != nil {
 		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", ctx.CurrentBatch, err)
 	}
 	current, err := intstr.GetScaledValueFromIntOrPercent(
@@ -98,6 +99,9 @@ func (mc *MinReadyControl) Finalize(_ *v1beta1.BatchRelease) error {
 		return nil
 	}
 	if !hasAnyOriginalAnnotation(mc.object.Annotations) {
+		if hasInflatedDeploymentFields(mc.object) {
+			return fmt.Errorf("MinReadyControl.Finalize: annotation state missing while deployment fields are still inflated")
+		}
 		return nil
 	}
 	original := mc.object.DeepCopy()
@@ -154,12 +158,8 @@ func (mc *MinReadyControl) ensureInitializeAllowed() error {
 	if !utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
 		return fmt.Errorf("%s feature gate is disabled", feature.MinReadySecondsStrategy)
 	}
-	covered, err := mc.hasPDBCoveringDeployment()
-	if err != nil {
+	if err := validateDeploymentStrategyType(mc.object); err != nil {
 		return err
-	}
-	if covered {
-		return fmt.Errorf("%s: PDB detected", EventDegradedPDBIncompatible)
 	}
 	return nil
 }
@@ -169,7 +169,8 @@ func writeOriginalAnnotations(original, modified *apps.Deployment) error {
 		modified.Annotations = map[string]string{}
 	}
 	if hasAnyOriginalAnnotation(original.Annotations) {
-		return ensureAllOriginalAnnotations(original.Annotations)
+		_, err := parseOriginalDeploymentStrategy(original.Annotations)
+		return err
 	}
 	modified.Annotations[AnnotationOriginalMinReadySeconds] = serializeOriginalInt32(&original.Spec.MinReadySeconds)
 	modified.Annotations[AnnotationOriginalProgressDeadlineSeconds] = serializeOriginalInt32(original.Spec.ProgressDeadlineSeconds)
@@ -180,8 +181,8 @@ func writeOriginalAnnotations(original, modified *apps.Deployment) error {
 
 func ensureAllOriginalAnnotations(annotations map[string]string) error {
 	for _, key := range AllOriginalAnnotations {
-		if _, ok := annotations[key]; !ok {
-			return fmt.Errorf("annotation %s missing", key)
+		if _, err := readOriginalAnnotation(annotations, key); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -204,17 +205,37 @@ func originalMaxSurge(deployment *apps.Deployment) *intstr.IntOrString {
 func inflateDeploymentStrategy(deployment *apps.Deployment) {
 	progressDeadlineSeconds := InflatedProgressDeadlineSeconds
 	maxUnavailable := intstr.FromInt(0)
-	maxSurge := intstr.FromInt(int(InflatedMaxSurgeInt))
 	deployment.Spec.MinReadySeconds = InflatedMinReadySeconds
 	deployment.Spec.ProgressDeadlineSeconds = &progressDeadlineSeconds
 	if deployment.Spec.Strategy.RollingUpdate == nil {
 		deployment.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{}
 	}
 	deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
-	deployment.Spec.Strategy.RollingUpdate.MaxSurge = &maxSurge
+	applyMaxSurgeValidationFallback(deployment)
 }
 
-func ensureInflatedDeploymentStrategy(deployment *apps.Deployment) error {
+func (mc *MinReadyControl) ensureInflatedDeploymentStrategy() error {
+	if err := validateDeploymentStrategyType(mc.object); err != nil {
+		return err
+	}
+	if validateInflatedDeploymentStrategy(mc.object) == nil {
+		return nil
+	}
+	original := mc.object.DeepCopy()
+	modified := original.DeepCopy()
+	inflateDeploymentStrategy(modified)
+	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
+	if err := mc.client.Patch(context.TODO(), modified, patch); err != nil {
+		return err
+	}
+	mc.object = modified
+	return nil
+}
+
+func validateInflatedDeploymentStrategy(deployment *apps.Deployment) error {
+	if err := validateDeploymentStrategyType(deployment); err != nil {
+		return err
+	}
 	if deployment.Spec.MinReadySeconds != InflatedMinReadySeconds {
 		return fmt.Errorf("%s: minReadySeconds=%d want %d",
 			EventDegradedDriftDetected, deployment.Spec.MinReadySeconds, InflatedMinReadySeconds)
@@ -226,10 +247,39 @@ func ensureInflatedDeploymentStrategy(deployment *apps.Deployment) error {
 	if deployment.Spec.Strategy.RollingUpdate == nil {
 		return fmt.Errorf("%s: rollingUpdate is nil", EventDegradedDriftDetected)
 	}
-	if maxSurge := deployment.Spec.Strategy.RollingUpdate.MaxSurge; maxSurge == nil || maxSurge.Type != intstr.Int || maxSurge.IntVal != InflatedMaxSurgeInt {
-		return fmt.Errorf("%s: maxSurge=%v want %d", EventDegradedDriftDetected, maxSurge, InflatedMaxSurgeInt)
+	return nil
+}
+
+func validateDeploymentStrategyType(deployment *apps.Deployment) error {
+	if deployment.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
+		return fmt.Errorf("%s: deployment strategy type %s is not RollingUpdate",
+			EventDegradedDriftDetected, deployment.Spec.Strategy.Type)
 	}
 	return nil
+}
+
+func hasInflatedDeploymentFields(deployment *apps.Deployment) bool {
+	if deployment.Spec.MinReadySeconds == InflatedMinReadySeconds {
+		return true
+	}
+	return deployment.Spec.ProgressDeadlineSeconds != nil &&
+		*deployment.Spec.ProgressDeadlineSeconds == InflatedProgressDeadlineSeconds
+}
+
+func applyMaxSurgeValidationFallback(deployment *apps.Deployment) {
+	if deployment.Spec.Strategy.RollingUpdate.MaxSurge == nil {
+		return
+	}
+	replicas := int32(1)
+	if deployment.Spec.Replicas != nil && *deployment.Spec.Replicas > 0 {
+		replicas = *deployment.Spec.Replicas
+	}
+	surge, err := intstr.GetScaledValueFromIntOrPercent(deployment.Spec.Strategy.RollingUpdate.MaxSurge, int(replicas), true)
+	if err != nil || surge > 0 {
+		return
+	}
+	maxSurge := intstr.FromInt(1)
+	deployment.Spec.Strategy.RollingUpdate.MaxSurge = &maxSurge
 }
 
 type originalDeploymentStrategy struct {
@@ -284,7 +334,6 @@ func applyOriginalDeploymentStrategy(deployment *apps.Deployment, original *orig
 	deployment.Spec.Strategy.RollingUpdate.MaxSurge = original.maxSurge
 }
 
-const EventDegradedPDBIncompatible = "MinReadyDegradedPDBIncompatible"
 const EventDegradedDriftDetected = "MinReadyDegradedDriftDetected"
 
 var _ partitionstyle.Interface = (*MinReadyControl)(nil)

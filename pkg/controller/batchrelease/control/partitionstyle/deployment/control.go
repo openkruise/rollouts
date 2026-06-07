@@ -49,14 +49,18 @@ type realController struct {
 }
 
 func NewController(cli client.Client, key types.NamespacedName, _ schema.GroupVersionKind) partitionstyle.Interface {
+	return newRealController(cli, key)
+}
+
+func NewMinReadyController(cli client.Client, key types.NamespacedName, _ schema.GroupVersionKind) partitionstyle.Interface {
+	return &MinReadyControl{realController: newRealController(cli, key)}
+}
+
+func newRealController(cli client.Client, key types.NamespacedName) *realController {
 	return &realController{
 		key:    key,
 		client: cli,
 	}
-}
-
-func NewMinReadyController(cli client.Client, key types.NamespacedName, gvk schema.GroupVersionKind) partitionstyle.Interface {
-	return &MinReadyControl{realController: NewController(cli, key, gvk).(*realController)}
 }
 
 func (rc *realController) GetWorkloadInfo() *util.WorkloadInfo {

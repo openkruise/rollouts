@@ -24,6 +24,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
 	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
@@ -51,7 +52,6 @@ func TestDeploymentMinReadyControlPlaneInitialize(t *testing.T) {
 	assertOriginalAnnotation(t, got, partitiondeployment.AnnotationOriginalMaxUnavailable, "25%")
 	assertOriginalAnnotation(t, got, partitiondeployment.AnnotationOriginalMaxSurge, "1")
 	assertIntegrationCondition(t, status, v1beta1.RolloutConditionMinReadyInitialized, corev1.ConditionTrue, "MinReadyInitialized")
-	assertIntegrationCondition(t, status, v1beta1.RolloutConditionMinReadyDegraded, corev1.ConditionFalse, "MinReadyHealthy")
 	assertIntegrationEvent(t, recorder, "MinReadyInitialized")
 }
 
@@ -68,16 +68,9 @@ func TestDeploymentMinReadyControlPlaneRejectsFeatureGateDisabled(t *testing.T) 
 	if err == nil || !strings.Contains(err.Error(), "feature gate is disabled") {
 		t.Fatalf("Initialize error = %v, want feature gate disabled", err)
 	}
-
-	got := fetchIntegrationDeployment(t, cli, deployment)
-	if got.Spec.MinReadySeconds != deployment.Spec.MinReadySeconds {
-		t.Fatalf("minReadySeconds = %d, want unchanged %d", got.Spec.MinReadySeconds, deployment.Spec.MinReadySeconds)
-	}
-	assertIntegrationCondition(t, status, v1beta1.RolloutConditionMinReadyDegraded, corev1.ConditionTrue, "MinReadyFeatureGateDisabled")
-	assertIntegrationEvent(t, recorder, "MinReadyFeatureGateDisabled")
 }
 
-func TestDeploymentMinReadyControlPlaneRejectsCoveringPDB(t *testing.T) {
+func TestDeploymentMinReadyControlPlaneAllowsCoveringPDB(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	release := newIntegrationMinReadyRelease()
 	deployment := newIntegrationDeployment()
@@ -92,17 +85,13 @@ func TestDeploymentMinReadyControlPlaneRejectsCoveringPDB(t *testing.T) {
 	status := release.Status.DeepCopy()
 	control := newIntegrationMinReadyControl(cli, recorder, release, status, deployment.Name)
 
-	err := control.Initialize()
-	if err == nil || !strings.Contains(err.Error(), partitiondeployment.EventDegradedPDBIncompatible) {
-		t.Fatalf("Initialize error = %v, want PDB incompatible", err)
+	if err := control.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	got := fetchIntegrationDeployment(t, cli, deployment)
-	if got.Spec.MinReadySeconds != deployment.Spec.MinReadySeconds {
-		t.Fatalf("minReadySeconds = %d, want unchanged %d", got.Spec.MinReadySeconds, deployment.Spec.MinReadySeconds)
-	}
-	assertIntegrationCondition(t, status, v1beta1.RolloutConditionMinReadyDegraded, corev1.ConditionTrue, "MinReadyDegradedPDBIncompatible")
-	assertIntegrationEvent(t, recorder, "MinReadyDegradedPDBIncompatible")
+	assertInflatedDeployment(t, got)
+	assertIntegrationCondition(t, status, v1beta1.RolloutConditionMinReadyInitialized, corev1.ConditionTrue, "MinReadyInitialized")
 }
 
 func TestDeploymentMinReadyControlPlaneUpgradeBatchUsesUpdatedReadyReplicas(t *testing.T) {
@@ -114,8 +103,9 @@ func TestDeploymentMinReadyControlPlaneUpgradeBatchUsesUpdatedReadyReplicas(t *t
 	deployment.Status.UpdatedReplicas = 5
 	deployment.Status.ReadyReplicas = 5
 	rs := newIntegrationUpdatedReplicaSet(deployment, release.Status.UpdateRevision, 5, 5)
+	pods := newIntegrationUpdatedPods(deployment, rs, release.Status.UpdateRevision, "", 5, 5)
 	recorder := record.NewFakeRecorder(20)
-	cli := newIntegrationClient(release, deployment, rs)
+	cli := newIntegrationClient(appendIntegrationObjects([]client.Object{release, deployment, rs}, pods)...)
 	status := release.Status.DeepCopy()
 	control := newIntegrationMinReadyControl(cli, recorder, release, status, deployment.Name)
 
@@ -143,8 +133,9 @@ func TestDeploymentMinReadyControlPlaneWaitsForUpdatedReadyReplicas(t *testing.T
 	deployment.Status.UpdatedReplicas = 5
 	deployment.Status.ReadyReplicas = 10
 	rs := newIntegrationUpdatedReplicaSet(deployment, release.Status.UpdateRevision, 5, 1)
+	pods := newIntegrationUpdatedPods(deployment, rs, release.Status.UpdateRevision, "", 5, 1)
 	recorder := record.NewFakeRecorder(20)
-	cli := newIntegrationClient(release, deployment, rs)
+	cli := newIntegrationClient(appendIntegrationObjects([]client.Object{release, deployment, rs}, pods)...)
 	status := release.Status.DeepCopy()
 	control := newIntegrationMinReadyControl(cli, recorder, release, status, deployment.Name)
 

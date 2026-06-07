@@ -20,6 +20,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -59,8 +60,7 @@ func newIntegrationMinReadyRelease() *v1beta1.BatchRelease {
 		Spec: v1beta1.BatchReleaseSpec{
 			WorkloadRef: v1beta1.ObjectRef{APIVersion: apps.SchemeGroupVersion.String(), Kind: "Deployment", Name: "demo"},
 			ReleasePlan: v1beta1.ReleasePlan{
-				RollingStyle:       v1beta1.PartitionRollingStyle,
-				DeploymentStrategy: v1beta1.DeploymentStrategyMinReadySeconds,
+				RollingStyle: v1beta1.PartitionRollingStyle,
 				Batches: []v1beta1.ReleaseBatch{
 					{CanaryReplicas: intstr.FromString("20%")},
 					{CanaryReplicas: intstr.FromString("50%")},
@@ -178,6 +178,50 @@ func newIntegrationUpdatedReplicaSet(deployment *apps.Deployment, updateRevision
 			ReadyReplicas: readyReplicas,
 		},
 	}
+}
+
+func newIntegrationUpdatedPods(deployment *apps.Deployment, rs *apps.ReplicaSet, updateRevision, rolloutID string, total, ready int) []*corev1.Pod {
+	pods := make([]*corev1.Pod, 0, total)
+	for i := 0; i < total; i++ {
+		readyCondition := corev1.ConditionFalse
+		if i < ready {
+			readyCondition = corev1.ConditionTrue
+		}
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      deployment.Name + "-pod-" + string(rune('a'+i)),
+				Namespace: deployment.Namespace,
+				Labels: map[string]string{
+					"app":                                "demo",
+					apps.DefaultDeploymentUniqueLabelKey: updateRevision,
+				},
+				OwnerReferences: []metav1.OwnerReference{{
+					APIVersion: apps.SchemeGroupVersion.String(),
+					Kind:       "ReplicaSet",
+					Name:       rs.Name,
+					UID:        rs.UID,
+					Controller: pointer.Bool(true),
+				}},
+			},
+			Status: corev1.PodStatus{Conditions: []corev1.PodCondition{{
+				Type:               corev1.PodReady,
+				Status:             readyCondition,
+				LastTransitionTime: metav1.NewTime(time.Now().Add(-10 * time.Second)),
+			}}},
+		}
+		if rolloutID != "" {
+			pod.Labels[v1beta1.RolloutIDLabel] = rolloutID
+		}
+		pods = append(pods, pod)
+	}
+	return pods
+}
+
+func appendIntegrationObjects(objects []client.Object, pods []*corev1.Pod) []client.Object {
+	for _, pod := range pods {
+		objects = append(objects, pod)
+	}
+	return objects
 }
 
 func newIntegrationMinReadyControl(

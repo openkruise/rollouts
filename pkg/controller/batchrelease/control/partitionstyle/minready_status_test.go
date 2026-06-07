@@ -21,6 +21,7 @@ import (
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
+	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
@@ -28,14 +29,18 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1beta1"
 	brmetrics "github.com/openkruise/rollouts/pkg/controller/batchrelease/metrics"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 func TestRecordMinReadyNormalObservesBatchDuration(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	release := &v1beta1.BatchRelease{
 		ObjectMeta: metav1.ObjectMeta{Name: "duration-rollout", Namespace: "default"},
 		Spec: v1beta1.BatchReleaseSpec{
-			ReleasePlan: v1beta1.ReleasePlan{DeploymentStrategy: v1beta1.DeploymentStrategyMinReadySeconds},
+			WorkloadRef: v1beta1.ObjectRef{APIVersion: apps.SchemeGroupVersion.String(), Kind: "Deployment", Name: "demo"},
+			ReleasePlan: v1beta1.ReleasePlan{RollingStyle: v1beta1.PartitionRollingStyle},
 		},
 	}
 	status := &v1beta1.BatchReleaseStatus{}
@@ -66,6 +71,48 @@ func TestRecordMinReadyNormalObservesBatchDuration(t *testing.T) {
 	}
 	if status.Message != "" {
 		t.Fatalf("status.message = %q, want empty", status.Message)
+	}
+}
+
+func TestRecordMinReadyNormalKeepsDegradedUntilFinalize(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	release := &v1beta1.BatchRelease{
+		ObjectMeta: metav1.ObjectMeta{Name: "degraded-rollout", Namespace: "default"},
+		Spec: v1beta1.BatchReleaseSpec{
+			WorkloadRef: v1beta1.ObjectRef{APIVersion: apps.SchemeGroupVersion.String(), Kind: "Deployment", Name: "demo"},
+			ReleasePlan: v1beta1.ReleasePlan{RollingStyle: v1beta1.PartitionRollingStyle},
+		},
+	}
+	status := &v1beta1.BatchReleaseStatus{Message: "annotation missing"}
+	util.SetBatchReleaseCondition(status, v1beta1.RolloutCondition{
+		Type:   v1beta1.RolloutConditionMinReadyDegraded,
+		Status: v1.ConditionTrue,
+		Reason: "MinReadyDegradedMissingAnnotations",
+	})
+	rc := &realBatchControlPlane{
+		EventRecorder: record.NewFakeRecorder(2),
+		release:       release,
+		newStatus:     status,
+	}
+
+	rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatching", "MinReadySeconds strategy advanced the current batch")
+
+	degraded := util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionMinReadyDegraded)
+	if degraded == nil || degraded.Status != v1.ConditionTrue {
+		t.Fatalf("degraded condition = %v, want still true after batching", degraded)
+	}
+	if status.Message != "annotation missing" {
+		t.Fatalf("status.message = %q, want previous degraded message", status.Message)
+	}
+
+	rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyFinalized, "MinReadyFinalized", "MinReadySeconds strategy finalized")
+
+	degraded = util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionMinReadyDegraded)
+	if degraded == nil || degraded.Status != v1.ConditionFalse {
+		t.Fatalf("degraded condition = %v, want false after finalize", degraded)
+	}
+	if status.Message != "" {
+		t.Fatalf("status.message = %q, want empty after finalize", status.Message)
 	}
 }
 

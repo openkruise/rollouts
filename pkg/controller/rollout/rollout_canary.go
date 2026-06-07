@@ -411,7 +411,6 @@ func (m *canaryReleaseManager) createBatchRelease(rollout *v1beta1.Rollout, roll
 				FailureThreshold:             rollout.Spec.Strategy.Canary.FailureThreshold,
 				PatchPodTemplateMetadata:     rollout.Spec.Strategy.Canary.PatchPodTemplateMetadata,
 				RollingStyle:                 rollout.Spec.Strategy.GetRollingStyle(),
-				DeploymentStrategy:           rollout.Spec.Strategy.Canary.DeploymentStrategy,
 				EnableExtraWorkloadForCanary: rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary,
 			},
 		},

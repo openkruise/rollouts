@@ -34,7 +34,6 @@ const (
 	DegradedReasonFeatureGateDisabled = "feature_gate_disabled"
 	DegradedReasonGitOpsDrift         = "gitops_drift"
 	DegradedReasonMissingAnnotations  = "missing_annotations"
-	DegradedReasonPDBIncompatible     = "pdb_incompatible"
 	StuckReasonBatchReadyTimeout      = "batch_ready_timeout"
 )
 
