@@ -939,7 +939,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				return rules
 			},
 		},
-		// Bug #17/#19 regression: BackendRef without an explicit Kind must be
+		// BackendRef without an explicit Kind must be
 		// treated as a Service per the Gateway API spec (Kind defaults to
 		// "Service" when nil). Some controllers (e.g. Envoy Gateway) emit
 		// HTTPRoute objects with Kind unset.
@@ -1168,7 +1168,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				return rules
 			},
 		},
-		// Bug #13 regression: nonPathMatches must be indexed by their own
+		// nonPathMatches must be indexed by their own
 		// position, not the position they had in the original matches slice.
 		// Place a path match first and a non-path match second so the indices
 		// diverge: pathMatches=[matches[0]], nonPathMatches=[matches[1]].
@@ -1274,7 +1274,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				return rules
 			},
 		},
-		// Test #23: from the original routeDemo (no canary injected yet) to
+		// from the original routeDemo (no canary injected yet) to
 		// canary@20. The existing "canary weight: 20" case feeds in the final
 		// 80/20 shape and only proves idempotence; this case proves the
 		// transformation from clean state.
