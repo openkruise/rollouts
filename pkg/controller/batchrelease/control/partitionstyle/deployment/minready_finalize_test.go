@@ -19,6 +19,9 @@ package deployment
 import (
 	"strings"
 	"testing"
+
+	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
+	"github.com/openkruise/rollouts/pkg/util"
 )
 
 func TestMinReadyFinalizeRestoresOriginalValues(t *testing.T) {
@@ -28,6 +31,10 @@ func TestMinReadyFinalizeRestoresOriginalValues(t *testing.T) {
 		AnnotationOriginalProgressDeadlineSeconds: "60",
 		AnnotationOriginalMaxUnavailable:          "25%",
 		AnnotationOriginalMaxSurge:                "1",
+		util.BatchReleaseControlAnnotation:        getControlInfo(releaseDemo),
+	}
+	deployment.Labels = map[string]string{
+		appsv1alpha1.DeploymentStableRevisionLabel: "stable-revision",
 	}
 	control := newBuiltMinReadyControl(t, deployment)
 
@@ -52,6 +59,12 @@ func TestMinReadyFinalizeRestoresOriginalValues(t *testing.T) {
 		if _, ok := got.Annotations[key]; ok {
 			t.Fatalf("annotation %s still exists", key)
 		}
+	}
+	if _, ok := got.Annotations[util.BatchReleaseControlAnnotation]; ok {
+		t.Fatalf("annotation %s still exists", util.BatchReleaseControlAnnotation)
+	}
+	if _, ok := got.Labels[appsv1alpha1.DeploymentStableRevisionLabel]; ok {
+		t.Fatalf("label %s still exists", appsv1alpha1.DeploymentStableRevisionLabel)
 	}
 }
 

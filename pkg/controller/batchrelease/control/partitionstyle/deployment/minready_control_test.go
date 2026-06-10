@@ -51,6 +51,7 @@ func TestMinReadyInitializeWritesOriginalAnnotationsAndInflatesFields(t *testing
 	assertAnnotation(t, annotations, AnnotationOriginalProgressDeadlineSeconds, "60")
 	assertAnnotation(t, annotations, AnnotationOriginalMaxUnavailable, "25%")
 	assertAnnotation(t, annotations, AnnotationOriginalMaxSurge, "1")
+	assertAnnotation(t, annotations, util.BatchReleaseControlAnnotation, getControlInfo(releaseDemo))
 }
 
 func TestMinReadyInitializeIsIdempotentAndDoesNotOverwriteAnnotations(t *testing.T) {

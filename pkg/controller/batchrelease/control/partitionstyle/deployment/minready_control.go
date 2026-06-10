@@ -21,13 +21,16 @@ import (
 	"fmt"
 
 	apps "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/openkruise/rollouts/api/v1alpha1"
 	"github.com/openkruise/rollouts/api/v1beta1"
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
 	"github.com/openkruise/rollouts/pkg/feature"
+	"github.com/openkruise/rollouts/pkg/util"
 	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
@@ -50,7 +53,10 @@ func (mc *MinReadyControl) BuildController() (partitionstyle.Interface, error) {
 	return &MinReadyControl{realController: rc}, nil
 }
 
-func (mc *MinReadyControl) Initialize(_ *v1beta1.BatchRelease) error {
+func (mc *MinReadyControl) Initialize(release *v1beta1.BatchRelease) error {
+	if release == nil {
+		return fmt.Errorf("MinReadyControl.Initialize: release is nil")
+	}
 	if err := mc.ensureInitializeAllowed(); err != nil {
 		return fmt.Errorf("MinReadyControl.Initialize: %w", err)
 	}
@@ -64,6 +70,8 @@ func (mc *MinReadyControl) Initialize(_ *v1beta1.BatchRelease) error {
 			return fmt.Errorf("MinReadyControl.Initialize: %w", err)
 		}
 	}
+	modified.Annotations[util.BatchReleaseControlAnnotation] = util.DumpJSON(metav1.NewControllerRef(
+		release, release.GetObjectKind().GroupVersionKind()))
 	inflateDeploymentStrategy(modified)
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
 	return mc.client.Patch(context.TODO(), modified, patch)
@@ -114,6 +122,8 @@ func (mc *MinReadyControl) Finalize(_ *v1beta1.BatchRelease) error {
 	for _, key := range AllOriginalAnnotations {
 		delete(modified.Annotations, key)
 	}
+	delete(modified.Annotations, util.BatchReleaseControlAnnotation)
+	delete(modified.Labels, v1alpha1.DeploymentStableRevisionLabel)
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
 	return mc.client.Patch(context.TODO(), modified, patch)
 }
