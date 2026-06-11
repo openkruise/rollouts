@@ -17,8 +17,8 @@ limitations under the License.
 package partitionstyle
 
 import (
+	"errors"
 	"reflect"
-	"strings"
 	"time"
 
 	apps "k8s.io/api/apps/v1"
@@ -32,13 +32,27 @@ import (
 )
 
 func (rc *realBatchControlPlane) isMinReadyRelease() bool {
-	if rc.release == nil || !utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
+	if rc.release == nil {
 		return false
 	}
 	targetRef := rc.release.Spec.WorkloadRef
-	return targetRef.APIVersion == apps.SchemeGroupVersion.String() &&
+	isDeploymentPartition := targetRef.APIVersion == apps.SchemeGroupVersion.String() &&
 		targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() &&
 		rc.release.Spec.ReleasePlan.RollingStyle == v1beta1.PartitionRollingStyle
+	if !isDeploymentPartition {
+		return false
+	}
+	if utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
+		return true
+	}
+	// Gate disabled mid-rollout: a Deployment still carrying MinReady original
+	// annotations is under MinReady control until finalized. Keep recording its
+	// status so degraded conditions are not silently suppressed. Falls back to
+	// false before the controller is built (no workload info yet).
+	if info := rc.GetWorkloadInfo(); info != nil {
+		return v1beta1.HasMinReadyOriginalAnnotations(info.Annotations)
+	}
+	return false
 }
 
 func (rc *realBatchControlPlane) recordMinReadyNormal(condType v1beta1.RolloutConditionType, reason, message string) {
@@ -78,11 +92,12 @@ func (rc *realBatchControlPlane) recordMinReadyDegraded(reason string, err error
 		return
 	}
 	message := err.Error()
-	eventReason := minReadyDegradedEventReason(reason, message)
+	classified := classifyMinReadyDegradedReason(reason, err)
+	eventReason := classified.event
 	condition := util.NewRolloutCondition(v1beta1.RolloutConditionMinReadyDegraded, v1.ConditionTrue, eventReason, message)
 	util.SetBatchReleaseCondition(rc.newStatus, *condition)
 	rc.newStatus.Message = message
-	degradedReason := minReadyDegradedMetricReason(message)
+	degradedReason := classified.metric
 	brmetrics.ClearMinReadyStuckSeconds(rc.release, brmetrics.StuckReasonBatchReadyTimeout)
 	brmetrics.RecordMinReadyBatch(rc.release, brmetrics.BatchResultDegraded)
 	brmetrics.RecordMinReadyDegraded(rc.release, degradedReason)
@@ -110,36 +125,30 @@ type minReadyDegradedReason struct {
 	event  string
 }
 
-func minReadyDegradedMetricReason(message string) string {
-	return classifyMinReadyDegradedReason("", message).metric
-}
-
-func minReadyDegradedEventReason(fallback, message string) string {
-	return classifyMinReadyDegradedReason(fallback, message).event
-}
-
-func classifyMinReadyDegradedReason(fallback, message string) minReadyDegradedReason {
-	eventReason := fallback
-	metricReason := brmetrics.DegradedReasonControllerError
+// classifyMinReadyDegradedReason maps a degraded error onto a stable metric
+// label and event reason via errors.Is, so the classification does not depend
+// on human-readable error text. Producers wrap the sentinels in minready_errors.go
+// with %w; fallback is used as the event reason for unclassified errors.
+func classifyMinReadyDegradedReason(fallback string, err error) minReadyDegradedReason {
 	switch {
-	case strings.Contains(message, "feature gate is disabled"):
-		metricReason = brmetrics.DegradedReasonFeatureGateDisabled
-		eventReason = "MinReadyFeatureGateDisabled"
-	case strings.Contains(message, "annotation ") && strings.Contains(message, "missing"):
-		metricReason = brmetrics.DegradedReasonMissingAnnotations
-		eventReason = "MinReadyDegradedMissingAnnotations"
-	case strings.Contains(message, "annotation ") && strings.Contains(message, "empty"):
-		metricReason = brmetrics.DegradedReasonMissingAnnotations
-		eventReason = "MinReadyDegradedMissingAnnotations"
-	case strings.Contains(message, "annotation ") && strings.Contains(message, "malformed"):
-		metricReason = brmetrics.DegradedReasonMissingAnnotations
-		eventReason = "MinReadyDegradedMissingAnnotations"
-	case strings.Contains(message, "MinReadyDegradedDriftDetected"):
-		metricReason = brmetrics.DegradedReasonGitOpsDrift
-		eventReason = "MinReadyDegradedDriftDetected"
+	case errors.Is(err, ErrMinReadyFeatureGateDisabled):
+		return minReadyDegradedReason{
+			metric: brmetrics.DegradedReasonFeatureGateDisabled,
+			event:  "MinReadyFeatureGateDisabled",
+		}
+	case errors.Is(err, ErrMinReadyAnnotationInvalid):
+		return minReadyDegradedReason{
+			metric: brmetrics.DegradedReasonMissingAnnotations,
+			event:  "MinReadyDegradedMissingAnnotations",
+		}
+	case errors.Is(err, ErrMinReadyDriftDetected):
+		return minReadyDegradedReason{
+			metric: brmetrics.DegradedReasonGitOpsDrift,
+			event:  "MinReadyDegradedDriftDetected",
+		}
 	}
 	return minReadyDegradedReason{
-		metric: metricReason,
-		event:  eventReason,
+		metric: brmetrics.DegradedReasonControllerError,
+		event:  fallback,
 	}
 }

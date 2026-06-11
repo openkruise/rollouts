@@ -17,6 +17,7 @@ limitations under the License.
 package batchrelease
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"time"
@@ -246,7 +247,14 @@ func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus
 			return partitionstyle.NewControlPlane(cloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
 		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
-			if utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
+			// Route to the MinReady controller when the feature gate is enabled, or
+			// when the Deployment still carries MinReady original-strategy annotations.
+			// The latter covers the gate being turned off mid-rollout: the old
+			// Recreate-mode controller would not recognize an inflated RollingUpdate
+			// Deployment as under its control, leaving the workload stuck in a
+			// half-initialized state. Keeping MinReady control lets it finalize and
+			// restore the original fields.
+			if utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) || r.deploymentHasMinReadyAnnotations(targetKey) {
 				klog.InfoS("Using Deployment MinReadySeconds partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
 				return partitionstyle.NewControlPlane(partitiondeployment.NewMinReadyController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 			}
@@ -259,6 +267,19 @@ func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus
 	// try to use StatefulSet-like rollout controller by default
 	klog.InfoS("Using StatefulSet-Like partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
 	return partitionstyle.NewControlPlane(statefulset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+}
+
+// deploymentHasMinReadyAnnotations reports whether the target Deployment still
+// carries MinReady original-strategy annotations, i.e. it was initialized by the
+// MinReady controller and not yet finalized. Used to keep MinReady routing when
+// the feature gate is disabled mid-rollout. A fetch failure (e.g. NotFound)
+// returns false so routing falls back to the default controller.
+func (r *Executor) deploymentHasMinReadyAnnotations(key types.NamespacedName) bool {
+	deployment := &apps.Deployment{}
+	if err := r.client.Get(context.TODO(), key, deployment); err != nil {
+		return false
+	}
+	return v1beta1.HasMinReadyOriginalAnnotations(deployment.Annotations)
 }
 
 func (r *Executor) moveToNextBatch(release *v1beta1.BatchRelease, status *v1beta1.BatchReleaseStatus) {

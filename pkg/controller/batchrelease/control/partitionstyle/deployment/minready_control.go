@@ -23,6 +23,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
@@ -87,12 +88,15 @@ func (mc *MinReadyControl) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", ctx.CurrentBatch, err)
 	}
 	target := ctx.DesiredUpdatedReplicas
-	if int32(current) > target {
-		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %s: maxUnavailable=%d exceeds target=%d",
-			ctx.CurrentBatch, EventDegradedDriftDetected, current, target)
-	}
-	if int32(current) >= target {
+	if int32(current) == target {
 		return nil
+	}
+	if int32(current) > target {
+		// maxUnavailable above the batch target is a legal state after a
+		// scale-down (HPA or manual) and also self-heals external tampering;
+		// converge it back to the target instead of reporting degraded drift.
+		klog.Warningf("MinReadyControl.UpgradeBatch[%d]: deployment %v maxUnavailable=%d exceeds target=%d, reducing it to the target",
+			ctx.CurrentBatch, klog.KObj(mc.object), current, target)
 	}
 	original := mc.object.DeepCopy()
 	modified := original.DeepCopy()
@@ -108,7 +112,8 @@ func (mc *MinReadyControl) Finalize(_ *v1beta1.BatchRelease) error {
 	}
 	if !hasAnyOriginalAnnotation(mc.object.Annotations) {
 		if hasInflatedDeploymentFields(mc.object) {
-			return fmt.Errorf("MinReadyControl.Finalize: annotation state missing while deployment fields are still inflated")
+			return fmt.Errorf("MinReadyControl.Finalize: annotation state missing while deployment fields are still inflated: %w",
+				partitionstyle.ErrMinReadyAnnotationInvalid)
 		}
 		return nil
 	}
@@ -166,7 +171,7 @@ func (mc *MinReadyControl) ensureInitializeAllowed() error {
 		return fmt.Errorf("deployment is not loaded")
 	}
 	if !utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
-		return fmt.Errorf("%s feature gate is disabled", feature.MinReadySecondsStrategy)
+		return fmt.Errorf("%s %w", feature.MinReadySecondsStrategy, partitionstyle.ErrMinReadyFeatureGateDisabled)
 	}
 	if err := validateDeploymentStrategyType(mc.object); err != nil {
 		return err
@@ -215,6 +220,9 @@ func originalMaxSurge(deployment *apps.Deployment) *intstr.IntOrString {
 func inflateDeploymentStrategy(deployment *apps.Deployment) {
 	progressDeadlineSeconds := InflatedProgressDeadlineSeconds
 	maxUnavailable := intstr.FromInt(0)
+	// MinReady keeps the native controller running; a paused Deployment would
+	// freeze silently, so pausing is always reverted together with inflation.
+	deployment.Spec.Paused = false
 	deployment.Spec.MinReadySeconds = InflatedMinReadySeconds
 	deployment.Spec.ProgressDeadlineSeconds = &progressDeadlineSeconds
 	if deployment.Spec.Strategy.RollingUpdate == nil {
@@ -222,6 +230,29 @@ func inflateDeploymentStrategy(deployment *apps.Deployment) {
 	}
 	deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
 	applyMaxSurgeValidationFallback(deployment)
+}
+
+// EnrollMinReadyDeployment snapshots the original strategy fields into
+// annotations and inflates them in place. The workload mutating webhook calls
+// it when a Deployment enters rollout progressing, so the native controller
+// never observes the original maxUnavailable/minReadySeconds budget between
+// admission and MinReadyControl.Initialize; Initialize stays the fallback and
+// validates (instead of rewriting) annotations that already exist.
+func EnrollMinReadyDeployment(deployment *apps.Deployment) error {
+	if err := validateDeploymentStrategyType(deployment); err != nil {
+		return err
+	}
+	snapshot := deployment.DeepCopy()
+	if err := writeOriginalAnnotations(snapshot, deployment); err != nil {
+		return err
+	}
+	if hasAnyOriginalAnnotation(snapshot.Annotations) {
+		if err := validateInflatedDeploymentStrategy(snapshot); err != nil {
+			return err
+		}
+	}
+	inflateDeploymentStrategy(deployment)
+	return nil
 }
 
 func (mc *MinReadyControl) ensureInflatedDeploymentStrategy() error {
@@ -246,24 +277,29 @@ func validateInflatedDeploymentStrategy(deployment *apps.Deployment) error {
 	if err := validateDeploymentStrategyType(deployment); err != nil {
 		return err
 	}
+	if deployment.Spec.Paused {
+		// A paused Deployment silently freezes the native controller; surface
+		// it through the degraded channel instead of waiting without signal.
+		return fmt.Errorf("%w: deployment is paused", partitionstyle.ErrMinReadyDriftDetected)
+	}
 	if deployment.Spec.MinReadySeconds != InflatedMinReadySeconds {
-		return fmt.Errorf("%s: minReadySeconds=%d want %d",
-			EventDegradedDriftDetected, deployment.Spec.MinReadySeconds, InflatedMinReadySeconds)
+		return fmt.Errorf("%w: minReadySeconds=%d want %d",
+			partitionstyle.ErrMinReadyDriftDetected, deployment.Spec.MinReadySeconds, InflatedMinReadySeconds)
 	}
 	if deployment.Spec.ProgressDeadlineSeconds == nil || *deployment.Spec.ProgressDeadlineSeconds != InflatedProgressDeadlineSeconds {
-		return fmt.Errorf("%s: progressDeadlineSeconds=%v want %d",
-			EventDegradedDriftDetected, deployment.Spec.ProgressDeadlineSeconds, InflatedProgressDeadlineSeconds)
+		return fmt.Errorf("%w: progressDeadlineSeconds=%v want %d",
+			partitionstyle.ErrMinReadyDriftDetected, deployment.Spec.ProgressDeadlineSeconds, InflatedProgressDeadlineSeconds)
 	}
 	if deployment.Spec.Strategy.RollingUpdate == nil {
-		return fmt.Errorf("%s: rollingUpdate is nil", EventDegradedDriftDetected)
+		return fmt.Errorf("%w: rollingUpdate is nil", partitionstyle.ErrMinReadyDriftDetected)
 	}
 	return nil
 }
 
 func validateDeploymentStrategyType(deployment *apps.Deployment) error {
 	if deployment.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
-		return fmt.Errorf("%s: deployment strategy type %s is not RollingUpdate",
-			EventDegradedDriftDetected, deployment.Spec.Strategy.Type)
+		return fmt.Errorf("%w: deployment strategy type %s is not RollingUpdate",
+			partitionstyle.ErrMinReadyDriftDetected, deployment.Spec.Strategy.Type)
 	}
 	return nil
 }
@@ -344,6 +380,9 @@ func applyOriginalDeploymentStrategy(deployment *apps.Deployment, original *orig
 	deployment.Spec.Strategy.RollingUpdate.MaxSurge = original.maxSurge
 }
 
-const EventDegradedDriftDetected = "MinReadyDegradedDriftDetected"
+// EventDegradedDriftDetected is the warning event reason recorded when
+// external drift of the inflated fields is detected. It equals the sentinel
+// error text so events, metrics and errors.Is classification stay in sync.
+var EventDegradedDriftDetected = partitionstyle.ErrMinReadyDriftDetected.Error()
 
 var _ partitionstyle.Interface = (*MinReadyControl)(nil)

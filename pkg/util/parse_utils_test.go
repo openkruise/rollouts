@@ -632,3 +632,54 @@ func TestNativeDaemonSetUnstructuredParse(t *testing.T) {
 		Expect(workloadInfo.Status.ObservedGeneration).Should(BeNumerically("==", ds.Status.ObservedGeneration))
 	})
 }
+
+// TestParseStatusStringFromUnstructuredMalformed verifies that a non-string
+// status field no longer panics (it used to do an unchecked type assertion) and
+// instead degrades to an empty string. Regression test for the parse_utils
+// type-assertion panic fixed alongside the MinReadySeconds review.
+func TestParseStatusStringFromUnstructuredMalformed(t *testing.T) {
+	cases := map[string]struct {
+		status interface{}
+		want   string
+	}{
+		"string value":  {status: "rev-abc", want: "rev-abc"},
+		"int value":     {status: int64(42), want: ""},
+		"map value":     {status: map[string]interface{}{"nested": "x"}, want: ""},
+		"bool value":    {status: true, want: ""},
+		"missing field": {status: nil, want: ""},
+	}
+	for name, cs := range cases {
+		t.Run(name, func(t *testing.T) {
+			statusMap := map[string]interface{}{}
+			if cs.status != nil {
+				statusMap["updateRevision"] = cs.status
+			}
+			obj := &unstructured.Unstructured{Object: map[string]interface{}{
+				"metadata": map[string]interface{}{"name": "demo"},
+				"status":   statusMap,
+			}}
+			got := parseStatusStringFromUnstructured(obj, "updateRevision")
+			if got != cs.want {
+				t.Fatalf("parseStatusStringFromUnstructured = %q, want %q", got, cs.want)
+			}
+		})
+	}
+}
+
+// TestParseSelectorFromUnstructuredMalformed verifies a malformed selector
+// surfaces an error instead of being silently swallowed into an empty selector.
+func TestParseSelectorFromUnstructuredMalformed(t *testing.T) {
+	// spec.selector whose matchLabels is a string (not a map) fails to unmarshal
+	// into metav1.LabelSelector.
+	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+		"metadata": map[string]interface{}{"name": "demo"},
+		"spec": map[string]interface{}{
+			"selector": map[string]interface{}{
+				"matchLabels": "not-a-map",
+			},
+		},
+	}}
+	if _, err := parseSelectorFromUnstructured(obj); err == nil {
+		t.Fatalf("parseSelectorFromUnstructured accepted malformed selector, want error")
+	}
+}

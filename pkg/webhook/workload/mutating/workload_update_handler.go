@@ -330,7 +330,19 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		newObj.Labels[appsv1alpha1.DeploymentStableRevisionLabel] = stableRS.Labels[apps.DefaultDeploymentUniqueLabelKey]
 	}
 
-	if !shouldSkipRecreateMutationForMinReady(rollout) {
+	if shouldSkipRecreateMutationForMinReady(rollout) {
+		// MinReady keeps the native controller running, so it must NOT be paused.
+		// Inflate the strategy synchronously at admission time: this snapshots the
+		// original fields into annotations and sets minReadySeconds/maxUnavailable
+		// so the native controller never observes the user's original budget in the
+		// window between admission and MinReadyControl.Initialize. Initialize stays
+		// the fallback and validates (instead of rewriting) annotations that exist.
+		if err := partitiondeployment.EnrollMinReadyDeployment(newObj); err != nil {
+			// Do not block admission; the controller's Initialize will surface a
+			// degraded condition for an unsupported strategy instead.
+			klog.Warningf("Skip MinReady enrollment for Deployment(%s/%s): %v", newObj.Namespace, newObj.Name, err)
+		}
+	} else {
 		// Partition/Recreate style disables the native Deployment controller.
 		newObj.Spec.Paused = true
 	}
@@ -459,6 +471,16 @@ func isEffectiveDeploymentRevisionChange(oldObj, newObj *apps.Deployment) bool {
 	return true
 }
 
+// shouldSkipRecreateMutationForMinReady reports whether the Deployment should be
+// driven by the MinReadySeconds strategy (keep RollingUpdate, do not pause)
+// instead of the legacy Recreate-style mutation.
+//
+// It only checks Canary because a Rollout cannot declare BlueGreen and Canary at
+// the same time: the validating webhook rejects that combination
+// (pkg/webhook/rollout/validating/rollout_create_update_handler.go,
+// "Canary and BlueGreen cannot both be set"). With BlueGreen==nil guaranteed,
+// Canary!=nil && !EnableExtraWorkloadForCanary is equivalent to the executor's
+// GetRollingStyle()==Partition routing, so both sides agree on MinReady.
 func shouldSkipRecreateMutationForMinReady(rollout *appsv1beta1.Rollout) bool {
 	return rollout.Spec.Strategy.Canary != nil &&
 		!rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary &&
@@ -470,6 +492,22 @@ func enforceMinReadyInflation(deployment *apps.Deployment) bool {
 		return false
 	}
 	modified := false
+	// The MinReady strategy relies on the native RollingUpdate controller staying
+	// active and driven by inflated fields. Re-assert the core invariants here so a
+	// GitOps/manual write of Recreate or paused=true is rejected at admission time
+	// rather than only surfacing as a controller-side degraded condition later.
+	if deployment.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
+		deployment.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+		modified = true
+	}
+	if deployment.Spec.Paused {
+		deployment.Spec.Paused = false
+		modified = true
+	}
+	if deployment.Spec.Strategy.RollingUpdate == nil {
+		deployment.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{}
+		modified = true
+	}
 	if deployment.Spec.MinReadySeconds != partitiondeployment.InflatedMinReadySeconds {
 		deployment.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
 		modified = true

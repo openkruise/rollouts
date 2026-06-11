@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -395,11 +396,17 @@ func parseStatusIntFromUnstructured(object *unstructured.Unstructured, field str
 
 // ParseStatusStringFromUnstructured can parse some fields with string type from unstructured workload object status
 func parseStatusStringFromUnstructured(object *unstructured.Unstructured, field string) string {
-	value, found, err := unstructured.NestedFieldNoCopy(object.Object, "status", field)
-	if err == nil && found {
-		return value.(string)
+	// NestedString returns an error (not a panic) when the field exists but is
+	// not a string, so a malformed status cannot crash the controller.
+	value, found, err := unstructured.NestedString(object.Object, "status", field)
+	if err != nil {
+		klog.Warningf("failed to parse status.%s as string from %v: %v", field, object.GetName(), err)
+		return ""
 	}
-	return ""
+	if !found {
+		return ""
+	}
+	return value
 }
 
 // parseSelectorFromUnstructured can parse labelSelector as selector from unstructured workload object
@@ -408,9 +415,14 @@ func parseSelectorFromUnstructured(object *unstructured.Unstructured) (labels.Se
 	if err != nil || !found {
 		return nil, err
 	}
-	byteInfo, _ := json.Marshal(m)
+	byteInfo, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("marshal spec.selector of %v failed: %w", object.GetName(), err)
+	}
 	labelSelector := &metav1.LabelSelector{}
-	_ = json.Unmarshal(byteInfo, labelSelector)
+	if err := json.Unmarshal(byteInfo, labelSelector); err != nil {
+		return nil, fmt.Errorf("unmarshal spec.selector of %v failed: %w", object.GetName(), err)
+	}
 	return metav1.LabelSelectorAsSelector(labelSelector)
 }
 
@@ -421,8 +433,15 @@ func parseTemplateFromUnstructured(object *unstructured.Unstructured) *corev1.Po
 		return nil
 	}
 	template := &corev1.PodTemplateSpec{}
-	templateByte, _ := json.Marshal(t)
-	_ = json.Unmarshal(templateByte, template)
+	templateByte, err := json.Marshal(t)
+	if err != nil {
+		klog.Warningf("failed to marshal spec.template of %v: %v", object.GetName(), err)
+		return nil
+	}
+	if err := json.Unmarshal(templateByte, template); err != nil {
+		klog.Warningf("failed to unmarshal spec.template of %v: %v", object.GetName(), err)
+		return nil
+	}
 	return template
 }
 
@@ -432,17 +451,30 @@ func parseMetadataFromUnstructured(object *unstructured.Unstructured) *metav1.Ob
 	if err != nil || !found {
 		return nil
 	}
-	data, _ := json.Marshal(m)
+	data, err := json.Marshal(m)
+	if err != nil {
+		klog.Warningf("failed to marshal metadata of %v: %v", object.GetName(), err)
+		return nil
+	}
 	meta := &metav1.ObjectMeta{}
-	_ = json.Unmarshal(data, meta)
+	if err := json.Unmarshal(data, meta); err != nil {
+		klog.Warningf("failed to unmarshal metadata of %v: %v", object.GetName(), err)
+		return nil
+	}
 	return meta
 }
 
 // unmarshalIntStr return *intstr.IntOrString
 func unmarshalIntStr(m interface{}) *intstr.IntOrString {
 	field := &intstr.IntOrString{}
-	data, _ := json.Marshal(m)
-	_ = json.Unmarshal(data, field)
+	data, err := json.Marshal(m)
+	if err != nil {
+		klog.Warningf("failed to marshal intOrString value %v: %v", m, err)
+		return field
+	}
+	if err := json.Unmarshal(data, field); err != nil {
+		klog.Warningf("failed to unmarshal intOrString value %v: %v", m, err)
+	}
 	return field
 }
 

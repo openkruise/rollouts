@@ -17,6 +17,8 @@ limitations under the License.
 package partitionstyle
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -142,10 +144,48 @@ func TestObserveMinReadyBatchWaitSetsStuckGauge(t *testing.T) {
 	}
 }
 
-func TestMinReadyDegradedMetricReasonDetectsDrift(t *testing.T) {
-	message := "MinReadyControl.UpgradeBatch[1]: MinReadyDegradedDriftDetected: maxUnavailable=3 exceeds target=2"
-	if got := minReadyDegradedMetricReason(message); got != brmetrics.DegradedReasonGitOpsDrift {
-		t.Fatalf("metric reason = %q, want %q", got, brmetrics.DegradedReasonGitOpsDrift)
+func TestClassifyMinReadyDegradedReason(t *testing.T) {
+	cases := []struct {
+		name   string
+		err    error
+		metric string
+		event  string
+	}{
+		{
+			name:   "drift",
+			err:    fmt.Errorf("MinReadyControl.UpgradeBatch[1]: %w: maxUnavailable=3 exceeds target=2", ErrMinReadyDriftDetected),
+			metric: brmetrics.DegradedReasonGitOpsDrift,
+			event:  "MinReadyDegradedDriftDetected",
+		},
+		{
+			name:   "feature gate disabled",
+			err:    fmt.Errorf("MinReadyControl.Initialize: %w", ErrMinReadyFeatureGateDisabled),
+			metric: brmetrics.DegradedReasonFeatureGateDisabled,
+			event:  "MinReadyFeatureGateDisabled",
+		},
+		{
+			name:   "annotation invalid",
+			err:    fmt.Errorf("annotation foo missing: %w", ErrMinReadyAnnotationInvalid),
+			metric: brmetrics.DegradedReasonMissingAnnotations,
+			event:  "MinReadyDegradedMissingAnnotations",
+		},
+		{
+			name:   "unclassified falls back",
+			err:    errors.New("some controller error"),
+			metric: brmetrics.DegradedReasonControllerError,
+			event:  "MinReadyBatchingFailed",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifyMinReadyDegradedReason("MinReadyBatchingFailed", tc.err)
+			if got.metric != tc.metric {
+				t.Fatalf("metric reason = %q, want %q", got.metric, tc.metric)
+			}
+			if got.event != tc.event {
+				t.Fatalf("event reason = %q, want %q", got.event, tc.event)
+			}
+		})
 	}
 }
 

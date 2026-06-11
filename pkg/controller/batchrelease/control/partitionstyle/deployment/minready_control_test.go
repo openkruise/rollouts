@@ -23,6 +23,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 
 	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
@@ -218,6 +219,37 @@ func TestMinReadyUpgradeBatchRejectsStrategyTypeDrift(t *testing.T) {
 	}
 }
 
+func TestMinReadyUpgradeBatchHealsPausedDrift(t *testing.T) {
+	// P0-2: a Deployment paused mid-rollout silently freezes the native
+	// controller. validateInflatedDeploymentStrategy now treats paused as drift,
+	// so ensureInflatedDeploymentStrategy re-inflates and clears spec.paused,
+	// actively unfreezing the workload instead of leaving it stuck without signal.
+	// (Recreate strategy-type drift is reported as degraded instead of healed,
+	// because Recreate may have already deleted pods destructively.)
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	deployment := newInflatedMinReadyDeployment()
+	addMinReadyOriginalAnnotations(deployment)
+	deployment.Spec.Paused = true
+	control := newBuiltMinReadyControl(t, deployment)
+	ctx := &batchcontext.BatchContext{
+		CurrentBatch:           1,
+		Replicas:               10,
+		DesiredUpdatedReplicas: 5,
+	}
+
+	if err := control.UpgradeBatch(ctx); err != nil {
+		t.Fatalf("UpgradeBatch failed: %v", err)
+	}
+
+	got := fetchMinReadyDeployment(t, control)
+	if got.Spec.Paused {
+		t.Fatalf("deployment still paused, want spec.paused=false after self-heal")
+	}
+	if got.Spec.MinReadySeconds != InflatedMinReadySeconds {
+		t.Fatalf("minReadySeconds = %d, want %d (re-inflated)", got.Spec.MinReadySeconds, InflatedMinReadySeconds)
+	}
+}
+
 func TestMinReadyUpgradeBatchRestoresInflatedStrategyFields(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	deployment := newInflatedMinReadyDeployment()
@@ -248,6 +280,33 @@ func TestMinReadyUpgradeBatchRestoresInflatedStrategyFields(t *testing.T) {
 	}
 	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 5 {
 		t.Fatalf("maxUnavailable = %v, want 5", unavailable)
+	}
+}
+
+func TestMinReadyUpgradeBatchConvergesMaxUnavailableOnScaleDown(t *testing.T) {
+	// P1-2: after a scale-down (HPA or manual) the previously-set integer
+	// maxUnavailable can exceed the new batch target. This is a legal state, not
+	// external tampering, so UpgradeBatch must converge it back to the target
+	// instead of reporting degraded drift.
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	deployment := newInflatedMinReadyDeployment()
+	addMinReadyOriginalAnnotations(deployment)
+	maxUnavailable := intstr.FromInt(8)
+	deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
+	control := newBuiltMinReadyControl(t, deployment)
+	ctx := &batchcontext.BatchContext{
+		CurrentBatch:           1,
+		Replicas:               10,
+		DesiredUpdatedReplicas: 5,
+	}
+
+	if err := control.UpgradeBatch(ctx); err != nil {
+		t.Fatalf("UpgradeBatch failed: %v", err)
+	}
+
+	got := fetchMinReadyDeployment(t, control)
+	if value := minReadyMaxUnavailableValue(t, got, 10); value != 5 {
+		t.Fatalf("maxUnavailable = %d, want 5 (converged to target)", value)
 	}
 }
 
@@ -425,5 +484,67 @@ func TestMinReadyCalculateBatchContextReplicasZero(t *testing.T) {
 	}
 	if ctx.DesiredUpdatedReplicas != 0 {
 		t.Fatalf("DesiredUpdatedReplicas = %d, want 0", ctx.DesiredUpdatedReplicas)
+	}
+}
+
+func TestEnrollMinReadyDeploymentSnapshotsAndInflates(t *testing.T) {
+	// P1-6: enrollment runs at admission time so the native controller never
+	// observes the user's original budget before Initialize lands.
+	deployment := newMinReadyDeployment()
+	if err := EnrollMinReadyDeployment(deployment); err != nil {
+		t.Fatalf("EnrollMinReadyDeployment failed: %v", err)
+	}
+	if !hasAnyOriginalAnnotation(deployment.Annotations) {
+		t.Fatalf("expected original annotations to be written")
+	}
+	if deployment.Annotations[AnnotationOriginalMinReadySeconds] != "7" {
+		t.Fatalf("original min-ready-seconds = %q, want 7", deployment.Annotations[AnnotationOriginalMinReadySeconds])
+	}
+	assertMinReadyInflated(t, deployment)
+}
+
+func TestEnrollMinReadyDeploymentValidatesExistingAnnotations(t *testing.T) {
+	// When annotations already exist (e.g. a re-admission), enrollment validates
+	// the inflated state instead of rewriting the snapshot.
+	deployment := newInflatedMinReadyDeployment()
+	addMinReadyOriginalAnnotations(deployment)
+	original := deployment.Annotations[AnnotationOriginalMinReadySeconds]
+	if err := EnrollMinReadyDeployment(deployment); err != nil {
+		t.Fatalf("EnrollMinReadyDeployment failed: %v", err)
+	}
+	if deployment.Annotations[AnnotationOriginalMinReadySeconds] != original {
+		t.Fatalf("original annotation was rewritten: %q -> %q", original, deployment.Annotations[AnnotationOriginalMinReadySeconds])
+	}
+}
+
+func TestEnrollMinReadyDeploymentRejectsRecreate(t *testing.T) {
+	deployment := newMinReadyDeployment()
+	deployment.Spec.Strategy.Type = apps.RecreateDeploymentStrategyType
+	if err := EnrollMinReadyDeployment(deployment); err == nil {
+		t.Fatalf("EnrollMinReadyDeployment accepted Recreate strategy, want error")
+	}
+}
+
+func TestMinReadyFinalizeRestoresAfterGateDisabled(t *testing.T) {
+	// P1-4: even with the feature gate disabled, a Deployment carrying MinReady
+	// original annotations must finalize cleanly and restore the original fields.
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
+	deployment := newInflatedMinReadyDeployment()
+	addMinReadyOriginalAnnotations(deployment)
+	control := newBuiltMinReadyControl(t, deployment)
+
+	if err := control.Finalize(releaseDemo.DeepCopy()); err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	got := fetchMinReadyDeployment(t, control)
+	if got.Spec.MinReadySeconds != 7 {
+		t.Fatalf("minReadySeconds = %d, want 7 (restored)", got.Spec.MinReadySeconds)
+	}
+	if got.Spec.ProgressDeadlineSeconds == nil || *got.Spec.ProgressDeadlineSeconds != 60 {
+		t.Fatalf("progressDeadlineSeconds = %v, want 60 (restored)", got.Spec.ProgressDeadlineSeconds)
+	}
+	if hasAnyOriginalAnnotation(got.Annotations) {
+		t.Fatalf("original annotations not cleaned up: %v", got.Annotations)
 	}
 }

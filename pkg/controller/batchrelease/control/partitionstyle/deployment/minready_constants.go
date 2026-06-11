@@ -24,13 +24,17 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle"
 )
 
 const (
-	AnnotationOriginalMinReadySeconds         = "rollouts.kruise.io/original-min-ready-seconds"
-	AnnotationOriginalProgressDeadlineSeconds = "rollouts.kruise.io/original-progress-deadline-seconds"
-	AnnotationOriginalMaxUnavailable          = "rollouts.kruise.io/original-max-unavailable"
-	AnnotationOriginalMaxSurge                = "rollouts.kruise.io/original-max-surge"
+	// Aliases kept for readability inside this package; the canonical
+	// definitions live in api/v1beta1 so that packages which cannot import
+	// this one (e.g. partitionstyle) can still recognize MinReady state.
+	AnnotationOriginalMinReadySeconds         = v1beta1.MinReadyOriginalMinReadySecondsAnnotation
+	AnnotationOriginalProgressDeadlineSeconds = v1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation
+	AnnotationOriginalMaxUnavailable          = v1beta1.MinReadyOriginalMaxUnavailableAnnotation
+	AnnotationOriginalMaxSurge                = v1beta1.MinReadyOriginalMaxSurgeAnnotation
 
 	AnnotationValueKubernetesDefault = "__k8s_default__"
 
@@ -39,12 +43,7 @@ const (
 	InflatedMaxSurgeInt             int32 = 1
 )
 
-var AllOriginalAnnotations = []string{
-	AnnotationOriginalMinReadySeconds,
-	AnnotationOriginalProgressDeadlineSeconds,
-	AnnotationOriginalMaxUnavailable,
-	AnnotationOriginalMaxSurge,
-}
+var AllOriginalAnnotations = v1beta1.MinReadyOriginalAnnotations
 
 func serializeOriginalInt32(value *int32) string {
 	if value == nil {
@@ -70,7 +69,7 @@ func parseOriginalInt32(annotations map[string]string, key string) (*int32, erro
 	}
 	n, err := strconv.ParseInt(raw, 10, 32)
 	if err != nil {
-		return nil, fmt.Errorf("annotation %s malformed int32: %w", key, err)
+		return nil, fmt.Errorf("annotation %s malformed int32: %v: %w", key, err, partitionstyle.ErrMinReadyAnnotationInvalid)
 	}
 	v := int32(n)
 	return &v, nil
@@ -83,14 +82,14 @@ func parseOriginalIntOrString(annotations map[string]string, key string) (*intst
 	}
 	if strings.HasSuffix(raw, "%") {
 		if _, err := strconv.Atoi(strings.TrimSuffix(raw, "%")); err != nil {
-			return nil, fmt.Errorf("annotation %s malformed percent: %w", key, err)
+			return nil, fmt.Errorf("annotation %s malformed percent: %v: %w", key, err, partitionstyle.ErrMinReadyAnnotationInvalid)
 		}
 		v := intstr.FromString(raw)
 		return &v, nil
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil {
-		return nil, fmt.Errorf("annotation %s malformed int: %w", key, err)
+		return nil, fmt.Errorf("annotation %s malformed int: %v: %w", key, err, partitionstyle.ErrMinReadyAnnotationInvalid)
 	}
 	v := intstr.FromInt(n)
 	return &v, nil
@@ -99,19 +98,14 @@ func parseOriginalIntOrString(annotations map[string]string, key string) (*intst
 func readOriginalAnnotation(annotations map[string]string, key string) (string, error) {
 	raw, ok := annotations[key]
 	if !ok {
-		return "", fmt.Errorf("annotation %s missing", key)
+		return "", fmt.Errorf("annotation %s missing: %w", key, partitionstyle.ErrMinReadyAnnotationInvalid)
 	}
 	if raw == "" {
-		return "", fmt.Errorf("annotation %s present but empty", key)
+		return "", fmt.Errorf("annotation %s present but empty: %w", key, partitionstyle.ErrMinReadyAnnotationInvalid)
 	}
 	return raw, nil
 }
 
 func hasAnyOriginalAnnotation(annotations map[string]string) bool {
-	for _, key := range AllOriginalAnnotations {
-		if _, ok := annotations[key]; ok {
-			return true
-		}
-	}
-	return false
+	return v1beta1.HasMinReadyOriginalAnnotations(annotations)
 }

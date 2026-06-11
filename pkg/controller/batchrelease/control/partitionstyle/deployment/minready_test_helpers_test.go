@@ -233,3 +233,15 @@ func pointerInt32(v int32) *int32 {
 func pointerBool(v bool) *bool {
 	return &v
 }
+
+func minReadyMaxUnavailableValue(t *testing.T, deployment *apps.Deployment, replicas int32) int {
+	t.Helper()
+	if deployment.Spec.Strategy.RollingUpdate == nil || deployment.Spec.Strategy.RollingUpdate.MaxUnavailable == nil {
+		t.Fatalf("rollingUpdate.maxUnavailable is nil")
+	}
+	value, err := intstr.GetScaledValueFromIntOrPercent(deployment.Spec.Strategy.RollingUpdate.MaxUnavailable, int(replicas), true)
+	if err != nil {
+		t.Fatalf("scaled maxUnavailable failed: %v", err)
+	}
+	return value
+}
