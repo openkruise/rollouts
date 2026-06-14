@@ -31,7 +31,7 @@ status: implementable
             - [API Compatibility](#api-compatibility)
             - [Annotation Schema](#annotation-schema)
             - [Field Inflation Values](#field-inflation-values)
-            - [maxSurge Preservation](#maxsurge-preservation)
+            - [maxSurge Handling](#maxsurge-handling)
             - [Controller Implementation](#controller-implementation)
                 - [Initialization Process](#initialization-process)
                 - [Batch Upgrade Process](#batch-upgrade-process)
@@ -133,7 +133,7 @@ graph TB
         WH["<b>Workload Update Webhook</b><br/>feature-gated Recreate skip<br/>preserves RollingUpdate"]
         EX["<b>BatchRelease Executor</b><br/>feature-gated controller selection"]
         MRC["<b>MinReadyControl</b><br/>(embeds *realController)<br/>Initialize / UpgradeBatch /<br/>CalculateBatchContext / Finalize"]
-        MS["<b>maxSurge Handling</b><br/>preserve original value<br/>validation fallback only"]
+        MS["<b>maxSurge Handling</b><br/>left to native Deployment"]
     end
 
     subgraph "Kubernetes Native Control Plane"
@@ -154,7 +154,7 @@ graph TB
     EX -->|"6. Route to MinReadyControl"| MRC
 
     MRC -->|"7. Initialize:<br/>save original fields<br/>inflate minReadySeconds<br/>set maxUnavailable=0"| API
-    MRC -.->|"preserve maxSurge<br/>or validation fallback"| MS
+    MRC -.->|"does not store or mutate maxSurge"| MS
     API -->|"persists fields + annotations"| DEP
 
     MRC -->|"8. UpgradeBatch:<br/>increase maxUnavailable<br/>by batch size"| API
@@ -215,30 +215,29 @@ No `CanaryStrategy.DeploymentStrategy`, `ReleasePlan.DeploymentStrategy`, conver
 
 #### Annotation Schema
 
-During rollout, the original values of four Deployment fields are persisted in annotations on the Deployment object itself. This makes the rollout state recoverable across controller restarts without any in-memory state.
+During rollout, the original values of three Deployment fields are persisted in annotations on the Deployment object itself. This makes the rollout state recoverable across controller restarts without any in-memory state.
 
 ```
 rollouts.kruise.io/original-min-ready-seconds:         "<int32 string>"
 rollouts.kruise.io/original-progress-deadline-seconds: "<int32 string>"
 rollouts.kruise.io/original-max-unavailable:           "<int or percent string>"
-rollouts.kruise.io/original-max-surge:                 "<int or percent string>"
 ```
 
 **Invariants**:
 
-- All four annotations are written and deleted in a single `Patch` operation (relying on the Kubernetes API server's resource-level PATCH atomicity).
-- All four present = rollout in progress; all four absent = idle state.
-- If the user's original field is `nil` (relying on Kubernetes defaults), the sentinel value `__k8s_default__` is written. This preserves the distinction between "user explicitly set this value" and "user relied on the default", which is important during Finalize.
+- All three annotations are written and deleted in a single `Patch` operation (relying on the Kubernetes API server's resource-level PATCH atomicity).
+- All three present = rollout in progress; all three absent = idle state.
+- If the user's original pointer field is `nil` in tests or fake-client paths, the annotation stores the Kubernetes API default value itself (`600` for `progressDeadlineSeconds`, `25%` for `maxUnavailable`) instead of a sentinel string.
 
 **Serialization rules**:
 
 | Source type | Example value | Annotation string |
 |---|---|---|
 | `int32` (pointer non-nil) | `int32(10)` | `"10"` |
-| `int32` (pointer nil) | — | `"__k8s_default__"` |
+| `int32` (pointer nil) | — | `"600"` |
 | `IntOrString` Type=Int | `{Type: Int, IntVal: 5}` | `"5"` |
 | `IntOrString` Type=String | `{Type: String, StrVal: "25%"}` | `"25%"` |
-| `*IntOrString` pointer nil | — | `"__k8s_default__"` |
+| `*IntOrString` pointer nil | — | `"25%"` |
 
 #### Field Inflation Values
 
@@ -254,18 +253,15 @@ During `Initialize`, the core MinReadySeconds path inflates three Deployment fie
 
 `maxSurge` is not a new user-facing policy or a MinReadySeconds rollout knob. It is an existing Kubernetes RollingUpdate field, and the MinReadySeconds path preserves the user's original value by default.
 
-#### maxSurge Preservation
+#### maxSurge Handling
 
-Native Deployment RollingUpdate supports surge capacity, and this proposal should not require `maxSurge=1` as a semantic constraint. The implementation follows one internal rule:
+Native Deployment RollingUpdate supports surge capacity, and this proposal does not treat `maxSurge` as a MinReadySeconds rollout knob. The implementation follows one internal rule:
 
-1. Store the original `maxSurge` value in `rollouts.kruise.io/original-max-surge`.
-2. Preserve the live `maxSurge` value during rollout.
-3. If preserving it would make the live RollingUpdate strategy invalid because `maxUnavailable=0` and effective `maxSurge=0`, temporarily use `maxSurge=1` as a validation fallback.
-4. Restore the original `maxSurge` value during `Finalize`.
+1. Do not store the original `maxSurge` value in a MinReady annotation.
+2. Do not mutate `maxSurge` during `Initialize`, `UpgradeBatch`, or `Finalize`.
+3. Let the native Deployment strategy retain whatever `maxSurge` value the user or Kubernetes defaulting already provided.
 
 The batch-ready calculation is independent from `maxSurge`: count updated pods only after they are `Ready` and have remained ready for the user's original `minReadySeconds`. Therefore, preserving a larger `maxSurge` can increase temporary pod count, but it cannot mark a batch successful early.
-
-This fallback is not a user-visible policy choice. It exists only to satisfy Kubernetes RollingUpdate validation rules while keeping the default behavior as "preserve the user's original `maxSurge`".
 
 #### Controller Implementation
 
@@ -301,10 +297,10 @@ func NewMinReadyController(cli client.Client, key types.NamespacedName, gvk sche
    - PDB presence is not an eligibility failure. PDBs protect Eviction API flows, not Deployment rolling updates, so they are not used as the batch-safety mechanism.
 
 2. **Annotation persistence** (`writeOriginalAnnotations`):
-   - If any of the four annotations is already present, validate that all four exist (idempotency check) and that the on-disk fields are already inflated. If consistent, no-op.
-   - Otherwise, serialize the current values of `minReadySeconds`, `progressDeadlineSeconds`, `maxUnavailable`, `maxSurge` per the serialization rules above and write all four annotations.
+   - If any of the three annotations is already present, validate that all three exist (idempotency check) and that the on-disk fields are already inflated. If consistent, no-op.
+   - Otherwise, serialize the current values of `minReadySeconds`, `progressDeadlineSeconds`, and `maxUnavailable` per the serialization rules above and write all three annotations.
 
-3. **Field inflation** (`inflateDeploymentStrategy`): Set `minReadySeconds`, `progressDeadlineSeconds`, and `maxUnavailable` to their MinReadySeconds values. Preserve `maxSurge` unless a `maxUnavailable=0 && maxSurge=0` combination would violate Kubernetes RollingUpdate validation; in that case, temporarily use `maxSurge=1`.
+3. **Field inflation** (`inflateDeploymentStrategy`): Set `minReadySeconds`, `progressDeadlineSeconds`, and `maxUnavailable` to their MinReadySeconds values. Leave `maxSurge` unchanged.
 
 4. **Atomic commit**: Issue a single `Patch` using `client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})`. The annotations and field changes are committed together; the Kubernetes API server's resource-level PATCH atomicity guarantees no partial state is observable.
 
@@ -312,10 +308,10 @@ func NewMinReadyController(cli client.Client, key types.NamespacedName, gvk sche
 
 `UpgradeBatch(ctx)` is invoked per batch by the BatchRelease executor. It performs:
 
-1. **Inflation invariant** (`ensureInflatedDeploymentStrategy`): Verify and, if necessary, patch the Deployment so `minReadySeconds == MaxReadySeconds` and `progressDeadlineSeconds == MaxProgressSeconds` before each batch operation. `maxSurge` remains preserved except for the validation fallback described above. This makes the inflated fields a rollout-long invariant rather than a one-time initialization side effect.
+1. **Inflation invariant** (`ensureInflatedDeploymentStrategy`): Verify and, if necessary, patch the Deployment so `minReadySeconds == MaxReadySeconds` and `progressDeadlineSeconds == MaxProgressSeconds` before each batch operation. `maxSurge` is not part of the MinReady invariant. This makes the inflated fields a rollout-long invariant rather than a one-time initialization side effect.
 
 2. **Target computation**: Read the current `maxUnavailable` and compare against `ctx.DesiredUpdatedReplicas`.
-   - If `current > target`: external write has increased `maxUnavailable` beyond the batch target → `MinReadyDegraded`.
+   - If `current > target`: external write or scale-down has left `maxUnavailable` above the batch target. This is legal and self-heals by reducing it to the target.
    - If `current >= target`: already at target, no-op.
 
 3. **Patch `maxUnavailable = target`**: A single-field Patch using the same optimistic-lock mechanism. The native RollingUpdate controller observes the change and creates new pods accordingly. Because `minReadySeconds` is inflated, the new pods enter `Ready-but-not-Available` from the Deployment controller's perspective.
@@ -351,23 +347,23 @@ The controller must use the original `minReadySeconds` saved in the Deployment a
 `Finalize` restores the Deployment to its pre-rollout state. It performs:
 
 1. If the Deployment object is `nil` (deleted), no-op.
-2. If none of the four annotations is present, the Deployment is already in idle state — no-op.
+2. If none of the three annotations is present, the Deployment is already in idle state — no-op.
 3. **Parse annotations** (`parseOriginalDeploymentStrategy`):
 
 | Annotation state | Parse result | Behavior |
 |---|---|---|
-| All four present and parseable | Restored field values (with `nil` indicating "user relied on default") | Normal Finalize. |
+| All three present and parseable | Restored field values | Normal Finalize. |
 | Any one fails to parse (corrupt format) | Error | `MinReadyDegraded`. |
 | Partial annotations missing | Error | `MinReadyDegraded`. |
-| All four missing | — | No-op (already idle). |
+| All three missing | — | No-op (already idle). |
 
 4. **Field restoration** (`applyOriginalDeploymentStrategy`):
-   - `minReadySeconds`: `nil` → set to `0` (Kubernetes default); non-nil → restore original.
-   - `progressDeadlineSeconds`: `nil` → clear pointer (Kubernetes default `600`s applies); non-nil → restore original.
-   - If both `maxUnavailable` and `maxSurge` are `nil`, clear the entire `RollingUpdate` block (Kubernetes default applies).
-   - Otherwise, restore each field individually.
+   - `minReadySeconds`: restore the parsed integer value.
+   - `progressDeadlineSeconds`: restore the parsed integer value.
+   - `maxUnavailable`: restore the parsed int-or-percent value.
+   - `maxSurge`: not restored from MinReady annotations and not mutated by MinReady finalization.
 
-5. Delete all four annotations and `Patch` atomically.
+5. Delete all three annotations and `Patch` atomically.
 
 **Why Degraded refuses to silently fall back to Kubernetes defaults**: A user whose original `maxUnavailable` was `50%` and whose annotations were corrupted should not be silently downgraded to the Kubernetes default `25%`. The release-rate change is operationally significant and should be surfaced for human review, not masked.
 
@@ -404,19 +400,25 @@ The state determination is always based on **observable Deployment state**, neve
 A feature-gated guard is added to `pkg/webhook/workload/mutating/workload_update_handler.go`:
 
 ```go
-func shouldSkipRecreateMutationForMinReady(rollout *appsv1beta1.Rollout) bool {
-    return rollout.Spec.Strategy.Canary != nil &&
-        !rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary &&
-        utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy)
+func isMinReadySecondsStrategy(rollout *appsv1beta1.Rollout, deployment *apps.Deployment) bool {
+    if rollout.Spec.Strategy.Canary == nil ||
+        rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
+        return false
+    }
+    if utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
+        return true
+    }
+    strategy := util.GetDeploymentStrategy(deployment)
+    return strings.EqualFold(string(strategy.RollingStyle), string(appsv1alpha1.PartitionRollingStyle))
 }
 ```
 
-The guard splits the mutation into two paths. `shouldSkipRecreateMutationForMinReady` only checks `Canary` because a Rollout cannot declare both `BlueGreen` and `Canary` — the validating webhook rejects that combination — so with `BlueGreen==nil` guaranteed, the guard is equivalent to the executor's `GetRollingStyle()==Partition` routing and both sides agree on MinReady.
+The guard splits the mutation into two paths. `isMinReadySecondsStrategy` only checks `Canary` because a Rollout cannot declare both `BlueGreen` and `Canary` — the validating webhook rejects that combination. When the feature gate is disabled mid-rollout, the Deployment's `DeploymentStrategyAnnotation` keeps the webhook symmetric with the executor's MinReady annotation fallback.
 
 **Enrollment path (workload entering progressing).** Instead of pausing the Deployment, the webhook synchronously snapshots the original strategy fields into annotations and inflates `minReadySeconds` / `progressDeadlineSeconds` / `maxUnavailable` in place via `EnrollMinReadyDeployment`:
 
 ```go
-if shouldSkipRecreateMutationForMinReady(rollout) {
+if isMinReadySecondsStrategy(rollout, deployment) {
     // MinReady keeps the native controller running, so it must NOT be paused.
     // Inflate synchronously at admission time so the native controller never
     // observes the user's original budget in the window between admission and
@@ -547,7 +549,7 @@ This is an accepted alpha limitation. Manual recovery without the controller:
    kubectl get deploy <name> -n <ns> \
      -o jsonpath='{.metadata.annotations.rollouts\.kruise\.io/original-min-ready-seconds}{"\n"}{.metadata.annotations.rollouts\.kruise\.io/original-max-unavailable}{"\n"}'
    ```
-   A value of `__k8s_default__` means the field was unset originally (restore by removing it).
+   If a field was unset originally, the annotation contains the Kubernetes API default value (`600` or `25%`).
 2. Restore the original strategy fields and clear the rollout control annotation:
    ```bash
    kubectl patch deploy <name> -n <ns> --type merge -p '{
@@ -557,7 +559,6 @@ This is an accepted alpha limitation. Manual recovery without the controller:
        "rollouts.kruise.io/original-min-ready-seconds": null,
        "rollouts.kruise.io/original-progress-deadline-seconds": null,
        "rollouts.kruise.io/original-max-unavailable": null,
-       "rollouts.kruise.io/original-max-surge": null,
        "rollouts.kruise.io/batch-release-control": null }}}'
    ```
    The native Deployment controller then resumes a normal rolling update to completion.
@@ -600,6 +601,6 @@ Users opt in by enabling the feature gate on the kruise-rollout controller.
 - [ ] Q2 2026 (GSoC weeks 1–6): MinReadyControl core implementation (Initialize / UpgradeBatch / CalculateBatchContext / Finalize) with unit tests
 - [ ] Q3 2026 (GSoC weeks 7–8): Webhook invariant enforcement and feature-gated strategy selection
 - [ ] Q3 2026 (GSoC weeks 9–10): End-to-end tests covering the five core scenarios
-- [ ] Q3 2026 (GSoC weeks 11–12): PDB coexistence, maxSurge preservation edge cases, documentation
+- [ ] Q3 2026 (GSoC weeks 11–12): PDB coexistence and documentation
 - [ ] TBD: Observability follow-up (status conditions, events, Prometheus metrics)
 - [ ] TBD: Plan B (custom `ReadinessGate`) if future requirements need PDB-aware workload availability semantics

@@ -50,8 +50,7 @@ func countUpdatedAvailablePods(pods []*corev1.Pod, updateRevision string, minRea
 		if ready == nil || ready.Status != corev1.ConditionTrue {
 			return false
 		}
-		return ready.LastTransitionTime.Add(time.Duration(minReadySeconds)*time.Second).Before(now) ||
-			ready.LastTransitionTime.Add(time.Duration(minReadySeconds)*time.Second).Equal(now)
+		return !ready.LastTransitionTime.Add(time.Duration(minReadySeconds) * time.Second).After(now)
 	}))
 }
 

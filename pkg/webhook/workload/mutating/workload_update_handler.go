@@ -241,7 +241,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	// in rollout progressing
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
 		modified := false
-		if shouldSkipRecreateMutationForMinReady(rollout) {
+		if isMinReadySecondsStrategy(rollout, newObj) {
 			return enforceMinReadyInflation(newObj), nil
 		}
 		strategy := util.GetDeploymentStrategy(newObj)
@@ -330,7 +330,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		newObj.Labels[appsv1alpha1.DeploymentStableRevisionLabel] = stableRS.Labels[apps.DefaultDeploymentUniqueLabelKey]
 	}
 
-	if shouldSkipRecreateMutationForMinReady(rollout) {
+	if isMinReadySecondsStrategy(rollout, newObj) {
 		// MinReady keeps the native controller running, so it must NOT be paused.
 		// Inflate the strategy synchronously at admission time: this snapshots the
 		// original fields into annotations and sets minReadySeconds/maxUnavailable
@@ -471,20 +471,25 @@ func isEffectiveDeploymentRevisionChange(oldObj, newObj *apps.Deployment) bool {
 	return true
 }
 
-// shouldSkipRecreateMutationForMinReady reports whether the Deployment should be
-// driven by the MinReadySeconds strategy (keep RollingUpdate, do not pause)
-// instead of the legacy Recreate-style mutation.
+// isMinReadySecondsStrategy reports whether the Deployment should be driven by
+// the MinReadySeconds strategy (keep RollingUpdate, do not pause) instead of
+// the legacy Recreate-style mutation.
 //
 // It only checks Canary because a Rollout cannot declare BlueGreen and Canary at
 // the same time: the validating webhook rejects that combination
 // (pkg/webhook/rollout/validating/rollout_create_update_handler.go,
-// "Canary and BlueGreen cannot both be set"). With BlueGreen==nil guaranteed,
-// Canary!=nil && !EnableExtraWorkloadForCanary is equivalent to the executor's
-// GetRollingStyle()==Partition routing, so both sides agree on MinReady.
-func shouldSkipRecreateMutationForMinReady(rollout *appsv1beta1.Rollout) bool {
-	return rollout.Spec.Strategy.Canary != nil &&
-		!rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary &&
-		utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy)
+// "Canary and BlueGreen cannot both be set"). When the feature gate is disabled
+// mid-rollout, the DeploymentStrategyAnnotation keeps this symmetric with the
+// executor's MinReady annotation fallback.
+func isMinReadySecondsStrategy(rollout *appsv1beta1.Rollout, deployment *apps.Deployment) bool {
+	if rollout.Spec.Strategy.Canary == nil || rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
+		return false
+	}
+	if utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
+		return true
+	}
+	strategy := util.GetDeploymentStrategy(deployment)
+	return strings.EqualFold(string(strategy.RollingStyle), string(appsv1alpha1.PartitionRollingStyle))
 }
 
 func enforceMinReadyInflation(deployment *apps.Deployment) bool {

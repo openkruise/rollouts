@@ -17,6 +17,7 @@ limitations under the License.
 package deployment
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -30,7 +31,6 @@ func TestMinReadyFinalizeRestoresOriginalValues(t *testing.T) {
 		AnnotationOriginalMinReadySeconds:         "7",
 		AnnotationOriginalProgressDeadlineSeconds: "60",
 		AnnotationOriginalMaxUnavailable:          "25%",
-		AnnotationOriginalMaxSurge:                "1",
 		util.BatchReleaseControlAnnotation:        getControlInfo(releaseDemo),
 	}
 	deployment.Labels = map[string]string{
@@ -38,7 +38,7 @@ func TestMinReadyFinalizeRestoresOriginalValues(t *testing.T) {
 	}
 	control := newBuiltMinReadyControl(t, deployment)
 
-	if err := control.Finalize(releaseDemo.DeepCopy()); err != nil {
+	if err := control.Finalize(context.Background(), releaseDemo.DeepCopy()); err != nil {
 		t.Fatalf("Finalize failed: %v", err)
 	}
 
@@ -51,9 +51,6 @@ func TestMinReadyFinalizeRestoresOriginalValues(t *testing.T) {
 	}
 	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.StrVal != "25%" {
 		t.Fatalf("maxUnavailable = %v, want 25%%", unavailable)
-	}
-	if surge := got.Spec.Strategy.RollingUpdate.MaxSurge; surge == nil || surge.IntVal != 1 {
-		t.Fatalf("maxSurge = %v, want 1", surge)
 	}
 	for _, key := range AllOriginalAnnotations {
 		if _, ok := got.Annotations[key]; ok {
@@ -72,13 +69,12 @@ func TestMinReadyFinalizeRestoresKubernetesDefaults(t *testing.T) {
 	deployment := newInflatedMinReadyDeployment()
 	deployment.Annotations = map[string]string{
 		AnnotationOriginalMinReadySeconds:         "0",
-		AnnotationOriginalProgressDeadlineSeconds: AnnotationValueKubernetesDefault,
-		AnnotationOriginalMaxUnavailable:          AnnotationValueKubernetesDefault,
-		AnnotationOriginalMaxSurge:                AnnotationValueKubernetesDefault,
+		AnnotationOriginalProgressDeadlineSeconds: "600",
+		AnnotationOriginalMaxUnavailable:          "25%",
 	}
 	control := newBuiltMinReadyControl(t, deployment)
 
-	if err := control.Finalize(releaseDemo.DeepCopy()); err != nil {
+	if err := control.Finalize(context.Background(), releaseDemo.DeepCopy()); err != nil {
 		t.Fatalf("Finalize failed: %v", err)
 	}
 
@@ -86,11 +82,17 @@ func TestMinReadyFinalizeRestoresKubernetesDefaults(t *testing.T) {
 	if got.Spec.MinReadySeconds != 0 {
 		t.Fatalf("minReadySeconds = %d, want 0", got.Spec.MinReadySeconds)
 	}
-	if got.Spec.ProgressDeadlineSeconds != nil {
-		t.Fatalf("progressDeadlineSeconds = %v, want nil", got.Spec.ProgressDeadlineSeconds)
+	if got.Spec.ProgressDeadlineSeconds == nil || *got.Spec.ProgressDeadlineSeconds != DefaultProgressDeadlineSeconds {
+		t.Fatalf("progressDeadlineSeconds = %v, want %d", got.Spec.ProgressDeadlineSeconds, DefaultProgressDeadlineSeconds)
 	}
-	if got.Spec.Strategy.RollingUpdate != nil {
-		t.Fatalf("rollingUpdate = %v, want nil", got.Spec.Strategy.RollingUpdate)
+	if got.Spec.Strategy.RollingUpdate == nil {
+		t.Fatalf("rollingUpdate = nil, want maxSurge preserved")
+	}
+	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.StrVal != DefaultMaxUnavailable {
+		t.Fatalf("maxUnavailable = %v, want %s", unavailable, DefaultMaxUnavailable)
+	}
+	if surge := got.Spec.Strategy.RollingUpdate.MaxSurge; surge == nil || surge.IntVal != 1 {
+		t.Fatalf("maxSurge = %v, want original value preserved", surge)
 	}
 }
 
@@ -99,7 +101,7 @@ func TestMinReadyFinalizeNoopWhenAnnotationsAbsentAndFieldsRestored(t *testing.T
 	deployment.Annotations = nil
 	control := newBuiltMinReadyControl(t, deployment)
 
-	if err := control.Finalize(releaseDemo.DeepCopy()); err != nil {
+	if err := control.Finalize(context.Background(), releaseDemo.DeepCopy()); err != nil {
 		t.Fatalf("Finalize failed: %v", err)
 	}
 
@@ -114,7 +116,7 @@ func TestMinReadyFinalizeRejectsMissingAnnotationsWhileFieldsInflated(t *testing
 	deployment.Annotations = nil
 	control := newBuiltMinReadyControl(t, deployment)
 
-	err := control.Finalize(releaseDemo.DeepCopy())
+	err := control.Finalize(context.Background(), releaseDemo.DeepCopy())
 	if err == nil || !strings.Contains(err.Error(), "annotation state missing") {
 		t.Fatalf("Finalize error = %v, want missing annotation state error", err)
 	}
@@ -130,7 +132,7 @@ func TestMinReadyFinalizeRejectsPartialAnnotations(t *testing.T) {
 	}
 	control := newBuiltMinReadyControl(t, deployment)
 
-	err := control.Finalize(releaseDemo.DeepCopy())
+	err := control.Finalize(context.Background(), releaseDemo.DeepCopy())
 	if err == nil || !strings.Contains(err.Error(), AnnotationOriginalProgressDeadlineSeconds) {
 		t.Fatalf("Finalize error = %v, want missing annotation error", err)
 	}
@@ -144,11 +146,10 @@ func TestMinReadyFinalizeRejectsMalformedAnnotations(t *testing.T) {
 		AnnotationOriginalMinReadySeconds:         "7",
 		AnnotationOriginalProgressDeadlineSeconds: "bad",
 		AnnotationOriginalMaxUnavailable:          "25%",
-		AnnotationOriginalMaxSurge:                "1",
 	}
 	control := newBuiltMinReadyControl(t, deployment)
 
-	err := control.Finalize(releaseDemo.DeepCopy())
+	err := control.Finalize(context.Background(), releaseDemo.DeepCopy())
 	if err == nil || !strings.Contains(err.Error(), "malformed int32") {
 		t.Fatalf("Finalize error = %v, want malformed int32 error", err)
 	}

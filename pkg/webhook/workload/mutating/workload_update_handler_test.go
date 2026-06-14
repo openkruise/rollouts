@@ -441,9 +441,8 @@ func TestHandlerDeployment(t *testing.T) {
 				// minReadySeconds/progressDeadline/maxUnavailable synchronously so the
 				// native controller never observes the original budget before Initialize.
 				obj.Annotations[partitiondeployment.AnnotationOriginalMinReadySeconds] = "0"
-				obj.Annotations[partitiondeployment.AnnotationOriginalProgressDeadlineSeconds] = partitiondeployment.AnnotationValueKubernetesDefault
-				obj.Annotations[partitiondeployment.AnnotationOriginalMaxUnavailable] = partitiondeployment.AnnotationValueKubernetesDefault
-				obj.Annotations[partitiondeployment.AnnotationOriginalMaxSurge] = partitiondeployment.AnnotationValueKubernetesDefault
+				obj.Annotations[partitiondeployment.AnnotationOriginalProgressDeadlineSeconds] = "600"
+				obj.Annotations[partitiondeployment.AnnotationOriginalMaxUnavailable] = "25%"
 				obj.Spec.Paused = false
 				obj.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
 				pds := partitiondeployment.InflatedProgressDeadlineSeconds
@@ -885,18 +884,27 @@ func TestHandlerDeployment(t *testing.T) {
 	}
 }
 
-func TestShouldSkipRecreateMutationForMinReady(t *testing.T) {
+func TestIsMinReadySecondsStrategy(t *testing.T) {
 	rollout := rolloutDemo.DeepCopy()
+	deployment := deploymentDemo.DeepCopy()
+	if deployment.Annotations == nil {
+		deployment.Annotations = map[string]string{}
+	}
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
-	if shouldSkipRecreateMutationForMinReady(rollout) {
+	if isMinReadySecondsStrategy(rollout, deployment) {
 		t.Fatalf("skip returned true while feature gate is disabled")
 	}
+	deployment.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = `{"rollingStyle":"Partition"}`
+	if !isMinReadySecondsStrategy(rollout, deployment) {
+		t.Fatalf("skip returned false for in-progress MinReady Deployment with strategy annotation")
+	}
+	delete(deployment.Annotations, appsv1alpha1.DeploymentStrategyAnnotation)
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
-	if !shouldSkipRecreateMutationForMinReady(rollout) {
+	if !isMinReadySecondsStrategy(rollout, deployment) {
 		t.Fatalf("skip returned false for MinReadySeconds with feature gate enabled")
 	}
 	rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
-	if shouldSkipRecreateMutationForMinReady(rollout) {
+	if isMinReadySecondsStrategy(rollout, deployment) {
 		t.Fatalf("skip returned true for canary-style rollout")
 	}
 }
@@ -910,9 +918,8 @@ func inflatedMinReadyDeployment() *apps.Deployment {
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{
 				partitiondeployment.AnnotationOriginalMinReadySeconds:         "0",
-				partitiondeployment.AnnotationOriginalProgressDeadlineSeconds: partitiondeployment.AnnotationValueKubernetesDefault,
-				partitiondeployment.AnnotationOriginalMaxUnavailable:          partitiondeployment.AnnotationValueKubernetesDefault,
-				partitiondeployment.AnnotationOriginalMaxSurge:                partitiondeployment.AnnotationValueKubernetesDefault,
+				partitiondeployment.AnnotationOriginalProgressDeadlineSeconds: "600",
+				partitiondeployment.AnnotationOriginalMaxUnavailable:          "25%",
 			},
 		},
 		Spec: apps.DeploymentSpec{

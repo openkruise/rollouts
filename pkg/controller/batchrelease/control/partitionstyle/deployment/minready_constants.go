@@ -34,27 +34,26 @@ const (
 	AnnotationOriginalMinReadySeconds         = v1beta1.MinReadyOriginalMinReadySecondsAnnotation
 	AnnotationOriginalProgressDeadlineSeconds = v1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation
 	AnnotationOriginalMaxUnavailable          = v1beta1.MinReadyOriginalMaxUnavailableAnnotation
-	AnnotationOriginalMaxSurge                = v1beta1.MinReadyOriginalMaxSurgeAnnotation
 
-	AnnotationValueKubernetesDefault = "__k8s_default__"
+	DefaultProgressDeadlineSeconds int32 = 600
+	DefaultMaxUnavailable                = "25%"
 
 	InflatedMinReadySeconds         int32 = v1beta1.MaxReadySeconds
 	InflatedProgressDeadlineSeconds int32 = v1beta1.MaxProgressSeconds
-	InflatedMaxSurgeInt             int32 = 1
 )
 
 var AllOriginalAnnotations = v1beta1.MinReadyOriginalAnnotations
 
 func serializeOriginalInt32(value *int32) string {
 	if value == nil {
-		return AnnotationValueKubernetesDefault
+		return strconv.FormatInt(int64(DefaultProgressDeadlineSeconds), 10)
 	}
 	return strconv.FormatInt(int64(*value), 10)
 }
 
 func serializeOriginalIntOrString(value *intstr.IntOrString) string {
 	if value == nil {
-		return AnnotationValueKubernetesDefault
+		return DefaultMaxUnavailable
 	}
 	if value.Type == intstr.String {
 		return value.StrVal
@@ -63,9 +62,12 @@ func serializeOriginalIntOrString(value *intstr.IntOrString) string {
 }
 
 func parseOriginalInt32(annotations map[string]string, key string) (*int32, error) {
-	raw, err := readOriginalAnnotation(annotations, key)
-	if err != nil || raw == AnnotationValueKubernetesDefault {
-		return nil, err
+	raw, ok := annotations[key]
+	if !ok {
+		return nil, fmt.Errorf("annotation %s missing: %w", key, partitionstyle.ErrMinReadyAnnotationInvalid)
+	}
+	if raw == "" {
+		return nil, fmt.Errorf("annotation %s present but empty: %w", key, partitionstyle.ErrMinReadyAnnotationInvalid)
 	}
 	n, err := strconv.ParseInt(raw, 10, 32)
 	if err != nil {
@@ -76,9 +78,12 @@ func parseOriginalInt32(annotations map[string]string, key string) (*int32, erro
 }
 
 func parseOriginalIntOrString(annotations map[string]string, key string) (*intstr.IntOrString, error) {
-	raw, err := readOriginalAnnotation(annotations, key)
-	if err != nil || raw == AnnotationValueKubernetesDefault {
-		return nil, err
+	raw, ok := annotations[key]
+	if !ok {
+		return nil, fmt.Errorf("annotation %s missing: %w", key, partitionstyle.ErrMinReadyAnnotationInvalid)
+	}
+	if raw == "" {
+		return nil, fmt.Errorf("annotation %s present but empty: %w", key, partitionstyle.ErrMinReadyAnnotationInvalid)
 	}
 	if strings.HasSuffix(raw, "%") {
 		if _, err := strconv.Atoi(strings.TrimSuffix(raw, "%")); err != nil {
@@ -93,17 +98,6 @@ func parseOriginalIntOrString(annotations map[string]string, key string) (*intst
 	}
 	v := intstr.FromInt(n)
 	return &v, nil
-}
-
-func readOriginalAnnotation(annotations map[string]string, key string) (string, error) {
-	raw, ok := annotations[key]
-	if !ok {
-		return "", fmt.Errorf("annotation %s missing: %w", key, partitionstyle.ErrMinReadyAnnotationInvalid)
-	}
-	if raw == "" {
-		return "", fmt.Errorf("annotation %s present but empty: %w", key, partitionstyle.ErrMinReadyAnnotationInvalid)
-	}
-	return raw, nil
 }
 
 func hasAnyOriginalAnnotation(annotations map[string]string) bool {

@@ -56,7 +56,6 @@ const (
 	MinReadyOriginalMinReadySecondsAnnotation         = "rollouts.kruise.io/original-min-ready-seconds"
 	MinReadyOriginalProgressDeadlineSecondsAnnotation = "rollouts.kruise.io/original-progress-deadline-seconds"
 	MinReadyOriginalMaxUnavailableAnnotation          = "rollouts.kruise.io/original-max-unavailable"
-	MinReadyOriginalMaxSurgeAnnotation                = "rollouts.kruise.io/original-max-surge"
 )
 
 // MinReadyOriginalAnnotations lists all annotations that snapshot the original
@@ -65,7 +64,6 @@ var MinReadyOriginalAnnotations = []string{
 	MinReadyOriginalMinReadySecondsAnnotation,
 	MinReadyOriginalProgressDeadlineSecondsAnnotation,
 	MinReadyOriginalMaxUnavailableAnnotation,
-	MinReadyOriginalMaxSurgeAnnotation,
 }
 
 // HasMinReadyOriginalAnnotations returns true if the annotations carry any

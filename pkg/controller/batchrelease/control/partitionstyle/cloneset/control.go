@@ -78,7 +78,7 @@ func (rc *realController) ListOwnedPods() ([]*corev1.Pod, error) {
 	return rc.pods, err
 }
 
-func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Initialize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if control.IsControlledByBatchRelease(release, rc.object) {
 		return nil
 	}
@@ -87,21 +87,21 @@ func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 	owner := control.BuildReleaseControlInfo(release)
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}},"spec":{"updateStrategy":{"paused":%v,"partition":"%s"}}}`,
 		util.BatchReleaseControlAnnotation, owner, false, "100%")
-	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
+	return rc.client.Patch(ctx, clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
-func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
+func (rc *realController) UpgradeBatch(ctx context.Context, batchContext *batchcontext.BatchContext) error {
 	var body string
 	var desired int
-	switch partition := ctx.DesiredPartition; partition.Type {
+	switch partition := batchContext.DesiredPartition; partition.Type {
 	case intstr.Int:
 		desired = int(partition.IntVal)
 		body = fmt.Sprintf(`{"spec":{"updateStrategy":{"partition": %d }}}`, partition.IntValue())
 	case intstr.String:
-		desired, _ = intstr.GetScaledValueFromIntOrPercent(&partition, int(ctx.Replicas), true)
+		desired, _ = intstr.GetScaledValueFromIntOrPercent(&partition, int(batchContext.Replicas), true)
 		body = fmt.Sprintf(`{"spec":{"updateStrategy":{"partition":"%s"}}}`, partition.String())
 	}
-	current, _ := intstr.GetScaledValueFromIntOrPercent(&ctx.CurrentPartition, int(ctx.Replicas), true)
+	current, _ := intstr.GetScaledValueFromIntOrPercent(&batchContext.CurrentPartition, int(batchContext.Replicas), true)
 
 	// current less than desired, which means current revision replicas will be less than desired,
 	// in other word, update revision replicas will be more than desired, no need to update again.
@@ -110,10 +110,10 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	}
 
 	clone := util.GetEmptyObjectWithKey(rc.object)
-	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
+	return rc.client.Patch(ctx, clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
-func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Finalize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if rc.object == nil {
 		return nil
 	}
@@ -134,7 +134,7 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}%s}`, util.BatchReleaseControlAnnotation, specBody)
 
 	clone := util.GetEmptyObjectWithKey(rc.object)
-	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
+	return rc.client.Patch(ctx, clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
 func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {

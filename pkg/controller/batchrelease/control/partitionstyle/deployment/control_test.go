@@ -321,7 +321,7 @@ func TestRealController(t *testing.T) {
 	controller, err := c.BuildController()
 	Expect(err).NotTo(HaveOccurred())
 
-	err = controller.Initialize(release)
+	err = controller.Initialize(context.Background(), release)
 	Expect(err).NotTo(HaveOccurred())
 	fetch := &apps.Deployment{}
 	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())
@@ -335,7 +335,7 @@ func TestRealController(t *testing.T) {
 	for {
 		batchContext, err := controller.CalculateBatchContext(release)
 		Expect(err).NotTo(HaveOccurred())
-		err = controller.UpgradeBatch(batchContext)
+		err = controller.UpgradeBatch(context.Background(), batchContext)
 		fetch := &apps.Deployment{}
 		// mock
 		Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())
@@ -350,7 +350,7 @@ func TestRealController(t *testing.T) {
 	Expect(strategy.Partition.StrVal).Should(Equal("50%"))
 
 	release.Spec.ReleasePlan.BatchPartition = nil
-	err = controller.Finalize(release)
+	err = controller.Finalize(context.Background(), release)
 	Expect(err).NotTo(HaveOccurred())
 	fetch = &apps.Deployment{}
 	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())
@@ -498,7 +498,7 @@ func TestFinalize(t *testing.T) {
 				t.Fatalf("BuildController failed: %s", err.Error())
 			}
 			cs.featureGateFunc()
-			err = c.Finalize(br)
+			err = c.Finalize(context.Background(), br)
 			if err != nil {
 				t.Fatalf("BuildController failed: %s", err.Error())
 			}

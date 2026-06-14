@@ -841,7 +841,7 @@ func TestExecutorFallsBackToRecreateWhenMinReadyFeatureGateDisabled(t *testing.T
 		WithStatusSubresource(&v1beta1.BatchRelease{}).
 		Build()
 
-	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(release, release.Status.DeepCopy())
+	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(context.Background(), release, release.Status.DeepCopy())
 	if err != nil {
 		t.Fatalf("getReleaseController failed: %v", err)
 	}
@@ -869,7 +869,7 @@ func TestMinReadyControlPlaneRecordsInitializedConditionAndEvent(t *testing.T) {
 		WithStatusSubresource(&v1beta1.BatchRelease{}).
 		Build()
 	status := release.Status.DeepCopy()
-	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(release, status)
+	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(context.Background(), release, status)
 	if err != nil {
 		t.Fatalf("getReleaseController failed: %v", err)
 	}
@@ -900,7 +900,7 @@ func TestMinReadyControlPlaneAllowsPDBCoexistence(t *testing.T) {
 		WithStatusSubresource(&v1beta1.BatchRelease{}).
 		Build()
 	status := release.Status.DeepCopy()
-	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(release, status)
+	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(context.Background(), release, status)
 	if err != nil {
 		t.Fatalf("getReleaseController failed: %v", err)
 	}

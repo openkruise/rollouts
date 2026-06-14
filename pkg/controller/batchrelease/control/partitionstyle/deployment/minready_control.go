@@ -39,6 +39,10 @@ type MinReadyControl struct {
 	*realController
 }
 
+func (mc *MinReadyControl) IsMinReadyControl() bool {
+	return true
+}
+
 func (mc *MinReadyControl) BuildController() (partitionstyle.Interface, error) {
 	if mc.realController == nil {
 		return nil, fmt.Errorf("MinReadyControl.BuildController: realController is nil")
@@ -54,40 +58,42 @@ func (mc *MinReadyControl) BuildController() (partitionstyle.Interface, error) {
 	return &MinReadyControl{realController: rc}, nil
 }
 
-func (mc *MinReadyControl) Initialize(release *v1beta1.BatchRelease) error {
+func (mc *MinReadyControl) Initialize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if release == nil {
 		return fmt.Errorf("MinReadyControl.Initialize: release is nil")
 	}
 	if err := mc.ensureInitializeAllowed(); err != nil {
 		return fmt.Errorf("MinReadyControl.Initialize: %w", err)
 	}
-	original := mc.object.DeepCopy()
-	modified := original.DeepCopy()
-	if err := writeOriginalAnnotations(original, modified); err != nil {
-		return fmt.Errorf("MinReadyControl.Initialize: %w", err)
-	}
+	original := mc.object
+	modified := mc.object.DeepCopy()
 	if hasAnyOriginalAnnotation(original.Annotations) {
+		if err := ensureOriginalAnnotations(original); err != nil {
+			return fmt.Errorf("MinReadyControl.Initialize: %w", err)
+		}
 		if err := validateInflatedDeploymentStrategy(original); err != nil {
 			return fmt.Errorf("MinReadyControl.Initialize: %w", err)
 		}
+	} else {
+		writeOriginalAnnotations(original, modified)
 	}
 	modified.Annotations[util.BatchReleaseControlAnnotation] = util.DumpJSON(metav1.NewControllerRef(
 		release, release.GetObjectKind().GroupVersionKind()))
 	inflateDeploymentStrategy(modified)
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
-	return mc.client.Patch(context.TODO(), modified, patch)
+	return mc.client.Patch(ctx, modified, patch)
 }
 
-func (mc *MinReadyControl) UpgradeBatch(ctx *batchcontext.BatchContext) error {
-	if err := mc.ensureInflatedDeploymentStrategy(); err != nil {
-		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", ctx.CurrentBatch, err)
+func (mc *MinReadyControl) UpgradeBatch(ctx context.Context, batchContext *batchcontext.BatchContext) error {
+	if err := mc.ensureInflatedDeploymentStrategy(ctx); err != nil {
+		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
 	}
 	current, err := intstr.GetScaledValueFromIntOrPercent(
-		mc.object.Spec.Strategy.RollingUpdate.MaxUnavailable, int(ctx.Replicas), true)
+		mc.object.Spec.Strategy.RollingUpdate.MaxUnavailable, int(batchContext.Replicas), true)
 	if err != nil {
-		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", ctx.CurrentBatch, err)
+		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
 	}
-	target := ctx.DesiredUpdatedReplicas
+	target := batchContext.DesiredUpdatedReplicas
 	if int32(current) == target {
 		return nil
 	}
@@ -95,18 +101,21 @@ func (mc *MinReadyControl) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 		// maxUnavailable above the batch target is a legal state after a
 		// scale-down (HPA or manual) and also self-heals external tampering;
 		// converge it back to the target instead of reporting degraded drift.
-		klog.Warningf("MinReadyControl.UpgradeBatch[%d]: deployment %v maxUnavailable=%d exceeds target=%d, reducing it to the target",
-			ctx.CurrentBatch, klog.KObj(mc.object), current, target)
+		klog.InfoS("MinReady maxUnavailable exceeds target, reducing",
+			"batch", batchContext.CurrentBatch,
+			"deployment", klog.KObj(mc.object),
+			"maxUnavailable", current,
+			"target", target)
 	}
-	original := mc.object.DeepCopy()
-	modified := original.DeepCopy()
+	original := mc.object
+	modified := mc.object.DeepCopy()
 	maxUnavailable := intstr.FromInt(int(target))
 	modified.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
-	return mc.client.Patch(context.TODO(), modified, patch)
+	return mc.client.Patch(ctx, modified, patch)
 }
 
-func (mc *MinReadyControl) Finalize(_ *v1beta1.BatchRelease) error {
+func (mc *MinReadyControl) Finalize(ctx context.Context, _ *v1beta1.BatchRelease) error {
 	if mc.object == nil {
 		return nil
 	}
@@ -117,12 +126,12 @@ func (mc *MinReadyControl) Finalize(_ *v1beta1.BatchRelease) error {
 		}
 		return nil
 	}
-	original := mc.object.DeepCopy()
+	original := mc.object
 	restored, err := parseOriginalDeploymentStrategy(original.Annotations)
 	if err != nil {
 		return fmt.Errorf("MinReadyControl.Finalize: %w", err)
 	}
-	modified := original.DeepCopy()
+	modified := mc.object.DeepCopy()
 	applyOriginalDeploymentStrategy(modified, restored)
 	for _, key := range AllOriginalAnnotations {
 		delete(modified.Annotations, key)
@@ -130,7 +139,7 @@ func (mc *MinReadyControl) Finalize(_ *v1beta1.BatchRelease) error {
 	delete(modified.Annotations, util.BatchReleaseControlAnnotation)
 	delete(modified.Labels, v1alpha1.DeploymentStableRevisionLabel)
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
-	return mc.client.Patch(context.TODO(), modified, patch)
+	return mc.client.Patch(ctx, modified, patch)
 }
 
 func (mc *MinReadyControl) CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {
@@ -179,28 +188,18 @@ func (mc *MinReadyControl) ensureInitializeAllowed() error {
 	return nil
 }
 
-func writeOriginalAnnotations(original, modified *apps.Deployment) error {
+func ensureOriginalAnnotations(deployment *apps.Deployment) error {
+	_, err := parseOriginalDeploymentStrategy(deployment.Annotations)
+	return err
+}
+
+func writeOriginalAnnotations(original, modified *apps.Deployment) {
 	if modified.Annotations == nil {
 		modified.Annotations = map[string]string{}
-	}
-	if hasAnyOriginalAnnotation(original.Annotations) {
-		_, err := parseOriginalDeploymentStrategy(original.Annotations)
-		return err
 	}
 	modified.Annotations[AnnotationOriginalMinReadySeconds] = serializeOriginalInt32(&original.Spec.MinReadySeconds)
 	modified.Annotations[AnnotationOriginalProgressDeadlineSeconds] = serializeOriginalInt32(original.Spec.ProgressDeadlineSeconds)
 	modified.Annotations[AnnotationOriginalMaxUnavailable] = serializeOriginalIntOrString(originalMaxUnavailable(original))
-	modified.Annotations[AnnotationOriginalMaxSurge] = serializeOriginalIntOrString(originalMaxSurge(original))
-	return nil
-}
-
-func ensureAllOriginalAnnotations(annotations map[string]string) error {
-	for _, key := range AllOriginalAnnotations {
-		if _, err := readOriginalAnnotation(annotations, key); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func originalMaxUnavailable(deployment *apps.Deployment) *intstr.IntOrString {
@@ -208,13 +207,6 @@ func originalMaxUnavailable(deployment *apps.Deployment) *intstr.IntOrString {
 		return nil
 	}
 	return deployment.Spec.Strategy.RollingUpdate.MaxUnavailable
-}
-
-func originalMaxSurge(deployment *apps.Deployment) *intstr.IntOrString {
-	if deployment.Spec.Strategy.RollingUpdate == nil {
-		return nil
-	}
-	return deployment.Spec.Strategy.RollingUpdate.MaxSurge
 }
 
 func inflateDeploymentStrategy(deployment *apps.Deployment) {
@@ -229,7 +221,6 @@ func inflateDeploymentStrategy(deployment *apps.Deployment) {
 		deployment.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{}
 	}
 	deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
-	applyMaxSurgeValidationFallback(deployment)
 }
 
 // EnrollMinReadyDeployment snapshots the original strategy fields into
@@ -243,30 +234,32 @@ func EnrollMinReadyDeployment(deployment *apps.Deployment) error {
 		return err
 	}
 	snapshot := deployment.DeepCopy()
-	if err := writeOriginalAnnotations(snapshot, deployment); err != nil {
-		return err
-	}
 	if hasAnyOriginalAnnotation(snapshot.Annotations) {
+		if err := ensureOriginalAnnotations(snapshot); err != nil {
+			return err
+		}
 		if err := validateInflatedDeploymentStrategy(snapshot); err != nil {
 			return err
 		}
+	} else {
+		writeOriginalAnnotations(snapshot, deployment)
 	}
 	inflateDeploymentStrategy(deployment)
 	return nil
 }
 
-func (mc *MinReadyControl) ensureInflatedDeploymentStrategy() error {
+func (mc *MinReadyControl) ensureInflatedDeploymentStrategy(ctx context.Context) error {
 	if err := validateDeploymentStrategyType(mc.object); err != nil {
 		return err
 	}
 	if validateInflatedDeploymentStrategy(mc.object) == nil {
 		return nil
 	}
-	original := mc.object.DeepCopy()
-	modified := original.DeepCopy()
+	original := mc.object
+	modified := mc.object.DeepCopy()
 	inflateDeploymentStrategy(modified)
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
-	if err := mc.client.Patch(context.TODO(), modified, patch); err != nil {
+	if err := mc.client.Patch(ctx, modified, patch); err != nil {
 		return err
 	}
 	mc.object = modified
@@ -312,33 +305,13 @@ func hasInflatedDeploymentFields(deployment *apps.Deployment) bool {
 		*deployment.Spec.ProgressDeadlineSeconds == InflatedProgressDeadlineSeconds
 }
 
-func applyMaxSurgeValidationFallback(deployment *apps.Deployment) {
-	if deployment.Spec.Strategy.RollingUpdate.MaxSurge == nil {
-		return
-	}
-	replicas := int32(1)
-	if deployment.Spec.Replicas != nil && *deployment.Spec.Replicas > 0 {
-		replicas = *deployment.Spec.Replicas
-	}
-	surge, err := intstr.GetScaledValueFromIntOrPercent(deployment.Spec.Strategy.RollingUpdate.MaxSurge, int(replicas), true)
-	if err != nil || surge > 0 {
-		return
-	}
-	maxSurge := intstr.FromInt(1)
-	deployment.Spec.Strategy.RollingUpdate.MaxSurge = &maxSurge
-}
-
 type originalDeploymentStrategy struct {
 	minReadySeconds         *int32
 	progressDeadlineSeconds *int32
 	maxUnavailable          *intstr.IntOrString
-	maxSurge                *intstr.IntOrString
 }
 
 func parseOriginalDeploymentStrategy(annotations map[string]string) (*originalDeploymentStrategy, error) {
-	if err := ensureAllOriginalAnnotations(annotations); err != nil {
-		return nil, err
-	}
 	minReadySeconds, err := parseOriginalInt32(annotations, AnnotationOriginalMinReadySeconds)
 	if err != nil {
 		return nil, err
@@ -351,15 +324,10 @@ func parseOriginalDeploymentStrategy(annotations map[string]string) (*originalDe
 	if err != nil {
 		return nil, err
 	}
-	maxSurge, err := parseOriginalIntOrString(annotations, AnnotationOriginalMaxSurge)
-	if err != nil {
-		return nil, err
-	}
 	return &originalDeploymentStrategy{
 		minReadySeconds:         minReadySeconds,
 		progressDeadlineSeconds: progressDeadlineSeconds,
 		maxUnavailable:          maxUnavailable,
-		maxSurge:                maxSurge,
 	}, nil
 }
 
@@ -369,7 +337,8 @@ func applyOriginalDeploymentStrategy(deployment *apps.Deployment, original *orig
 		deployment.Spec.MinReadySeconds = *original.minReadySeconds
 	}
 	deployment.Spec.ProgressDeadlineSeconds = original.progressDeadlineSeconds
-	if original.maxUnavailable == nil && original.maxSurge == nil {
+	if original.maxUnavailable == nil && (deployment.Spec.Strategy.RollingUpdate == nil ||
+		deployment.Spec.Strategy.RollingUpdate.MaxSurge == nil) {
 		deployment.Spec.Strategy.RollingUpdate = nil
 		return
 	}
@@ -377,7 +346,6 @@ func applyOriginalDeploymentStrategy(deployment *apps.Deployment, original *orig
 		deployment.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{}
 	}
 	deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = original.maxUnavailable
-	deployment.Spec.Strategy.RollingUpdate.MaxSurge = original.maxSurge
 }
 
 // EventDegradedDriftDetected is the warning event reason recorded when

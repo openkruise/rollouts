@@ -109,9 +109,6 @@ func assertMinReadyInflated(t *testing.T, deployment *apps.Deployment) {
 	if got := deployment.Spec.Strategy.RollingUpdate.MaxUnavailable; got == nil || got.IntVal != 0 {
 		t.Fatalf("maxUnavailable = %v, want 0", got)
 	}
-	if got := deployment.Spec.Strategy.RollingUpdate.MaxSurge; got == nil || got.IntVal != InflatedMaxSurgeInt {
-		t.Fatalf("maxSurge = %v, want %d", got, InflatedMaxSurgeInt)
-	}
 }
 
 func assertMinReadyInflatedWithoutSurgeRequirement(t *testing.T, deployment *apps.Deployment) {
@@ -137,7 +134,6 @@ func addMinReadyOriginalAnnotations(deployment *apps.Deployment) {
 	deployment.Annotations[AnnotationOriginalMinReadySeconds] = "7"
 	deployment.Annotations[AnnotationOriginalProgressDeadlineSeconds] = "60"
 	deployment.Annotations[AnnotationOriginalMaxUnavailable] = "25%"
-	deployment.Annotations[AnnotationOriginalMaxSurge] = "1"
 }
 
 func appendPodObjects(objects []interface{}, pods []*corev1.Pod) []interface{} {

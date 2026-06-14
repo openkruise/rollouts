@@ -18,47 +18,36 @@ package partitionstyle
 
 import (
 	"errors"
-	"reflect"
 	"time"
 
-	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
 	brmetrics "github.com/openkruise/rollouts/pkg/controller/batchrelease/metrics"
-	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
-	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
-func (rc *realBatchControlPlane) isMinReadyRelease() bool {
-	if rc.release == nil {
-		return false
+type minReadyControllerMarker interface {
+	IsMinReadyControl() bool
+}
+
+func isMinReadyController(controller Interface) bool {
+	marker, ok := controller.(minReadyControllerMarker)
+	return ok && marker.IsMinReadyControl()
+}
+
+func (rc *realBatchControlPlane) recordMinReadyDegradedOrLog(minReady bool, reason string, err error) {
+	if minReady {
+		rc.recordMinReadyDegraded(reason, err)
+		return
 	}
-	targetRef := rc.release.Spec.WorkloadRef
-	isDeploymentPartition := targetRef.APIVersion == apps.SchemeGroupVersion.String() &&
-		targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() &&
-		rc.release.Spec.ReleasePlan.RollingStyle == v1beta1.PartitionRollingStyle
-	if !isDeploymentPartition {
-		return false
+	if err != nil {
+		klog.ErrorS(err, "Partition-style control plane failed", "release", klog.KObj(rc.release), "reason", reason)
 	}
-	if utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
-		return true
-	}
-	// Gate disabled mid-rollout: a Deployment still carrying MinReady original
-	// annotations is under MinReady control until finalized. Keep recording its
-	// status so degraded conditions are not silently suppressed. Falls back to
-	// false before the controller is built (no workload info yet).
-	if info := rc.GetWorkloadInfo(); info != nil {
-		return v1beta1.HasMinReadyOriginalAnnotations(info.Annotations)
-	}
-	return false
 }
 
 func (rc *realBatchControlPlane) recordMinReadyNormal(condType v1beta1.RolloutConditionType, reason, message string) {
-	if !rc.isMinReadyRelease() {
-		return
-	}
 	previousCondition := util.GetBatchReleaseCondition(*rc.newStatus, condType)
 	condition := util.NewRolloutCondition(condType, v1.ConditionTrue, reason, message)
 	util.SetBatchReleaseCondition(rc.newStatus, *condition)
@@ -88,7 +77,7 @@ func observeMinReadyBatchDuration(release *v1beta1.BatchRelease, condition *v1be
 }
 
 func (rc *realBatchControlPlane) recordMinReadyDegraded(reason string, err error) {
-	if !rc.isMinReadyRelease() || err == nil {
+	if err == nil {
 		return
 	}
 	message := err.Error()

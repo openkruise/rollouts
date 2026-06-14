@@ -17,6 +17,7 @@ limitations under the License.
 package deployment
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -41,7 +42,7 @@ func TestMinReadyInitializeWritesOriginalAnnotationsAndInflatesFields(t *testing
 	deployment := newMinReadyDeployment()
 	control := newBuiltMinReadyControl(t, deployment)
 
-	if err := control.Initialize(releaseDemo.DeepCopy()); err != nil {
+	if err := control.Initialize(context.Background(), releaseDemo.DeepCopy()); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
@@ -51,7 +52,6 @@ func TestMinReadyInitializeWritesOriginalAnnotationsAndInflatesFields(t *testing
 	assertAnnotation(t, annotations, AnnotationOriginalMinReadySeconds, "7")
 	assertAnnotation(t, annotations, AnnotationOriginalProgressDeadlineSeconds, "60")
 	assertAnnotation(t, annotations, AnnotationOriginalMaxUnavailable, "25%")
-	assertAnnotation(t, annotations, AnnotationOriginalMaxSurge, "1")
 	assertAnnotation(t, annotations, util.BatchReleaseControlAnnotation, getControlInfo(releaseDemo))
 }
 
@@ -62,12 +62,11 @@ func TestMinReadyInitializeIsIdempotentAndDoesNotOverwriteAnnotations(t *testing
 		AnnotationOriginalMinReadySeconds:         "5",
 		AnnotationOriginalProgressDeadlineSeconds: "30",
 		AnnotationOriginalMaxUnavailable:          "10%",
-		AnnotationOriginalMaxSurge:                "2",
 	}
 	inflateDeploymentStrategy(deployment)
 	control := newBuiltMinReadyControl(t, deployment)
 
-	if err := control.Initialize(releaseDemo.DeepCopy()); err != nil {
+	if err := control.Initialize(context.Background(), releaseDemo.DeepCopy()); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
@@ -75,7 +74,6 @@ func TestMinReadyInitializeIsIdempotentAndDoesNotOverwriteAnnotations(t *testing
 	assertAnnotation(t, got.Annotations, AnnotationOriginalMinReadySeconds, "5")
 	assertAnnotation(t, got.Annotations, AnnotationOriginalProgressDeadlineSeconds, "30")
 	assertAnnotation(t, got.Annotations, AnnotationOriginalMaxUnavailable, "10%")
-	assertAnnotation(t, got.Annotations, AnnotationOriginalMaxSurge, "2")
 	assertMinReadyInflated(t, got)
 }
 
@@ -86,11 +84,10 @@ func TestMinReadyInitializeRejectsGitOpsDrift(t *testing.T) {
 		AnnotationOriginalMinReadySeconds:         "5",
 		AnnotationOriginalProgressDeadlineSeconds: "30",
 		AnnotationOriginalMaxUnavailable:          "10%",
-		AnnotationOriginalMaxSurge:                "2",
 	}
 	control := newBuiltMinReadyControl(t, deployment)
 
-	err := control.Initialize(releaseDemo.DeepCopy())
+	err := control.Initialize(context.Background(), releaseDemo.DeepCopy())
 	if err == nil || !strings.Contains(err.Error(), EventDegradedDriftDetected) {
 		t.Fatalf("Initialize error = %v, want drift detected", err)
 	}
@@ -104,7 +101,7 @@ func TestMinReadyInitializeRejectsPartialOriginalAnnotations(t *testing.T) {
 	}
 	control := newBuiltMinReadyControl(t, deployment)
 
-	err := control.Initialize(releaseDemo.DeepCopy())
+	err := control.Initialize(context.Background(), releaseDemo.DeepCopy())
 	if err == nil || !strings.Contains(err.Error(), AnnotationOriginalProgressDeadlineSeconds) {
 		t.Fatalf("Initialize error = %v, want missing annotation error", err)
 	}
@@ -117,11 +114,10 @@ func TestMinReadyInitializeRejectsEmptyOriginalAnnotations(t *testing.T) {
 		AnnotationOriginalMinReadySeconds:         "",
 		AnnotationOriginalProgressDeadlineSeconds: "30",
 		AnnotationOriginalMaxUnavailable:          "10%",
-		AnnotationOriginalMaxSurge:                "2",
 	}
 	control := newBuiltMinReadyControl(t, deployment)
 
-	err := control.Initialize(releaseDemo.DeepCopy())
+	err := control.Initialize(context.Background(), releaseDemo.DeepCopy())
 	if err == nil || !strings.Contains(err.Error(), "present but empty") {
 		t.Fatalf("Initialize error = %v, want empty annotation error", err)
 	}
@@ -134,14 +130,13 @@ func TestMinReadyInitializeSerializesKubernetesDefaults(t *testing.T) {
 	deployment.Spec.Strategy.RollingUpdate = nil
 	control := newBuiltMinReadyControl(t, deployment)
 
-	if err := control.Initialize(releaseDemo.DeepCopy()); err != nil {
+	if err := control.Initialize(context.Background(), releaseDemo.DeepCopy()); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 
 	got := fetchMinReadyDeployment(t, control)
-	assertAnnotation(t, got.Annotations, AnnotationOriginalProgressDeadlineSeconds, AnnotationValueKubernetesDefault)
-	assertAnnotation(t, got.Annotations, AnnotationOriginalMaxUnavailable, AnnotationValueKubernetesDefault)
-	assertAnnotation(t, got.Annotations, AnnotationOriginalMaxSurge, AnnotationValueKubernetesDefault)
+	assertAnnotation(t, got.Annotations, AnnotationOriginalProgressDeadlineSeconds, "600")
+	assertAnnotation(t, got.Annotations, AnnotationOriginalMaxUnavailable, "25%")
 	assertMinReadyInflatedWithoutSurgeRequirement(t, got)
 }
 
@@ -149,7 +144,7 @@ func TestMinReadyInitializeRejectsFeatureGateDisabled(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
 	control := newBuiltMinReadyControl(t, newMinReadyDeployment())
 
-	err := control.Initialize(releaseDemo.DeepCopy())
+	err := control.Initialize(context.Background(), releaseDemo.DeepCopy())
 	if err == nil || !strings.Contains(err.Error(), "feature gate is disabled") {
 		t.Fatalf("Initialize error = %v, want feature gate disabled", err)
 	}
@@ -166,7 +161,7 @@ func TestMinReadyInitializeAllowsCoveringPDB(t *testing.T) {
 	}
 	control := newBuiltMinReadyControl(t, deployment, pdb)
 
-	if err := control.Initialize(releaseDemo.DeepCopy()); err != nil {
+	if err := control.Initialize(context.Background(), releaseDemo.DeepCopy()); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 }
@@ -175,7 +170,7 @@ func TestMinReadyUpgradeBatchUpdatesMaxUnavailableOnly(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	deployment := newMinReadyDeployment()
 	control := newBuiltMinReadyControl(t, deployment)
-	if err := control.Initialize(releaseDemo.DeepCopy()); err != nil {
+	if err := control.Initialize(context.Background(), releaseDemo.DeepCopy()); err != nil {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 	control.object = fetchMinReadyDeployment(t, control)
@@ -185,16 +180,13 @@ func TestMinReadyUpgradeBatchUpdatesMaxUnavailableOnly(t *testing.T) {
 		DesiredUpdatedReplicas: 5,
 	}
 
-	if err := control.UpgradeBatch(ctx); err != nil {
+	if err := control.UpgradeBatch(context.Background(), ctx); err != nil {
 		t.Fatalf("UpgradeBatch failed: %v", err)
 	}
 
 	got := fetchMinReadyDeployment(t, control)
 	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 5 {
 		t.Fatalf("maxUnavailable = %v, want 5", unavailable)
-	}
-	if surge := got.Spec.Strategy.RollingUpdate.MaxSurge; surge == nil || surge.IntVal != InflatedMaxSurgeInt {
-		t.Fatalf("maxSurge = %v, want %d", surge, InflatedMaxSurgeInt)
 	}
 	if got.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
 		t.Fatalf("strategy.type = %q, want RollingUpdate", got.Spec.Strategy.Type)
@@ -213,7 +205,7 @@ func TestMinReadyUpgradeBatchRejectsStrategyTypeDrift(t *testing.T) {
 		DesiredUpdatedReplicas: 5,
 	}
 
-	err := control.UpgradeBatch(ctx)
+	err := control.UpgradeBatch(context.Background(), ctx)
 	if err == nil || !strings.Contains(err.Error(), EventDegradedDriftDetected) {
 		t.Fatalf("UpgradeBatch error = %v, want strategy type drift detected", err)
 	}
@@ -237,7 +229,7 @@ func TestMinReadyUpgradeBatchHealsPausedDrift(t *testing.T) {
 		DesiredUpdatedReplicas: 5,
 	}
 
-	if err := control.UpgradeBatch(ctx); err != nil {
+	if err := control.UpgradeBatch(context.Background(), ctx); err != nil {
 		t.Fatalf("UpgradeBatch failed: %v", err)
 	}
 
@@ -264,7 +256,7 @@ func TestMinReadyUpgradeBatchRestoresInflatedStrategyFields(t *testing.T) {
 		DesiredUpdatedReplicas: 5,
 	}
 
-	if err := control.UpgradeBatch(ctx); err != nil {
+	if err := control.UpgradeBatch(context.Background(), ctx); err != nil {
 		t.Fatalf("UpgradeBatch failed: %v", err)
 	}
 
@@ -300,7 +292,7 @@ func TestMinReadyUpgradeBatchConvergesMaxUnavailableOnScaleDown(t *testing.T) {
 		DesiredUpdatedReplicas: 5,
 	}
 
-	if err := control.UpgradeBatch(ctx); err != nil {
+	if err := control.UpgradeBatch(context.Background(), ctx); err != nil {
 		t.Fatalf("UpgradeBatch failed: %v", err)
 	}
 
@@ -533,7 +525,7 @@ func TestMinReadyFinalizeRestoresAfterGateDisabled(t *testing.T) {
 	addMinReadyOriginalAnnotations(deployment)
 	control := newBuiltMinReadyControl(t, deployment)
 
-	if err := control.Finalize(releaseDemo.DeepCopy()); err != nil {
+	if err := control.Finalize(context.Background(), releaseDemo.DeepCopy()); err != nil {
 		t.Fatalf("Finalize failed: %v", err)
 	}
 

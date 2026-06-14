@@ -17,6 +17,8 @@ limitations under the License.
 package partitionstyle
 
 import (
+	"context"
+
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
@@ -40,11 +42,11 @@ type Interface interface {
 	// Initialize do something before rolling out, for example:
 	// - claim the workload is under our control;
 	// - other things related with specific type of workload, such as 100% partition settings.
-	Initialize(release *v1beta1.BatchRelease) error
+	Initialize(ctx context.Context, release *v1beta1.BatchRelease) error
 	// UpgradeBatch upgrade workload according current batch context.
-	UpgradeBatch(ctx *batchcontext.BatchContext) error
+	UpgradeBatch(ctx context.Context, batchContext *batchcontext.BatchContext) error
 	// Finalize do something after rolling out, for example:
 	// - free the stable workload from rollout control;
 	// - resume workload if we need.
-	Finalize(release *v1beta1.BatchRelease) error
+	Finalize(ctx context.Context, release *v1beta1.BatchRelease) error
 }

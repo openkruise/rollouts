@@ -29,6 +29,7 @@ import (
 	"github.com/openkruise/rollouts/api/v1beta1"
 	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/feature"
+	"github.com/openkruise/rollouts/pkg/util"
 	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
@@ -57,7 +58,7 @@ func TestDeploymentMinReadyConcurrentScaleUsesLatestReplicas(t *testing.T) {
 	assertIntegrationCondition(t, status, v1beta1.RolloutConditionMinReadyBatching, corev1.ConditionTrue, "MinReadyBatching")
 }
 
-func TestDeploymentMinReadyConcurrentGitOpsDriftIsDegraded(t *testing.T) {
+func TestDeploymentMinReadyConcurrentMaxUnavailableAboveTargetSelfHeals(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	release := newIntegrationMinReadyRelease()
 	release.Status.CanaryStatus.CurrentBatch = 1
@@ -73,30 +74,31 @@ func TestDeploymentMinReadyConcurrentGitOpsDriftIsDegraded(t *testing.T) {
 	control := newIntegrationMinReadyControl(cli, recorder, release, status, deployment.Name)
 
 	err := control.UpgradeBatch()
-	if err == nil || !strings.Contains(err.Error(), partitiondeployment.EventDegradedDriftDetected) {
-		t.Fatalf("UpgradeBatch error = %v, want drift detected", err)
+	if err != nil {
+		t.Fatalf("UpgradeBatch failed: %v", err)
 	}
 
 	got := fetchIntegrationDeployment(t, cli, deployment)
-	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 6 {
-		t.Fatalf("maxUnavailable = %v, want drifted value preserved", unavailable)
+	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 5 {
+		t.Fatalf("maxUnavailable = %v, want target value 5", unavailable)
 	}
-	assertIntegrationCondition(t, status, v1beta1.RolloutConditionMinReadyDegraded, corev1.ConditionTrue, "MinReadyDegradedDriftDetected")
-	assertIntegrationEvent(t, recorder, "MinReadyDegradedDriftDetected")
+	if degraded := util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionMinReadyDegraded); degraded != nil {
+		t.Fatalf("degraded condition = %v, want nil", degraded)
+	}
 }
 
 func TestDeploymentMinReadyConcurrentAnnotationDeletionBlocksFinalize(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	release := newIntegrationMinReadyRelease()
 	deployment := newInflatedIntegrationDeployment()
-	delete(deployment.Annotations, partitiondeployment.AnnotationOriginalMaxSurge)
+	delete(deployment.Annotations, partitiondeployment.AnnotationOriginalMaxUnavailable)
 	recorder := record.NewFakeRecorder(20)
 	cli := newIntegrationClient(release, deployment)
 	status := release.Status.DeepCopy()
 	control := newIntegrationMinReadyControl(cli, recorder, release, status, deployment.Name)
 
 	err := control.Finalize()
-	if err == nil || !strings.Contains(err.Error(), partitiondeployment.AnnotationOriginalMaxSurge) {
+	if err == nil || !strings.Contains(err.Error(), partitiondeployment.AnnotationOriginalMaxUnavailable) {
 		t.Fatalf("Finalize error = %v, want missing annotation", err)
 	}
 

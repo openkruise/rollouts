@@ -122,13 +122,13 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 
 		It("TC7 missing annotation blocks finalize until the operator restores it", func() {
 			rollout := startMinReadyE2ERollout(namespace)
-			deleteMinReadyE2EOriginalAnnotation(namespace, partitiondeployment.AnnotationOriginalMaxSurge)
+			deleteMinReadyE2EOriginalAnnotation(namespace, partitiondeployment.AnnotationOriginalMaxUnavailable)
 			resumeMinReadyE2ERollout(namespace, rollout.Name)
 			resumeMinReadyE2ERollout(namespace, rollout.Name)
 			waitMinReadyE2EBatchCondition(namespace, rollout.Name, "MinReadyDegradedMissingAnnotations")
 			waitMinReadyE2EEventReason(namespace, "MinReadyDegradedMissingAnnotations")
 
-			restoreMinReadyE2EOriginalAnnotation(namespace, partitiondeployment.AnnotationOriginalMaxSurge, "1")
+			restoreMinReadyE2EOriginalAnnotation(namespace, partitiondeployment.AnnotationOriginalMaxUnavailable, "25%")
 			waitMinReadyE2ERolloutPhase(namespace, rollout.Name, v1beta1.RolloutPhaseHealthy)
 			waitMinReadyE2EDeploymentRestored(namespace)
 		})

@@ -50,7 +50,6 @@ func TestDeploymentMinReadyControlPlaneInitialize(t *testing.T) {
 	assertOriginalAnnotation(t, got, partitiondeployment.AnnotationOriginalMinReadySeconds, "5")
 	assertOriginalAnnotation(t, got, partitiondeployment.AnnotationOriginalProgressDeadlineSeconds, "60")
 	assertOriginalAnnotation(t, got, partitiondeployment.AnnotationOriginalMaxUnavailable, "25%")
-	assertOriginalAnnotation(t, got, partitiondeployment.AnnotationOriginalMaxSurge, "1")
 	assertIntegrationCondition(t, status, v1beta1.RolloutConditionMinReadyInitialized, corev1.ConditionTrue, "MinReadyInitialized")
 	assertIntegrationEvent(t, recorder, "MinReadyInitialized")
 }

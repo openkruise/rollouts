@@ -94,7 +94,7 @@ func (rc *realController) ListOwnedPods() ([]*corev1.Pod, error) {
 }
 
 // Initialize prepares the native DaemonSet for batch release by setting the appropriate update strategy.
-func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Initialize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if control.IsControlledByBatchRelease(release, rc.object) {
 		return nil
 	}
@@ -127,21 +127,21 @@ func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 		return fmt.Errorf("failed to marshal patch: %v", err)
 	}
 
-	return rc.client.Patch(context.TODO(), daemon, client.RawPatch(types.MergePatchType, patchBytes))
+	return rc.client.Patch(ctx, daemon, client.RawPatch(types.MergePatchType, patchBytes))
 }
 
 // UpgradeBatch handles the batch upgrade for native DaemonSet by managing annotations.
 // The actual pod deletion is handled by the advanced-daemonset-controller.
-func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
+func (rc *realController) UpgradeBatch(ctx context.Context, batchContext *batchcontext.BatchContext) error {
 	// Check if the DaemonSet already has the partition annotation
 	currentPartitionStr, _ := util.ParseDaemonSetAdvancedControl(rc.object.Annotations)
-	desiredPartitionStr := ctx.DesiredPartition.String()
+	desiredPartitionStr := batchContext.DesiredPartition.String()
 
 	// If annotation is missing or doesn't equal desired value, patch the DaemonSet
 	if currentPartitionStr != desiredPartitionStr {
 		klog.Infof("Updating partition annotation for DaemonSet %s/%s: %s -> %s",
 			rc.object.Namespace, rc.object.Name, currentPartitionStr, desiredPartitionStr)
-		return rc.patchBatchAnnotations(ctx)
+		return rc.patchBatchAnnotations(ctx, batchContext)
 	}
 
 	// Partition annotation already matches desired value, no action needed
@@ -151,10 +151,10 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 }
 
 // patchBatchAnnotations patches the DaemonSet with batch control annotations
-func (rc *realController) patchBatchAnnotations(ctx *batchcontext.BatchContext) error {
+func (rc *realController) patchBatchAnnotations(ctx context.Context, batchContext *batchcontext.BatchContext) error {
 	// Use SetDaemonSetAdvancedControl to set annotations
 	annotations := make(map[string]string)
-	util.SetDaemonSetAdvancedControl(annotations, ctx.DesiredPartition.String(), ctx.UpdateRevision)
+	util.SetDaemonSetAdvancedControl(annotations, batchContext.DesiredPartition.String(), batchContext.UpdateRevision)
 
 	// Create patch with batch annotations
 	patch := map[string]interface{}{
@@ -169,11 +169,11 @@ func (rc *realController) patchBatchAnnotations(ctx *batchcontext.BatchContext) 
 	}
 
 	daemon := util.GetEmptyObjectWithKey(rc.object)
-	return rc.client.Patch(context.TODO(), daemon, client.RawPatch(types.MergePatchType, patchBytes))
+	return rc.client.Patch(ctx, daemon, client.RawPatch(types.MergePatchType, patchBytes))
 }
 
 // Finalize cleans up the annotations and restores the original update strategy.
-func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Finalize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if rc.object == nil {
 		return nil
 	}
@@ -205,7 +205,7 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 
 	daemon := util.GetEmptyObjectWithKey(rc.object)
 
-	return rc.client.Patch(context.TODO(), daemon, client.RawPatch(types.MergePatchType, []byte(body)))
+	return rc.client.Patch(ctx, daemon, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
 // CalculateBatchContext calculates the batch context for native DaemonSet.

@@ -116,18 +116,13 @@ func newInflatedIntegrationDeployment() *apps.Deployment {
 	deployment := newIntegrationDeployment()
 	progressDeadlineSeconds := partitiondeployment.InflatedProgressDeadlineSeconds
 	maxUnavailable := intstr.FromInt(0)
-	maxSurge := intstr.FromInt(int(partitiondeployment.InflatedMaxSurgeInt))
 	deployment.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
 	deployment.Spec.ProgressDeadlineSeconds = &progressDeadlineSeconds
-	deployment.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{
-		MaxUnavailable: &maxUnavailable,
-		MaxSurge:       &maxSurge,
-	}
+	deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
 	deployment.Annotations = map[string]string{
 		partitiondeployment.AnnotationOriginalMinReadySeconds:         "5",
 		partitiondeployment.AnnotationOriginalProgressDeadlineSeconds: "60",
 		partitiondeployment.AnnotationOriginalMaxUnavailable:          "25%",
-		partitiondeployment.AnnotationOriginalMaxSurge:                "1",
 	}
 	return deployment
 }
@@ -237,6 +232,7 @@ func newIntegrationMinReadyControl(
 	Finalize() error
 } {
 	return partitionstyle.NewControlPlane(
+		context.Background(),
 		partitiondeployment.NewMinReadyController,
 		cli,
 		recorder,
@@ -267,9 +263,6 @@ func assertInflatedDeployment(t *testing.T, deployment *apps.Deployment) {
 	}
 	if unavailable := deployment.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 0 {
 		t.Fatalf("maxUnavailable = %v, want 0", unavailable)
-	}
-	if surge := deployment.Spec.Strategy.RollingUpdate.MaxSurge; surge == nil || surge.IntVal != partitiondeployment.InflatedMaxSurgeInt {
-		t.Fatalf("maxSurge = %v, want %d", surge, partitiondeployment.InflatedMaxSurgeInt)
 	}
 }
 
