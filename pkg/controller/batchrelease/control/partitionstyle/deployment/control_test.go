@@ -327,6 +327,7 @@ func TestRealController(t *testing.T) {
 	Expect(cli.Get(context.TODO(), deploymentKey, fetch)).NotTo(HaveOccurred())
 	Expect(fetch.Spec.Paused).Should(BeTrue())
 	Expect(fetch.Spec.Strategy.Type).Should(Equal(apps.RecreateDeploymentStrategyType))
+	Expect(fetch.Spec.Strategy.RollingUpdate).Should(BeNil())
 	Expect(fetch.Annotations[util.BatchReleaseControlAnnotation]).Should(Equal(getControlInfo(release)))
 	strategy := util.GetDeploymentStrategy(fetch)
 	Expect(strategy.Paused).Should(BeFalse())

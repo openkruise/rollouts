@@ -117,7 +117,7 @@ func (rc *realController) Initialize(ctx context.Context, release *v1beta1.Batch
 
 	// Disable the native deployment controller
 	patchData.UpdatePaused(true)
-	patchData.UpdateStrategy(apps.DeploymentStrategy{Type: apps.RecreateDeploymentStrategyType})
+	patchData.UpdateRecreateStrategy()
 	return rc.client.Patch(ctx, d, patchData)
 }
 
