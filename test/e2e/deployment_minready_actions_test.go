@@ -41,6 +41,13 @@ func finishMinReadyE2ERollout(namespace, name string) {
 	waitMinReadyE2EDeploymentRestored(namespace)
 }
 
+func finishMinReadyE2ERolloutWithAvailability(namespace, name string, minReadySeconds, progressDeadlineSeconds int32) {
+	resumeMinReadyE2ERollout(namespace, name)
+	resumeMinReadyE2ERollout(namespace, name)
+	waitMinReadyE2ERolloutPhase(namespace, name, v1beta1.RolloutPhaseHealthy)
+	waitMinReadyE2EDeploymentRestoredWithAvailability(namespace, minReadySeconds, progressDeadlineSeconds)
+}
+
 func waitMinReadyE2EDeploymentReady(namespace string) {
 	Eventually(func() bool {
 		deployment := &apps.Deployment{}
@@ -71,6 +78,23 @@ func patchMinReadyE2EDeploymentReplicas(namespace string, replicas int32) {
 			return err
 		}
 		deployment.Spec.Replicas = pointer.Int32(replicas)
+		return k8sClient.Update(context.TODO(), deployment)
+	})).NotTo(HaveOccurred())
+}
+
+func updateMinReadyE2EDeploymentContinuousRelease(namespace, version string, minReadySeconds, progressDeadlineSeconds int32) {
+	Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		deployment := &apps.Deployment{}
+		key := types.NamespacedName{Namespace: namespace, Name: minReadyE2EDeploymentName}
+		if err := k8sClient.Get(context.TODO(), key, deployment); err != nil {
+			return err
+		}
+		deployment.Spec.Template.Spec.Containers[0].Env = mergeEnvVar(
+			deployment.Spec.Template.Spec.Containers[0].Env,
+			corev1.EnvVar{Name: "NODE_NAME", Value: version},
+		)
+		deployment.Spec.MinReadySeconds = minReadySeconds
+		deployment.Spec.ProgressDeadlineSeconds = pointer.Int32(progressDeadlineSeconds)
 		return k8sClient.Update(context.TODO(), deployment)
 	})).NotTo(HaveOccurred())
 }

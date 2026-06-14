@@ -43,6 +43,34 @@ func waitMinReadyE2EDeploymentReplicas(namespace string, replicas int32) {
 	}, 5*time.Minute, time.Second).Should(BeTrue())
 }
 
+func waitMinReadyE2EOriginalAvailabilityAnnotations(namespace string, minReadySeconds, progressDeadlineSeconds int32) {
+	Eventually(func() bool {
+		deployment := &apps.Deployment{}
+		key := types.NamespacedName{Namespace: namespace, Name: minReadyE2EDeploymentName}
+		Expect(k8sClient.Get(context.TODO(), key, deployment)).Should(Succeed())
+		return deployment.Annotations[partitiondeployment.AnnotationOriginalMinReadySeconds] == fmt.Sprintf("%d", minReadySeconds) &&
+			deployment.Annotations[partitiondeployment.AnnotationOriginalProgressDeadlineSeconds] == fmt.Sprintf("%d", progressDeadlineSeconds)
+	}, 5*time.Minute, time.Second).Should(BeTrue())
+}
+
+func waitMinReadyE2EDeploymentRestoredWithAvailability(namespace string, minReadySeconds, progressDeadlineSeconds int32) {
+	Eventually(func() bool {
+		deployment := &apps.Deployment{}
+		key := types.NamespacedName{Namespace: namespace, Name: minReadyE2EDeploymentName}
+		Expect(k8sClient.Get(context.TODO(), key, deployment)).Should(Succeed())
+		if deployment.Spec.ProgressDeadlineSeconds == nil || *deployment.Spec.ProgressDeadlineSeconds != progressDeadlineSeconds {
+			return false
+		}
+		for _, key := range partitiondeployment.AllOriginalAnnotations {
+			if deployment.Annotations[key] != "" {
+				return false
+			}
+		}
+		return deployment.Spec.MinReadySeconds == minReadySeconds &&
+			deployment.Spec.Strategy.Type == apps.RollingUpdateDeploymentStrategyType
+	}, 10*time.Minute, time.Second).Should(BeTrue())
+}
+
 func deleteMinReadyE2ERollout(namespace, name string) {
 	rollout := &v1beta1.Rollout{}
 	key := types.NamespacedName{Namespace: namespace, Name: name}

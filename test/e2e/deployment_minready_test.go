@@ -70,7 +70,19 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 			expectMinReadyE2EDeploymentVersion(namespace, "version1")
 		})
 
-		It("TC3 controller restart resumes from the persisted MinReadySeconds state", func() {
+		It("TC3 continuous release rolls v1 to v2 to v3 and refreshes original availability fields", func() {
+			rollout := startMinReadyE2ERollout(namespace)
+			waitMinReadyE2ERolloutStepPaused(namespace, rollout.Name, 1)
+
+			updateMinReadyE2EDeploymentContinuousRelease(namespace, "version3", 9, 90)
+			waitMinReadyE2EDeploymentInflated(namespace)
+			waitMinReadyE2EOriginalAvailabilityAnnotations(namespace, 9, 90)
+			expectMinReadyE2EDeploymentVersion(namespace, "version3")
+
+			finishMinReadyE2ERolloutWithAvailability(namespace, rollout.Name, 9, 90)
+		})
+
+		It("TC4 controller restart resumes from the persisted MinReadySeconds state", func() {
 			rollout := startMinReadyE2ERollout(namespace)
 			waitMinReadyE2ERolloutStepPaused(namespace, rollout.Name, 1)
 			restartMinReadyE2EControllerManager()
@@ -80,7 +92,7 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 			finishMinReadyE2ERollout(namespace, rollout.Name)
 		})
 
-		It("TC4 scale changes remain safe while rollout is active", func() {
+		It("TC5 scale changes remain safe while rollout is active", func() {
 			rollout := makeMinReadyE2ERolloutWithReplicas(namespace, "25%", "50%", "100%")
 			deployment := newMinReadyE2EDeployment(namespace)
 			setMinReadyE2EInitialReplicas(deployment, 4)
@@ -100,7 +112,7 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 			finishMinReadyE2ERollout(namespace, rollout.Name)
 		})
 
-		It("TC5 deleting Rollout restores annotations and lets native RollingUpdate continue", func() {
+		It("TC6 deleting Rollout restores annotations and lets native RollingUpdate continue", func() {
 			rollout := startMinReadyE2ERollout(namespace)
 			deleteMinReadyE2ERollout(namespace, rollout.Name)
 
@@ -109,7 +121,7 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 			expectMinReadyE2EOriginalAnnotationAbsent(namespace)
 		})
 
-		It("TC6 GitOps drift records degraded status and preserves the external value", func() {
+		It("TC7 GitOps drift records degraded status and preserves the external value", func() {
 			rollout := startMinReadyE2ERollout(namespace)
 			waitMinReadyE2ERolloutStepPaused(namespace, rollout.Name, 1)
 			patchMinReadyE2EMaxUnavailable(namespace, 5)
@@ -120,7 +132,7 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 			expectMinReadyE2EInflatedMaxUnavailable(namespace, 5)
 		})
 
-		It("TC7 missing annotation blocks finalize until the operator restores it", func() {
+		It("TC8 missing annotation blocks finalize until the operator restores it", func() {
 			rollout := startMinReadyE2ERollout(namespace)
 			deleteMinReadyE2EOriginalAnnotation(namespace, partitiondeployment.AnnotationOriginalMaxUnavailable)
 			resumeMinReadyE2ERollout(namespace, rollout.Name)
