@@ -297,7 +297,8 @@ func NewMinReadyController(cli client.Client, key types.NamespacedName, gvk sche
    - PDB presence is not an eligibility failure. PDBs protect Eviction API flows, not Deployment rolling updates, so they are not used as the batch-safety mechanism.
 
 2. **Annotation persistence** (`writeOriginalAnnotations`):
-   - If any of the three annotations is already present, validate that all three exist (idempotency check) and that the on-disk fields are already inflated. If consistent, no-op.
+   - If any of the three annotations is already present, validate that all three exist (idempotency check). If the on-disk fields are already inflated, no-op.
+   - If a continuous release supplies new user-owned `minReadySeconds` / `progressDeadlineSeconds` while annotations already exist, refresh those original annotations before re-inflating.
    - Otherwise, serialize the current values of `minReadySeconds`, `progressDeadlineSeconds`, and `maxUnavailable` per the serialization rules above and write all three annotations.
 
 3. **Field inflation** (`inflateDeploymentStrategy`): Set `minReadySeconds`, `progressDeadlineSeconds`, and `maxUnavailable` to their MinReadySeconds values. Leave `maxSurge` unchanged.
@@ -422,8 +423,8 @@ if isMinReadySecondsStrategy(rollout, deployment) {
     // MinReady keeps the native controller running, so it must NOT be paused.
     // Inflate synchronously at admission time so the native controller never
     // observes the user's original budget in the window between admission and
-    // MinReadyControl.Initialize. Initialize stays the fallback and validates
-    // (instead of rewriting) annotations that already exist.
+    // MinReadyControl.Initialize. Continuous releases refresh user-owned
+    // availability annotations before re-inflation.
     if err := partitiondeployment.EnrollMinReadyDeployment(newObj); err != nil {
         klog.Warningf("Skip MinReady enrollment for Deployment(%s/%s): %v", ...)
     }

@@ -509,6 +509,22 @@ func TestEnrollMinReadyDeploymentValidatesExistingAnnotations(t *testing.T) {
 	}
 }
 
+func TestEnrollMinReadyDeploymentRefreshesAvailabilityAnnotationsForContinuousRelease(t *testing.T) {
+	deployment := newInflatedMinReadyDeployment()
+	addMinReadyOriginalAnnotations(deployment)
+	deployment.Spec.MinReadySeconds = 9
+	deployment.Spec.ProgressDeadlineSeconds = pointer.Int32(90)
+
+	if err := EnrollMinReadyDeployment(deployment); err != nil {
+		t.Fatalf("EnrollMinReadyDeployment failed: %v", err)
+	}
+
+	assertAnnotation(t, deployment.Annotations, AnnotationOriginalMinReadySeconds, "9")
+	assertAnnotation(t, deployment.Annotations, AnnotationOriginalProgressDeadlineSeconds, "90")
+	assertAnnotation(t, deployment.Annotations, AnnotationOriginalMaxUnavailable, "25%")
+	assertMinReadyInflated(t, deployment)
+}
+
 func TestEnrollMinReadyDeploymentRejectsRecreate(t *testing.T) {
 	deployment := newMinReadyDeployment()
 	deployment.Spec.Strategy.Type = apps.RecreateDeploymentStrategyType

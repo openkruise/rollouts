@@ -647,6 +647,54 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 		},
 		{
+			name: "minready continuous release refreshes original availability annotations",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				oldObj.Annotations[partitiondeployment.AnnotationOriginalMinReadySeconds] = "7"
+				oldObj.Annotations[partitiondeployment.AnnotationOriginalProgressDeadlineSeconds] = "60"
+				oldObj.Annotations[partitiondeployment.AnnotationOriginalMaxUnavailable] = "25%"
+				oldObj.Spec.Paused = false
+				oldObj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				maxUnavailable := intstr.FromInt(0)
+				oldObj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{MaxUnavailable: &maxUnavailable}
+				oldObj.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
+				inflatedPDS := partitiondeployment.InflatedProgressDeadlineSeconds
+				oldObj.Spec.ProgressDeadlineSeconds = &inflatedPDS
+
+				newObj := oldObj.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
+				newObj.Spec.MinReadySeconds = 9
+				newObj.Spec.ProgressDeadlineSeconds = pointer.Int32(90)
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				obj.Annotations[partitiondeployment.AnnotationOriginalMinReadySeconds] = "9"
+				obj.Annotations[partitiondeployment.AnnotationOriginalProgressDeadlineSeconds] = "90"
+				obj.Annotations[partitiondeployment.AnnotationOriginalMaxUnavailable] = "25%"
+				obj.Spec.Paused = false
+				obj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				maxUnavailable := intstr.FromInt(0)
+				obj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{MaxUnavailable: &maxUnavailable}
+				obj.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
+				inflatedPDS := partitiondeployment.InflatedProgressDeadlineSeconds
+				obj.Spec.ProgressDeadlineSeconds = &inflatedPDS
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
 			name: "set deployment paused = false, matched rollout, in finalising, allow",
 			getObjs: func() (*apps.Deployment, *apps.Deployment) {
 				oldObj := deploymentDemo.DeepCopy()

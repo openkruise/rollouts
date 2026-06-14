@@ -197,9 +197,16 @@ func writeOriginalAnnotations(original, modified *apps.Deployment) {
 	if modified.Annotations == nil {
 		modified.Annotations = map[string]string{}
 	}
+	writeOriginalAvailabilityAnnotations(original, modified)
+	modified.Annotations[AnnotationOriginalMaxUnavailable] = serializeOriginalIntOrString(originalMaxUnavailable(original))
+}
+
+func writeOriginalAvailabilityAnnotations(original, modified *apps.Deployment) {
+	if modified.Annotations == nil {
+		modified.Annotations = map[string]string{}
+	}
 	modified.Annotations[AnnotationOriginalMinReadySeconds] = serializeOriginalInt32(&original.Spec.MinReadySeconds)
 	modified.Annotations[AnnotationOriginalProgressDeadlineSeconds] = serializeOriginalInt32(original.Spec.ProgressDeadlineSeconds)
-	modified.Annotations[AnnotationOriginalMaxUnavailable] = serializeOriginalIntOrString(originalMaxUnavailable(original))
 }
 
 func originalMaxUnavailable(deployment *apps.Deployment) *intstr.IntOrString {
@@ -227,8 +234,9 @@ func inflateDeploymentStrategy(deployment *apps.Deployment) {
 // annotations and inflates them in place. The workload mutating webhook calls
 // it when a Deployment enters rollout progressing, so the native controller
 // never observes the original maxUnavailable/minReadySeconds budget between
-// admission and MinReadyControl.Initialize; Initialize stays the fallback and
-// validates (instead of rewriting) annotations that already exist.
+// admission and MinReadyControl.Initialize. If a continuous release updates the
+// user-owned availability fields while MinReady annotations already exist,
+// enrollment refreshes those original annotations before re-inflating.
 func EnrollMinReadyDeployment(deployment *apps.Deployment) error {
 	if err := validateDeploymentStrategyType(deployment); err != nil {
 		return err
@@ -239,7 +247,13 @@ func EnrollMinReadyDeployment(deployment *apps.Deployment) error {
 			return err
 		}
 		if err := validateInflatedDeploymentStrategy(snapshot); err != nil {
-			return err
+			if !hasOriginalAvailabilityChange(snapshot) {
+				return err
+			}
+			if err := validateMinReadyRefreshableDeployment(snapshot); err != nil {
+				return err
+			}
+			writeOriginalAvailabilityAnnotations(snapshot, deployment)
 		}
 	} else {
 		writeOriginalAnnotations(snapshot, deployment)
@@ -282,6 +296,24 @@ func validateInflatedDeploymentStrategy(deployment *apps.Deployment) error {
 	if deployment.Spec.ProgressDeadlineSeconds == nil || *deployment.Spec.ProgressDeadlineSeconds != InflatedProgressDeadlineSeconds {
 		return fmt.Errorf("%w: progressDeadlineSeconds=%v want %d",
 			partitionstyle.ErrMinReadyDriftDetected, deployment.Spec.ProgressDeadlineSeconds, InflatedProgressDeadlineSeconds)
+	}
+	if deployment.Spec.Strategy.RollingUpdate == nil {
+		return fmt.Errorf("%w: rollingUpdate is nil", partitionstyle.ErrMinReadyDriftDetected)
+	}
+	return nil
+}
+
+func hasOriginalAvailabilityChange(deployment *apps.Deployment) bool {
+	if deployment.Spec.MinReadySeconds != InflatedMinReadySeconds {
+		return true
+	}
+	return deployment.Spec.ProgressDeadlineSeconds == nil ||
+		*deployment.Spec.ProgressDeadlineSeconds != InflatedProgressDeadlineSeconds
+}
+
+func validateMinReadyRefreshableDeployment(deployment *apps.Deployment) error {
+	if deployment.Spec.Paused {
+		return fmt.Errorf("%w: deployment is paused", partitionstyle.ErrMinReadyDriftDetected)
 	}
 	if deployment.Spec.Strategy.RollingUpdate == nil {
 		return fmt.Errorf("%w: rollingUpdate is nil", partitionstyle.ErrMinReadyDriftDetected)

@@ -242,6 +242,13 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
 		modified := false
 		if isMinReadySecondsStrategy(rollout, newObj) {
+			if isEffectiveDeploymentRevisionChange(oldObj, newObj) {
+				if err := partitiondeployment.EnrollMinReadyDeployment(newObj); err != nil {
+					klog.Warningf("Skip MinReady continuous enrollment for Deployment(%s/%s): %v", newObj.Namespace, newObj.Name, err)
+					return enforceMinReadyInflation(newObj), nil
+				}
+				return true, nil
+			}
 			return enforceMinReadyInflation(newObj), nil
 		}
 		strategy := util.GetDeploymentStrategy(newObj)
@@ -335,8 +342,8 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		// Inflate the strategy synchronously at admission time: this snapshots the
 		// original fields into annotations and sets minReadySeconds/maxUnavailable
 		// so the native controller never observes the user's original budget in the
-		// window between admission and MinReadyControl.Initialize. Initialize stays
-		// the fallback and validates (instead of rewriting) annotations that exist.
+		// window between admission and MinReadyControl.Initialize. Continuous
+		// releases refresh user-owned availability annotations before re-inflation.
 		if err := partitiondeployment.EnrollMinReadyDeployment(newObj); err != nil {
 			// Do not block admission; the controller's Initialize will surface a
 			// degraded condition for an unsupported strategy instead.
