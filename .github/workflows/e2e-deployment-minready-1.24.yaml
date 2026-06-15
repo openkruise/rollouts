@@ -104,7 +104,7 @@ jobs:
           export KUBECONFIG=/home/runner/.kube/config
           make ginkgo
           set +e
-          ./bin/ginkgo -timeout 60m -v --focus='Deployment MinReadySeconds' test/e2e
+          ./bin/ginkgo -timeout 60m -v test/e2e/minready
           retVal=$?
           if [ "${retVal}" -ne 0 ];then
               echo "test fail, dump kruise-rollout logs"

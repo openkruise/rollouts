@@ -19,6 +19,7 @@ package deployment
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -101,8 +102,9 @@ func (mc *MinReadyControl) UpgradeBatch(ctx context.Context, batchContext *batch
 		// maxUnavailable above the batch target is a legal state after a
 		// scale-down (HPA or manual) and also self-heals external tampering;
 		// converge it back to the target instead of reporting degraded drift.
-		klog.Warningf("MinReady maxUnavailable exceeds target, reducing, batch=%d deployment=%s maxUnavailable=%d target=%d",
-			batchContext.CurrentBatch, klog.KObj(mc.object), current, target)
+		klog.Warning(minReadyWarningS("MinReady maxUnavailable exceeds target, reducing",
+			"batch", batchContext.CurrentBatch, "deployment", klog.KObj(mc.object),
+			"maxUnavailable", current, "target", target))
 	}
 	original := mc.object
 	modified := mc.object.DeepCopy()
@@ -380,6 +382,18 @@ func applyOriginalDeploymentStrategy(deployment *apps.Deployment, original *orig
 // EventDegradedDriftDetected is the warning event reason recorded when
 // external drift of the inflated fields is detected. It equals the sentinel
 // error text so events, metrics and errors.Is classification stay in sync.
+// minReadyWarningS formats structured key-value pairs for warning logs. The
+// project's klog v2.120.1 does not expose WarningS; keep the same call shape
+// used elsewhere (ErrorS/InfoS) while emitting at warning severity.
+func minReadyWarningS(msg string, keysAndValues ...interface{}) string {
+	var b strings.Builder
+	b.WriteString(msg)
+	for i := 0; i+1 < len(keysAndValues); i += 2 {
+		fmt.Fprintf(&b, " %v=%v", keysAndValues[i], keysAndValues[i+1])
+	}
+	return b.String()
+}
+
 var EventDegradedDriftDetected = partitionstyle.ErrMinReadyDriftDetected.Error()
 
 var _ partitionstyle.Interface = (*MinReadyControl)(nil)

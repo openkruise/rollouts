@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package e2e
+package minready
 
 import (
 	"context"
@@ -120,9 +120,18 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 		})
 
 		It("TC7 external maxUnavailable drift converges to the current batch target", func() {
-			rollout := startMinReadyE2ERollout(namespace)
+			// 4 steps: 60% keeps target=3 on 5 replicas so resume does not jump to target=5.
+			rollout := makeMinReadyE2ERolloutWithReplicas(namespace, "20%", "50%", "60%", "100%")
+			deployment := newMinReadyE2EDeployment(namespace)
+			createReadyMinReadyE2EDeployment(namespace, deployment)
+			createHealthyMinReadyE2ERollout(namespace, rollout)
+			updateMinReadyE2EDeploymentVersion(namespace, "version2")
+			waitMinReadyE2EDeploymentInflated(namespace)
+			waitMinReadyE2EBatchCondition(namespace, rollout.Name, "MinReadyInitialized")
+
 			waitMinReadyE2ERolloutStepPaused(namespace, rollout.Name, 1)
 			patchMinReadyE2EMaxUnavailable(namespace, 5)
+			resumeMinReadyE2ERollout(namespace, rollout.Name)
 
 			expectMinReadyE2EInflatedMaxUnavailable(namespace, 3)
 			finishMinReadyE2ERollout(namespace, rollout.Name)

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package e2e
+package minready
 
 import (
 	"context"
@@ -33,6 +33,17 @@ import (
 
 	"github.com/openkruise/rollouts/api/v1beta1"
 )
+
+func mergeEnvVar(original []corev1.EnvVar, add corev1.EnvVar) []corev1.EnvVar {
+	newEnvs := make([]corev1.EnvVar, 0, len(original)+1)
+	for _, env := range original {
+		if add.Name == env.Name {
+			continue
+		}
+		newEnvs = append(newEnvs, env)
+	}
+	return append(newEnvs, add)
+}
 
 func finishMinReadyE2ERollout(namespace, name string) {
 	completeMinReadyE2ERollout(namespace, name)
