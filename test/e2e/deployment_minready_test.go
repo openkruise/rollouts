@@ -123,7 +123,6 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 			rollout := startMinReadyE2ERollout(namespace)
 			waitMinReadyE2ERolloutStepPaused(namespace, rollout.Name, 1)
 			patchMinReadyE2EMaxUnavailable(namespace, 5)
-			resumeMinReadyE2ERollout(namespace, rollout.Name)
 
 			expectMinReadyE2EInflatedMaxUnavailable(namespace, 3)
 			finishMinReadyE2ERollout(namespace, rollout.Name)
