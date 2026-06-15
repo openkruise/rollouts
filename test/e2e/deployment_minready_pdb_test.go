@@ -55,12 +55,10 @@ var _ = SIGDescribe("Deployment MinReadySeconds PDB", func() {
 			rollout := newMinReadyE2ERollout(namespace)
 			deployment := newMinReadyE2EDeployment(namespace)
 			pdb := newMinReadyE2EPDB(namespace)
-			createMinReadyE2EObject(rollout)
-			createMinReadyE2EObject(deployment)
+			createReadyMinReadyE2EDeployment(namespace, deployment)
 			createMinReadyE2EObject(pdb)
 
-			waitMinReadyE2EDeploymentReady(namespace)
-			waitMinReadyE2ERolloutPhase(namespace, rollout.Name, v1beta1.RolloutPhaseHealthy)
+			createHealthyMinReadyE2ERollout(namespace, rollout)
 			updateMinReadyE2EDeploymentVersion(namespace, "version2")
 			waitMinReadyE2EBatchCondition(namespace, rollout.Name, "MinReadyInitialized")
 

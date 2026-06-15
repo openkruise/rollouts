@@ -39,7 +39,8 @@ func waitMinReadyE2EDeploymentReplicas(namespace string, replicas int32) {
 		deployment := &apps.Deployment{}
 		key := types.NamespacedName{Namespace: namespace, Name: minReadyE2EDeploymentName}
 		Expect(k8sClient.Get(context.TODO(), key, deployment)).Should(Succeed())
-		return deployment.Status.Replicas == replicas && *deployment.Spec.Replicas == replicas
+		return *deployment.Spec.Replicas == replicas &&
+			deployment.Status.ObservedGeneration >= deployment.Generation
 	}, 5*time.Minute, time.Second).Should(BeTrue())
 }
 

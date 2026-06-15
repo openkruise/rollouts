@@ -108,6 +108,16 @@ func createMinReadyE2EObject(object client.Object) {
 	Expect(k8sClient.Create(context.TODO(), object)).NotTo(HaveOccurred())
 }
 
+func createReadyMinReadyE2EDeployment(namespace string, deployment *apps.Deployment) {
+	createMinReadyE2EObject(deployment)
+	waitMinReadyE2EDeploymentReady(namespace)
+}
+
+func createHealthyMinReadyE2ERollout(namespace string, rollout *v1beta1.Rollout) {
+	createMinReadyE2EObject(rollout)
+	waitMinReadyE2ERolloutPhase(namespace, rollout.Name, v1beta1.RolloutPhaseHealthy)
+}
+
 func updateMinReadyE2EDeploymentVersion(namespace, version string) {
 	Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		deployment := &apps.Deployment{}
@@ -208,10 +218,8 @@ func waitMinReadyE2EBatchCondition(namespace, name, reason string) {
 func startMinReadyE2ERollout(namespace string) *v1beta1.Rollout {
 	rollout := newMinReadyE2ERollout(namespace)
 	deployment := newMinReadyE2EDeployment(namespace)
-	createMinReadyE2EObject(rollout)
-	createMinReadyE2EObject(deployment)
-	waitMinReadyE2EDeploymentReady(namespace)
-	waitMinReadyE2ERolloutPhase(namespace, rollout.Name, v1beta1.RolloutPhaseHealthy)
+	createReadyMinReadyE2EDeployment(namespace, deployment)
+	createHealthyMinReadyE2ERollout(namespace, rollout)
 	updateMinReadyE2EDeploymentVersion(namespace, "version2")
 	waitMinReadyE2EDeploymentInflated(namespace)
 	waitMinReadyE2EBatchCondition(namespace, rollout.Name, "MinReadyInitialized")

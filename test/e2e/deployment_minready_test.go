@@ -57,10 +57,8 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 		It("TC2 rollback returns to the stable template", func() {
 			rollout := newMinReadyE2ERollout(namespace)
 			deployment := newMinReadyE2EDeployment(namespace)
-			createMinReadyE2EObject(rollout)
-			createMinReadyE2EObject(deployment)
-			waitMinReadyE2EDeploymentReady(namespace)
-			waitMinReadyE2ERolloutPhase(namespace, rollout.Name, v1beta1.RolloutPhaseHealthy)
+			createReadyMinReadyE2EDeployment(namespace, deployment)
+			createHealthyMinReadyE2ERollout(namespace, rollout)
 
 			updateMinReadyE2EDeploymentVersion(namespace, "version2")
 			waitMinReadyE2EDeploymentInflated(namespace)
@@ -96,10 +94,8 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 			rollout := makeMinReadyE2ERolloutWithReplicas(namespace, "25%", "50%", "100%")
 			deployment := newMinReadyE2EDeployment(namespace)
 			setMinReadyE2EInitialReplicas(deployment, 4)
-			createMinReadyE2EObject(rollout)
-			createMinReadyE2EObject(deployment)
-			waitMinReadyE2EDeploymentReady(namespace)
-			waitMinReadyE2ERolloutPhase(namespace, rollout.Name, v1beta1.RolloutPhaseHealthy)
+			createReadyMinReadyE2EDeployment(namespace, deployment)
+			createHealthyMinReadyE2ERollout(namespace, rollout)
 
 			updateMinReadyE2EDeploymentVersion(namespace, "version2")
 			waitMinReadyE2EDeploymentInflated(namespace)
@@ -134,15 +130,14 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 
 		It("TC8 missing annotation blocks finalize until the operator restores it", func() {
 			rollout := startMinReadyE2ERollout(namespace)
+			waitMinReadyE2ERolloutStepPaused(namespace, rollout.Name, 1)
 			deleteMinReadyE2EOriginalAnnotation(namespace, partitiondeployment.AnnotationOriginalMaxUnavailable)
-			resumeMinReadyE2ERollout(namespace, rollout.Name)
 			resumeMinReadyE2ERollout(namespace, rollout.Name)
 			waitMinReadyE2EBatchCondition(namespace, rollout.Name, "MinReadyDegradedMissingAnnotations")
 			waitMinReadyE2EEventReason(namespace, "MinReadyDegradedMissingAnnotations")
 
 			restoreMinReadyE2EOriginalAnnotation(namespace, partitiondeployment.AnnotationOriginalMaxUnavailable, "25%")
-			waitMinReadyE2ERolloutPhase(namespace, rollout.Name, v1beta1.RolloutPhaseHealthy)
-			waitMinReadyE2EDeploymentRestored(namespace)
+			finishMinReadyE2ERollout(namespace, rollout.Name)
 		})
 	})
 })
