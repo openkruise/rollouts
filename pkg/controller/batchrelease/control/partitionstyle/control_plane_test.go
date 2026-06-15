@@ -60,6 +60,8 @@ type fakePartitionController struct {
 	finalizeCalls  int
 	calculateCalls int
 	listCalls      int
+
+	statusWriter *MinReadyStatusWriter
 }
 
 func (f *fakePartitionController) BuildController() (Interface, error) {
@@ -71,6 +73,54 @@ func (f *fakePartitionController) BuildController() (Interface, error) {
 		return f.buildResult, nil
 	}
 	return f, nil
+}
+
+func (f *fakePartitionController) BindMinReadyStatus(release *v1beta1.BatchRelease, status *v1beta1.BatchReleaseStatus, recorder record.EventRecorder) {
+	if f.minReady {
+		f.statusWriter = NewMinReadyStatusWriter(release, status, recorder)
+	}
+}
+
+func (f *fakePartitionController) RecordOperationFailed(reason string, err error) {
+	if f.statusWriter != nil {
+		f.statusWriter.RecordDegraded(reason, err)
+	}
+}
+
+func (f *fakePartitionController) RecordZeroReplicaBatching() {
+	if f.statusWriter != nil {
+		f.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatching", "MinReadySeconds strategy has no replicas to upgrade")
+	}
+}
+
+func (f *fakePartitionController) RecordBatchAdvanced() {
+	if f.statusWriter != nil {
+		f.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatching", "MinReadySeconds strategy advanced the current batch")
+	}
+}
+
+func (f *fakePartitionController) RecordZeroReplicaBatchReady() {
+	if f.statusWriter != nil {
+		f.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatchReady", "MinReadySeconds strategy batch is ready")
+	}
+}
+
+func (f *fakePartitionController) RecordBatchReady() {
+	if f.statusWriter != nil {
+		f.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatchReady", "MinReadySeconds strategy batch is ready")
+	}
+}
+
+func (f *fakePartitionController) ObserveBatchWait() {
+	if f.statusWriter == nil {
+		return
+	}
+	status := f.statusWriter.BatchReleaseStatus()
+	if status == nil {
+		return
+	}
+	condition := util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionMinReadyBatching)
+	ObserveMinReadyBatchWait(f.statusWriter.BatchRelease(), condition)
 }
 
 func (f *fakePartitionController) GetWorkloadInfo() *util.WorkloadInfo {
@@ -85,9 +135,12 @@ func (f *fakePartitionController) ListOwnedPods() ([]*corev1.Pod, error) {
 	return f.pods, f.listErr
 }
 
-func (f *fakePartitionController) CalculateBatchContext(*v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {
+func (f *fakePartitionController) CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {
 	f.calculateCalls++
 	if f.calcErr != nil {
+		if f.statusWriter != nil {
+			f.statusWriter.RecordDegraded("MinReadyBatchingFailed", f.calcErr)
+		}
 		return nil, f.calcErr
 	}
 	if f.batchCtx != nil {
@@ -96,19 +149,43 @@ func (f *fakePartitionController) CalculateBatchContext(*v1beta1.BatchRelease) (
 	return readyBatchContext(), nil
 }
 
-func (f *fakePartitionController) Initialize(context.Context, *v1beta1.BatchRelease) error {
+func (f *fakePartitionController) Initialize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	f.initCalls++
-	return f.initErr
+	if f.initErr != nil {
+		if f.statusWriter != nil {
+			f.statusWriter.RecordDegraded("MinReadyInitializeFailed", f.initErr)
+		}
+		return f.initErr
+	}
+	if f.statusWriter != nil {
+		f.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyInitialized, "MinReadyInitialized", "MinReadySeconds strategy initialized")
+	}
+	return nil
 }
 
 func (f *fakePartitionController) UpgradeBatch(context.Context, *batchcontext.BatchContext) error {
 	f.upgradeCalls++
-	return f.upgradeErr
+	if f.upgradeErr != nil {
+		if f.statusWriter != nil {
+			f.statusWriter.RecordDegraded("MinReadyBatchingFailed", f.upgradeErr)
+		}
+		return f.upgradeErr
+	}
+	return nil
 }
 
 func (f *fakePartitionController) Finalize(context.Context, *v1beta1.BatchRelease) error {
 	f.finalizeCalls++
-	return f.finalizeErr
+	if f.finalizeErr != nil {
+		if f.statusWriter != nil {
+			f.statusWriter.RecordDegraded("MinReadyFinalizeFailed", f.finalizeErr)
+		}
+		return f.finalizeErr
+	}
+	if f.statusWriter != nil {
+		f.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyFinalized, "MinReadyFinalized", "MinReadySeconds strategy finalized")
+	}
+	return nil
 }
 
 func (f *fakePartitionController) IsMinReadyControl() bool {

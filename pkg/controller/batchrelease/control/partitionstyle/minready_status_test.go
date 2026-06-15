@@ -56,13 +56,13 @@ func TestRecordMinReadyNormalObservesBatchDuration(t *testing.T) {
 		LastUpdateTime:     startedAt,
 	})
 
-	rc := &realBatchControlPlane{
-		EventRecorder: record.NewFakeRecorder(1),
-		release:       release,
-		newStatus:     status,
+	rc := &MinReadyStatusWriter{
+		release:  release,
+		status:   status,
+		recorder: record.NewFakeRecorder(1),
 	}
 
-	rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatchReady", "MinReadySeconds strategy batch is ready")
+	rc.RecordNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatchReady", "MinReadySeconds strategy batch is ready")
 
 	histogram := findHistogramMetric(t, "rollout_minready_batch_duration_seconds", map[string]string{
 		"rollout":   release.Name,
@@ -91,13 +91,13 @@ func TestRecordMinReadyNormalKeepsDegradedUntilFinalize(t *testing.T) {
 		Status: v1.ConditionTrue,
 		Reason: "MinReadyDegradedMissingAnnotations",
 	})
-	rc := &realBatchControlPlane{
-		EventRecorder: record.NewFakeRecorder(2),
-		release:       release,
-		newStatus:     status,
+	rc := &MinReadyStatusWriter{
+		release:  release,
+		status:   status,
+		recorder: record.NewFakeRecorder(2),
 	}
 
-	rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatching", "MinReadySeconds strategy advanced the current batch")
+	rc.RecordNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatching", "MinReadySeconds strategy advanced the current batch")
 
 	degraded := util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionMinReadyDegraded)
 	if degraded == nil || degraded.Status != v1.ConditionTrue {
@@ -107,7 +107,7 @@ func TestRecordMinReadyNormalKeepsDegradedUntilFinalize(t *testing.T) {
 		t.Fatalf("status.message = %q, want previous degraded message", status.Message)
 	}
 
-	rc.recordMinReadyNormal(v1beta1.RolloutConditionMinReadyFinalized, "MinReadyFinalized", "MinReadySeconds strategy finalized")
+	rc.RecordNormal(v1beta1.RolloutConditionMinReadyFinalized, "MinReadyFinalized", "MinReadySeconds strategy finalized")
 
 	degraded = util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionMinReadyDegraded)
 	if degraded == nil || degraded.Status != v1.ConditionFalse {
@@ -132,7 +132,7 @@ func TestObserveMinReadyBatchWaitSetsStuckGauge(t *testing.T) {
 		LastUpdateTime:     startedAt,
 	}
 
-	observeMinReadyBatchWait(release, condition)
+	ObserveMinReadyBatchWait(release, condition)
 
 	gauge := findGaugeMetric(t, "rollout_minready_stuck_seconds", map[string]string{
 		"rollout":   release.Name,

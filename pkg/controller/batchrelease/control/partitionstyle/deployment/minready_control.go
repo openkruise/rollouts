@@ -19,11 +19,11 @@ package deployment
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	apps "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -38,10 +38,57 @@ import (
 
 type MinReadyControl struct {
 	*realController
+	statusWriter *partitionstyle.MinReadyStatusWriter
 }
 
 func (mc *MinReadyControl) IsMinReadyControl() bool {
 	return true
+}
+
+func (mc *MinReadyControl) BindMinReadyStatus(release *v1beta1.BatchRelease, status *v1beta1.BatchReleaseStatus, recorder record.EventRecorder) {
+	mc.statusWriter = partitionstyle.NewMinReadyStatusWriter(release, status, recorder)
+}
+
+func (mc *MinReadyControl) RecordOperationFailed(reason string, err error) {
+	if mc.statusWriter != nil {
+		mc.statusWriter.RecordDegraded(reason, err)
+	}
+}
+
+func (mc *MinReadyControl) RecordZeroReplicaBatching() {
+	if mc.statusWriter != nil {
+		mc.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatching", "MinReadySeconds strategy has no replicas to upgrade")
+	}
+}
+
+func (mc *MinReadyControl) RecordBatchAdvanced() {
+	if mc.statusWriter != nil {
+		mc.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatching", "MinReadySeconds strategy advanced the current batch")
+	}
+}
+
+func (mc *MinReadyControl) RecordZeroReplicaBatchReady() {
+	if mc.statusWriter != nil {
+		mc.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatchReady", "MinReadySeconds strategy batch is ready")
+	}
+}
+
+func (mc *MinReadyControl) RecordBatchReady() {
+	if mc.statusWriter != nil {
+		mc.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyBatching, "MinReadyBatchReady", "MinReadySeconds strategy batch is ready")
+	}
+}
+
+func (mc *MinReadyControl) ObserveBatchWait() {
+	if mc.statusWriter == nil {
+		return
+	}
+	status := mc.statusWriter.BatchReleaseStatus()
+	if status == nil {
+		return
+	}
+	condition := util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionMinReadyBatching)
+	partitionstyle.ObserveMinReadyBatchWait(mc.statusWriter.BatchRelease(), condition)
 }
 
 func (mc *MinReadyControl) BuildController() (partitionstyle.Interface, error) {
@@ -56,43 +103,54 @@ func (mc *MinReadyControl) BuildController() (partitionstyle.Interface, error) {
 	if !ok {
 		return nil, fmt.Errorf("MinReadyControl.BuildController: expected *realController, got %T", built)
 	}
-	return &MinReadyControl{realController: rc}, nil
+	return &MinReadyControl{realController: rc, statusWriter: mc.statusWriter}, nil
 }
 
 func (mc *MinReadyControl) Initialize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if release == nil {
-		return fmt.Errorf("MinReadyControl.Initialize: release is nil")
+		err := fmt.Errorf("MinReadyControl.Initialize: release is nil")
+		mc.RecordOperationFailed("MinReadyInitializeFailed", err)
+		return err
 	}
 	if err := mc.ensureInitializeAllowed(); err != nil {
-		return fmt.Errorf("MinReadyControl.Initialize: %w", err)
+		wrapped := fmt.Errorf("MinReadyControl.Initialize: %w", err)
+		mc.RecordOperationFailed("MinReadyInitializeFailed", wrapped)
+		return wrapped
 	}
 	original := mc.object
 	modified := mc.object.DeepCopy()
-	if hasAnyOriginalAnnotation(original.Annotations) {
-		if err := ensureOriginalAnnotations(original); err != nil {
-			return fmt.Errorf("MinReadyControl.Initialize: %w", err)
-		}
-		if err := validateInflatedDeploymentStrategy(original); err != nil {
-			return fmt.Errorf("MinReadyControl.Initialize: %w", err)
-		}
-	} else {
-		writeOriginalAnnotations(original, modified)
+	if err := prepareOriginalAnnotations(original, modified); err != nil {
+		wrapped := fmt.Errorf("MinReadyControl.Initialize: %w", err)
+		mc.RecordOperationFailed("MinReadyInitializeFailed", wrapped)
+		return wrapped
 	}
 	modified.Annotations[util.BatchReleaseControlAnnotation] = util.DumpJSON(metav1.NewControllerRef(
 		release, release.GetObjectKind().GroupVersionKind()))
 	inflateDeploymentStrategy(modified)
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
-	return mc.client.Patch(ctx, modified, patch)
+	if err := mc.client.Patch(ctx, modified, patch); err != nil {
+		wrapped := fmt.Errorf("MinReadyControl.Initialize: %w", err)
+		mc.RecordOperationFailed("MinReadyInitializeFailed", wrapped)
+		return wrapped
+	}
+	if mc.statusWriter != nil {
+		mc.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyInitialized, "MinReadyInitialized", "MinReadySeconds strategy initialized")
+	}
+	return nil
 }
 
 func (mc *MinReadyControl) UpgradeBatch(ctx context.Context, batchContext *batchcontext.BatchContext) error {
 	if err := mc.ensureInflatedDeploymentStrategy(ctx); err != nil {
-		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
+		wrapped := fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
+		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
+		return wrapped
 	}
 	current, err := intstr.GetScaledValueFromIntOrPercent(
 		mc.object.Spec.Strategy.RollingUpdate.MaxUnavailable, int(batchContext.Replicas), true)
 	if err != nil {
-		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
+		wrapped := fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
+		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
+		return wrapped
 	}
 	target := batchContext.DesiredUpdatedReplicas
 	if int32(current) == target {
@@ -102,16 +160,21 @@ func (mc *MinReadyControl) UpgradeBatch(ctx context.Context, batchContext *batch
 		// maxUnavailable above the batch target is a legal state after a
 		// scale-down (HPA or manual) and also self-heals external tampering;
 		// converge it back to the target instead of reporting degraded drift.
-		klog.Warning(minReadyWarningS("MinReady maxUnavailable exceeds target, reducing",
+		warningS(nil, "MinReady maxUnavailable exceeds target, reducing",
 			"batch", batchContext.CurrentBatch, "deployment", klog.KObj(mc.object),
-			"maxUnavailable", current, "target", target))
+			"maxUnavailable", current, "target", target)
 	}
 	original := mc.object
 	modified := mc.object.DeepCopy()
 	maxUnavailable := intstr.FromInt(int(target))
 	modified.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
-	return mc.client.Patch(ctx, modified, patch)
+	if err := mc.client.Patch(ctx, modified, patch); err != nil {
+		wrapped := fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
+		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
+		return wrapped
+	}
+	return nil
 }
 
 func (mc *MinReadyControl) Finalize(ctx context.Context, _ *v1beta1.BatchRelease) error {
@@ -120,15 +183,19 @@ func (mc *MinReadyControl) Finalize(ctx context.Context, _ *v1beta1.BatchRelease
 	}
 	if !hasAnyOriginalAnnotation(mc.object.Annotations) {
 		if hasInflatedDeploymentFields(mc.object) {
-			return fmt.Errorf("MinReadyControl.Finalize: annotation state missing while deployment fields are still inflated: %w",
+			err := fmt.Errorf("MinReadyControl.Finalize: annotation state missing while deployment fields are still inflated: %w",
 				partitionstyle.ErrMinReadyAnnotationInvalid)
+			mc.RecordOperationFailed("MinReadyFinalizeFailed", err)
+			return err
 		}
 		return nil
 	}
 	original := mc.object
 	restored, err := parseOriginalDeploymentStrategy(original.Annotations)
 	if err != nil {
-		return fmt.Errorf("MinReadyControl.Finalize: %w", err)
+		wrapped := fmt.Errorf("MinReadyControl.Finalize: %w", err)
+		mc.RecordOperationFailed("MinReadyFinalizeFailed", wrapped)
+		return wrapped
 	}
 	modified := mc.object.DeepCopy()
 	applyOriginalDeploymentStrategy(modified, restored)
@@ -138,14 +205,24 @@ func (mc *MinReadyControl) Finalize(ctx context.Context, _ *v1beta1.BatchRelease
 	delete(modified.Annotations, util.BatchReleaseControlAnnotation)
 	delete(modified.Labels, v1alpha1.DeploymentStableRevisionLabel)
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
-	return mc.client.Patch(ctx, modified, patch)
+	if err := mc.client.Patch(ctx, modified, patch); err != nil {
+		wrapped := fmt.Errorf("MinReadyControl.Finalize: %w", err)
+		mc.RecordOperationFailed("MinReadyFinalizeFailed", wrapped)
+		return wrapped
+	}
+	if mc.statusWriter != nil {
+		mc.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyFinalized, "MinReadyFinalized", "MinReadySeconds strategy finalized")
+	}
+	return nil
 }
 
 func (mc *MinReadyControl) CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {
 	rolloutID := release.Spec.ReleasePlan.RolloutID
 	if rolloutID != "" {
 		if _, err := mc.ListOwnedPods(); err != nil {
-			return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
+			wrapped := fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
+			mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
+			return nil, wrapped
 		}
 	}
 
@@ -153,11 +230,15 @@ func (mc *MinReadyControl) CalculateBatchContext(release *v1beta1.BatchRelease) 
 	desiredPartition := release.Spec.ReleasePlan.Batches[currentBatch].CanaryReplicas
 	desiredUpdatedReplicas, err := minReadyDesiredUpdatedReplicas(desiredPartition, mc.object)
 	if err != nil {
-		return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
+		wrapped := fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
+		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
+		return nil, wrapped
 	}
 	updatedReadyReplicas, err := mc.minReadyUpdatedReadyReplicas(release.Status.UpdateRevision)
 	if err != nil {
-		return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
+		wrapped := fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
+		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
+		return nil, wrapped
 	}
 	return &batchcontext.BatchContext{
 		RolloutID:              rolloutID,
@@ -185,6 +266,17 @@ func (mc *MinReadyControl) ensureInitializeAllowed() error {
 		return err
 	}
 	return nil
+}
+
+func prepareOriginalAnnotations(deployment, writeTarget *apps.Deployment) error {
+	if !hasAnyOriginalAnnotation(deployment.Annotations) {
+		writeOriginalAnnotations(deployment, writeTarget)
+		return nil
+	}
+	if err := ensureOriginalAnnotations(deployment); err != nil {
+		return err
+	}
+	return validateInflatedDeploymentStrategy(deployment)
 }
 
 func ensureOriginalAnnotations(deployment *apps.Deployment) error {
@@ -241,23 +333,30 @@ func EnrollMinReadyDeployment(deployment *apps.Deployment) error {
 		return err
 	}
 	snapshot := deployment.DeepCopy()
-	if hasAnyOriginalAnnotation(snapshot.Annotations) {
-		if err := ensureOriginalAnnotations(snapshot); err != nil {
-			return err
-		}
-		if err := validateInflatedDeploymentStrategy(snapshot); err != nil {
-			if !hasOriginalAvailabilityChange(snapshot) {
-				return err
-			}
-			if err := validateMinReadyRefreshableDeployment(snapshot); err != nil {
-				return err
-			}
-			writeOriginalAvailabilityAnnotations(snapshot, deployment)
-		}
-	} else {
-		writeOriginalAnnotations(snapshot, deployment)
+	if err := enrollOriginalAnnotations(snapshot, deployment); err != nil {
+		return err
 	}
 	inflateDeploymentStrategy(deployment)
+	return nil
+}
+
+func enrollOriginalAnnotations(snapshot, target *apps.Deployment) error {
+	if !hasAnyOriginalAnnotation(snapshot.Annotations) {
+		writeOriginalAnnotations(snapshot, target)
+		return nil
+	}
+	if err := ensureOriginalAnnotations(snapshot); err != nil {
+		return err
+	}
+	if err := validateInflatedDeploymentStrategy(snapshot); err != nil {
+		if !hasOriginalAvailabilityChange(snapshot) {
+			return err
+		}
+		if err := validateMinReadyRefreshableDeployment(snapshot); err != nil {
+			return err
+		}
+		writeOriginalAvailabilityAnnotations(snapshot, target)
+	}
 	return nil
 }
 
@@ -382,18 +481,8 @@ func applyOriginalDeploymentStrategy(deployment *apps.Deployment, original *orig
 // EventDegradedDriftDetected is the warning event reason recorded when
 // external drift of the inflated fields is detected. It equals the sentinel
 // error text so events, metrics and errors.Is classification stay in sync.
-// minReadyWarningS formats structured key-value pairs for warning logs. The
-// project's klog v2.120.1 does not expose WarningS; keep the same call shape
-// used elsewhere (ErrorS/InfoS) while emitting at warning severity.
-func minReadyWarningS(msg string, keysAndValues ...interface{}) string {
-	var b strings.Builder
-	b.WriteString(msg)
-	for i := 0; i+1 < len(keysAndValues); i += 2 {
-		fmt.Fprintf(&b, " %v=%v", keysAndValues[i], keysAndValues[i+1])
-	}
-	return b.String()
-}
-
 var EventDegradedDriftDetected = partitionstyle.ErrMinReadyDriftDetected.Error()
 
 var _ partitionstyle.Interface = (*MinReadyControl)(nil)
+var _ partitionstyle.MinReadyStatusBinder = (*MinReadyControl)(nil)
+var _ partitionstyle.MinReadyLifecycle = (*MinReadyControl)(nil)

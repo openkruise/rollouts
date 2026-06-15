@@ -21,48 +21,98 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
+	"k8s.io/client-go/tools/record"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
 	brmetrics "github.com/openkruise/rollouts/pkg/controller/batchrelease/metrics"
 	"github.com/openkruise/rollouts/pkg/util"
 )
 
-type minReadyControllerMarker interface {
-	IsMinReadyControl() bool
+// MinReadyStatusBinder injects BatchRelease status/event dependencies into
+// MinReadyControl before lifecycle methods run.
+type MinReadyStatusBinder interface {
+	BindMinReadyStatus(release *v1beta1.BatchRelease, status *v1beta1.BatchReleaseStatus, recorder record.EventRecorder)
 }
 
-func isMinReadyController(controller Interface) bool {
-	marker, ok := controller.(minReadyControllerMarker)
-	return ok && marker.IsMinReadyControl()
+// MinReadyLifecycle records MinReady-specific status from control-plane batch
+// paths that are not Initialize/UpgradeBatch/Finalize.
+type MinReadyLifecycle interface {
+	RecordZeroReplicaBatching()
+	RecordBatchAdvanced()
+	RecordZeroReplicaBatchReady()
+	RecordBatchReady()
+	ObserveBatchWait()
+	RecordOperationFailed(reason string, err error)
 }
 
-func (rc *realBatchControlPlane) recordMinReadyDegradedOrLog(minReady bool, reason string, err error) {
-	if minReady {
-		rc.recordMinReadyDegraded(reason, err)
+type MinReadyStatusWriter struct {
+	release  *v1beta1.BatchRelease
+	status   *v1beta1.BatchReleaseStatus
+	recorder record.EventRecorder
+}
+
+func NewMinReadyStatusWriter(release *v1beta1.BatchRelease, status *v1beta1.BatchReleaseStatus, recorder record.EventRecorder) *MinReadyStatusWriter {
+	return &MinReadyStatusWriter{
+		release:  release,
+		status:   status,
+		recorder: recorder,
+	}
+}
+
+func (w *MinReadyStatusWriter) BatchRelease() *v1beta1.BatchRelease {
+	if w == nil {
+		return nil
+	}
+	return w.release
+}
+
+func (w *MinReadyStatusWriter) BatchReleaseStatus() *v1beta1.BatchReleaseStatus {
+	if w == nil {
+		return nil
+	}
+	return w.status
+}
+
+func (w *MinReadyStatusWriter) RecordNormal(condType v1beta1.RolloutConditionType, reason, message string) {
+	if w == nil || w.status == nil {
 		return
 	}
-	if err != nil {
-		klog.ErrorS(err, "Partition-style control plane failed", "release", klog.KObj(rc.release), "reason", reason)
+	previousCondition := util.GetBatchReleaseCondition(*w.status, condType)
+	condition := util.NewRolloutCondition(condType, v1.ConditionTrue, reason, message)
+	util.SetBatchReleaseCondition(w.status, *condition)
+	if reason == "MinReadyFinalized" {
+		clearMinReadyDegraded(w.status)
+		w.status.Message = ""
+	}
+	if reason == "MinReadyBatchReady" {
+		observeMinReadyBatchDuration(w.release, previousCondition)
+		brmetrics.RecordMinReadyBatch(w.release, brmetrics.BatchResultSuccess)
+	}
+	if reason == "MinReadyBatchReady" || reason == "MinReadyFinalized" {
+		brmetrics.ClearMinReadyStuckSeconds(w.release, brmetrics.StuckReasonBatchReadyTimeout)
+	}
+	if w.recorder != nil && w.release != nil {
+		w.recorder.Event(w.release, v1.EventTypeNormal, reason, message)
 	}
 }
 
-func (rc *realBatchControlPlane) recordMinReadyNormal(condType v1beta1.RolloutConditionType, reason, message string) {
-	previousCondition := util.GetBatchReleaseCondition(*rc.newStatus, condType)
-	condition := util.NewRolloutCondition(condType, v1.ConditionTrue, reason, message)
-	util.SetBatchReleaseCondition(rc.newStatus, *condition)
-	if reason == "MinReadyFinalized" {
-		clearMinReadyDegraded(rc.newStatus)
-		rc.newStatus.Message = ""
+func (w *MinReadyStatusWriter) RecordDegraded(reason string, err error) {
+	if w == nil || w.status == nil || err == nil {
+		return
 	}
-	if reason == "MinReadyBatchReady" {
-		observeMinReadyBatchDuration(rc.release, previousCondition)
-		brmetrics.RecordMinReadyBatch(rc.release, brmetrics.BatchResultSuccess)
+	message := err.Error()
+	classified := classifyMinReadyDegradedReason(reason, err)
+	eventReason := classified.event
+	condition := util.NewRolloutCondition(v1beta1.RolloutConditionMinReadyDegraded, v1.ConditionTrue, eventReason, message)
+	util.SetBatchReleaseCondition(w.status, *condition)
+	w.status.Message = message
+	degradedReason := classified.metric
+	brmetrics.ClearMinReadyStuckSeconds(w.release, brmetrics.StuckReasonBatchReadyTimeout)
+	brmetrics.RecordMinReadyBatch(w.release, brmetrics.BatchResultDegraded)
+	brmetrics.RecordMinReadyDegraded(w.release, degradedReason)
+	if w.recorder != nil && w.release != nil {
+		w.recorder.Event(w.release, v1.EventTypeWarning, eventReason, message)
 	}
-	if reason == "MinReadyBatchReady" || reason == "MinReadyFinalized" {
-		brmetrics.ClearMinReadyStuckSeconds(rc.release, brmetrics.StuckReasonBatchReadyTimeout)
-	}
-	rc.Event(rc.release, v1.EventTypeNormal, reason, message)
 }
 
 func observeMinReadyBatchDuration(release *v1beta1.BatchRelease, condition *v1beta1.RolloutCondition) {
@@ -76,24 +126,8 @@ func observeMinReadyBatchDuration(release *v1beta1.BatchRelease, condition *v1be
 	brmetrics.ObserveMinReadyBatchDuration(release, duration)
 }
 
-func (rc *realBatchControlPlane) recordMinReadyDegraded(reason string, err error) {
-	if err == nil {
-		return
-	}
-	message := err.Error()
-	classified := classifyMinReadyDegradedReason(reason, err)
-	eventReason := classified.event
-	condition := util.NewRolloutCondition(v1beta1.RolloutConditionMinReadyDegraded, v1.ConditionTrue, eventReason, message)
-	util.SetBatchReleaseCondition(rc.newStatus, *condition)
-	rc.newStatus.Message = message
-	degradedReason := classified.metric
-	brmetrics.ClearMinReadyStuckSeconds(rc.release, brmetrics.StuckReasonBatchReadyTimeout)
-	brmetrics.RecordMinReadyBatch(rc.release, brmetrics.BatchResultDegraded)
-	brmetrics.RecordMinReadyDegraded(rc.release, degradedReason)
-	rc.Event(rc.release, v1.EventTypeWarning, eventReason, message)
-}
-
-func observeMinReadyBatchWait(release *v1beta1.BatchRelease, condition *v1beta1.RolloutCondition) {
+// ObserveMinReadyBatchWait updates the stuck-seconds metric while a batch waits to become ready.
+func ObserveMinReadyBatchWait(release *v1beta1.BatchRelease, condition *v1beta1.RolloutCondition) {
 	if release == nil || condition == nil || condition.LastTransitionTime.IsZero() {
 		return
 	}
