@@ -165,13 +165,60 @@ func resumeMinReadyE2ERollout(namespace, name string) {
 	}, 2*time.Minute, time.Second).Should(BeTrue())
 }
 
-func waitMinReadyE2ERolloutPhase(namespace, name string, phase v1beta1.RolloutPhase) {
-	Eventually(func() bool {
+func completeMinReadyE2ERollout(namespace, name string) {
+	Eventually(func() string {
 		rollout := &v1beta1.Rollout{}
 		key := types.NamespacedName{Namespace: namespace, Name: name}
-		Expect(k8sClient.Get(context.TODO(), key, rollout)).NotTo(HaveOccurred())
-		return rollout.Status.Phase == phase
-	}, 10*time.Minute, time.Second).Should(BeTrue())
+		if err := k8sClient.Get(context.TODO(), key, rollout); err != nil {
+			return fmt.Sprintf("get rollout failed: %v", err)
+		}
+		status := minReadyE2ERolloutStatus(rollout)
+		if rollout.Status.Phase == v1beta1.RolloutPhaseHealthy {
+			return status
+		}
+		if rollout.Status.CanaryStatus == nil ||
+			rollout.Status.CanaryStatus.CurrentStepState != v1beta1.CanaryStepStatePaused {
+			return status
+		}
+		body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, v1beta1.CanaryStepStateReady)
+		if err := k8sClient.Status().Patch(context.TODO(), rollout, client.RawPatch(types.MergePatchType, []byte(body))); err != nil {
+			return fmt.Sprintf("%s patch ready failed: %v", status, err)
+		}
+		return status
+	}, 10*time.Minute, time.Second).Should(HavePrefix(fmt.Sprintf("phase=%s", v1beta1.RolloutPhaseHealthy)))
+}
+
+func waitMinReadyE2ERolloutPhase(namespace, name string, phase v1beta1.RolloutPhase) {
+	Eventually(func() string {
+		rollout := &v1beta1.Rollout{}
+		key := types.NamespacedName{Namespace: namespace, Name: name}
+		if err := k8sClient.Get(context.TODO(), key, rollout); err != nil {
+			return fmt.Sprintf("get rollout failed: %v", err)
+		}
+		return minReadyE2ERolloutStatus(rollout)
+	}, 10*time.Minute, time.Second).Should(HavePrefix(fmt.Sprintf("phase=%s", phase)))
+}
+
+func minReadyE2ERolloutStatus(rollout *v1beta1.Rollout) string {
+	status := fmt.Sprintf(
+		"phase=%s rolloutStep=%d rolloutState=%s message=%q",
+		rollout.Status.Phase,
+		rollout.Status.CurrentStepIndex,
+		rollout.Status.CurrentStepState,
+		rollout.Status.Message,
+	)
+	if rollout.Status.CanaryStatus == nil {
+		return status + " canary=<nil>"
+	}
+	canary := rollout.Status.CanaryStatus
+	return fmt.Sprintf(
+		"%s canaryStep=%d nextStep=%d canaryState=%s canaryMessage=%q",
+		status,
+		canary.CurrentStepIndex,
+		canary.NextStepIndex,
+		canary.CurrentStepState,
+		canary.Message,
+	)
 }
 
 func waitMinReadyE2EDeploymentInflated(namespace string) {

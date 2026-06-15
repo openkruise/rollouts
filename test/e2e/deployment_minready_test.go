@@ -62,8 +62,10 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 
 			updateMinReadyE2EDeploymentVersion(namespace, "version2")
 			waitMinReadyE2EDeploymentInflated(namespace)
+			waitMinReadyE2ERolloutStepPaused(namespace, rollout.Name, 1)
 			updateMinReadyE2EDeploymentVersion(namespace, "version1")
 			waitMinReadyE2ERolloutPhase(namespace, rollout.Name, v1beta1.RolloutPhaseHealthy)
+			waitMinReadyE2EDeploymentRestored(namespace)
 
 			expectMinReadyE2EDeploymentVersion(namespace, "version1")
 		})
@@ -117,15 +119,14 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 			expectMinReadyE2EOriginalAnnotationAbsent(namespace)
 		})
 
-		It("TC7 GitOps drift records degraded status and preserves the external value", func() {
+		It("TC7 external maxUnavailable drift converges to the current batch target", func() {
 			rollout := startMinReadyE2ERollout(namespace)
 			waitMinReadyE2ERolloutStepPaused(namespace, rollout.Name, 1)
 			patchMinReadyE2EMaxUnavailable(namespace, 5)
 			resumeMinReadyE2ERollout(namespace, rollout.Name)
 
-			waitMinReadyE2EBatchMetricCondition(namespace, rollout.Name, "MinReadyDegradedDriftDetected")
-			waitMinReadyE2EEventReason(namespace, "MinReadyDegradedDriftDetected")
-			expectMinReadyE2EInflatedMaxUnavailable(namespace, 5)
+			expectMinReadyE2EInflatedMaxUnavailable(namespace, 3)
+			finishMinReadyE2ERollout(namespace, rollout.Name)
 		})
 
 		It("TC8 missing annotation blocks finalize until the operator restores it", func() {

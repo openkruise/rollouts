@@ -101,11 +101,8 @@ func (mc *MinReadyControl) UpgradeBatch(ctx context.Context, batchContext *batch
 		// maxUnavailable above the batch target is a legal state after a
 		// scale-down (HPA or manual) and also self-heals external tampering;
 		// converge it back to the target instead of reporting degraded drift.
-		klog.InfoS("MinReady maxUnavailable exceeds target, reducing",
-			"batch", batchContext.CurrentBatch,
-			"deployment", klog.KObj(mc.object),
-			"maxUnavailable", current,
-			"target", target)
+		klog.Warningf("MinReady maxUnavailable exceeds target, reducing, batch=%d deployment=%s maxUnavailable=%d target=%d",
+			batchContext.CurrentBatch, klog.KObj(mc.object), current, target)
 	}
 	original := mc.object
 	modified := mc.object.DeepCopy()

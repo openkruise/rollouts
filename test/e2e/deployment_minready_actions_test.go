@@ -35,16 +35,12 @@ import (
 )
 
 func finishMinReadyE2ERollout(namespace, name string) {
-	resumeMinReadyE2ERollout(namespace, name)
-	resumeMinReadyE2ERollout(namespace, name)
-	waitMinReadyE2ERolloutPhase(namespace, name, v1beta1.RolloutPhaseHealthy)
+	completeMinReadyE2ERollout(namespace, name)
 	waitMinReadyE2EDeploymentRestored(namespace)
 }
 
 func finishMinReadyE2ERolloutWithAvailability(namespace, name string, minReadySeconds, progressDeadlineSeconds int32) {
-	resumeMinReadyE2ERollout(namespace, name)
-	resumeMinReadyE2ERollout(namespace, name)
-	waitMinReadyE2ERolloutPhase(namespace, name, v1beta1.RolloutPhaseHealthy)
+	completeMinReadyE2ERollout(namespace, name)
 	waitMinReadyE2EDeploymentRestoredWithAvailability(namespace, minReadySeconds, progressDeadlineSeconds)
 }
 
