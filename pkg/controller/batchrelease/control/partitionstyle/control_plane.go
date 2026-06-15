@@ -181,6 +181,12 @@ func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
 	klog.Infof("BatchRelease %v calculated context when check batch ready: %s",
 		klog.KObj(rc.release), batchContext.Log())
 
+	if reconciler, ok := controller.(MinReadyDriftReconciler); ok {
+		if err := reconciler.ReconcileMaxUnavailableDrift(rc.ctx, batchContext); err != nil {
+			return err
+		}
+	}
+
 	if err := batchContext.IsBatchReady(); err != nil {
 		if lifecycle, ok := controller.(MinReadyLifecycle); ok {
 			lifecycle.ObserveBatchWait()

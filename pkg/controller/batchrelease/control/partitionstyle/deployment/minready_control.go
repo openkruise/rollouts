@@ -145,10 +145,28 @@ func (mc *MinReadyControl) UpgradeBatch(ctx context.Context, batchContext *batch
 		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
 		return wrapped
 	}
+	return mc.reconcileMaxUnavailable(ctx, batchContext)
+}
+
+func (mc *MinReadyControl) ReconcileMaxUnavailableDrift(ctx context.Context, batchContext *batchcontext.BatchContext) error {
+	if err := mc.ensureInflatedDeploymentStrategy(ctx); err != nil {
+		wrapped := fmt.Errorf("MinReadyControl.ReconcileMaxUnavailableDrift[%d]: %w", batchContext.CurrentBatch, err)
+		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
+		return wrapped
+	}
+	return mc.reconcileMaxUnavailable(ctx, batchContext)
+}
+
+func (mc *MinReadyControl) reconcileMaxUnavailable(ctx context.Context, batchContext *batchcontext.BatchContext) error {
+	if err := mc.refreshDeployment(ctx); err != nil {
+		wrapped := fmt.Errorf("MinReadyControl.reconcileMaxUnavailable[%d]: %w", batchContext.CurrentBatch, err)
+		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
+		return wrapped
+	}
 	current, err := intstr.GetScaledValueFromIntOrPercent(
 		mc.object.Spec.Strategy.RollingUpdate.MaxUnavailable, int(batchContext.Replicas), true)
 	if err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
+		wrapped := fmt.Errorf("MinReadyControl.reconcileMaxUnavailable[%d]: %w", batchContext.CurrentBatch, err)
 		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
 		return wrapped
 	}
@@ -170,10 +188,24 @@ func (mc *MinReadyControl) UpgradeBatch(ctx context.Context, batchContext *batch
 	modified.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
 	if err := mc.client.Patch(ctx, modified, patch); err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
+		wrapped := fmt.Errorf("MinReadyControl.reconcileMaxUnavailable[%d]: %w", batchContext.CurrentBatch, err)
 		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
 		return wrapped
 	}
+	mc.object = modified
+	return nil
+}
+
+func (mc *MinReadyControl) refreshDeployment(ctx context.Context) error {
+	if mc.realController == nil {
+		return fmt.Errorf("deployment is not loaded")
+	}
+	object := &apps.Deployment{}
+	if err := mc.client.Get(ctx, mc.key, object); err != nil {
+		return err
+	}
+	mc.object = object
+	mc.WorkloadInfo = mc.getWorkloadInfo(object)
 	return nil
 }
 
@@ -486,3 +518,4 @@ var EventDegradedDriftDetected = partitionstyle.ErrMinReadyDriftDetected.Error()
 var _ partitionstyle.Interface = (*MinReadyControl)(nil)
 var _ partitionstyle.MinReadyStatusBinder = (*MinReadyControl)(nil)
 var _ partitionstyle.MinReadyLifecycle = (*MinReadyControl)(nil)
+var _ partitionstyle.MinReadyDriftReconciler = (*MinReadyControl)(nil)

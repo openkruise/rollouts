@@ -17,6 +17,7 @@ limitations under the License.
 package partitionstyle
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
+	batchcontext "github.com/openkruise/rollouts/pkg/controller/batchrelease/context"
 	brmetrics "github.com/openkruise/rollouts/pkg/controller/batchrelease/metrics"
 	"github.com/openkruise/rollouts/pkg/util"
 )
@@ -43,6 +45,13 @@ type MinReadyLifecycle interface {
 	RecordBatchReady()
 	ObserveBatchWait()
 	RecordOperationFailed(reason string, err error)
+}
+
+// MinReadyDriftReconciler converges inflated maxUnavailable back to the active
+// batch target. EnsureBatchPodsReadyAndLabeled calls it so external drift is
+// healed even while BatchRelease waits in ReadyBatchState for rollout resume.
+type MinReadyDriftReconciler interface {
+	ReconcileMaxUnavailableDrift(ctx context.Context, batchContext *batchcontext.BatchContext) error
 }
 
 type MinReadyStatusWriter struct {

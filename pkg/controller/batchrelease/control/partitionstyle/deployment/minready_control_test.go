@@ -275,6 +275,29 @@ func TestMinReadyUpgradeBatchRestoresInflatedStrategyFields(t *testing.T) {
 	}
 }
 
+func TestMinReadyReconcileMaxUnavailableDriftConvergesExternalTampering(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	deployment := newInflatedMinReadyDeployment()
+	addMinReadyOriginalAnnotations(deployment)
+	maxUnavailable := intstr.FromInt(5)
+	deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
+	control := newBuiltMinReadyControl(t, deployment)
+	ctx := &batchcontext.BatchContext{
+		CurrentBatch:           0,
+		Replicas:               5,
+		DesiredUpdatedReplicas: 1,
+	}
+
+	if err := control.ReconcileMaxUnavailableDrift(context.Background(), ctx); err != nil {
+		t.Fatalf("ReconcileMaxUnavailableDrift failed: %v", err)
+	}
+
+	got := fetchMinReadyDeployment(t, control)
+	if value := minReadyMaxUnavailableValue(t, got, 5); value != 1 {
+		t.Fatalf("maxUnavailable = %d, want 1 (converged while batch is ready)", value)
+	}
+}
+
 func TestMinReadyUpgradeBatchConvergesMaxUnavailableOnScaleDown(t *testing.T) {
 	// P1-2: after a scale-down (HPA or manual) the previously-set integer
 	// maxUnavailable can exceed the new batch target. This is a legal state, not
