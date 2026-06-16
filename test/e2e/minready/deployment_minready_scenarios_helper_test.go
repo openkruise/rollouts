@@ -151,13 +151,17 @@ func intstrFromStringPtr(value string) *intstr.IntOrString {
 }
 
 func expectMinReadyE2EInflatedMaxUnavailable(namespace string, want int32) {
+	waitMinReadyE2EInflatedMaxUnavailable(namespace, want, 5*time.Minute)
+}
+
+func waitMinReadyE2EInflatedMaxUnavailable(namespace string, want int32, timeout time.Duration) {
 	Eventually(func() bool {
 		deployment := &apps.Deployment{}
 		key := types.NamespacedName{Namespace: namespace, Name: minReadyE2EDeploymentName}
 		Expect(k8sClient.Get(context.TODO(), key, deployment)).Should(Succeed())
 		got := deployment.Spec.Strategy.RollingUpdate.MaxUnavailable
 		return got != nil && got.IntVal == want
-	}, 5*time.Minute, time.Second).Should(BeTrue(), fmt.Sprintf("want maxUnavailable %d", want))
+	}, timeout, time.Second).Should(BeTrue(), fmt.Sprintf("want maxUnavailable %d", want))
 }
 
 func expectMinReadyE2EOriginalAnnotationAbsent(namespace string) {

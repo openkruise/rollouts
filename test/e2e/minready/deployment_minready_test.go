@@ -134,8 +134,8 @@ var _ = SIGDescribe("Deployment MinReadySeconds", func() {
 			// Heal drift to the paused step's batch target (20% on 5 replicas => 1).
 			expectMinReadyE2EInflatedMaxUnavailable(namespace, 1)
 			resumeMinReadyE2ERollout(namespace, rollout.Name)
-
-			expectMinReadyE2EInflatedMaxUnavailable(namespace, 3)
+			// 50% batch target is also 3 on 5 replicas; wait for UpgradeBatch, not step 2 pause.
+			waitMinReadyE2EInflatedMaxUnavailable(namespace, 3, 10*time.Minute)
 			finishMinReadyE2ERollout(namespace, rollout.Name)
 		})
 

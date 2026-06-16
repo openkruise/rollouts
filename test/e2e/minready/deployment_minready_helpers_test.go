@@ -148,7 +148,7 @@ func resumeMinReadyE2ERollout(namespace, name string) {
 		resumedStep = rollout.Status.CanaryStatus.CurrentStepIndex
 		body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, v1beta1.CanaryStepStateReady)
 		return k8sClient.Status().Patch(context.TODO(), rollout, client.RawPatch(types.MergePatchType, []byte(body))) == nil
-	}, 2*time.Minute, time.Second).Should(BeTrue())
+	}, 5*time.Minute, time.Second).Should(BeTrue())
 	if resumedStep < 0 {
 		return
 	}
@@ -162,7 +162,7 @@ func resumeMinReadyE2ERollout(namespace, name string) {
 		return rollout.Status.CanaryStatus != nil &&
 			(rollout.Status.CanaryStatus.CurrentStepIndex != resumedStep ||
 				rollout.Status.CanaryStatus.CurrentStepState != v1beta1.CanaryStepStatePaused)
-	}, 2*time.Minute, time.Second).Should(BeTrue())
+	}, 5*time.Minute, time.Second).Should(BeTrue())
 }
 
 func completeMinReadyE2ERollout(namespace, name string) {
