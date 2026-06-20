@@ -79,6 +79,18 @@ func (mc *MinReadyControl) RecordBatchReady() {
 	}
 }
 
+func (mc *MinReadyControl) RecordInitialized() {
+	if mc.statusWriter != nil {
+		mc.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyInitialized, "MinReadyInitialized", "MinReadySeconds strategy initialized")
+	}
+}
+
+func (mc *MinReadyControl) RecordFinalized() {
+	if mc.statusWriter != nil {
+		mc.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyFinalized, "MinReadyFinalized", "MinReadySeconds strategy finalized")
+	}
+}
+
 func (mc *MinReadyControl) ObserveBatchWait() {
 	if mc.statusWriter == nil {
 		return
@@ -108,89 +120,116 @@ func (mc *MinReadyControl) BuildController() (partitionstyle.Interface, error) {
 
 func (mc *MinReadyControl) Initialize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if release == nil {
-		err := fmt.Errorf("MinReadyControl.Initialize: release is nil")
-		mc.RecordOperationFailed("MinReadyInitializeFailed", err)
-		return err
+		return fmt.Errorf("MinReadyControl.Initialize: release is nil")
 	}
 	if err := mc.ensureInitializeAllowed(); err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.Initialize: %w", err)
-		mc.RecordOperationFailed("MinReadyInitializeFailed", wrapped)
-		return wrapped
+		return fmt.Errorf("MinReadyControl.Initialize: %w", err)
 	}
 	original := mc.object
 	modified := mc.object.DeepCopy()
 	if err := prepareOriginalAnnotations(original, modified); err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.Initialize: %w", err)
-		mc.RecordOperationFailed("MinReadyInitializeFailed", wrapped)
-		return wrapped
+		return fmt.Errorf("MinReadyControl.Initialize: %w", err)
 	}
 	modified.Annotations[util.BatchReleaseControlAnnotation] = util.DumpJSON(metav1.NewControllerRef(
 		release, release.GetObjectKind().GroupVersionKind()))
 	inflateDeploymentStrategy(modified)
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
 	if err := mc.client.Patch(ctx, modified, patch); err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.Initialize: %w", err)
-		mc.RecordOperationFailed("MinReadyInitializeFailed", wrapped)
-		return wrapped
-	}
-	if mc.statusWriter != nil {
-		mc.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyInitialized, "MinReadyInitialized", "MinReadySeconds strategy initialized")
+		return fmt.Errorf("MinReadyControl.Initialize: %w", err)
 	}
 	return nil
 }
 
 func (mc *MinReadyControl) UpgradeBatch(ctx context.Context, batchContext *batchcontext.BatchContext) error {
 	if err := mc.ensureInflatedDeploymentStrategy(ctx); err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
-		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
-		return wrapped
+		return fmt.Errorf("MinReadyControl.UpgradeBatch[%d]: %w", batchContext.CurrentBatch, err)
 	}
 	return mc.reconcileMaxUnavailable(ctx, batchContext)
 }
 
 func (mc *MinReadyControl) ReconcileMaxUnavailableDrift(ctx context.Context, batchContext *batchcontext.BatchContext) error {
 	if err := mc.ensureInflatedDeploymentStrategy(ctx); err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.ReconcileMaxUnavailableDrift[%d]: %w", batchContext.CurrentBatch, err)
-		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
-		return wrapped
+		return fmt.Errorf("MinReadyControl.ReconcileMaxUnavailableDrift[%d]: %w", batchContext.CurrentBatch, err)
 	}
 	return mc.reconcileMaxUnavailable(ctx, batchContext)
 }
 
 func (mc *MinReadyControl) reconcileMaxUnavailable(ctx context.Context, batchContext *batchcontext.BatchContext) error {
 	if err := mc.refreshDeployment(ctx); err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.reconcileMaxUnavailable[%d]: %w", batchContext.CurrentBatch, err)
-		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
-		return wrapped
+		return fmt.Errorf("MinReadyControl.reconcileMaxUnavailable[%d]: %w", batchContext.CurrentBatch, err)
 	}
 	current, err := intstr.GetScaledValueFromIntOrPercent(
 		mc.object.Spec.Strategy.RollingUpdate.MaxUnavailable, int(batchContext.Replicas), true)
 	if err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.reconcileMaxUnavailable[%d]: %w", batchContext.CurrentBatch, err)
-		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
-		return wrapped
+		return fmt.Errorf("MinReadyControl.reconcileMaxUnavailable[%d]: %w", batchContext.CurrentBatch, err)
 	}
 	target := batchContext.DesiredUpdatedReplicas
-	if int32(current) == target {
-		return nil
-	}
-	if int32(current) > target {
-		// maxUnavailable above the batch target is a legal state after a
-		// scale-down (HPA or manual) and also self-heals external tampering;
-		// converge it back to the target instead of reporting degraded drift.
+
+	// At or above the batch target there is nothing to advance. When current
+	// exceeds the target (HPA scale-down or external tampering) converge it
+	// back down so the native controller never holds a wider budget than this
+	// batch needs.
+	if int32(current) >= target {
+		if int32(current) == target {
+			return nil
+		}
 		warningS(nil, "MinReady maxUnavailable exceeds target, reducing",
 			"batch", batchContext.CurrentBatch, "deployment", klog.KObj(mc.object),
 			"maxUnavailable", current, "target", target)
+		return mc.patchMaxUnavailable(ctx, int(target))
 	}
+
+	// Sliding window (P0-3): advance maxUnavailable by the user's original
+	// budget one step at a time, waiting for the current window's pods to
+	// become available before widening the budget again. Without this, a large
+	// batch target (e.g. 99 after a 1-pod canary) is written in a single patch
+	// and the native controller tears down far more pods than the user's
+	// declared maxUnavailable in one shot, breaking the anti-disturbance safety
+	// the batched release is supposed to provide.
+	step, err := mc.maxUnavailableStep(batchContext.Replicas)
+	if err != nil {
+		return fmt.Errorf("MinReadyControl.reconcileMaxUnavailable[%d]: %w", batchContext.CurrentBatch, err)
+	}
+	if step <= 0 {
+		// maxUnavailable=0 means the user relies on maxSurge for concurrency
+		// control; there is no budget to slide, so drive the batch directly.
+		return mc.patchMaxUnavailable(ctx, int(target))
+	}
+	if batchContext.UpdatedReadyReplicas < int32(current) {
+		// current window not yet filled; keep the budget and wait for readiness
+		return nil
+	}
+	next := current + step
+	if int32(next) > target {
+		next = int(target)
+	}
+	return mc.patchMaxUnavailable(ctx, next)
+}
+
+// maxUnavailableStep returns the user's original maxUnavailable scaled to the
+// replica count; the sliding window uses it as the advancement stride.
+func (mc *MinReadyControl) maxUnavailableStep(replicas int32) (int, error) {
+	original, err := parseOriginalDeploymentStrategy(mc.object.Annotations)
+	if err != nil {
+		return 0, err
+	}
+	step := intstr.FromString(DefaultMaxUnavailable)
+	if original.maxUnavailable != nil {
+		step = *original.maxUnavailable
+	}
+	return intstr.GetScaledValueFromIntOrPercent(&step, int(replicas), true)
+}
+
+// patchMaxUnavailable writes the given integer maxUnavailable back to the
+// Deployment with an optimistic-lock patch and refreshes the cached object.
+func (mc *MinReadyControl) patchMaxUnavailable(ctx context.Context, value int) error {
 	original := mc.object
 	modified := mc.object.DeepCopy()
-	maxUnavailable := intstr.FromInt(int(target))
+	maxUnavailable := intstr.FromInt(value)
 	modified.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
 	if err := mc.client.Patch(ctx, modified, patch); err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.reconcileMaxUnavailable[%d]: %w", batchContext.CurrentBatch, err)
-		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
-		return wrapped
+		return fmt.Errorf("MinReadyControl.reconcileMaxUnavailable: %w", err)
 	}
 	mc.object = modified
 	return nil
@@ -215,19 +254,15 @@ func (mc *MinReadyControl) Finalize(ctx context.Context, _ *v1beta1.BatchRelease
 	}
 	if !hasAnyOriginalAnnotation(mc.object.Annotations) {
 		if hasInflatedDeploymentFields(mc.object) {
-			err := fmt.Errorf("MinReadyControl.Finalize: annotation state missing while deployment fields are still inflated: %w",
+			return fmt.Errorf("MinReadyControl.Finalize: annotation state missing while deployment fields are still inflated: %w",
 				partitionstyle.ErrMinReadyAnnotationInvalid)
-			mc.RecordOperationFailed("MinReadyFinalizeFailed", err)
-			return err
 		}
 		return nil
 	}
 	original := mc.object
 	restored, err := parseOriginalDeploymentStrategy(original.Annotations)
 	if err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.Finalize: %w", err)
-		mc.RecordOperationFailed("MinReadyFinalizeFailed", wrapped)
-		return wrapped
+		return fmt.Errorf("MinReadyControl.Finalize: %w", err)
 	}
 	modified := mc.object.DeepCopy()
 	applyOriginalDeploymentStrategy(modified, restored)
@@ -238,12 +273,7 @@ func (mc *MinReadyControl) Finalize(ctx context.Context, _ *v1beta1.BatchRelease
 	delete(modified.Labels, v1alpha1.DeploymentStableRevisionLabel)
 	patch := client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})
 	if err := mc.client.Patch(ctx, modified, patch); err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.Finalize: %w", err)
-		mc.RecordOperationFailed("MinReadyFinalizeFailed", wrapped)
-		return wrapped
-	}
-	if mc.statusWriter != nil {
-		mc.statusWriter.RecordNormal(v1beta1.RolloutConditionMinReadyFinalized, "MinReadyFinalized", "MinReadySeconds strategy finalized")
+		return fmt.Errorf("MinReadyControl.Finalize: %w", err)
 	}
 	return nil
 }
@@ -252,9 +282,7 @@ func (mc *MinReadyControl) CalculateBatchContext(release *v1beta1.BatchRelease) 
 	rolloutID := release.Spec.ReleasePlan.RolloutID
 	if rolloutID != "" {
 		if _, err := mc.ListOwnedPods(); err != nil {
-			wrapped := fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
-			mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
-			return nil, wrapped
+			return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
 		}
 	}
 
@@ -262,15 +290,11 @@ func (mc *MinReadyControl) CalculateBatchContext(release *v1beta1.BatchRelease) 
 	desiredPartition := release.Spec.ReleasePlan.Batches[currentBatch].CanaryReplicas
 	desiredUpdatedReplicas, err := minReadyDesiredUpdatedReplicas(desiredPartition, mc.object)
 	if err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
-		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
-		return nil, wrapped
+		return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
 	}
 	updatedReadyReplicas, err := mc.minReadyUpdatedReadyReplicas(release.Status.UpdateRevision)
 	if err != nil {
-		wrapped := fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
-		mc.RecordOperationFailed("MinReadyBatchingFailed", wrapped)
-		return nil, wrapped
+		return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
 	}
 	return &batchcontext.BatchContext{
 		RolloutID:              rolloutID,

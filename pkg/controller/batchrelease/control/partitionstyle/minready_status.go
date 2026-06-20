@@ -45,6 +45,8 @@ type MinReadyLifecycle interface {
 	RecordBatchReady()
 	ObserveBatchWait()
 	RecordOperationFailed(reason string, err error)
+	RecordInitialized()
+	RecordFinalized()
 }
 
 // MinReadyDriftReconciler converges inflated maxUnavailable back to the active

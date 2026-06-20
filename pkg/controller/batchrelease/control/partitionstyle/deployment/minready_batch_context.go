@@ -40,7 +40,7 @@ func (mc *MinReadyControl) minReadyUpdatedReadyReplicas(updateRevision string) (
 
 func countUpdatedAvailablePods(pods []*corev1.Pod, updateRevision string, minReadySeconds int32, now time.Time) int32 {
 	return int32(util.WrappedPodCount(pods, func(pod *corev1.Pod) bool {
-		if !pod.DeletionTimestamp.IsZero() {
+		if !util.IsPodActive(pod) {
 			return false
 		}
 		if !util.IsConsistentWithRevision(pod.Labels, updateRevision) {

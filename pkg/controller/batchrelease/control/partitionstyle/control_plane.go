@@ -96,7 +96,11 @@ func (rc *realBatchControlPlane) Initialize() error {
 	// claim workload under our control
 	err = controller.Initialize(rc.ctx, rc.release)
 	if err != nil {
+		rc.reportOperationFailed(controller, "MinReadyInitializeFailed", err)
 		return err
+	}
+	if lifecycle, ok := controller.(MinReadyLifecycle); ok {
+		lifecycle.RecordInitialized()
 	}
 
 	// record revision and replicas
@@ -136,6 +140,7 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 
 	batchContext, err := controller.CalculateBatchContext(rc.release)
 	if err != nil {
+		rc.reportOperationFailed(controller, "MinReadyBatchingFailed", err)
 		return err
 	}
 	klog.Infof("BatchRelease %v calculated context when upgrade batch: %s",
@@ -143,6 +148,7 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 
 	err = controller.UpgradeBatch(rc.ctx, batchContext)
 	if err != nil {
+		rc.reportOperationFailed(controller, "MinReadyBatchingFailed", err)
 		return err
 	}
 
@@ -175,6 +181,7 @@ func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
 	// the target calculated should be consistent with UpgradeBatch.
 	batchContext, err := controller.CalculateBatchContext(rc.release)
 	if err != nil {
+		rc.reportOperationFailed(controller, "MinReadyBatchingFailed", err)
 		return err
 	}
 
@@ -183,6 +190,7 @@ func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
 
 	if reconciler, ok := controller.(MinReadyDriftReconciler); ok {
 		if err := reconciler.ReconcileMaxUnavailableDrift(rc.ctx, batchContext); err != nil {
+			rc.reportOperationFailed(controller, "MinReadyBatchingFailed", err)
 			return err
 		}
 	}
@@ -212,7 +220,11 @@ func (rc *realBatchControlPlane) Finalize() error {
 
 	// release workload control info and clean up resources if it needs
 	if err := controller.Finalize(rc.ctx, rc.release); err != nil {
+		rc.reportOperationFailed(controller, "MinReadyFinalizeFailed", err)
 		return err
+	}
+	if lifecycle, ok := controller.(MinReadyLifecycle); ok {
+		lifecycle.RecordFinalized()
 	}
 	return nil
 }

@@ -185,8 +185,10 @@ func TestMinReadyUpgradeBatchUpdatesMaxUnavailableOnly(t *testing.T) {
 	}
 
 	got := fetchMinReadyDeployment(t, control)
-	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 5 {
-		t.Fatalf("maxUnavailable = %v, want 5", unavailable)
+	// Sliding window (P0-3): UpgradeBatch advances maxUnavailable one step
+	// (original 25% of 10 = 3) toward the batch target 5, not straight to 5.
+	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 3 {
+		t.Fatalf("maxUnavailable = %v, want 3 (first sliding-window step)", unavailable)
 	}
 	if got.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
 		t.Fatalf("strategy.type = %q, want RollingUpdate", got.Spec.Strategy.Type)
@@ -270,8 +272,10 @@ func TestMinReadyUpgradeBatchRestoresInflatedStrategyFields(t *testing.T) {
 	if got.Spec.Strategy.RollingUpdate == nil {
 		t.Fatalf("rollingUpdate is nil, want restored strategy")
 	}
-	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 5 {
-		t.Fatalf("maxUnavailable = %v, want 5", unavailable)
+	// Sliding window (P0-3): after re-inflation maxUnavailable starts at 0, so
+	// UpgradeBatch advances it one step (25% of 10 = 3) toward target 5.
+	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 3 {
+		t.Fatalf("maxUnavailable = %v, want 3 (first sliding-window step)", unavailable)
 	}
 }
 
@@ -577,5 +581,90 @@ func TestMinReadyFinalizeRestoresAfterGateDisabled(t *testing.T) {
 	}
 	if hasAnyOriginalAnnotation(got.Annotations) {
 		t.Fatalf("original annotations not cleaned up: %v", got.Annotations)
+	}
+}
+
+func TestMinReadySlidingWindowAdvancesStepByStep(t *testing.T) {
+	// P0-3: a large batch target must not be written to maxUnavailable in a
+	// single patch. reconcileMaxUnavailable advances by the user's original
+	// maxUnavailable (25% of 10 = 3) one step at a time, and only widens the
+	// budget once the current window's pods are available.
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	deployment := newInflatedMinReadyDeployment()
+	addMinReadyOriginalAnnotations(deployment)
+	control := newBuiltMinReadyControl(t, deployment)
+	ctx := &batchcontext.BatchContext{
+		CurrentBatch:           1,
+		Replicas:               10,
+		DesiredUpdatedReplicas: 9,
+	}
+
+	steps := []struct {
+		ready   int32
+		wantMU  int
+		comment string
+	}{
+		{0, 3, "empty window advances to first step"},
+		{1, 3, "window not filled holds budget"},
+		{3, 6, "filled window advances one step"},
+		{6, 9, "advance caps at target"},
+		{9, 9, "at target holds"},
+	}
+	for i, s := range steps {
+		ctx.UpdatedReadyReplicas = s.ready
+		if err := control.ReconcileMaxUnavailableDrift(context.Background(), ctx); err != nil {
+			t.Fatalf("step %d (%s): %v", i, s.comment, err)
+		}
+		if v := minReadyMaxUnavailableValue(t, fetchMinReadyDeployment(t, control), 10); v != s.wantMU {
+			t.Fatalf("step %d (%s): maxUnavailable = %d, want %d", i, s.comment, v, s.wantMU)
+		}
+	}
+}
+
+func TestMinReadySlidingWindowReachesSmallTargetInOneStep(t *testing.T) {
+	// P0-3: when the batch target is within one step (target <= step), the
+	// first advance is capped at the target, so small batches complete in one
+	// reconcile instead of overshooting.
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	deployment := newInflatedMinReadyDeployment()
+	addMinReadyOriginalAnnotations(deployment)
+	control := newBuiltMinReadyControl(t, deployment)
+	ctx := &batchcontext.BatchContext{
+		CurrentBatch:           1,
+		Replicas:               10,
+		DesiredUpdatedReplicas: 2,
+		UpdatedReadyReplicas:   0,
+	}
+	if err := control.ReconcileMaxUnavailableDrift(context.Background(), ctx); err != nil {
+		t.Fatalf("drift reconcile failed: %v", err)
+	}
+	if v := minReadyMaxUnavailableValue(t, fetchMinReadyDeployment(t, control), 10); v != 2 {
+		t.Fatalf("maxUnavailable = %d, want 2 (small target reached in one step)", v)
+	}
+}
+
+func TestMinReadySlidingWindowStepZeroDrivesBatchDirectly(t *testing.T) {
+	// P0-3: original maxUnavailable=0 means the user relies on maxSurge for
+	// concurrency control, so there is no budget to slide; the batch target is
+	// driven directly to preserve the existing surge-gated behavior.
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	deployment := newInflatedMinReadyDeployment()
+	deployment.Annotations = map[string]string{
+		AnnotationOriginalMinReadySeconds:         "7",
+		AnnotationOriginalProgressDeadlineSeconds: "60",
+		AnnotationOriginalMaxUnavailable:          "0",
+	}
+	control := newBuiltMinReadyControl(t, deployment)
+	ctx := &batchcontext.BatchContext{
+		CurrentBatch:           1,
+		Replicas:               10,
+		DesiredUpdatedReplicas: 5,
+		UpdatedReadyReplicas:   0,
+	}
+	if err := control.ReconcileMaxUnavailableDrift(context.Background(), ctx); err != nil {
+		t.Fatalf("drift reconcile failed: %v", err)
+	}
+	if v := minReadyMaxUnavailableValue(t, fetchMinReadyDeployment(t, control), 10); v != 5 {
+		t.Fatalf("maxUnavailable = %d, want 5 (step=0 drives batch directly)", v)
 	}
 }

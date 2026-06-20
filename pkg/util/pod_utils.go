@@ -112,6 +112,15 @@ func IsCompletedPod(pod *v1.Pod) bool {
 	return pod.Status.Phase == v1.PodFailed || pod.Status.Phase == v1.PodSucceeded
 }
 
+// IsPodActive returns true if a pod is not in a terminal phase and has not been
+// marked for deletion. This mirrors the upstream Kubernetes IsPodActive check in
+// pkg/controller/controller_utils.go.
+func IsPodActive(pod *v1.Pod) bool {
+	return pod.Status.Phase != v1.PodSucceeded &&
+		pod.Status.Phase != v1.PodFailed &&
+		pod.DeletionTimestamp == nil
+}
+
 // ListOwnedPods will list all pods belong to workload, including terminating pods
 func ListOwnedPods(c client.Client, workload client.Object) ([]*v1.Pod, error) {
 	selector, err := getSelector(workload)
