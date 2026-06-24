@@ -52,8 +52,15 @@ func TestDeploymentMinReadyConcurrentScaleUsesLatestReplicas(t *testing.T) {
 	}
 
 	got := fetchIntegrationDeployment(t, cli, deployment)
-	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 10 {
-		t.Fatalf("maxUnavailable = %v, want 10 after scale to 20 replicas", unavailable)
+	// P0-3 sliding window: UpgradeBatch advances maxUnavailable one step at a
+	// time using the original budget (25%), not the full batch target in one
+	// patch. First step = 25% * 20 = 5 (computed from the scaled-up replica
+	// count, not the pre-scale 10 which would give 25% * 10 = 2); the batch
+	// target 50% * 20 = 10 is reached over subsequent reconciles as the window
+	// fills. This still asserts the "uses latest replicas" intent: the step is
+	// derived from the current replica count (20), not a stale one.
+	if unavailable := got.Spec.Strategy.RollingUpdate.MaxUnavailable; unavailable == nil || unavailable.IntVal != 5 {
+		t.Fatalf("maxUnavailable = %v, want 5 (sliding-window first step = 25%% of 20 replicas) after scale to 20 replicas", unavailable)
 	}
 	assertIntegrationCondition(t, status, v1beta1.RolloutConditionMinReadyBatching, corev1.ConditionTrue, "MinReadyBatching")
 }
