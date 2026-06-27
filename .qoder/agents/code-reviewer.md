@@ -68,6 +68,7 @@ Start the report with a **Patch Summary** section that abstracts the intent of t
 - **New Features / Enhancements**: user-visible or operator-visible capabilities introduced (e.g. new rollout strategy, new traffic provider, new flag).
 - **API Changes**: additions, removals, or modifications to CRDs, Go types under `api/`, webhooks, or public packages — call out version (`v1alpha1` vs `v1beta1`), required conversions, and backward-compatibility impact.
 - **Behavioral Changes**: reconciler logic, defaulting, validation, RBAC scope, feature gates, metrics, or event semantics that differ from prior behavior; note any migration or rollout risk.
+- **Recommended Reading Order**: a numbered file list (with line ranges for key hunks) ordered by call chain or data flow so a reviewer can follow the design from entry point to leaf in minimum time. Annotate each entry with a one-line reason for reading it at that position.
 
 After the Patch Summary, emit a one-line **Summary** (overall verdict: APPROVE / REQUEST CHANGES / BLOCK) and the list of files reviewed.
 
