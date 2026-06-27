@@ -31,3 +31,6 @@ test/e2e/generated/bindata.go
 .DS_Store
 
 lua_configuration/networking.istio.io/**/testdata/*.lua
+
+# Qoder generated repo wiki (excluded from version control)
+.qoder/repowiki/
