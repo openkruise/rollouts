@@ -41,7 +41,6 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
@@ -243,7 +242,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		modified := false
 		if isMinReadySecondsStrategy(rollout, newObj) {
 			if isEffectiveDeploymentRevisionChange(oldObj, newObj) {
-				if err := partitiondeployment.EnrollMinReadyDeployment(newObj); err != nil {
+				if err := enrollMinReadyDeployment(newObj); err != nil {
 					klog.Warningf("Skip MinReady continuous enrollment for Deployment(%s/%s): %v", newObj.Namespace, newObj.Name, err)
 					return enforceMinReadyInflation(newObj), nil
 				}
@@ -344,7 +343,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		// so the native controller never observes the user's original budget in the
 		// window between admission and MinReadyControl.Initialize. Continuous
 		// releases refresh user-owned availability annotations before re-inflation.
-		if err := partitiondeployment.EnrollMinReadyDeployment(newObj); err != nil {
+		if err := enrollMinReadyDeployment(newObj); err != nil {
 			// Do not block admission; the controller's Initialize will surface a
 			// degraded condition for an unsupported strategy instead.
 			klog.Warningf("Skip MinReady enrollment for Deployment(%s/%s): %v", newObj.Namespace, newObj.Name, err)
@@ -500,7 +499,7 @@ func isMinReadySecondsStrategy(rollout *appsv1beta1.Rollout, deployment *apps.De
 }
 
 func enforceMinReadyInflation(deployment *apps.Deployment) bool {
-	if !hasMinReadyOriginalAnnotations(deployment.Annotations) {
+	if !appsv1beta1.HasMinReadyOriginalAnnotations(deployment.Annotations) {
 		return false
 	}
 	modified := false
@@ -520,25 +519,16 @@ func enforceMinReadyInflation(deployment *apps.Deployment) bool {
 		deployment.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{}
 		modified = true
 	}
-	if deployment.Spec.MinReadySeconds != partitiondeployment.InflatedMinReadySeconds {
-		deployment.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
+	if deployment.Spec.MinReadySeconds != inflatedMinReadySeconds {
+		deployment.Spec.MinReadySeconds = inflatedMinReadySeconds
 		modified = true
 	}
-	if deployment.Spec.ProgressDeadlineSeconds == nil || *deployment.Spec.ProgressDeadlineSeconds != partitiondeployment.InflatedProgressDeadlineSeconds {
-		progressDeadlineSeconds := partitiondeployment.InflatedProgressDeadlineSeconds
+	if deployment.Spec.ProgressDeadlineSeconds == nil || *deployment.Spec.ProgressDeadlineSeconds != inflatedProgressDeadlineSeconds {
+		progressDeadlineSeconds := inflatedProgressDeadlineSeconds
 		deployment.Spec.ProgressDeadlineSeconds = &progressDeadlineSeconds
 		modified = true
 	}
 	return modified
-}
-
-func hasMinReadyOriginalAnnotations(annotations map[string]string) bool {
-	for _, key := range partitiondeployment.AllOriginalAnnotations {
-		if _, ok := annotations[key]; ok {
-			return true
-		}
-	}
-	return false
 }
 
 func setDeploymentStrategyAnnotation(strategy appsv1alpha1.DeploymentStrategy, d *apps.Deployment) {

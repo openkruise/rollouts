@@ -44,7 +44,6 @@ import (
 	rolloutapi "github.com/openkruise/rollouts/api"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
@@ -440,12 +439,12 @@ func TestHandlerDeployment(t *testing.T) {
 				// P1-6: enrollment snapshots original strategy fields and inflates
 				// minReadySeconds/progressDeadline/maxUnavailable synchronously so the
 				// native controller never observes the original budget before Initialize.
-				obj.Annotations[partitiondeployment.AnnotationOriginalMinReadySeconds] = "0"
-				obj.Annotations[partitiondeployment.AnnotationOriginalProgressDeadlineSeconds] = "600"
-				obj.Annotations[partitiondeployment.AnnotationOriginalMaxUnavailable] = "25%"
+				obj.Annotations[appsv1beta1.MinReadyOriginalMinReadySecondsAnnotation] = "0"
+				obj.Annotations[appsv1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation] = "600"
+				obj.Annotations[appsv1beta1.MinReadyOriginalMaxUnavailableAnnotation] = "25%"
 				obj.Spec.Paused = false
-				obj.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
-				pds := partitiondeployment.InflatedProgressDeadlineSeconds
+				obj.Spec.MinReadySeconds = inflatedMinReadySeconds
+				pds := inflatedProgressDeadlineSeconds
 				obj.Spec.ProgressDeadlineSeconds = &pds
 				maxUnavailable := intstr.FromInt(0)
 				obj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{MaxUnavailable: &maxUnavailable}
@@ -652,15 +651,15 @@ func TestHandlerDeployment(t *testing.T) {
 				oldObj := deploymentDemo.DeepCopy()
 				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
 				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
-				oldObj.Annotations[partitiondeployment.AnnotationOriginalMinReadySeconds] = "7"
-				oldObj.Annotations[partitiondeployment.AnnotationOriginalProgressDeadlineSeconds] = "60"
-				oldObj.Annotations[partitiondeployment.AnnotationOriginalMaxUnavailable] = "25%"
+				oldObj.Annotations[appsv1beta1.MinReadyOriginalMinReadySecondsAnnotation] = "7"
+				oldObj.Annotations[appsv1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation] = "60"
+				oldObj.Annotations[appsv1beta1.MinReadyOriginalMaxUnavailableAnnotation] = "25%"
 				oldObj.Spec.Paused = false
 				oldObj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
 				maxUnavailable := intstr.FromInt(0)
 				oldObj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{MaxUnavailable: &maxUnavailable}
-				oldObj.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
-				inflatedPDS := partitiondeployment.InflatedProgressDeadlineSeconds
+				oldObj.Spec.MinReadySeconds = inflatedMinReadySeconds
+				inflatedPDS := inflatedProgressDeadlineSeconds
 				oldObj.Spec.ProgressDeadlineSeconds = &inflatedPDS
 
 				newObj := oldObj.DeepCopy()
@@ -673,15 +672,15 @@ func TestHandlerDeployment(t *testing.T) {
 				obj := deploymentDemo.DeepCopy()
 				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
 				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
-				obj.Annotations[partitiondeployment.AnnotationOriginalMinReadySeconds] = "9"
-				obj.Annotations[partitiondeployment.AnnotationOriginalProgressDeadlineSeconds] = "90"
-				obj.Annotations[partitiondeployment.AnnotationOriginalMaxUnavailable] = "25%"
+				obj.Annotations[appsv1beta1.MinReadyOriginalMinReadySecondsAnnotation] = "9"
+				obj.Annotations[appsv1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation] = "90"
+				obj.Annotations[appsv1beta1.MinReadyOriginalMaxUnavailableAnnotation] = "25%"
 				obj.Spec.Paused = false
 				obj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
 				maxUnavailable := intstr.FromInt(0)
 				obj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{MaxUnavailable: &maxUnavailable}
-				obj.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
-				inflatedPDS := partitiondeployment.InflatedProgressDeadlineSeconds
+				obj.Spec.MinReadySeconds = inflatedMinReadySeconds
+				inflatedPDS := inflatedProgressDeadlineSeconds
 				obj.Spec.ProgressDeadlineSeconds = &inflatedPDS
 				return obj
 			},
@@ -960,19 +959,19 @@ func TestIsMinReadySecondsStrategy(t *testing.T) {
 // inflatedMinReadyDeployment returns a Deployment in a healthy inflated MinReady
 // state: RollingUpdate, unpaused, with original-strategy annotations present.
 func inflatedMinReadyDeployment() *apps.Deployment {
-	pds := partitiondeployment.InflatedProgressDeadlineSeconds
+	pds := inflatedProgressDeadlineSeconds
 	maxUnavailable := intstr.FromInt(0)
 	return &apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{
-				partitiondeployment.AnnotationOriginalMinReadySeconds:         "0",
-				partitiondeployment.AnnotationOriginalProgressDeadlineSeconds: "600",
-				partitiondeployment.AnnotationOriginalMaxUnavailable:          "25%",
+				appsv1beta1.MinReadyOriginalMinReadySecondsAnnotation:         "0",
+				appsv1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation: "600",
+				appsv1beta1.MinReadyOriginalMaxUnavailableAnnotation:          "25%",
 			},
 		},
 		Spec: apps.DeploymentSpec{
 			Paused:                  false,
-			MinReadySeconds:         partitiondeployment.InflatedMinReadySeconds,
+			MinReadySeconds:         inflatedMinReadySeconds,
 			ProgressDeadlineSeconds: &pds,
 			Strategy: apps.DeploymentStrategy{
 				Type:          apps.RollingUpdateDeploymentStrategyType,
@@ -1044,10 +1043,10 @@ func TestEnforceMinReadyInflation(t *testing.T) {
 		if !enforceMinReadyInflation(d) {
 			t.Fatalf("expected modification for deflated fields")
 		}
-		if d.Spec.MinReadySeconds != partitiondeployment.InflatedMinReadySeconds {
+		if d.Spec.MinReadySeconds != inflatedMinReadySeconds {
 			t.Fatalf("minReadySeconds not re-inflated: %d", d.Spec.MinReadySeconds)
 		}
-		if d.Spec.ProgressDeadlineSeconds == nil || *d.Spec.ProgressDeadlineSeconds != partitiondeployment.InflatedProgressDeadlineSeconds {
+		if d.Spec.ProgressDeadlineSeconds == nil || *d.Spec.ProgressDeadlineSeconds != inflatedProgressDeadlineSeconds {
 			t.Fatalf("progressDeadlineSeconds not re-inflated: %v", d.Spec.ProgressDeadlineSeconds)
 		}
 	})

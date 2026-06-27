@@ -50,14 +50,16 @@ type fakePartitionController struct {
 	batchCtx     *batchcontext.BatchContext
 	calcErr      error
 
-	initErr     error
-	upgradeErr  error
-	finalizeErr error
+	initErr      error
+	upgradeErr   error
+	finalizeErr  error
+	reconcileErr error
 
 	buildCalls     int
 	initCalls      int
 	upgradeCalls   int
 	finalizeCalls  int
+	reconcileCalls int
 	calculateCalls int
 	listCalls      int
 
@@ -166,6 +168,11 @@ func (f *fakePartitionController) Initialize(ctx context.Context, release *v1bet
 func (f *fakePartitionController) UpgradeBatch(context.Context, *batchcontext.BatchContext) error {
 	f.upgradeCalls++
 	return f.upgradeErr
+}
+
+func (f *fakePartitionController) ReconcileMaxUnavailableDrift(context.Context, *batchcontext.BatchContext) error {
+	f.reconcileCalls++
+	return f.reconcileErr
 }
 
 func (f *fakePartitionController) Finalize(context.Context, *v1beta1.BatchRelease) error {
@@ -322,6 +329,12 @@ func TestControlPlaneEnsureBatchPodsReadyAndLabeled(t *testing.T) {
 		if controller.calculateCalls != 1 {
 			t.Fatalf("calculateCalls = %d, want 1", controller.calculateCalls)
 		}
+		if controller.reconcileCalls != 1 {
+			t.Fatalf("reconcileCalls = %d, want 1", controller.reconcileCalls)
+		}
+		if degraded := util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionMinReadyDegraded); degraded != nil {
+			t.Fatalf("MinReadyDegraded condition = %#v, want nil for normal batch wait", degraded)
+		}
 	})
 
 	t.Run("ready records batch ready", func(t *testing.T) {
@@ -335,6 +348,26 @@ func TestControlPlaneEnsureBatchPodsReadyAndLabeled(t *testing.T) {
 		condition := util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionMinReadyBatching)
 		if condition == nil || condition.Reason != "MinReadyBatchReady" {
 			t.Fatalf("MinReadyBatchReady condition = %#v", condition)
+		}
+	})
+
+	t.Run("drift reconcile error records degraded condition", func(t *testing.T) {
+		controller := &fakePartitionController{
+			minReady:     true,
+			reconcileErr: errors.Join(errors.New("window drift"), ErrMinReadyDriftDetected),
+		}
+		status := &v1beta1.BatchReleaseStatus{}
+		rc := newTestControlPlane(controller, status)
+
+		if err := rc.EnsureBatchPodsReadyAndLabeled(); err == nil {
+			t.Fatalf("EnsureBatchPodsReadyAndLabeled() error = nil, want drift error")
+		}
+		if controller.reconcileCalls != 1 {
+			t.Fatalf("reconcileCalls = %d, want 1", controller.reconcileCalls)
+		}
+		condition := util.GetBatchReleaseCondition(*status, v1beta1.RolloutConditionMinReadyDegraded)
+		if condition == nil || condition.Reason != "MinReadyDegradedDriftDetected" {
+			t.Fatalf("MinReadyDegraded condition = %#v", condition)
 		}
 	})
 }

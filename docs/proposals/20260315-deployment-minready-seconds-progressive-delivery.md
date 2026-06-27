@@ -390,7 +390,7 @@ The controller maintains **no in-memory state**. After a controller restart or l
 | Before Initialize | No annotations | Re-run `Initialize` (idempotent). |
 | After Initialize | Four annotations present + fields inflated | Skip `Initialize`, proceed to `UpgradeBatch`. |
 | Mid-UpgradeBatch, `maxUnavailable` already at target | Annotations present, `maxUnavailable >= target` | Proceed to batch-ready check. |
-| Mid-UpgradeBatch, `maxUnavailable` not yet at target | Annotations present, `maxUnavailable < target` | Re-issue the `UpgradeBatch` Patch. |
+| Mid-UpgradeBatch, `maxUnavailable` not yet at target | Annotations present, `maxUnavailable < target` | Continue the MinReady maxUnavailable window reconcile on the next `UpgradeBatch` / `EnsureBatchPodsReadyAndLabeled` pass. |
 | Mid-Finalize, fields restored but annotations remain | Annotations present, fields not inflated | Re-issue the `Finalize` (deletes annotations). |
 | After Finalize | No annotations | No-op. |
 
@@ -416,7 +416,7 @@ func isMinReadySecondsStrategy(rollout *appsv1beta1.Rollout, deployment *apps.De
 
 The guard splits the mutation into two paths. `isMinReadySecondsStrategy` only checks `Canary` because a Rollout cannot declare both `BlueGreen` and `Canary` — the validating webhook rejects that combination. When the feature gate is disabled mid-rollout, the Deployment's `DeploymentStrategyAnnotation` keeps the webhook symmetric with the executor's MinReady annotation fallback.
 
-**Enrollment path (workload entering progressing).** Instead of pausing the Deployment, the webhook synchronously snapshots the original strategy fields into annotations and inflates `minReadySeconds` / `progressDeadlineSeconds` / `maxUnavailable` in place via `EnrollMinReadyDeployment`:
+**Enrollment path (workload entering progressing).** Instead of pausing the Deployment, the webhook synchronously snapshots the original strategy fields into annotations and inflates `minReadySeconds` / `progressDeadlineSeconds` / `maxUnavailable` in place via the mutating package's local `enrollMinReadyDeployment` helper. This keeps admission code independent from partition-style controller internals:
 
 ```go
 if isMinReadySecondsStrategy(rollout, deployment) {
@@ -425,7 +425,7 @@ if isMinReadySecondsStrategy(rollout, deployment) {
     // observes the user's original budget in the window between admission and
     // MinReadyControl.Initialize. Continuous releases refresh user-owned
     // availability annotations before re-inflation.
-    if err := partitiondeployment.EnrollMinReadyDeployment(newObj); err != nil {
+    if err := enrollMinReadyDeployment(newObj); err != nil {
         klog.Warningf("Skip MinReady enrollment for Deployment(%s/%s): %v", ...)
     }
 } else {

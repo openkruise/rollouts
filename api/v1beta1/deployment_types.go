@@ -48,6 +48,11 @@ const (
 	MaxProgressSeconds = 1<<31 - 1
 	MaxReadySeconds    = MaxProgressSeconds - 1
 
+	// MinReady default values mirror Kubernetes Deployment defaults for fields
+	// snapshotted before the MinReadySeconds strategy inflates them.
+	MinReadyDefaultProgressDeadlineSeconds int32 = 600
+	MinReadyDefaultMaxUnavailable                = "25%"
+
 	// MinReadyOriginal*Annotation snapshot the user-specified Deployment strategy
 	// fields before the MinReadySeconds strategy inflates them; they are used to
 	// restore the Deployment on finalize. A Deployment carrying any of them is
@@ -129,7 +134,7 @@ func SetDefaultDeploymentStrategy(strategy *DeploymentStrategy) {
 	if strategy.RollingUpdate.MaxSurge == nil {
 		// Set MaxSurge as 25% by default
 		maxSurge := intstr.FromString("25%")
-		strategy.RollingUpdate.MaxUnavailable = &maxSurge
+		strategy.RollingUpdate.MaxSurge = &maxSurge
 	}
 
 	// Cannot allow maxSurge==0 && MaxUnavailable==0, otherwise, no pod can be updated when rolling update.

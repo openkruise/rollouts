@@ -85,10 +85,16 @@ func (rc *realBatchControlPlane) reportOperationFailed(controller Interface, rea
 	klog.ErrorS(err, "Partition-style control plane failed", "release", klog.KObj(rc.release), "reason", reason)
 }
 
-func (rc *realBatchControlPlane) Initialize() error {
-	controller, err := rc.BuildController()
+func (rc *realBatchControlPlane) Initialize() (err error) {
+	controller := rc.Interface
+	var reportErr error
+	defer func() {
+		rc.reportOperationFailed(controller, "MinReadyInitializeFailed", reportErr)
+	}()
+
+	controller, err = rc.BuildController()
 	if err != nil {
-		rc.reportOperationFailed(rc.Interface, "MinReadyInitializeFailed", err)
+		reportErr = err
 		return err
 	}
 	rc.bindMinReadyStatus(controller)
@@ -96,7 +102,7 @@ func (rc *realBatchControlPlane) Initialize() error {
 	// claim workload under our control
 	err = controller.Initialize(rc.ctx, rc.release)
 	if err != nil {
-		rc.reportOperationFailed(controller, "MinReadyInitializeFailed", err)
+		reportErr = err
 		return err
 	}
 	if lifecycle, ok := controller.(MinReadyLifecycle); ok {
@@ -117,10 +123,16 @@ func (rc *realBatchControlPlane) Initialize() error {
 	return err
 }
 
-func (rc *realBatchControlPlane) UpgradeBatch() error {
-	controller, err := rc.BuildController()
+func (rc *realBatchControlPlane) UpgradeBatch() (err error) {
+	controller := rc.Interface
+	var reportErr error
+	defer func() {
+		rc.reportOperationFailed(controller, "MinReadyBatchingFailed", reportErr)
+	}()
+
+	controller, err = rc.BuildController()
 	if err != nil {
-		rc.reportOperationFailed(rc.Interface, "MinReadyBatchingFailed", err)
+		reportErr = err
 		return err
 	}
 	rc.bindMinReadyStatus(controller)
@@ -134,13 +146,13 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 
 	err = rc.countAndUpdateNoNeedUpdateReplicas()
 	if err != nil {
-		rc.reportOperationFailed(controller, "MinReadyBatchingFailed", err)
+		reportErr = err
 		return err
 	}
 
 	batchContext, err := controller.CalculateBatchContext(rc.release)
 	if err != nil {
-		rc.reportOperationFailed(controller, "MinReadyBatchingFailed", err)
+		reportErr = err
 		return err
 	}
 	klog.Infof("BatchRelease %v calculated context when upgrade batch: %s",
@@ -148,12 +160,12 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 
 	err = controller.UpgradeBatch(rc.ctx, batchContext)
 	if err != nil {
-		rc.reportOperationFailed(controller, "MinReadyBatchingFailed", err)
+		reportErr = err
 		return err
 	}
 
 	if err := rc.patcher.PatchPodBatchLabel(batchContext); err != nil {
-		rc.reportOperationFailed(controller, "MinReadyBatchingFailed", err)
+		reportErr = err
 		return err
 	}
 	if lifecycle, ok := controller.(MinReadyLifecycle); ok {
@@ -162,10 +174,16 @@ func (rc *realBatchControlPlane) UpgradeBatch() error {
 	return nil
 }
 
-func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
-	controller, err := rc.BuildController()
+func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() (err error) {
+	controller := rc.Interface
+	var reportErr error
+	defer func() {
+		rc.reportOperationFailed(controller, "MinReadyBatchingFailed", reportErr)
+	}()
+
+	controller, err = rc.BuildController()
 	if err != nil {
-		rc.reportOperationFailed(rc.Interface, "MinReadyBatchingFailed", err)
+		reportErr = err
 		return err
 	}
 	rc.bindMinReadyStatus(controller)
@@ -181,7 +199,7 @@ func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
 	// the target calculated should be consistent with UpgradeBatch.
 	batchContext, err := controller.CalculateBatchContext(rc.release)
 	if err != nil {
-		rc.reportOperationFailed(controller, "MinReadyBatchingFailed", err)
+		reportErr = err
 		return err
 	}
 
@@ -190,7 +208,7 @@ func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
 
 	if reconciler, ok := controller.(MinReadyDriftReconciler); ok {
 		if err := reconciler.ReconcileMaxUnavailableDrift(rc.ctx, batchContext); err != nil {
-			rc.reportOperationFailed(controller, "MinReadyBatchingFailed", err)
+			reportErr = err
 			return err
 		}
 	}
@@ -207,11 +225,17 @@ func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
 	return nil
 }
 
-func (rc *realBatchControlPlane) Finalize() error {
-	controller, err := rc.BuildController()
+func (rc *realBatchControlPlane) Finalize() (err error) {
+	controller := rc.Interface
+	var reportErr error
+	defer func() {
+		rc.reportOperationFailed(controller, "MinReadyFinalizeFailed", reportErr)
+	}()
+
+	controller, err = rc.BuildController()
 	if err != nil {
 		if err := client.IgnoreNotFound(err); err != nil {
-			rc.reportOperationFailed(rc.Interface, "MinReadyFinalizeFailed", err)
+			reportErr = err
 			return err
 		}
 		return nil
@@ -220,7 +244,7 @@ func (rc *realBatchControlPlane) Finalize() error {
 
 	// release workload control info and clean up resources if it needs
 	if err := controller.Finalize(rc.ctx, rc.release); err != nil {
-		rc.reportOperationFailed(controller, "MinReadyFinalizeFailed", err)
+		reportErr = err
 		return err
 	}
 	if lifecycle, ok := controller.(MinReadyLifecycle); ok {

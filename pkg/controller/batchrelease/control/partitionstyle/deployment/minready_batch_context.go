@@ -27,15 +27,12 @@ import (
 	"github.com/openkruise/rollouts/pkg/util"
 )
 
-func (mc *MinReadyControl) minReadyUpdatedReadyReplicas(updateRevision string) (int32, error) {
+func (mc *MinReadyControl) minReadyUpdatedReadyReplicas(updateRevision string, pods []*corev1.Pod) (int32, error) {
 	original, err := parseOriginalDeploymentStrategy(mc.object.Annotations)
 	if err != nil {
 		return 0, err
 	}
-	if _, err := mc.ListOwnedPods(); err != nil {
-		return 0, err
-	}
-	return countUpdatedAvailablePods(mc.pods, updateRevision, originalMinReadySeconds(original), time.Now()), nil
+	return countUpdatedAvailablePods(pods, updateRevision, originalMinReadySeconds(original), time.Now()), nil
 }
 
 func countUpdatedAvailablePods(pods []*corev1.Pod, updateRevision string, minReadySeconds int32, now time.Time) int32 {

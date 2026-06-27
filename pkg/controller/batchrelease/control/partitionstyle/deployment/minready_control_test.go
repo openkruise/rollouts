@@ -126,6 +126,7 @@ func TestMinReadyInitializeRejectsEmptyOriginalAnnotations(t *testing.T) {
 func TestMinReadyInitializeSerializesKubernetesDefaults(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	deployment := newMinReadyDeployment()
+	deployment.Spec.MinReadySeconds = 0
 	deployment.Spec.ProgressDeadlineSeconds = nil
 	deployment.Spec.Strategy.RollingUpdate = nil
 	control := newBuiltMinReadyControl(t, deployment)
@@ -135,6 +136,7 @@ func TestMinReadyInitializeSerializesKubernetesDefaults(t *testing.T) {
 	}
 
 	got := fetchMinReadyDeployment(t, control)
+	assertAnnotation(t, got.Annotations, AnnotationOriginalMinReadySeconds, "0")
 	assertAnnotation(t, got.Annotations, AnnotationOriginalProgressDeadlineSeconds, "600")
 	assertAnnotation(t, got.Annotations, AnnotationOriginalMaxUnavailable, "25%")
 	assertMinReadyInflatedWithoutSurgeRequirement(t, got)
@@ -506,60 +508,6 @@ func TestMinReadyCalculateBatchContextReplicasZero(t *testing.T) {
 	}
 }
 
-func TestEnrollMinReadyDeploymentSnapshotsAndInflates(t *testing.T) {
-	// P1-6: enrollment runs at admission time so the native controller never
-	// observes the user's original budget before Initialize lands.
-	deployment := newMinReadyDeployment()
-	if err := EnrollMinReadyDeployment(deployment); err != nil {
-		t.Fatalf("EnrollMinReadyDeployment failed: %v", err)
-	}
-	if !hasAnyOriginalAnnotation(deployment.Annotations) {
-		t.Fatalf("expected original annotations to be written")
-	}
-	if deployment.Annotations[AnnotationOriginalMinReadySeconds] != "7" {
-		t.Fatalf("original min-ready-seconds = %q, want 7", deployment.Annotations[AnnotationOriginalMinReadySeconds])
-	}
-	assertMinReadyInflated(t, deployment)
-}
-
-func TestEnrollMinReadyDeploymentValidatesExistingAnnotations(t *testing.T) {
-	// When annotations already exist (e.g. a re-admission), enrollment validates
-	// the inflated state instead of rewriting the snapshot.
-	deployment := newInflatedMinReadyDeployment()
-	addMinReadyOriginalAnnotations(deployment)
-	original := deployment.Annotations[AnnotationOriginalMinReadySeconds]
-	if err := EnrollMinReadyDeployment(deployment); err != nil {
-		t.Fatalf("EnrollMinReadyDeployment failed: %v", err)
-	}
-	if deployment.Annotations[AnnotationOriginalMinReadySeconds] != original {
-		t.Fatalf("original annotation was rewritten: %q -> %q", original, deployment.Annotations[AnnotationOriginalMinReadySeconds])
-	}
-}
-
-func TestEnrollMinReadyDeploymentRefreshesAvailabilityAnnotationsForContinuousRelease(t *testing.T) {
-	deployment := newInflatedMinReadyDeployment()
-	addMinReadyOriginalAnnotations(deployment)
-	deployment.Spec.MinReadySeconds = 9
-	deployment.Spec.ProgressDeadlineSeconds = pointer.Int32(90)
-
-	if err := EnrollMinReadyDeployment(deployment); err != nil {
-		t.Fatalf("EnrollMinReadyDeployment failed: %v", err)
-	}
-
-	assertAnnotation(t, deployment.Annotations, AnnotationOriginalMinReadySeconds, "9")
-	assertAnnotation(t, deployment.Annotations, AnnotationOriginalProgressDeadlineSeconds, "90")
-	assertAnnotation(t, deployment.Annotations, AnnotationOriginalMaxUnavailable, "25%")
-	assertMinReadyInflated(t, deployment)
-}
-
-func TestEnrollMinReadyDeploymentRejectsRecreate(t *testing.T) {
-	deployment := newMinReadyDeployment()
-	deployment.Spec.Strategy.Type = apps.RecreateDeploymentStrategyType
-	if err := EnrollMinReadyDeployment(deployment); err == nil {
-		t.Fatalf("EnrollMinReadyDeployment accepted Recreate strategy, want error")
-	}
-}
-
 func TestMinReadyFinalizeRestoresAfterGateDisabled(t *testing.T) {
 	// P1-4: even with the feature gate disabled, a Deployment carrying MinReady
 	// original annotations must finalize cleanly and restore the original fields.
@@ -586,9 +534,9 @@ func TestMinReadyFinalizeRestoresAfterGateDisabled(t *testing.T) {
 
 func TestMinReadySlidingWindowAdvancesStepByStep(t *testing.T) {
 	// P0-3: a large batch target must not be written to maxUnavailable in a
-	// single patch. reconcileMaxUnavailable advances by the user's original
-	// maxUnavailable (25% of 10 = 3) one step at a time, and only widens the
-	// budget once the current window's pods are available.
+	// single patch. reconcileMaxUnavailable keeps at most the user's original
+	// maxUnavailable (25% of 10 = 3) worth of updated-but-not-ready pods in
+	// flight, topping up the window as individual pods become ready.
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 	deployment := newInflatedMinReadyDeployment()
 	addMinReadyOriginalAnnotations(deployment)
@@ -605,8 +553,9 @@ func TestMinReadySlidingWindowAdvancesStepByStep(t *testing.T) {
 		comment string
 	}{
 		{0, 3, "empty window advances to first step"},
-		{1, 3, "window not filled holds budget"},
-		{3, 6, "filled window advances one step"},
+		{1, 4, "one ready pod tops up one slot"},
+		{2, 5, "partial readiness keeps topping up"},
+		{4, 7, "does not wait for the whole current window"},
 		{6, 9, "advance caps at target"},
 		{9, 9, "at target holds"},
 	}

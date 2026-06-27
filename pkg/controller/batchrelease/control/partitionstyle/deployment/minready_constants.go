@@ -35,8 +35,8 @@ const (
 	AnnotationOriginalProgressDeadlineSeconds = v1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation
 	AnnotationOriginalMaxUnavailable          = v1beta1.MinReadyOriginalMaxUnavailableAnnotation
 
-	DefaultProgressDeadlineSeconds int32 = 600
-	DefaultMaxUnavailable                = "25%"
+	DefaultProgressDeadlineSeconds int32 = v1beta1.MinReadyDefaultProgressDeadlineSeconds
+	DefaultMaxUnavailable                = v1beta1.MinReadyDefaultMaxUnavailable
 
 	InflatedMinReadySeconds         int32 = v1beta1.MaxReadySeconds
 	InflatedProgressDeadlineSeconds int32 = v1beta1.MaxProgressSeconds
@@ -44,9 +44,9 @@ const (
 
 var AllOriginalAnnotations = v1beta1.MinReadyOriginalAnnotations
 
-func serializeOriginalInt32(value *int32) string {
+func serializeOriginalInt32(value *int32, defaultValue int32) string {
 	if value == nil {
-		return strconv.FormatInt(int64(DefaultProgressDeadlineSeconds), 10)
+		return strconv.FormatInt(int64(defaultValue), 10)
 	}
 	return strconv.FormatInt(int64(*value), 10)
 }

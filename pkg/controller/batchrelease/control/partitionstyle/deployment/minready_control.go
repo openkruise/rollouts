@@ -173,19 +173,16 @@ func (mc *MinReadyControl) reconcileMaxUnavailable(ctx context.Context, batchCon
 		if int32(current) == target {
 			return nil
 		}
-		warningS(nil, "MinReady maxUnavailable exceeds target, reducing",
+		klog.V(0).InfoS("MinReady maxUnavailable exceeds target, reducing",
 			"batch", batchContext.CurrentBatch, "deployment", klog.KObj(mc.object),
 			"maxUnavailable", current, "target", target)
 		return mc.patchMaxUnavailable(ctx, int(target))
 	}
 
-	// Sliding window (P0-3): advance maxUnavailable by the user's original
-	// budget one step at a time, waiting for the current window's pods to
-	// become available before widening the budget again. Without this, a large
-	// batch target (e.g. 99 after a 1-pod canary) is written in a single patch
-	// and the native controller tears down far more pods than the user's
-	// declared maxUnavailable in one shot, breaking the anti-disturbance safety
-	// the batched release is supposed to provide.
+	// Sliding window: keep no more than the user's original maxUnavailable
+	// budget worth of updated-but-not-ready pods in flight. As each updated pod
+	// becomes ready, top up the window immediately instead of waiting for the
+	// whole current window to become ready.
 	step, err := mc.maxUnavailableStep(batchContext.Replicas)
 	if err != nil {
 		return fmt.Errorf("MinReadyControl.reconcileMaxUnavailable[%d]: %w", batchContext.CurrentBatch, err)
@@ -195,11 +192,10 @@ func (mc *MinReadyControl) reconcileMaxUnavailable(ctx context.Context, batchCon
 		// control; there is no budget to slide, so drive the batch directly.
 		return mc.patchMaxUnavailable(ctx, int(target))
 	}
-	if batchContext.UpdatedReadyReplicas < int32(current) {
-		// current window not yet filled; keep the budget and wait for readiness
+	next := int(batchContext.UpdatedReadyReplicas) + step
+	if next <= current {
 		return nil
 	}
-	next := current + step
 	if int32(next) > target {
 		next = int(target)
 	}
@@ -280,10 +276,9 @@ func (mc *MinReadyControl) Finalize(ctx context.Context, _ *v1beta1.BatchRelease
 
 func (mc *MinReadyControl) CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {
 	rolloutID := release.Spec.ReleasePlan.RolloutID
-	if rolloutID != "" {
-		if _, err := mc.ListOwnedPods(); err != nil {
-			return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
-		}
+	pods, err := mc.ListOwnedPods()
+	if err != nil {
+		return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
 	}
 
 	currentBatch := release.Status.CanaryStatus.CurrentBatch
@@ -292,7 +287,7 @@ func (mc *MinReadyControl) CalculateBatchContext(release *v1beta1.BatchRelease) 
 	if err != nil {
 		return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
 	}
-	updatedReadyReplicas, err := mc.minReadyUpdatedReadyReplicas(release.Status.UpdateRevision)
+	updatedReadyReplicas, err := mc.minReadyUpdatedReadyReplicas(release.Status.UpdateRevision, pods)
 	if err != nil {
 		return nil, fmt.Errorf("MinReadyControl.CalculateBatchContext: %w", err)
 	}
@@ -307,7 +302,7 @@ func (mc *MinReadyControl) CalculateBatchContext(release *v1beta1.BatchRelease) 
 		DesiredUpdatedReplicas: desiredUpdatedReplicas,
 		DesiredPartition:       desiredPartition,
 		FailureThreshold:       release.Spec.ReleasePlan.FailureThreshold,
-		Pods:                   mc.pods,
+		Pods:                   pods,
 	}, nil
 }
 
@@ -352,8 +347,8 @@ func writeOriginalAvailabilityAnnotations(original, modified *apps.Deployment) {
 	if modified.Annotations == nil {
 		modified.Annotations = map[string]string{}
 	}
-	modified.Annotations[AnnotationOriginalMinReadySeconds] = serializeOriginalInt32(&original.Spec.MinReadySeconds)
-	modified.Annotations[AnnotationOriginalProgressDeadlineSeconds] = serializeOriginalInt32(original.Spec.ProgressDeadlineSeconds)
+	modified.Annotations[AnnotationOriginalMinReadySeconds] = serializeOriginalInt32(&original.Spec.MinReadySeconds, 0)
+	modified.Annotations[AnnotationOriginalProgressDeadlineSeconds] = serializeOriginalInt32(original.Spec.ProgressDeadlineSeconds, DefaultProgressDeadlineSeconds)
 }
 
 func originalMaxUnavailable(deployment *apps.Deployment) *intstr.IntOrString {
@@ -375,45 +370,6 @@ func inflateDeploymentStrategy(deployment *apps.Deployment) {
 		deployment.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{}
 	}
 	deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailable
-}
-
-// EnrollMinReadyDeployment snapshots the original strategy fields into
-// annotations and inflates them in place. The workload mutating webhook calls
-// it when a Deployment enters rollout progressing, so the native controller
-// never observes the original maxUnavailable/minReadySeconds budget between
-// admission and MinReadyControl.Initialize. If a continuous release updates the
-// user-owned availability fields while MinReady annotations already exist,
-// enrollment refreshes those original annotations before re-inflating.
-func EnrollMinReadyDeployment(deployment *apps.Deployment) error {
-	if err := validateDeploymentStrategyType(deployment); err != nil {
-		return err
-	}
-	snapshot := deployment.DeepCopy()
-	if err := enrollOriginalAnnotations(snapshot, deployment); err != nil {
-		return err
-	}
-	inflateDeploymentStrategy(deployment)
-	return nil
-}
-
-func enrollOriginalAnnotations(snapshot, target *apps.Deployment) error {
-	if !hasAnyOriginalAnnotation(snapshot.Annotations) {
-		writeOriginalAnnotations(snapshot, target)
-		return nil
-	}
-	if err := ensureOriginalAnnotations(snapshot); err != nil {
-		return err
-	}
-	if err := validateInflatedDeploymentStrategy(snapshot); err != nil {
-		if !hasOriginalAvailabilityChange(snapshot) {
-			return err
-		}
-		if err := validateMinReadyRefreshableDeployment(snapshot); err != nil {
-			return err
-		}
-		writeOriginalAvailabilityAnnotations(snapshot, target)
-	}
-	return nil
 }
 
 func (mc *MinReadyControl) ensureInflatedDeploymentStrategy(ctx context.Context) error {
@@ -450,24 +406,6 @@ func validateInflatedDeploymentStrategy(deployment *apps.Deployment) error {
 	if deployment.Spec.ProgressDeadlineSeconds == nil || *deployment.Spec.ProgressDeadlineSeconds != InflatedProgressDeadlineSeconds {
 		return fmt.Errorf("%w: progressDeadlineSeconds=%v want %d",
 			partitionstyle.ErrMinReadyDriftDetected, deployment.Spec.ProgressDeadlineSeconds, InflatedProgressDeadlineSeconds)
-	}
-	if deployment.Spec.Strategy.RollingUpdate == nil {
-		return fmt.Errorf("%w: rollingUpdate is nil", partitionstyle.ErrMinReadyDriftDetected)
-	}
-	return nil
-}
-
-func hasOriginalAvailabilityChange(deployment *apps.Deployment) bool {
-	if deployment.Spec.MinReadySeconds != InflatedMinReadySeconds {
-		return true
-	}
-	return deployment.Spec.ProgressDeadlineSeconds == nil ||
-		*deployment.Spec.ProgressDeadlineSeconds != InflatedProgressDeadlineSeconds
-}
-
-func validateMinReadyRefreshableDeployment(deployment *apps.Deployment) error {
-	if deployment.Spec.Paused {
-		return fmt.Errorf("%w: deployment is paused", partitionstyle.ErrMinReadyDriftDetected)
 	}
 	if deployment.Spec.Strategy.RollingUpdate == nil {
 		return fmt.Errorf("%w: rollingUpdate is nil", partitionstyle.ErrMinReadyDriftDetected)
