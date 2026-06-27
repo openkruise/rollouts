@@ -44,7 +44,9 @@ import (
 	rolloutapi "github.com/openkruise/rollouts/api"
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
 
@@ -420,6 +422,44 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 		},
 		{
+			name: "deployment image v1->v2, matched minready rollout inflates strategy at admission and stays unpaused",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				// P1-6: enrollment snapshots original strategy fields and inflates
+				// minReadySeconds/progressDeadline/maxUnavailable synchronously so the
+				// native controller never observes the original budget before Initialize.
+				obj.Annotations[appsv1beta1.MinReadyOriginalMinReadySecondsAnnotation] = "0"
+				obj.Annotations[appsv1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation] = "600"
+				obj.Annotations[appsv1beta1.MinReadyOriginalMaxUnavailableAnnotation] = "25%"
+				obj.Spec.Paused = false
+				obj.Spec.MinReadySeconds = inflatedMinReadySeconds
+				pds := inflatedProgressDeadlineSeconds
+				obj.Spec.ProgressDeadlineSeconds = &pds
+				maxUnavailable := intstr.FromInt(0)
+				obj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{MaxUnavailable: &maxUnavailable}
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
 			name: "deployment image v1->v2, no matched rollout",
 			getObjs: func() (*apps.Deployment, *apps.Deployment) {
 				oldObj := deploymentDemo.DeepCopy()
@@ -538,6 +578,118 @@ func TestHandlerDeployment(t *testing.T) {
 				return []*apps.ReplicaSet{rs}
 			},
 			getRollout: func() *appsv1beta1.Rollout {
+				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
+			name: "minready deployment in progressing skips recreate mutation",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				newObj := oldObj.DeepCopy()
+				newObj.Spec.Paused = false
+				newObj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				newObj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 2},
+					MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
+				}
+				newObj.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = `{"rollingStyle":"Partition"}`
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				obj.Spec.Paused = false
+				obj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				obj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 2},
+					MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
+				}
+				obj.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = `{"rollingStyle":"Partition"}`
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
+			name: "minready deployment in progressing without strategy annotation keeps deployment unpaused",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				newObj := oldObj.DeepCopy()
+				newObj.Spec.Paused = false
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				obj.Spec.Paused = false
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
+			name: "minready continuous release refreshes original availability annotations",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				oldObj.Annotations[appsv1beta1.MinReadyOriginalMinReadySecondsAnnotation] = "7"
+				oldObj.Annotations[appsv1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation] = "60"
+				oldObj.Annotations[appsv1beta1.MinReadyOriginalMaxUnavailableAnnotation] = "25%"
+				oldObj.Spec.Paused = false
+				oldObj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				maxUnavailable := intstr.FromInt(0)
+				oldObj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{MaxUnavailable: &maxUnavailable}
+				oldObj.Spec.MinReadySeconds = inflatedMinReadySeconds
+				inflatedPDS := inflatedProgressDeadlineSeconds
+				oldObj.Spec.ProgressDeadlineSeconds = &inflatedPDS
+
+				newObj := oldObj.DeepCopy()
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
+				newObj.Spec.MinReadySeconds = 9
+				newObj.Spec.ProgressDeadlineSeconds = pointer.Int32(90)
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v3"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				obj.Annotations[appsv1beta1.MinReadyOriginalMinReadySecondsAnnotation] = "9"
+				obj.Annotations[appsv1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation] = "90"
+				obj.Annotations[appsv1beta1.MinReadyOriginalMaxUnavailableAnnotation] = "25%"
+				obj.Spec.Paused = false
+				obj.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+				maxUnavailable := intstr.FromInt(0)
+				obj.Spec.Strategy.RollingUpdate = &apps.RollingUpdateDeployment{MaxUnavailable: &maxUnavailable}
+				obj.Spec.MinReadySeconds = inflatedMinReadySeconds
+				inflatedPDS := inflatedProgressDeadlineSeconds
+				obj.Spec.ProgressDeadlineSeconds = &inflatedPDS
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				rs := rsDemo.DeepCopy()
+				return []*apps.ReplicaSet{rs}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
 				return rolloutDemo.DeepCopy()
 			},
 		},
@@ -744,6 +896,7 @@ func TestHandlerDeployment(t *testing.T) {
 	decoder := admission.NewDecoder(scheme)
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
+			_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
 			client := fake.NewClientBuilder().WithScheme(scheme).Build()
 			h := WorkloadHandler{
 				Client:  client,
@@ -776,6 +929,127 @@ func TestHandlerDeployment(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsMinReadySecondsStrategy(t *testing.T) {
+	rollout := rolloutDemo.DeepCopy()
+	deployment := deploymentDemo.DeepCopy()
+	if deployment.Annotations == nil {
+		deployment.Annotations = map[string]string{}
+	}
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
+	if isMinReadySecondsStrategy(rollout, deployment) {
+		t.Fatalf("skip returned true while feature gate is disabled")
+	}
+	deployment.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = `{"rollingStyle":"Partition"}`
+	if !isMinReadySecondsStrategy(rollout, deployment) {
+		t.Fatalf("skip returned false for in-progress MinReady Deployment with strategy annotation")
+	}
+	delete(deployment.Annotations, appsv1alpha1.DeploymentStrategyAnnotation)
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	if !isMinReadySecondsStrategy(rollout, deployment) {
+		t.Fatalf("skip returned false for MinReadySeconds with feature gate enabled")
+	}
+	rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary = true
+	if isMinReadySecondsStrategy(rollout, deployment) {
+		t.Fatalf("skip returned true for canary-style rollout")
+	}
+}
+
+// inflatedMinReadyDeployment returns a Deployment in a healthy inflated MinReady
+// state: RollingUpdate, unpaused, with original-strategy annotations present.
+func inflatedMinReadyDeployment() *apps.Deployment {
+	pds := inflatedProgressDeadlineSeconds
+	maxUnavailable := intstr.FromInt(0)
+	return &apps.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{
+				appsv1beta1.MinReadyOriginalMinReadySecondsAnnotation:         "0",
+				appsv1beta1.MinReadyOriginalProgressDeadlineSecondsAnnotation: "600",
+				appsv1beta1.MinReadyOriginalMaxUnavailableAnnotation:          "25%",
+			},
+		},
+		Spec: apps.DeploymentSpec{
+			Paused:                  false,
+			MinReadySeconds:         inflatedMinReadySeconds,
+			ProgressDeadlineSeconds: &pds,
+			Strategy: apps.DeploymentStrategy{
+				Type:          apps.RollingUpdateDeploymentStrategyType,
+				RollingUpdate: &apps.RollingUpdateDeployment{MaxUnavailable: &maxUnavailable},
+			},
+		},
+	}
+}
+
+// TestEnforceMinReadyInflation covers P0-2: while a MinReady rollout is
+// progressing, the webhook must re-assert the core invariants (RollingUpdate,
+// unpaused, non-nil rollingUpdate, inflated fields) so a GitOps/manual drift is
+// rejected at admission time rather than only surfacing later in the controller.
+func TestEnforceMinReadyInflation(t *testing.T) {
+	t.Run("no MinReady annotations leaves object untouched", func(t *testing.T) {
+		d := &apps.Deployment{Spec: apps.DeploymentSpec{Strategy: apps.DeploymentStrategy{Type: apps.RecreateDeploymentStrategyType}}}
+		if enforceMinReadyInflation(d) {
+			t.Fatalf("expected no modification without MinReady annotations")
+		}
+		if d.Spec.Strategy.Type != apps.RecreateDeploymentStrategyType {
+			t.Fatalf("strategy type changed unexpectedly: %s", d.Spec.Strategy.Type)
+		}
+	})
+
+	t.Run("healthy inflated state is not modified", func(t *testing.T) {
+		d := inflatedMinReadyDeployment()
+		if enforceMinReadyInflation(d) {
+			t.Fatalf("expected no modification for an already-inflated healthy deployment")
+		}
+	})
+
+	t.Run("strategy type drift to Recreate is rewritten", func(t *testing.T) {
+		d := inflatedMinReadyDeployment()
+		d.Spec.Strategy.Type = apps.RecreateDeploymentStrategyType
+		if !enforceMinReadyInflation(d) {
+			t.Fatalf("expected modification for strategy type drift")
+		}
+		if d.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
+			t.Fatalf("strategy type not restored to RollingUpdate: %s", d.Spec.Strategy.Type)
+		}
+	})
+
+	t.Run("paused drift is reverted", func(t *testing.T) {
+		d := inflatedMinReadyDeployment()
+		d.Spec.Paused = true
+		if !enforceMinReadyInflation(d) {
+			t.Fatalf("expected modification for paused drift")
+		}
+		if d.Spec.Paused {
+			t.Fatalf("paused not reverted to false")
+		}
+	})
+
+	t.Run("nil rollingUpdate is restored", func(t *testing.T) {
+		d := inflatedMinReadyDeployment()
+		d.Spec.Strategy.RollingUpdate = nil
+		if !enforceMinReadyInflation(d) {
+			t.Fatalf("expected modification for nil rollingUpdate")
+		}
+		if d.Spec.Strategy.RollingUpdate == nil {
+			t.Fatalf("rollingUpdate not restored")
+		}
+	})
+
+	t.Run("deflated fields are re-inflated", func(t *testing.T) {
+		d := inflatedMinReadyDeployment()
+		d.Spec.MinReadySeconds = 5
+		d.Spec.ProgressDeadlineSeconds = pointer.Int32(600)
+		if !enforceMinReadyInflation(d) {
+			t.Fatalf("expected modification for deflated fields")
+		}
+		if d.Spec.MinReadySeconds != inflatedMinReadySeconds {
+			t.Fatalf("minReadySeconds not re-inflated: %d", d.Spec.MinReadySeconds)
+		}
+		if d.Spec.ProgressDeadlineSeconds == nil || *d.Spec.ProgressDeadlineSeconds != inflatedProgressDeadlineSeconds {
+			t.Fatalf("progressDeadlineSeconds not re-inflated: %v", d.Spec.ProgressDeadlineSeconds)
+		}
+	})
 }
 
 func TestHandlerCloneSet(t *testing.T) {

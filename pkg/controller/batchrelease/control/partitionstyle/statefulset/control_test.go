@@ -580,7 +580,7 @@ func TestRealController(t *testing.T) {
 	controller, err := c.BuildController()
 	Expect(err).NotTo(HaveOccurred())
 
-	err = controller.Initialize(release)
+	err = controller.Initialize(context.Background(), release)
 	Expect(err).NotTo(HaveOccurred())
 	fetch := &kruiseappsv1beta1.StatefulSet{}
 	Expect(cli.Get(context.TODO(), stsKey, fetch)).NotTo(HaveOccurred())
@@ -591,7 +591,7 @@ func TestRealController(t *testing.T) {
 	for {
 		batchContext, err := controller.CalculateBatchContext(release)
 		Expect(err).NotTo(HaveOccurred())
-		err = controller.UpgradeBatch(batchContext)
+		err = controller.UpgradeBatch(context.Background(), batchContext)
 		// mock
 		fetch = &kruiseappsv1beta1.StatefulSet{}
 		Expect(cli.Get(context.TODO(), stsKey, fetch)).NotTo(HaveOccurred())
@@ -605,11 +605,11 @@ func TestRealController(t *testing.T) {
 	Expect(*fetch.Spec.UpdateStrategy.RollingUpdate.Partition).Should(BeNumerically("==", 9))
 
 	// mock
-	_ = controller.Finalize(release)
+	_ = controller.Finalize(context.Background(), release)
 	fetch = &kruiseappsv1beta1.StatefulSet{}
 	Expect(cli.Get(context.TODO(), stsKey, fetch)).NotTo(HaveOccurred())
 	c.object = fetch
-	err = controller.Finalize(release)
+	err = controller.Finalize(context.Background(), release)
 	Expect(err).NotTo(HaveOccurred())
 	fetch = &kruiseappsv1beta1.StatefulSet{}
 	Expect(cli.Get(context.TODO(), stsKey, fetch)).NotTo(HaveOccurred())
@@ -737,7 +737,7 @@ func TestFinalize(t *testing.T) {
 				t.Fatalf("BuildController failed: %s", err.Error())
 			}
 			cs.featureGateFunc()
-			err = c.Finalize(br)
+			err = c.Finalize(context.Background(), br)
 			if err != nil {
 				t.Fatalf("BuildController failed: %s", err.Error())
 			}

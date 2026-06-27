@@ -160,7 +160,7 @@ type BatchReleaseReconciler struct {
 // and what is in the Rollout.Spec
 func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	release := new(v1beta1.BatchRelease)
-	err := r.Get(context.TODO(), req.NamespacedName, release)
+	err := r.Get(ctx, req.NamespacedName, release)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
@@ -201,7 +201,7 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// executor start to execute the batch release plan.
 	startTimestamp := time.Now()
-	result, currentStatus, err := r.executor.Do(release)
+	result, currentStatus, err := r.executor.Do(ctx, release)
 	if err != nil {
 		errList = append(errList, field.InternalError(field.NewPath("do-release"), err))
 	}

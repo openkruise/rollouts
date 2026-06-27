@@ -384,6 +384,15 @@ const (
 	TerminatingReasonInTerminating = "InTerminating"
 	TerminatingReasonCompleted     = "Completed"
 
+	// MinReadyInitialized indicates MinReadySeconds strategy initialization has completed.
+	RolloutConditionMinReadyInitialized RolloutConditionType = "MinReadyInitialized"
+	// RolloutConditionMinReadyBatching indicates MinReadySeconds strategy batch processing is active.
+	RolloutConditionMinReadyBatching RolloutConditionType = "MinReadyBatching"
+	// RolloutConditionMinReadyDegraded indicates MinReadySeconds strategy hit an explicit blocking error.
+	RolloutConditionMinReadyDegraded RolloutConditionType = "MinReadyDegraded"
+	// RolloutConditionMinReadyFinalized indicates MinReadySeconds strategy finalization has completed.
+	RolloutConditionMinReadyFinalized RolloutConditionType = "MinReadyFinalized"
+
 	// Finalise Reason
 	// Finalise when the last batch is released and all pods will update to new version
 	FinaliseReasonSuccess = "Success"

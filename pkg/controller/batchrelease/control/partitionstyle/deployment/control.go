@@ -49,6 +49,14 @@ type realController struct {
 }
 
 func NewController(cli client.Client, key types.NamespacedName, _ schema.GroupVersionKind) partitionstyle.Interface {
+	return newRealController(cli, key)
+}
+
+func NewMinReadyController(cli client.Client, key types.NamespacedName, _ schema.GroupVersionKind) partitionstyle.Interface {
+	return &MinReadyControl{realController: newRealController(cli, key)}
+}
+
+func newRealController(cli client.Client, key types.NamespacedName) *realController {
 	return &realController{
 		key:    key,
 		client: cli,
@@ -81,7 +89,7 @@ func (rc *realController) ListOwnedPods() ([]*corev1.Pod, error) {
 	return rc.pods, err
 }
 
-func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Initialize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if deploymentutil.IsUnderRolloutControl(rc.object) {
 		return nil // No need initialize again.
 	}
@@ -109,11 +117,11 @@ func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 
 	// Disable the native deployment controller
 	patchData.UpdatePaused(true)
-	patchData.UpdateStrategy(apps.DeploymentStrategy{Type: apps.RecreateDeploymentStrategyType})
-	return rc.client.Patch(context.TODO(), d, patchData)
+	patchData.UpdateRecreateStrategy()
+	return rc.client.Patch(ctx, d, patchData)
 }
 
-func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
+func (rc *realController) UpgradeBatch(ctx context.Context, batchContext *batchcontext.BatchContext) error {
 	if !deploymentutil.IsUnderRolloutControl(rc.object) {
 		klog.Warningf("Cannot upgrade batch, because "+
 			"deployment %v has ridden out of our control", klog.KObj(rc.object))
@@ -121,18 +129,18 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	}
 
 	strategy := util.GetDeploymentStrategy(rc.object)
-	if control.IsCurrentMoreThanOrEqualToDesired(strategy.Partition, ctx.DesiredPartition) {
+	if control.IsCurrentMoreThanOrEqualToDesired(strategy.Partition, batchContext.DesiredPartition) {
 		return nil // Satisfied, no need patch again.
 	}
 
 	d := rc.object.DeepCopy()
-	strategy.Partition = ctx.DesiredPartition
+	strategy.Partition = batchContext.DesiredPartition
 	patchData := patch.NewDeploymentPatch()
 	patchData.InsertAnnotation(v1alpha1.DeploymentStrategyAnnotation, util.DumpJSON(&strategy))
-	return rc.client.Patch(context.TODO(), d, patchData)
+	return rc.client.Patch(ctx, d, patchData)
 }
 
-func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Finalize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if rc.object == nil {
 		return nil // No need to finalize again.
 	}
@@ -161,7 +169,7 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	}
 	d := rc.object.DeepCopy()
 	patchData.DeleteAnnotation(util.BatchReleaseControlAnnotation)
-	return rc.client.Patch(context.TODO(), d, patchData)
+	return rc.client.Patch(ctx, d, patchData)
 }
 
 func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {

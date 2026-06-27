@@ -125,6 +125,15 @@ func TestIsBatchReady(t *testing.T) {
 			updatedReady: 5,
 			isReady:      false,
 		},
+		"false: rollout-id, no pods listed": {
+			release:      r(p(intstr.FromInt(1)), "1", "version-1"),
+			pods:         nil,
+			labelDesired: 5,
+			desired:      5,
+			updated:      5,
+			updatedReady: 5,
+			isReady:      false,
+		},
 	}
 
 	for name, cs := range cases {
@@ -180,4 +189,64 @@ func generatePodsWith(labels map[string]string, replicas int, beginOrder int) []
 		}
 	}
 	return pods
+}
+
+// TestBatchLabelSatisfied is a regression matrix for the shared batchLabelSatisfied
+// helper (P0-1). It is on the hot path for every partition-style control plane
+// (CloneSet, StatefulSet, Advanced DaemonSet, Advanced Deployment, MinReady), so
+// the empty-pod-list semantics must hold regardless of feature gate. The key
+// change being locked down: rolloutID set AND targetCount > 0 AND no pods listed
+// must return false (the batch label cannot be satisfied by zero pods), instead
+// of the previous true.
+func TestBatchLabelSatisfied(t *testing.T) {
+	labeledPods := generatePodsWith(map[string]string{
+		v1beta1.RolloutIDLabel: "rollout-1",
+	}, 3, 0)
+
+	cases := map[string]struct {
+		pods        []*corev1.Pod
+		rolloutID   string
+		targetCount int32
+		want        bool
+	}{
+		"empty rolloutID short-circuits to true, no pods": {
+			pods: nil, rolloutID: "", targetCount: 5, want: true,
+		},
+		"empty rolloutID short-circuits to true, with pods": {
+			pods: labeledPods, rolloutID: "", targetCount: 5, want: true,
+		},
+		"targetCount zero short-circuits to true, no pods": {
+			pods: nil, rolloutID: "rollout-1", targetCount: 0, want: true,
+		},
+		"targetCount negative short-circuits to true": {
+			pods: nil, rolloutID: "rollout-1", targetCount: -1, want: true,
+		},
+		"rolloutID set, target>0, no pods listed -> false (P0-1 core change)": {
+			pods: nil, rolloutID: "rollout-1", targetCount: 3, want: false,
+		},
+		"rolloutID set, target>0, empty (non-nil) pod slice -> false": {
+			pods: []*corev1.Pod{}, rolloutID: "rollout-1", targetCount: 3, want: false,
+		},
+		"rolloutID set, enough labeled pods -> true": {
+			pods: labeledPods, rolloutID: "rollout-1", targetCount: 3, want: true,
+		},
+		"rolloutID set, not enough labeled pods -> false": {
+			pods: labeledPods, rolloutID: "rollout-1", targetCount: 4, want: false,
+		},
+		"rolloutID set, pods labeled with a different id -> false": {
+			pods:        generatePodsWith(map[string]string{v1beta1.RolloutIDLabel: "rollout-2"}, 3, 0),
+			rolloutID:   "rollout-1",
+			targetCount: 1,
+			want:        false,
+		},
+	}
+
+	for name, cs := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := batchLabelSatisfied(cs.pods, cs.rolloutID, cs.targetCount); got != cs.want {
+				t.Fatalf("batchLabelSatisfied(pods=%d, id=%q, target=%d) = %v, want %v",
+					len(cs.pods), cs.rolloutID, cs.targetCount, got, cs.want)
+			}
+		})
+	}
 }

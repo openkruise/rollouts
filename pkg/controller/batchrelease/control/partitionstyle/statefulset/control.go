@@ -100,7 +100,7 @@ func (rc *realController) ListOwnedPods() ([]*corev1.Pod, error) {
 	return rc.pods, err
 }
 
-func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Initialize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if control.IsControlledByBatchRelease(release, rc.object) {
 		return nil
 	}
@@ -111,12 +111,12 @@ func (rc *realController) Initialize(release *v1beta1.BatchRelease) error {
 	body := fmt.Sprintf(`{%s,%s}`, metaBody, specBody)
 
 	clone := util.GetEmptyObjectWithKey(rc.object)
-	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
+	return rc.client.Patch(ctx, clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
-func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
-	desired := ctx.DesiredPartition.IntVal
-	current := ctx.CurrentPartition.IntVal
+func (rc *realController) UpgradeBatch(ctx context.Context, batchContext *batchcontext.BatchContext) error {
+	desired := batchContext.DesiredPartition.IntVal
+	current := batchContext.CurrentPartition.IntVal
 	// current less than desired, which means current revision replicas will be less than desired,
 	// in other word, update revision replicas will be more than desired, no need to update again.
 	if current <= desired {
@@ -126,10 +126,10 @@ func (rc *realController) UpgradeBatch(ctx *batchcontext.BatchContext) error {
 	body := fmt.Sprintf(`{"spec":{"updateStrategy":{"rollingUpdate":{"partition":%d}}}}`, desired)
 
 	clone := rc.object.DeepCopyObject().(client.Object)
-	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
+	return rc.client.Patch(ctx, clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
-func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
+func (rc *realController) Finalize(ctx context.Context, release *v1beta1.BatchRelease) error {
 	if rc.object == nil {
 		return nil
 	}
@@ -144,7 +144,7 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	}
 	body := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null}}%s}`, util.BatchReleaseControlAnnotation, specBody)
 	clone := util.GetEmptyObjectWithKey(rc.object)
-	return rc.client.Patch(context.TODO(), clone, client.RawPatch(types.MergePatchType, []byte(body)))
+	return rc.client.Patch(ctx, clone, client.RawPatch(types.MergePatchType, []byte(body)))
 }
 
 func (rc *realController) CalculateBatchContext(release *v1beta1.BatchRelease) (*batchcontext.BatchContext, error) {

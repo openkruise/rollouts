@@ -219,6 +219,15 @@ const (
 	// Terminating Reason
 	TerminatingReasonInTerminating = "InTerminating"
 	TerminatingReasonCompleted     = "Completed"
+
+	// MinReadyInitialized indicates MinReadySeconds strategy initialization has completed.
+	RolloutConditionMinReadyInitialized RolloutConditionType = "MinReadyInitialized"
+	// RolloutConditionMinReadyBatching indicates MinReadySeconds strategy batch processing is active.
+	RolloutConditionMinReadyBatching RolloutConditionType = "MinReadyBatching"
+	// RolloutConditionMinReadyDegraded indicates MinReadySeconds strategy hit an explicit blocking error.
+	RolloutConditionMinReadyDegraded RolloutConditionType = "MinReadyDegraded"
+	// RolloutConditionMinReadyFinalized indicates MinReadySeconds strategy finalization has completed.
+	RolloutConditionMinReadyFinalized RolloutConditionType = "MinReadyFinalized"
 )
 
 // CanaryStatus status fields that only pertain to the canary rollout
