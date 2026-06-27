@@ -134,6 +134,14 @@ func updateMinReadyE2EDeploymentVersion(namespace, version string) {
 }
 
 func resumeMinReadyE2ERollout(namespace, name string) {
+	resumedStep := markMinReadyE2ERolloutPausedStepReady(namespace, name)
+	if resumedStep < 0 {
+		return
+	}
+	waitMinReadyE2ERolloutStepTransitioned(namespace, name, resumedStep)
+}
+
+func markMinReadyE2ERolloutPausedStepReady(namespace, name string) int32 {
 	resumedStep := int32(-1)
 	Eventually(func() bool {
 		rollout := &v1beta1.Rollout{}
@@ -149,9 +157,10 @@ func resumeMinReadyE2ERollout(namespace, name string) {
 		body := fmt.Sprintf(`{"status":{"canaryStatus":{"currentStepState":"%s"}}}`, v1beta1.CanaryStepStateReady)
 		return k8sClient.Status().Patch(context.TODO(), rollout, client.RawPatch(types.MergePatchType, []byte(body))) == nil
 	}, 5*time.Minute, time.Second).Should(BeTrue())
-	if resumedStep < 0 {
-		return
-	}
+	return resumedStep
+}
+
+func waitMinReadyE2ERolloutStepTransitioned(namespace, name string, resumedStep int32) {
 	Eventually(func() bool {
 		rollout := &v1beta1.Rollout{}
 		key := types.NamespacedName{Namespace: namespace, Name: name}
