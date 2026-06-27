@@ -387,6 +387,7 @@ func (src *BatchRelease) ConvertTo(dst conversion.Hub) error {
 		obj.Status.CanaryStatus = v1beta1.BatchReleaseCanaryStatus{
 			CurrentBatchState:    v1beta1.BatchReleaseBatchStateType(src.Status.CanaryStatus.CurrentBatchState),
 			CurrentBatch:         src.Status.CanaryStatus.CurrentBatch,
+			BatchStartTime:       src.Status.CanaryStatus.BatchStartTime,
 			BatchReadyTime:       src.Status.CanaryStatus.BatchReadyTime,
 			UpdatedReplicas:      src.Status.CanaryStatus.UpdatedReplicas,
 			UpdatedReadyReplicas: src.Status.CanaryStatus.UpdatedReadyReplicas,
@@ -466,6 +467,7 @@ func (dst *BatchRelease) ConvertFrom(src conversion.Hub) error {
 		dst.Status.CanaryStatus = BatchReleaseCanaryStatus{
 			CurrentBatchState:    BatchReleaseBatchStateType(srcV1beta1.Status.CanaryStatus.CurrentBatchState),
 			CurrentBatch:         srcV1beta1.Status.CanaryStatus.CurrentBatch,
+			BatchStartTime:       srcV1beta1.Status.CanaryStatus.BatchStartTime,
 			BatchReadyTime:       srcV1beta1.Status.CanaryStatus.BatchReadyTime,
 			UpdatedReplicas:      srcV1beta1.Status.CanaryStatus.UpdatedReplicas,
 			UpdatedReadyReplicas: srcV1beta1.Status.CanaryStatus.UpdatedReadyReplicas,
