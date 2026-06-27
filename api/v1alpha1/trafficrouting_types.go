@@ -44,7 +44,7 @@ type TrafficRoutingRef struct {
 // IngressTrafficRouting configuration for ingress controller to control traffic routing
 type IngressTrafficRouting struct {
 	// ClassType refers to the type of `Ingress`.
-	// current support nginx, aliyun-alb. default is nginx.
+	// current support nginx, aliyun-alb, aws-alb. default is nginx.
 	// +optional
 	ClassType string `json:"classType,omitempty"`
 	// Name refers to the name of an `Ingress` resource in the same namespace as the `Rollout`
