@@ -15,6 +15,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -63,7 +64,10 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *v1beta1.
 	var weight *int32
 	if strategy.Traffic != nil {
 		is := intstr.FromString(*strategy.Traffic)
-		weightInt, _ := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
+		weightInt, err := intstr.GetScaledValueFromIntOrPercent(&is, 100, true)
+		if err != nil {
+			return false, fmt.Errorf("invalid traffic %q for %s: %w", *strategy.Traffic, r.conf.Key, err)
+		}
 		weight = utilpointer.Int32(int32(weightInt))
 	}
 	matches := strategy.Matches
@@ -81,12 +85,12 @@ func (r *gatewayController) EnsureRoutes(ctx context.Context, strategy *v1beta1.
 	// set route
 	routeClone := &gatewayv1beta1.HTTPRoute{}
 	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		if err = r.Client.Get(context.TODO(), types.NamespacedName{Namespace: httpRoute.Namespace, Name: httpRoute.Name}, routeClone); err != nil {
+		if err = r.Client.Get(ctx, types.NamespacedName{Namespace: httpRoute.Namespace, Name: httpRoute.Name}, routeClone); err != nil {
 			klog.Errorf("error getting updated httpRoute(%s/%s) from client", httpRoute.Namespace, httpRoute.Name)
 			return err
 		}
 		routeClone.Spec.Rules = desiredRule
-		return r.Client.Update(context.TODO(), routeClone)
+		return r.Client.Update(ctx, routeClone)
 	}); err != nil {
 		klog.Errorf("update %s httpRoute(%s) failed: %s", r.conf.Key, httpRoute.Name, err.Error())
 		return false, err
@@ -112,12 +116,12 @@ func (r *gatewayController) Finalise(ctx context.Context) (bool, error) {
 	}
 	routeClone := &gatewayv1beta1.HTTPRoute{}
 	if err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		if err = r.Client.Get(context.TODO(), types.NamespacedName{Namespace: httpRoute.Namespace, Name: httpRoute.Name}, routeClone); err != nil {
+		if err = r.Client.Get(ctx, types.NamespacedName{Namespace: httpRoute.Namespace, Name: httpRoute.Name}, routeClone); err != nil {
 			klog.Errorf("error getting updated httpRoute(%s/%s) from client", httpRoute.Namespace, httpRoute.Name)
 			return err
 		}
 		routeClone.Spec.Rules = desiredRule
-		return r.Client.Update(context.TODO(), routeClone)
+		return r.Client.Update(ctx, routeClone)
 	}); err != nil {
 		klog.Errorf("update %s httpRoute(%s) failed: %s", r.conf.Key, httpRoute.Name, err.Error())
 		return false, err
@@ -194,11 +198,21 @@ func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1beta1.H
 			canaryRuleMatch := &canaryRule.Matches[j]
 			for k := range nonPathMatches {
 				canaryRuleMatchBase := *canaryRuleMatch
-				if len(matches[k].Headers) > 0 {
-					canaryRuleMatchBase.Headers = append(canaryRuleMatchBase.Headers, matches[k].Headers...)
+				// Clone Headers/QueryParams to avoid mutating the original
+				// rule's underlying arrays via append. Preserve nil-ness so
+				// the result is byte-for-byte identical to the previous
+				// implementation when there is nothing to extend.
+				if canaryRuleMatch.Headers != nil {
+					canaryRuleMatchBase.Headers = append([]gatewayv1beta1.HTTPHeaderMatch{}, canaryRuleMatch.Headers...)
 				}
-				if len(matches[k].QueryParams) > 0 {
-					canaryRuleMatchBase.QueryParams = append(canaryRuleMatchBase.QueryParams, matches[k].QueryParams...)
+				if canaryRuleMatch.QueryParams != nil {
+					canaryRuleMatchBase.QueryParams = append([]gatewayv1beta1.HTTPQueryParamMatch{}, canaryRuleMatch.QueryParams...)
+				}
+				if len(nonPathMatches[k].Headers) > 0 {
+					canaryRuleMatchBase.Headers = append(canaryRuleMatchBase.Headers, nonPathMatches[k].Headers...)
+				}
+				if len(nonPathMatches[k].QueryParams) > 0 {
+					canaryRuleMatchBase.QueryParams = append(canaryRuleMatchBase.QueryParams, nonPathMatches[k].QueryParams...)
 				}
 				newMatches = append(newMatches, canaryRuleMatchBase)
 			}
@@ -213,7 +227,12 @@ func (r *gatewayController) buildCanaryHeaderHttpRoutes(rules []gatewayv1beta1.H
 func (r *gatewayController) buildCanaryWeightHttpRoutes(rules []gatewayv1beta1.HTTPRouteRule, weight *int32) []gatewayv1beta1.HTTPRouteRule {
 	var desired []gatewayv1beta1.HTTPRouteRule
 	for i := range rules {
-		rule := rules[i]
+		// DeepCopy the rule so subsequent in-place mutations of BackendRefs
+		// (via setServiceBackendRef) cannot alias the input slice's
+		// underlying array. Without this, the diff in EnsureRoutes would see
+		// desired == current and skip the Update on every step beyond the
+		// first.
+		rule := *rules[i].DeepCopy()
 		_, stableRef := getServiceBackendRef(rule, r.conf.StableService)
 		if stableRef == nil {
 			desired = append(desired, rule)
@@ -241,19 +260,25 @@ func generateCanaryWeight(canaryPercent int32) (stableWeight int32, canaryWeight
 	return stableWeight, canaryWeight
 }
 
-// int indicates ref index
+// getServiceBackendRef returns the index and a copy of the BackendRef in rule
+// that targets the named Service. Per the Gateway API spec,
+// BackendObjectReference.Kind defaults to "Service" when nil, so refs without
+// an explicit Kind are treated as Service references.
+// Returns (-1, nil) when no matching ref is found.
 func getServiceBackendRef(rule gatewayv1beta1.HTTPRouteRule, serviceName string) (int, *gatewayv1beta1.HTTPBackendRef) {
 	for i := range rule.BackendRefs {
 		ref := rule.BackendRefs[i]
-		if ref.Kind != nil && *ref.Kind == "Service" && string(ref.Name) == serviceName {
+		if (ref.Kind == nil || *ref.Kind == "Service") && string(ref.Name) == serviceName {
 			return i, &ref
 		}
 	}
-	return 0, nil
+	return -1, nil
 }
 
 func setServiceBackendRef(rule *gatewayv1beta1.HTTPRouteRule, ref gatewayv1beta1.HTTPBackendRef) {
-	if ref.Kind == nil || *ref.Kind != "Service" {
+	// Per Gateway API spec, Kind defaults to "Service" when nil; only refuse
+	// when an explicit Kind other than Service is set.
+	if ref.Kind != nil && *ref.Kind != "Service" {
 		return
 	}
 	index, currentRef := getServiceBackendRef(*rule, string(ref.Name))
@@ -261,15 +286,7 @@ func setServiceBackendRef(rule *gatewayv1beta1.HTTPRouteRule, ref gatewayv1beta1
 		rule.BackendRefs = append(rule.BackendRefs, ref)
 		return
 	}
-	oldRefs := rule.BackendRefs
-	rule.BackendRefs = []gatewayv1beta1.HTTPBackendRef{}
-	for i := range oldRefs {
-		if i == index {
-			rule.BackendRefs = append(rule.BackendRefs, ref)
-		} else {
-			rule.BackendRefs = append(rule.BackendRefs, oldRefs[i])
-		}
-	}
+	rule.BackendRefs[index] = ref
 }
 
 func filterOutServiceBackendRef(rule *gatewayv1beta1.HTTPRouteRule, serviceName string) {
