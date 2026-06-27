@@ -58,6 +58,7 @@ var (
 		&ControllerKruiseKindSts,
 		&ControllerKruiseOldKindSts,
 		&ControllerKruiseKindDS,
+		&ControllerLWSKind, // LeaderWorkerSet for AI inference workloads
 	}
 )
 
@@ -245,6 +246,10 @@ func GetEmptyWorkloadObject(gvk schema.GroupVersionKind) client.Object {
 		return &apps.DaemonSet{}
 	case ControllerKruiseKindSts, ControllerKruiseOldKindSts:
 		return &appsv1beta1.StatefulSet{}
+	case ControllerLWSKind:
+		unstructuredObject := &unstructured.Unstructured{}
+		unstructuredObject.SetGroupVersionKind(gvk)
+		return unstructuredObject
 	default:
 		unstructuredObject := &unstructured.Unstructured{}
 		unstructuredObject.SetGroupVersionKind(gvk)
