@@ -136,7 +136,7 @@ func (rc *realController) Finalize(release *v1beta1.BatchRelease) error {
 	if rc.object == nil {
 		return nil // No need to finalize again.
 	}
-	isUnderRolloutControl := rc.object.Annotations[util.BatchReleaseControlAnnotation] != "" && rc.object.Spec.Paused
+	isUnderRolloutControl := rc.object.Annotations[util.BatchReleaseControlAnnotation] != ""
 	if !isUnderRolloutControl {
 		return nil // No need to finalize again.
 	}
