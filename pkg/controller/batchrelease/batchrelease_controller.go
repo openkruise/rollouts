@@ -99,7 +99,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to BatchRelease
-	err = c.Watch(source.Kind(mgr.GetCache(), &v1beta1.BatchRelease{}), &handler.EnqueueRequestForObject{}, predicate.Funcs{
+	err = c.Watch(source.Kind[client.Object](mgr.GetCache(), &v1beta1.BatchRelease{}, &handler.EnqueueRequestForObject{}, predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldObject := e.ObjectOld.(*v1beta1.BatchRelease)
 			newObject := e.ObjectNew.(*v1beta1.BatchRelease)
@@ -113,12 +113,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 			}
 			return false
 		},
-	})
+	}))
 	if err != nil {
 		return err
 	}
 
-	err = c.Watch(source.Kind(mgr.GetCache(), &corev1.Pod{}), &podEventHandler{Reader: mgr.GetCache()})
+	err = c.Watch(source.Kind[client.Object](mgr.GetCache(), &corev1.Pod{}, &podEventHandler{Reader: mgr.GetCache()}))
 	if err != nil {
 		return err
 	}
