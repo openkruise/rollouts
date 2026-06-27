@@ -206,12 +206,14 @@ func UpdateFinalizer(c client.Client, object client.Object, op FinalizerOpType, 
 			return getErr
 		}
 		finalizers := fetchedObject.GetFinalizers()
+
 		switch op {
 		case AddFinalizerOpType:
 			if controllerutil.ContainsFinalizer(fetchedObject, finalizer) {
 				return nil
 			}
 			finalizers = append(finalizers, finalizer)
+
 		case RemoveFinalizerOpType:
 			finalizerSet := sets.NewString(finalizers...)
 			if !finalizerSet.Has(finalizer) {
@@ -219,8 +221,15 @@ func UpdateFinalizer(c client.Client, object client.Object, op FinalizerOpType, 
 			}
 			finalizers = finalizerSet.Delete(finalizer).List()
 		}
+
+		// Take a snapshot before mutating so only the finalizer delta is sent.
+		// Using Patch instead of Update prevents unknown/new API fields from being
+		// erased when Rollout is built against an older k8s version than the cluster.
+		baseObject := fetchedObject.DeepCopyObject().(client.Object)
+
 		fetchedObject.SetFinalizers(finalizers)
-		return c.Update(context.TODO(), fetchedObject)
+		patch := client.MergeFromWithOptions(baseObject, client.MergeFromWithOptimisticLock{})
+		return c.Patch(context.TODO(), fetchedObject, patch)
 	})
 }
 
