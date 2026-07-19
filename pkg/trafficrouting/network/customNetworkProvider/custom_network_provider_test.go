@@ -40,6 +40,7 @@ import (
 	luajson "layeh.com/gopher-json"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 	"sigs.k8s.io/yaml"
 
@@ -320,9 +321,9 @@ func TestEnsureRoutes(t *testing.T) {
 		{
 			name: "Do header/queryParam-based traffic routing for VirtualService and DestinationRule",
 			getRoutes: func() *v1beta1.TrafficRoutingStrategy {
-				pathTypePrefix := gatewayv1beta1.PathMatchPathPrefix
-				headerTypeExact := gatewayv1beta1.HeaderMatchExact
-				queryParamRegex := gatewayv1beta1.QueryParamMatchRegularExpression
+				pathTypePrefix := gatewayv1.PathMatchPathPrefix
+				headerTypeExact := gatewayv1.HeaderMatchExact
+				queryParamRegex := gatewayv1.QueryParamMatchRegularExpression
 				return &v1beta1.TrafficRoutingStrategy{
 					Matches: []v1beta1.HttpRouteMatch{
 						{
@@ -414,7 +415,7 @@ func TestEnsureRoutes(t *testing.T) {
 		{
 			name: "Do header-based traffic routing and set header for VirtualService",
 			getRoutes: func() *v1beta1.TrafficRoutingStrategy {
-				headerTypeExact := gatewayv1beta1.HeaderMatchExact
+				headerTypeExact := gatewayv1.HeaderMatchExact
 				return &v1beta1.TrafficRoutingStrategy{
 					Matches: []v1beta1.HttpRouteMatch{
 						{

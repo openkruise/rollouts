@@ -34,13 +34,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	rolloutv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	rolloutv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
-	"github.com/openkruise/rollouts/pkg/util/client"
+	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 )
 
 // RolloutState is annotation[rollouts.kruise.io/in-progressing] value
@@ -65,39 +66,39 @@ func IsRollbackInBatchPolicy(rollout *rolloutv1beta1.Rollout, labels map[string]
 	return false
 }
 
-func AddWorkloadWatcher(cs cache.Cache, c controller.Controller, handler handler.EventHandler) error {
+func AddWorkloadWatcher(cs cache.Cache, c controller.Controller, h handler.EventHandler) error {
 	// Watch changes to Deployment
-	err := c.Watch(source.Kind(cs, &apps.Deployment{}), handler)
+	err := c.Watch(source.Kind[ctrlclient.Object](cs, &apps.Deployment{}, h))
 	if err != nil {
 		return err
 	}
-	// Watch changes to Native StatefulSet, use unstructured informer
-	err = c.Watch(source.Kind(cs, &apps.StatefulSet{}), handler)
+	// Watch changes to Native StatefulSet
+	err = c.Watch(source.Kind[ctrlclient.Object](cs, &apps.StatefulSet{}, h))
 	if err != nil {
 		return err
 	}
-	// Watch changes to Native DaemonSet, use unstructured informer
-	err = c.Watch(source.Kind(cs, &apps.DaemonSet{}), handler)
+	// Watch changes to Native DaemonSet
+	err = c.Watch(source.Kind[ctrlclient.Object](cs, &apps.DaemonSet{}, h))
 	if err != nil {
 		return err
 	}
 	// Watch changes to CloneSet if it has the CRD
 	if DiscoverGVK(ControllerKruiseKindCS) {
-		err := c.Watch(source.Kind(cs, &kruiseappsv1alpha1.CloneSet{}), handler)
+		err := c.Watch(source.Kind[ctrlclient.Object](cs, &kruiseappsv1alpha1.CloneSet{}, h))
 		if err != nil {
 			return err
 		}
 	}
 	// Watch changes to DaemonSet if it has the CRD
 	if DiscoverGVK(ControllerKruiseKindDS) {
-		err := c.Watch(source.Kind(cs, &kruiseappsv1alpha1.DaemonSet{}), handler)
+		err := c.Watch(source.Kind[ctrlclient.Object](cs, &kruiseappsv1alpha1.DaemonSet{}, h))
 		if err != nil {
 			return err
 		}
 	}
 	// Watch changes to Advanced StatefulSet if it has the CRD
 	if DiscoverGVK(ControllerKruiseKindSts) {
-		err := c.Watch(source.Kind(cs, &kruiseappsv1beta1.StatefulSet{}), handler)
+		err := c.Watch(source.Kind[ctrlclient.Object](cs, &kruiseappsv1beta1.StatefulSet{}, h))
 		if err != nil {
 			return err
 		}
@@ -106,7 +107,7 @@ func AddWorkloadWatcher(cs cache.Cache, c controller.Controller, handler handler
 }
 
 func DiscoverGVK(gvk schema.GroupVersionKind) bool {
-	genericClient := client.GetGenericClient()
+	genericClient := utilclient.GetGenericClient()
 	if genericClient == nil {
 		return true
 	}
@@ -154,7 +155,7 @@ func AddWatcherDynamically(cs cache.Cache, c controller.Controller, h handler.Ev
 
 	object := &unstructured.Unstructured{}
 	object.SetGroupVersionKind(gvk)
-	return true, c.Watch(source.Kind(cs, object), h)
+	return true, c.Watch(source.Kind[ctrlclient.Object](cs, object, h))
 }
 
 func HashReleasePlanBatches(releasePlan *rolloutv1beta1.ReleasePlan) string {

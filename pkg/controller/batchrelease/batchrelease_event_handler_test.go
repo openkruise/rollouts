@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
 	"github.com/openkruise/rollouts/pkg/util"
@@ -134,7 +135,7 @@ func TestWorkloadEventHandler_Update(t *testing.T) {
 			fmt.Println(newSJk)
 			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(releaseDeploy.DeepCopy()).Build()
 			handler := workloadEventHandler{Reader: cli}
-			updateQ := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+			updateQ := workqueue.NewTypedRateLimitingQueue[reconcile.Request](workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
 			updateEvt := event.UpdateEvent{
 				ObjectOld: oldObject,
 				ObjectNew: newObject,
@@ -191,7 +192,7 @@ func TestWorkloadEventHandler_Create(t *testing.T) {
 			newObject := cs.GetNewWorkload()
 			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(releaseDeploy.DeepCopy()).Build()
 			handler := workloadEventHandler{Reader: cli}
-			createQ := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+			createQ := workqueue.NewTypedRateLimitingQueue[reconcile.Request](workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
 			createEvt := event.CreateEvent{
 				Object: newObject,
 			}
@@ -247,7 +248,7 @@ func TestWorkloadEventHandler_Delete(t *testing.T) {
 			newObject := cs.GetNewWorkload()
 			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(releaseDeploy.DeepCopy()).Build()
 			handler := workloadEventHandler{Reader: cli}
-			deleteQ := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+			deleteQ := workqueue.NewTypedRateLimitingQueue[reconcile.Request](workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
 			deleteEvt := event.DeleteEvent{
 				Object: newObject,
 			}
@@ -396,7 +397,7 @@ func TestPodEventHandler_Update(t *testing.T) {
 			fmt.Println(newSJk)
 			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(releaseDeploy.DeepCopy(), workload).Build()
 			handler := podEventHandler{Reader: cli}
-			updateQ := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+			updateQ := workqueue.NewTypedRateLimitingQueue[reconcile.Request](workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
 			updateEvt := event.UpdateEvent{
 				ObjectOld: oldObject,
 				ObjectNew: newObject,
@@ -464,7 +465,7 @@ func TestPodEventHandler_Create(t *testing.T) {
 			workload := cs.GetWorkload()
 			cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(releaseDeploy.DeepCopy(), workload).Build()
 			handler := podEventHandler{Reader: cli}
-			createQ := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+			createQ := workqueue.NewTypedRateLimitingQueue[reconcile.Request](workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
 			createEvt := event.CreateEvent{
 				Object: newObject,
 			}

@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 func TestPodEventHandler(t *testing.T) {
@@ -35,7 +36,7 @@ func TestPodEventHandler(t *testing.T) {
 	}
 
 	// create
-	createQ := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	createQ := workqueue.NewTypedRateLimitingQueue[reconcile.Request](workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
 	createEvt := event.CreateEvent{
 		Object: deploymentDemo,
 	}

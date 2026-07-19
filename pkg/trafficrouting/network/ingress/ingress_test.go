@@ -28,6 +28,7 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	rolloutsapi "github.com/openkruise/rollouts/api"
@@ -452,7 +453,7 @@ func TestEnsureRoutes(t *testing.T) {
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
 			getRoutes: func() *v1beta1.CanaryStep {
-				iType := gatewayv1beta1.HeaderMatchRegularExpression
+				iType := gatewayv1.HeaderMatchRegularExpression
 				return &v1beta1.CanaryStep{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Matches: []v1beta1.HttpRouteMatch{
@@ -613,7 +614,7 @@ func TestEnsureRoutes(t *testing.T) {
 				return []*netv1.Ingress{demoIngress.DeepCopy(), canary}
 			},
 			getRoutes: func() *v1beta1.CanaryStep {
-				iType := gatewayv1beta1.QueryParamMatchRegularExpression
+				iType := gatewayv1.QueryParamMatchRegularExpression
 				return &v1beta1.CanaryStep{
 					TrafficRoutingStrategy: v1beta1.TrafficRoutingStrategy{
 						Traffic: nil,

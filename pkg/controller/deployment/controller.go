@@ -114,13 +114,13 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to ReplicaSet
-	if err = c.Watch(source.Kind(mgr.GetCache(), &appsv1.ReplicaSet{}), handler.EnqueueRequestForOwner(
-		mgr.GetScheme(), mgr.GetRESTMapper(), &appsv1.Deployment{}, handler.OnlyControllerOwner())); err != nil {
+	if err = c.Watch(source.Kind[client.Object](mgr.GetCache(), &appsv1.ReplicaSet{}, handler.EnqueueRequestForOwner(
+		mgr.GetScheme(), mgr.GetRESTMapper(), &appsv1.Deployment{}, handler.OnlyControllerOwner()))); err != nil {
 		return err
 	}
 
 	// Watch for changes to MutatingWebhookConfigurations of kruise-rollout operator
-	if err = c.Watch(source.Kind(mgr.GetCache(), &admissionregistrationv1.MutatingWebhookConfiguration{}), &MutatingWebhookEventHandler{mgr.GetCache()}); err != nil {
+	if err = c.Watch(source.Kind[client.Object](mgr.GetCache(), &admissionregistrationv1.MutatingWebhookConfiguration{}, &MutatingWebhookEventHandler{mgr.GetCache()})); err != nil {
 		return err
 	}
 
@@ -143,7 +143,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to Deployment
-	return c.Watch(source.Kind(mgr.GetCache(), &appsv1.Deployment{}), &handler.EnqueueRequestForObject{}, predicate.Funcs{UpdateFunc: updateHandler})
+	return c.Watch(source.Kind[client.Object](mgr.GetCache(), &appsv1.Deployment{}, &handler.EnqueueRequestForObject{}, predicate.Funcs{UpdateFunc: updateHandler}))
 }
 
 // Reconcile reads that state of the cluster for a Deployment object and makes changes based on the state read
