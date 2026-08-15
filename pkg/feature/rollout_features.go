@@ -35,6 +35,8 @@ const (
 	KeepWorkloadPausedOnRolloutDeletion featuregate.Feature = "KeepWorkloadPausedOnRolloutDeletion"
 	// MinReadySecondsStrategy enables the alpha Deployment MinReadySeconds rollout strategy.
 	MinReadySecondsStrategy featuregate.Feature = "MinReadySecondsStrategy"
+	// SkipDeploymentRestart lets the native Deployment controller handle updates that only change a known restart annotation.
+	SkipDeploymentRestart featuregate.Feature = "SkipDeploymentRestart"
 )
 
 var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
@@ -43,6 +45,7 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	AppendServiceSelectorGate:           {Default: false, PreRelease: featuregate.Alpha},
 	KeepWorkloadPausedOnRolloutDeletion: {Default: false, PreRelease: featuregate.Alpha},
 	MinReadySecondsStrategy:             {Default: false, PreRelease: featuregate.Alpha},
+	SkipDeploymentRestart:               {Default: false, PreRelease: featuregate.Alpha},
 }
 
 func init() {

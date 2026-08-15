@@ -64,6 +64,11 @@ type WorkloadHandler struct {
 
 var _ admission.Handler = &WorkloadHandler{}
 
+const (
+	kubernetesRestartedAtAnnotation       = "kubectl.kubernetes.io/restartedAt"
+	deploymentRedeployTimestampAnnotation = "redeploy-timestamp"
+)
+
 // Handle handles admission requests.
 func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
 	// if subResources, then ignore
@@ -236,6 +241,10 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
 		return false, nil
 	}
+	if shouldSkipDeploymentRestart(oldObj, newObj) {
+		klog.InfoS("Deployment restart will be handled by the native Deployment controller", "deployment", klog.KObj(newObj), "rollout", klog.KObj(rollout))
+		return false, nil
+	}
 
 	// in rollout progressing
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
@@ -268,7 +277,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 				strategy.RollingUpdate = newObj.Spec.Strategy.RollingUpdate
 				newObj.Spec.Strategy.RollingUpdate = nil
 			}
-			if isEffectiveDeploymentRevisionChange(oldObj, newObj) {
+			if isEffectiveDeploymentRevisionChange(oldObj, newObj) && !isDeploymentRestartOnly(oldObj, newObj) {
 				modified = true
 				strategy.Paused = true
 			}
@@ -550,6 +559,45 @@ func previousMinReadyRollingUpdate(previous *apps.Deployment) *apps.RollingUpdat
 		MaxUnavailable: &maxUnavailable,
 		MaxSurge:       maxSurge,
 	}
+}
+
+// shouldSkipDeploymentRestart reports whether a restart-only update should bypass Rollout enrollment.
+// Restarts during an active Rollout remain under Rollout control.
+func shouldSkipDeploymentRestart(oldObj, newObj *apps.Deployment) bool {
+	return utilfeature.DefaultFeatureGate.Enabled(feature.SkipDeploymentRestart) &&
+		newObj.Annotations[util.InRolloutProgressingAnnotation] == "" &&
+		isDeploymentRestartOnly(oldObj, newObj)
+}
+
+// isDeploymentRestartOnly returns true when the workload update changes no pod template field
+// other than a known restart or redeploy annotation. A simultaneous RolloutID change is an explicit
+// request to start a Rollout and must not be treated as a restart-only update.
+func isDeploymentRestartOnly(oldObj, newObj *apps.Deployment) bool {
+	if oldObj.Annotations[appsv1beta1.RolloutIDLabel] != newObj.Annotations[appsv1beta1.RolloutIDLabel] {
+		return false
+	}
+	restartAnnotationKeys := []string{
+		kubernetesRestartedAtAnnotation,
+		deploymentRedeployTimestampAnnotation,
+	}
+	restartAnnotationChanged := false
+	for _, key := range restartAnnotationKeys {
+		oldValue, oldExists := oldObj.Spec.Template.Annotations[key]
+		newValue, newExists := newObj.Spec.Template.Annotations[key]
+		if oldExists != newExists || oldValue != newValue {
+			restartAnnotationChanged = true
+			break
+		}
+	}
+	if !restartAnnotationChanged {
+		return false
+	}
+	return util.EqualIgnoreSpecifyMetadata(
+		&oldObj.Spec.Template,
+		&newObj.Spec.Template,
+		nil,
+		restartAnnotationKeys,
+	)
 }
 
 func setDeploymentStrategyAnnotation(strategy appsv1alpha1.DeploymentStrategy, d *apps.Deployment) {

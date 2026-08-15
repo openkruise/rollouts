@@ -27,3 +27,9 @@ func TestMinReadySecondsStrategyDefaultDisabled(t *testing.T) {
 		t.Fatalf("feature gate %s is enabled by default", MinReadySecondsStrategy)
 	}
 }
+
+func TestSkipDeploymentRestartDefaultDisabled(t *testing.T) {
+	if utilfeature.DefaultFeatureGate.Enabled(SkipDeploymentRestart) {
+		t.Fatalf("feature gate %s is enabled by default", SkipDeploymentRestart)
+	}
+}

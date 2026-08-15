@@ -422,6 +422,111 @@ func TestHandlerDeployment(t *testing.T) {
 			},
 		},
 		{
+			name: "deployment restart, feature gate disabled",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-14T10:00:00+08:00",
+				}
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-14T10:00:00+08:00",
+				}
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.Paused = true
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				return []*apps.ReplicaSet{rsDemo.DeepCopy()}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
+			name: "deployment restart, feature gate enabled",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-14T10:00:00+08:00",
+				}
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-14T10:00:00+08:00",
+				}
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				return []*apps.ReplicaSet{rsDemo.DeepCopy()}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.SkipDeploymentRestart) + "=true")
+				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
+			name: "deployment redeploy, feature gate enabled",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Template.Annotations = map[string]string{
+					deploymentRedeployTimestampAnnotation: "1786001193501",
+				}
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Annotations = map[string]string{
+					deploymentRedeployTimestampAnnotation: "1786001193501",
+				}
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				return []*apps.ReplicaSet{rsDemo.DeepCopy()}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.SkipDeploymentRestart) + "=true")
+				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
+			name: "deployment restart with image change, feature gate enabled",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				newObj := deploymentDemo.DeepCopy()
+				newObj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-14T10:00:00+08:00",
+				}
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-14T10:00:00+08:00",
+				}
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+				obj.Spec.Paused = true
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				return []*apps.ReplicaSet{rsDemo.DeepCopy()}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.SkipDeploymentRestart) + "=true")
+				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
 			name: "deployment image v1->v2, matched minready rollout inflates strategy at admission and stays unpaused",
 			getObjs: func() (*apps.Deployment, *apps.Deployment) {
 				oldObj := deploymentDemo.DeepCopy()
@@ -578,6 +683,42 @@ func TestHandlerDeployment(t *testing.T) {
 				return []*apps.ReplicaSet{rs}
 			},
 			getRollout: func() *appsv1beta1.Rollout {
+				return rolloutDemo.DeepCopy()
+			},
+		},
+		{
+			name: "deployment restart during partition rollout does not pause batch strategy",
+			getObjs: func() (*apps.Deployment, *apps.Deployment) {
+				oldObj := deploymentDemo.DeepCopy()
+				oldObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				oldObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				oldObj.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = `{"rollingStyle":"Partition","rollingUpdate":{"maxUnavailable":"25%","maxSurge":"25%"},"partition":1}`
+				oldObj.Spec.Paused = true
+				oldObj.Spec.Strategy.Type = apps.RecreateDeploymentStrategyType
+
+				newObj := oldObj.DeepCopy()
+				newObj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-19T10:00:00+08:00",
+				}
+				return oldObj, newObj
+			},
+			expectObj: func() *apps.Deployment {
+				obj := deploymentDemo.DeepCopy()
+				obj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+				obj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-19T10:00:00+08:00",
+				}
+				obj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo","RolloutDone":false}`
+				obj.Annotations[appsv1alpha1.DeploymentStrategyAnnotation] = `{"rollingStyle":"Partition","rollingUpdate":{"maxUnavailable":"25%","maxSurge":"25%"},"partition":1}`
+				obj.Spec.Paused = true
+				obj.Spec.Strategy.Type = apps.RecreateDeploymentStrategyType
+				return obj
+			},
+			getRs: func() []*apps.ReplicaSet {
+				return []*apps.ReplicaSet{rsDemo.DeepCopy()}
+			},
+			getRollout: func() *appsv1beta1.Rollout {
+				_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.SkipDeploymentRestart) + "=true")
 				return rolloutDemo.DeepCopy()
 			},
 		},
@@ -1042,6 +1183,7 @@ func TestHandlerDeployment(t *testing.T) {
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
 			_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
+			_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.SkipDeploymentRestart) + "=false")
 			client := fake.NewClientBuilder().WithScheme(scheme).Build()
 			h := WorkloadHandler{
 				Client:  client,
@@ -1074,6 +1216,114 @@ func TestHandlerDeployment(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsDeploymentRestartOnly(t *testing.T) {
+	tests := []struct {
+		name     string
+		mutate   func(oldObj, newObj *apps.Deployment)
+		expected bool
+	}{
+		{
+			name: "restart annotation only",
+			mutate: func(_, newObj *apps.Deployment) {
+				newObj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-14T10:00:00+08:00",
+				}
+			},
+			expected: true,
+		},
+		{
+			name: "redeploy timestamp annotation only",
+			mutate: func(_, newObj *apps.Deployment) {
+				newObj.Spec.Template.Annotations = map[string]string{
+					deploymentRedeployTimestampAnnotation: "1786001193501",
+				}
+			},
+			expected: true,
+		},
+		{
+			name: "both restart annotations",
+			mutate: func(_, newObj *apps.Deployment) {
+				newObj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation:       "2026-08-14T10:00:00+08:00",
+					deploymentRedeployTimestampAnnotation: "1786001193501",
+				}
+			},
+			expected: true,
+		},
+		{
+			name: "restart annotation and image",
+			mutate: func(_, newObj *apps.Deployment) {
+				newObj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-14T10:00:00+08:00",
+				}
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+			},
+			expected: false,
+		},
+		{
+			name: "restart annotation and rollout ID",
+			mutate: func(oldObj, newObj *apps.Deployment) {
+				oldObj.Annotations[appsv1beta1.RolloutIDLabel] = "release-1"
+				newObj.Annotations[appsv1beta1.RolloutIDLabel] = "release-2"
+				newObj.Spec.Template.Annotations = map[string]string{
+					kubernetesRestartedAtAnnotation: "2026-08-14T10:00:00+08:00",
+				}
+			},
+			expected: false,
+		},
+		{
+			name: "redeploy annotation and image",
+			mutate: func(_, newObj *apps.Deployment) {
+				newObj.Spec.Template.Annotations = map[string]string{
+					deploymentRedeployTimestampAnnotation: "1786001193501",
+				}
+				newObj.Spec.Template.Spec.Containers[0].Image = "echoserver:v2"
+			},
+			expected: false,
+		},
+		{
+			name: "unrelated pod template annotation",
+			mutate: func(_, newObj *apps.Deployment) {
+				newObj.Spec.Template.Annotations = map[string]string{
+					"checksum/config": "new-value",
+				}
+			},
+			expected: false,
+		},
+		{
+			name:     "no restart annotation change",
+			mutate:   func(_, _ *apps.Deployment) {},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldObj := deploymentDemo.DeepCopy()
+			newObj := deploymentDemo.DeepCopy()
+			tt.mutate(oldObj, newObj)
+			assert.Equal(t, tt.expected, isDeploymentRestartOnly(oldObj, newObj))
+		})
+	}
+}
+
+func TestShouldSkipDeploymentRestart(t *testing.T) {
+	oldObj := deploymentDemo.DeepCopy()
+	newObj := deploymentDemo.DeepCopy()
+	newObj.Spec.Template.Annotations = map[string]string{
+		kubernetesRestartedAtAnnotation: "2026-08-19T10:00:00+08:00",
+	}
+
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.SkipDeploymentRestart) + "=true")
+	t.Cleanup(func() {
+		_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.SkipDeploymentRestart) + "=false")
+	})
+	assert.True(t, shouldSkipDeploymentRestart(oldObj, newObj))
+
+	newObj.Annotations[util.InRolloutProgressingAnnotation] = `{"rolloutName":"rollout-demo"}`
+	assert.False(t, shouldSkipDeploymentRestart(oldObj, newObj))
 }
 
 func TestIsMinReadySecondsStrategy(t *testing.T) {
