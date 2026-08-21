@@ -150,7 +150,7 @@ func (rc *realController) Finalize(ctx context.Context, release *v1beta1.BatchRe
 	if rc.object == nil {
 		return nil // No need to finalize again.
 	}
-	isUnderRolloutControl := rc.object.Annotations[util.BatchReleaseControlAnnotation] != "" && rc.object.Spec.Paused
+	isUnderRolloutControl := rc.object.Annotations[util.BatchReleaseControlAnnotation] != ""
 	if !isUnderRolloutControl {
 		return nil // No need to finalize again.
 	}
