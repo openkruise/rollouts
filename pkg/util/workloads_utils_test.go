@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -641,4 +642,91 @@ func TestNativeDaemonSetIntegration(t *testing.T) {
 		Expect(owner.GetName()).Should(Equal(nativeDaemonSet.GetName()))
 		Expect(owner.GetUID()).Should(Equal(nativeDaemonSet.GetUID()))
 	})
+}
+
+type patchCountingClient struct {
+	client.Client
+	patchCalls  int
+	updateCalls int
+}
+
+func (c *patchCountingClient) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	c.patchCalls++
+	return c.Client.Patch(ctx, obj, patch, opts...)
+}
+
+func (c *patchCountingClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	c.updateCalls++
+	return c.Client.Update(ctx, obj, opts...)
+}
+
+func TestUpdateFinalizerUsePatchForAdd(t *testing.T) {
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "demo",
+			Namespace:  "default",
+			Finalizers: []string{"existing"},
+		},
+	}
+	baseClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(deployment).Build()
+	c := &patchCountingClient{Client: baseClient}
+
+	if err := UpdateFinalizer(c, deployment.DeepCopy(), AddFinalizerOpType, "rollout.finalizer"); err != nil {
+		t.Fatalf("add finalizer failed: %v", err)
+	}
+	if c.patchCalls != 1 {
+		t.Fatalf("expected 1 patch call, got %d", c.patchCalls)
+	}
+	if c.updateCalls != 0 {
+		t.Fatalf("expected 0 update calls, got %d", c.updateCalls)
+	}
+
+	// The second add is idempotent and should not trigger a patch.
+	if err := UpdateFinalizer(c, deployment.DeepCopy(), AddFinalizerOpType, "rollout.finalizer"); err != nil {
+		t.Fatalf("idempotent add finalizer failed: %v", err)
+	}
+	if c.patchCalls != 1 {
+		t.Fatalf("expected patch call count to remain 1, got %d", c.patchCalls)
+	}
+	if c.updateCalls != 0 {
+		t.Fatalf("expected 0 update calls after idempotent add, got %d", c.updateCalls)
+	}
+
+	var result appsv1.Deployment
+	if err := c.Get(context.TODO(), client.ObjectKeyFromObject(deployment), &result); err != nil {
+		t.Fatalf("get deployment failed: %v", err)
+	}
+	if len(result.Finalizers) != 2 || result.Finalizers[0] != "existing" || result.Finalizers[1] != "rollout.finalizer" {
+		t.Fatalf("unexpected finalizers: %v", result.Finalizers)
+	}
+}
+
+func TestUpdateFinalizerUsePatchForRemove(t *testing.T) {
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "demo",
+			Namespace:  "default",
+			Finalizers: []string{"existing", "rollout.finalizer"},
+		},
+	}
+	baseClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(deployment).Build()
+	c := &patchCountingClient{Client: baseClient}
+
+	if err := UpdateFinalizer(c, deployment.DeepCopy(), RemoveFinalizerOpType, "rollout.finalizer"); err != nil {
+		t.Fatalf("remove finalizer failed: %v", err)
+	}
+	if c.patchCalls != 1 {
+		t.Fatalf("expected 1 patch call, got %d", c.patchCalls)
+	}
+	if c.updateCalls != 0 {
+		t.Fatalf("expected 0 update calls, got %d", c.updateCalls)
+	}
+
+	var result appsv1.Deployment
+	if err := c.Get(context.TODO(), client.ObjectKeyFromObject(deployment), &result); err != nil {
+		t.Fatalf("get deployment failed: %v", err)
+	}
+	if len(result.Finalizers) != 1 || result.Finalizers[0] != "existing" {
+		t.Fatalf("unexpected finalizers: %v", result.Finalizers)
+	}
 }

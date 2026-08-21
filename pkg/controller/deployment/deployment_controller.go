@@ -52,6 +52,13 @@ type DeploymentController struct {
 	runtimeClient client.Client
 }
 
+// patchDeploymentStatus patches the Deployment status subresource using a merge diff.
+// Only changed fields are sent, which avoids overwriting unknown fields from newer API versions.
+func (dc *DeploymentController) patchDeploymentStatus(ctx context.Context, oldD, newD *apps.Deployment) error {
+	patch := client.MergeFrom(oldD)
+	return dc.runtimeClient.Status().Patch(ctx, newD, patch)
+}
+
 // getReplicaSetsForDeployment uses ControllerRefManager to reconcile
 // ControllerRef by adopting and orphaning.
 // It returns the list of ReplicaSets that this Deployment should manage.
@@ -100,10 +107,13 @@ func (dc *DeploymentController) syncDeployment(ctx context.Context, deployment *
 	if reflect.DeepEqual(d.Spec.Selector, &everything) {
 		dc.eventRecorder.Eventf(d, v1.EventTypeWarning, "SelectingAll", "This deployment is selecting all pods. A non-empty selector is required.")
 		if d.Status.ObservedGeneration < d.Generation {
-			d.Status.ObservedGeneration = d.Generation
-			err := dc.runtimeClient.Status().Update(ctx, d)
-			if err != nil {
-				klog.Errorf("Failed to update deployment status: %v", err)
+			// Use Patch instead of Update to avoid erasing unknown status fields
+			// that a newer API server may have set (version-skew safety).
+			dCopy := d.DeepCopy()
+			dCopy.Status.ObservedGeneration = d.Generation
+			if err := dc.runtimeClient.Status().Patch(ctx, dCopy, client.MergeFrom(d)); err != nil {
+
+				klog.Errorf("Failed to patch deployment status: %v", err)
 			}
 		}
 		return nil

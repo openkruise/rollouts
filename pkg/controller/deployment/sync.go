@@ -133,6 +133,7 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 			}
 			return rsCopy, nil
 		}
+		oldD := d.DeepCopy()
 
 		// Should use the revision in existingNewRS's annotation, since it set by before
 		needsUpdate := deploymentutil.SetDeploymentRevision(d, rsCopy.Annotations[deploymentutil.RevisionAnnotation])
@@ -148,8 +149,9 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 		}
 
 		if needsUpdate {
-			var err error
-			if err = dc.runtimeClient.Status().Update(ctx, d); err != nil {
+			// Patch instead of Update: only send the status delta so unknown
+			// fields from newer API servers are not erased (version-skew safety).
+			if err := dc.runtimeClient.Status().Patch(ctx, d, client.MergeFrom(oldD)); err != nil {
 				return nil, err
 			}
 		}
@@ -234,15 +236,17 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 		if d.Status.CollisionCount == nil {
 			d.Status.CollisionCount = new(int32)
 		}
+		oldD := d.DeepCopy()
+
 		preCollisionCount := *d.Status.CollisionCount
 		*d.Status.CollisionCount++
-		// Update the collisionCount for the Deployment and let it requeue by returning the original
-		// error.
-		dErr := dc.runtimeClient.Status().Update(ctx, d)
+		// Patch instead of Update: send only the collisionCount delta.
+		dBase := oldD.DeepCopy()
+		dErr := dc.runtimeClient.Status().Patch(ctx, d, client.MergeFrom(dBase))
 		if dErr == nil {
 			klog.V(2).Infof("Found a hash collision for deployment %q - bumping collisionCount (%d->%d) to resolve it", d.Name, preCollisionCount, *d.Status.CollisionCount)
 		} else {
-			klog.Errorf("Failed to update deployment collision count: %v", dErr)
+			klog.Errorf("Failed to patch deployment collision count: %v", dErr)
 		}
 		return nil, err
 	case errors.HasStatusCause(err, v1.NamespaceTerminatingCause):
@@ -251,13 +255,15 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 	case err != nil:
 		msg := fmt.Sprintf("Failed to create new replica set %q: %v", newRS.Name, err)
 		if deploymentutil.HasProgressDeadline(d) {
+			oldD := d.DeepCopy()
 			cond := deploymentutil.NewDeploymentCondition(apps.DeploymentProgressing, v1.ConditionFalse, deploymentutil.FailedRSCreateReason, msg)
+			// Patch instead of Update: only the new condition is sent
 			deploymentutil.SetDeploymentCondition(&d.Status, *cond)
 			// We don't really care about this error at this point, since we have a bigger issue to report.
 			// TODO: Identify which errors are permanent and switch DeploymentIsFailed to take into account
 			// these reasons as well. Related issue: https://github.com/kubernetes/kubernetes/issues/18568
-			if updateErr := dc.runtimeClient.Status().Update(ctx, d); updateErr != nil {
-				klog.Errorf("Failed to update deployment status after RS creation failure: %v", updateErr)
+			if updateErr := dc.runtimeClient.Status().Patch(ctx, d, client.MergeFrom(oldD)); updateErr != nil {
+				klog.Errorf("Failed to patch deployment status after RS creation failure: %v", updateErr)
 			}
 		}
 		dc.eventRecorder.Eventf(d, v1.EventTypeWarning, deploymentutil.FailedRSCreateReason, msg)
@@ -266,7 +272,7 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 	if !alreadyExists && newReplicasCount > 0 {
 		dc.eventRecorder.Eventf(d, v1.EventTypeNormal, "ScalingReplicaSet", "Scaled up replica set %s to %d", createdRS.Name, newReplicasCount)
 	}
-
+	oldD := d.DeepCopy()
 	needsUpdate := deploymentutil.SetDeploymentRevision(d, newRevision)
 	if !alreadyExists && deploymentutil.HasProgressDeadline(d) {
 		msg := fmt.Sprintf("Created new replica set %q", createdRS.Name)
@@ -275,8 +281,9 @@ func (dc *DeploymentController) getNewReplicaSet(ctx context.Context, d *apps.De
 		needsUpdate = true
 	}
 	if needsUpdate {
-		if updateErr := dc.runtimeClient.Status().Update(ctx, d); updateErr != nil {
-			klog.Errorf("Failed to update deployment status: %v", updateErr)
+		// Patch instead of Update: only the revision / Progressing condition delta is sent.
+		if updateErr := dc.runtimeClient.Status().Patch(ctx, d, client.MergeFrom(oldD)); updateErr != nil {
+			klog.Errorf("Failed to patch deployment status: %v", updateErr)
 			err = updateErr
 		}
 	}

@@ -26,6 +26,8 @@ import (
 
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	intstrutil "k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/pointer"
@@ -234,5 +236,41 @@ func TestSyncDeployment(t *testing.T) {
 				t.Fatalf("expect new %d, but got new %d; expect old %d, but got old %d ", test.expectNewReplicas, resultNew, test.expectOldReplicas, resultOld)
 			}
 		})
+	}
+}
+
+func TestSyncDeploymentSelectingAll(t *testing.T) {
+	deployment := generateDeployment("busybox")
+	deployment.Spec.Selector = &metav1.LabelSelector{}
+	deployment.Generation = 7
+	deployment.Status.ObservedGeneration = 3
+	deployment.Annotations = map[string]string{
+		"test-unknown-field": "kept",
+	}
+
+	fakeCtrlClient := ctrlfake.NewClientBuilder().
+		WithStatusSubresource(&apps.Deployment{}).
+		WithObjects(&deployment).
+		Build()
+
+	dc := &DeploymentController{
+		eventRecorder: record.NewFakeRecorder(10),
+		runtimeClient: fakeCtrlClient,
+	}
+
+	if err := dc.syncDeployment(context.TODO(), &deployment); err != nil {
+		t.Fatalf("syncDeployment returned unexpected error: %v", err)
+	}
+
+	var result apps.Deployment
+	if err := fakeCtrlClient.Get(context.TODO(), ctrlclient.ObjectKeyFromObject(&deployment), &result); err != nil {
+		t.Fatalf("get deployment failed: %v", err)
+	}
+
+	if result.Status.ObservedGeneration != result.Generation {
+		t.Fatalf("expected observedGeneration=%d, got %d", result.Generation, result.Status.ObservedGeneration)
+	}
+	if got := result.Annotations["test-unknown-field"]; got != "kept" {
+		t.Fatalf("expected annotation test-unknown-field=kept, got %q", got)
 	}
 }
