@@ -758,6 +758,57 @@ func TestReconcileRolloutProgressing(t *testing.T) {
 			},
 		},
 		{
+			// Regression test for the case where a canary release is cancelled
+			// (workload rolled back directly). After doFinalising completes the
+			// rollback cleanup, the canaryStatus must be cleared so the rollout
+			// does not appear stuck at "step N paused" while phase is Healthy.
+			name: "ReconcileRolloutProgressing cancelling -> completed clears canaryStatus",
+			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
+				// Workload is fully rolled back to v1 (stable image), no canary RS.
+				dep1 := deploymentDemo.DeepCopy()
+				dep1.Spec.Template.Spec.Containers[0].Image = "echoserver:v1"
+				rs1 := rsDemo.DeepCopy()
+				return []*apps.Deployment{dep1}, []*apps.ReplicaSet{rs1}
+			},
+			getNetwork: func() ([]*corev1.Service, []*netv1.Ingress) {
+				return []*corev1.Service{demoService.DeepCopy()}, []*netv1.Ingress{demoIngress.DeepCopy()}
+			},
+			getRollout: func() (*v1beta1.Rollout, *v1beta1.BatchRelease, *v1alpha1.TrafficRouting) {
+				obj := rolloutDemo.DeepCopy()
+				obj.Status.CanaryStatus.ObservedWorkloadGeneration = 2
+				obj.Status.CanaryStatus.RolloutHash = "f55bvd874d5f2fzvw46bv966x4bwbdv4wx6bd9f7b46ww788954b8z8w29b7wxfd"
+				obj.Status.CanaryStatus.StableRevision = "pod-template-hash-v1"
+				// Stale canary data left from the failed canary release.
+				obj.Status.CanaryStatus.CanaryRevision = "pod-template-hash-v1"
+				obj.Status.CanaryStatus.PodTemplateHash = "pod-template-hash-v2"
+				obj.Status.CanaryStatus.CurrentStepIndex = 1
+				obj.Status.CanaryStatus.CurrentStepState = v1beta1.CanaryStepStatePaused
+				obj.Status.CanaryStatus.CanaryReplicas = 1
+				obj.Status.CanaryStatus.CanaryReadyReplicas = 1
+				// FinalisingStep at the last rollback task so a single reconcile
+				// completes cancellation (next step is FinalisingStepTypeEnd).
+				obj.Status.CanaryStatus.FinalisingStep = v1beta1.FinalisingStepRemoveCanaryService
+				cond := util.GetRolloutCondition(obj.Status, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1alpha1.ProgressingReasonCancelling
+				cond.Status = corev1.ConditionTrue
+				util.SetRolloutCondition(&obj.Status, *cond)
+				return obj, nil, nil
+			},
+			expectStatus: func() *v1beta1.RolloutStatus {
+				s := rolloutDemo.Status.DeepCopy()
+				s.Clear()
+				cond := util.GetRolloutCondition(*s, v1beta1.RolloutConditionProgressing)
+				cond.Reason = v1alpha1.ProgressingReasonCompleted
+				cond.Status = corev1.ConditionFalse
+				util.SetRolloutCondition(s, *cond)
+				succeeded := util.NewRolloutCondition(v1beta1.RolloutConditionSucceeded, corev1.ConditionFalse, "", "")
+				succeeded.LastUpdateTime = metav1.Time{}
+				succeeded.LastTransitionTime = metav1.Time{}
+				util.SetRolloutCondition(s, *succeeded)
+				return s
+			},
+		},
+		{
 			name: "ReconcileRolloutProgressing rolling -> continueRelease2",
 			getObj: func() ([]*apps.Deployment, []*apps.ReplicaSet) {
 				dep1 := deploymentDemo.DeepCopy()
