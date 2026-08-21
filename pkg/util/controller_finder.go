@@ -18,14 +18,18 @@ package util
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 
 	appsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	appsv1beta1 "github.com/openkruise/kruise-api/apps/v1beta1"
 	apps "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -109,7 +113,7 @@ func (r *ControllerFinder) GetWorkloadForRef(rollout *rolloutv1beta1.Rollout) (*
 }
 
 func (r *ControllerFinder) canaryStyleFinders() []ControllerFinderFunc {
-	return []ControllerFinderFunc{r.getDeployment}
+	return []ControllerFinderFunc{r.getDeployment, r.getLeaderWorkerSet}
 }
 
 // Note: getStatefulSetLikeWorkload is placed last because it has broader matching criteria.
@@ -132,6 +136,9 @@ var (
 	ControllerKruiseKindDS     = appsv1alpha1.SchemeGroupVersion.WithKind("DaemonSet")
 	ControllerKruiseKindSts    = appsv1beta1.SchemeGroupVersion.WithKind("StatefulSet")
 	ControllerKruiseOldKindSts = appsv1alpha1.SchemeGroupVersion.WithKind("StatefulSet")
+	// LeaderWorkerSet from kubernetes-sigs/lws
+	// API Group: workload.kubernetes.io, Version: v1alpha1, Kind: LeaderWorkerSet
+	ControllerLWSKind = schema.GroupVersionKind{Group: "workload.kubernetes.io", Version: "v1alpha1", Kind: "LeaderWorkerSet"}
 )
 
 // getKruiseCloneSet returns the kruise cloneSet referenced by the provided controllerRef.
@@ -407,6 +414,90 @@ func (r *ControllerFinder) getDeployment(namespace string, ref *rolloutv1beta1.O
 	}
 	workload.PodTemplateHash = canaryRs.Labels[apps.DefaultDeploymentUniqueLabelKey]
 	return workload, err
+}
+
+// getLeaderWorkerSet returns the LeaderWorkerSet referenced by the provided controllerRef.
+// LeaderWorkerSet is used for AI inference workloads with leader-worker pattern.
+func (r *ControllerFinder) getLeaderWorkerSet(namespace string, ref *rolloutv1beta1.ObjectRef) (*Workload, error) {
+	// Verify this is a LeaderWorkerSet
+	ok, _ := verifyGroupKind(ref, ControllerLWSKind.Kind, []string{ControllerLWSKind.Group})
+	if !ok {
+		return nil, nil
+	}
+
+	// Use unstructured to handle LWS since we may not have the typed client
+	lws := &unstructured.Unstructured{}
+	lws.SetGroupVersionKind(ControllerLWSKind)
+	err := r.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: ref.Name}, lws)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// Check generation consistency
+	observedGen, found, _ := unstructured.NestedInt64(lws.Object, "status", "observedGeneration")
+	generation := lws.GetGeneration()
+	if !found || generation != observedGen {
+		return &Workload{IsStatusConsistent: false}, nil
+	}
+
+	// Extract replicas - LWS typically has replicas in spec
+	replicas, found, _ := unstructured.NestedInt64(lws.Object, "spec", "replicas")
+	if !found {
+		replicas = 0
+	}
+
+	// Extract pod template for hash calculation
+	templateObj, found, _ := unstructured.NestedMap(lws.Object, "spec", "template")
+	if !found {
+		return &Workload{IsStatusConsistent: false}, fmt.Errorf("spec.template not found in LeaderWorkerSet")
+	}
+
+	// Create pod template from unstructured
+	podTemplate := &corev1.PodTemplateSpec{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(templateObj, podTemplate); err != nil {
+		return &Workload{IsStatusConsistent: false}, fmt.Errorf("failed to convert template: %w", err)
+	}
+
+	canaryRevision := ComputeHash(podTemplate, nil)
+
+	workload := &Workload{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        lws.GetName(),
+			Namespace:   lws.GetNamespace(),
+			UID:         lws.GetUID(),
+			Labels:      lws.GetLabels(),
+			Annotations: lws.GetAnnotations(),
+		},
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: lws.GetAPIVersion(),
+			Kind:       lws.GetKind(),
+		},
+		Replicas:           int32(replicas),
+		IsStatusConsistent: true,
+		CanaryRevision:     canaryRevision,
+		RevisionLabelKey:   "workload.kubernetes.io/template-hash", // Custom revision label key for LWS
+	}
+
+	// Try to extract stable revision from status if available
+	if stableRev, found, _ := unstructured.NestedString(lws.Object, "status", "stableRevision"); found {
+		workload.StableRevision = stableRev
+	}
+
+	// Check if in rollout progressing
+	if _, ok := workload.Annotations[InRolloutProgressingAnnotation]; !ok {
+		return workload, nil
+	}
+
+	workload.InRolloutProgressing = true
+	// Check for rollback condition
+	if workload.StableRevision != "" && workload.StableRevision == canaryRevision {
+		workload.IsInRollback = true
+	}
+
+	return workload, nil
 }
 
 func (r *ControllerFinder) getStatefulSetLikeWorkload(namespace string, ref *rolloutv1beta1.ObjectRef) (*Workload, error) {
