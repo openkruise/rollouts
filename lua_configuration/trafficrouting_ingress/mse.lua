@@ -4,7 +4,12 @@ function split(input, delimiter)
     return arr
 end
 
-annotations = obj.annotations
+annotations = {}
+-- obj.annotations is ingress annotations, handle nil case
+if ( obj.annotations )
+then
+    annotations = obj.annotations
+end
 annotations["nginx.ingress.kubernetes.io/canary"] = "true"
 annotations["nginx.ingress.kubernetes.io/canary-by-cookie"] = nil
 annotations["nginx.ingress.kubernetes.io/canary-by-header"] = nil
