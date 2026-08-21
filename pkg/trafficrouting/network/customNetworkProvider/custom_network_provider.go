@@ -305,31 +305,29 @@ func (r *customController) executeLuaForCanary(spec Data, strategy *v1beta1.Traf
 }
 
 func (r *customController) getLuaScript(ctx context.Context, ref v1beta1.ObjectRef) (string, error) {
-	// get local lua script
-	// luaScript.Provider: CRDGroupt/Kind
+	// First, try to get user-defined lua script from ConfigMap
+	// This allows users to override the built-in configuration
 	group := strings.Split(ref.APIVersion, "/")[0]
+	nameSpace := util.GetRolloutNamespace() // kruise-rollout
+	name := LuaConfigMap
+	configMap := &corev1.ConfigMap{}
+	err := r.Get(ctx, types.NamespacedName{Namespace: nameSpace, Name: name}, configMap)
+	if err == nil {
+		key := fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingCustomTypePrefix, ref.Kind, group)
+		if script, ok := configMap.Data[key]; ok && script != "" {
+			return script, nil
+		}
+	}
+
+	// If user-defined script is not found, fall back to built-in lua script
+	// luaScript.Provider: CRDGroup/Kind
 	key := fmt.Sprintf("lua_configuration/%s/trafficRouting.lua", fmt.Sprintf("%s/%s", group, ref.Kind))
 	script := util.GetLuaConfigurationContent(key)
 	if script != "" {
 		return script, nil
 	}
 
-	// if lua script is not found locally, then try ConfigMap
-	nameSpace := util.GetRolloutNamespace() // kruise-rollout
-	name := LuaConfigMap
-	configMap := &corev1.ConfigMap{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: nameSpace, Name: name}, configMap)
-	if err != nil {
-		return "", fmt.Errorf("failed to get ConfigMap(%s/%s)", nameSpace, name)
-	} else {
-		// in format like "lua.traffic.routing.ingress.aliyun-alb"
-		key = fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingCustomTypePrefix, ref.Kind, group)
-		if script, ok := configMap.Data[key]; ok {
-			return script, nil
-		} else {
-			return "", fmt.Errorf("expected script not found neither locally nor in ConfigMap")
-		}
-	}
+	return "", fmt.Errorf("lua script not found for %s/%s neither in ConfigMap nor built-in configuration", ref.Kind, group)
 }
 
 // compare and update obj, return whether the obj is updated

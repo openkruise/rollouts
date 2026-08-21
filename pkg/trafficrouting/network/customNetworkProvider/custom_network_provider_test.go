@@ -221,6 +221,168 @@ func TestInitialize(t *testing.T) {
 	}
 }
 
+func TestGetLuaScriptPriority(t *testing.T) {
+	// Test that ConfigMap scripts take precedence over built-in scripts
+	cases := []struct {
+		name           string
+		getConfig      func() Config
+		getConfigMap   func() *corev1.ConfigMap
+		expectedScript string
+		expectError    bool
+	}{
+		{
+			name: "ConfigMap script overrides built-in script for Istio VirtualService",
+			getConfig: func() Config {
+				return Config{
+					StableService: "echoserver",
+					CanaryService: "echoserver-canary",
+					TrafficConf: []v1beta1.ObjectRef{
+						{
+							APIVersion: "networking.istio.io/v1alpha3",
+							Kind:       "VirtualService",
+							Name:       "echoserver",
+						},
+					},
+				}
+			},
+			getConfigMap: func() *corev1.ConfigMap {
+				return &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      LuaConfigMap,
+						Namespace: util.GetRolloutNamespace(),
+					},
+					Data: map[string]string{
+						fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingCustomTypePrefix, "VirtualService", "networking.istio.io"): "-- Custom Lua script from ConfigMap\nreturn obj.data",
+					},
+				}
+			},
+			expectedScript: "-- Custom Lua script from ConfigMap\nreturn obj.data",
+			expectError:    false,
+		},
+		{
+			name: "ConfigMap script overrides built-in script for Istio DestinationRule",
+			getConfig: func() Config {
+				return Config{
+					StableService: "echoserver",
+					CanaryService: "echoserver-canary",
+					TrafficConf: []v1beta1.ObjectRef{
+						{
+							APIVersion: "networking.istio.io/v1alpha3",
+							Kind:       "DestinationRule",
+							Name:       "dr-demo",
+						},
+					},
+				}
+			},
+			getConfigMap: func() *corev1.ConfigMap {
+				return &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      LuaConfigMap,
+						Namespace: util.GetRolloutNamespace(),
+					},
+					Data: map[string]string{
+						fmt.Sprintf("%s.%s.%s", configuration.LuaTrafficRoutingCustomTypePrefix, "DestinationRule", "networking.istio.io"): "-- Custom label: canary instead of gray\ncanary.labels['istio.service.tag'] = 'canary'\nreturn obj.data",
+					},
+				}
+			},
+			expectedScript: "-- Custom label: canary instead of gray\ncanary.labels['istio.service.tag'] = 'canary'\nreturn obj.data",
+			expectError:    false,
+		},
+		{
+			name: "Falls back to built-in script when ConfigMap doesn't have custom script",
+			getConfig: func() Config {
+				return Config{
+					StableService: "echoserver",
+					CanaryService: "echoserver-canary",
+					TrafficConf: []v1beta1.ObjectRef{
+						{
+							APIVersion: "networking.istio.io/v1alpha3",
+							Kind:       "VirtualService",
+							Name:       "echoserver",
+						},
+					},
+				}
+			},
+			getConfigMap: func() *corev1.ConfigMap {
+				return &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      LuaConfigMap,
+						Namespace: util.GetRolloutNamespace(),
+					},
+					Data: map[string]string{
+						// Empty ConfigMap, should fall back to built-in
+					},
+				}
+			},
+			expectedScript: "", // Will check it's not empty and is the built-in script
+			expectError:    false,
+		},
+		{
+			name: "Returns error when neither ConfigMap nor built-in script exists",
+			getConfig: func() Config {
+				return Config{
+					StableService: "echoserver",
+					CanaryService: "echoserver-canary",
+					TrafficConf: []v1beta1.ObjectRef{
+						{
+							APIVersion: "non-existent.io/v1",
+							Kind:       "NonExistentResource",
+							Name:       "test",
+						},
+					},
+				}
+			},
+			getConfigMap: func() *corev1.ConfigMap {
+				return &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      LuaConfigMap,
+						Namespace: util.GetRolloutNamespace(),
+					},
+					Data: map[string]string{},
+				}
+			},
+			expectedScript: "",
+			expectError:    true,
+		},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			fakeCli := fake.NewClientBuilder().WithScheme(scheme).Build()
+			if err := fakeCli.Create(context.TODO(), cs.getConfigMap()); err != nil {
+				t.Fatalf("Failed to create ConfigMap: %s", err.Error())
+			}
+			c, _ := NewCustomController(fakeCli, cs.getConfig())
+			controller := c.(*customController)
+
+			ref := cs.getConfig().TrafficConf[0]
+			script, err := controller.getLuaScript(context.TODO(), ref)
+
+			if cs.expectError {
+				if err == nil {
+					t.Fatalf("Expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %s", err.Error())
+			}
+
+			if cs.expectedScript != "" {
+				if script != cs.expectedScript {
+					t.Fatalf("Expected script:\n%s\n\nBut got:\n%s", cs.expectedScript, script)
+				}
+			} else {
+				// For the fallback case, just verify we got a non-empty built-in script
+				if script == "" {
+					t.Fatalf("Expected non-empty built-in script but got empty string")
+				}
+			}
+		})
+	}
+}
+
 func checkEqual(cli client.Client, t *testing.T, expect *unstructured.Unstructured) {
 	obj := &unstructured.Unstructured{}
 	obj.SetAPIVersion(expect.GetAPIVersion())
