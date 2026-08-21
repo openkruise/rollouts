@@ -30,12 +30,15 @@ const (
 	AdvancedDeploymentGate featuregate.Feature = "AdvancedDeployment"
 	// AppendServiceSelectorGate enable appending pod labels from PodTemplateMetadata to the canary service selector.
 	AppendServiceSelectorGate featuregate.Feature = "AppendPodSelector"
+	// SkipDeploymentRestart lets the native Deployment controller handle updates that only change a known restart annotation.
+	SkipDeploymentRestart featuregate.Feature = "SkipDeploymentRestart"
 )
 
 var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	RolloutHistoryGate:        {Default: false, PreRelease: featuregate.Alpha},
 	AdvancedDeploymentGate:    {Default: false, PreRelease: featuregate.Alpha},
 	AppendServiceSelectorGate: {Default: false, PreRelease: featuregate.Alpha},
+	SkipDeploymentRestart:     {Default: false, PreRelease: featuregate.Alpha},
 }
 
 func init() {
