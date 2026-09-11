@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.6.3
+### Key Features:
+- Added the optional `SkipDeploymentRestart` feature gate to let the native Deployment controller handle restart-only updates. ([#349](https://github.com/openkruise/rollouts/pull/349), [@lintailiang1991](https://github.com/lintailiang1991))
+
 ## v0.6.2
 ### Bugfix:
 - Fixed issue where partition deployments got stuck. ([#307](https://github.com/openkruise/rollouts/pull/307),[@AiRanthem](https://github.com/AiRanthem))
