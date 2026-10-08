@@ -206,6 +206,11 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err != nil {
 		errList = append(errList, field.InternalError(field.NewPath("do-release"), err))
 	}
+	// Do returns no status when there is no release controller for the workload,
+	// e.g. an unsupported workload kind. There is nothing to update then.
+	if currentStatus == nil {
+		return result, errList.ToAggregate()
+	}
 
 	defer func() {
 		klog.InfoS("Finished one round of reconciling release plan",

@@ -833,6 +833,39 @@ func TestReconcile_Deployment(t *testing.T) {
 	}
 }
 
+func TestReconcileUnsupportedWorkload(t *testing.T) {
+	release := releaseDeploy.DeepCopy()
+	release.Spec.WorkloadRef = v1beta1.ObjectRef{APIVersion: "batch/v1", Kind: "Job", Name: "sample"}
+	// The first reconcile adds a watcher for the workload kind and returns,
+	// so start from the second one.
+	gvk := util.GetGVKFrom(&release.Spec.WorkloadRef)
+	watchedWorkload.LoadOrStore(gvk.String(), struct{}{})
+	defer watchedWorkload.Delete(gvk.String())
+
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).Build()
+	reconciler := &BatchReleaseReconciler{
+		Client:   cli,
+		recorder: rec,
+		Scheme:   scheme,
+		executor: NewReleasePlanExecutor(cli, rec),
+	}
+
+	key := client.ObjectKeyFromObject(release)
+	if _, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: key}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	select {
+	case event := <-rec.Events:
+		if !strings.Contains(event, "UnsupportedWorkload") {
+			t.Fatalf("unexpected event: %s", event)
+		}
+	default:
+		t.Fatal("expected an UnsupportedWorkload event")
+	}
+}
+
 func TestExecutorFallsBackToRecreateWhenMinReadyFeatureGateDisabled(t *testing.T) {
 	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
 	release := releaseDeploy.DeepCopy()
