@@ -74,6 +74,22 @@ func TestValidateV1alpha1Rollout(t *testing.T) {
 			errMsg:  "WorkloadRef is required",
 		},
 		{
+			name: "missing workloadRef with canary strategy",
+			rollout: &appsv1alpha1.Rollout{
+				ObjectMeta: metav1.ObjectMeta{Name: "rollout-no-ref-canary"},
+				Spec: appsv1alpha1.RolloutSpec{
+					ObjectRef: appsv1alpha1.ObjectRef{},
+					Strategy: appsv1alpha1.RolloutStrategy{
+						Canary: &appsv1alpha1.CanaryStrategy{
+							Steps: []appsv1alpha1.CanaryStep{{Replicas: &intstr.IntOrString{Type: intstr.Int, IntVal: 1}}},
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "WorkloadRef is required",
+		},
+		{
 			name: "invalid rolling style",
 			rollout: &appsv1alpha1.Rollout{
 				ObjectMeta: metav1.ObjectMeta{

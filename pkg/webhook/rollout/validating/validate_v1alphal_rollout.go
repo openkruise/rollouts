@@ -255,7 +255,7 @@ func GetContextFromv1alpha1Rollout(rollout *appsv1alpha1.Rollout) *validateConte
 	switch strings.ToLower(rollout.Annotations[appsv1alpha1.RolloutStyleAnnotation]) {
 	case "", strings.ToLower(string(appsv1alpha1.CanaryRollingStyle)):
 		targetRef := rollout.Spec.ObjectRef.WorkloadRef
-		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
+		if targetRef != nil && targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
 			style = appsv1alpha1.CanaryRollingStyle
 		}
 	}
