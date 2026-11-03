@@ -32,6 +32,31 @@ function GetRulesToPatch(spec, stableService, protocol)
     return matchedRoutes
 end
 
+-- copy a destination port, the same table cannot be shared by two routes
+function CopyPort(port)
+    if port == nil then
+        return nil
+    end
+    local copy = {}
+    for key, value in pairs(port) do
+        copy[key] = value
+    end
+    return copy
+end
+
+-- find the port of the stable service destination in routes without matches,
+-- so that canary routes target the same service port
+function GetStablePort(spec, stableService, protocol)
+    for _, rule in ipairs(GetRulesToPatch(spec, stableService, protocol)) do
+        for _, route in ipairs(rule.route) do
+            if GetHost(route) == stableService and route.destination.port ~= nil then
+                return route.destination.port
+            end
+        end
+    end
+    return nil
+end
+
 function CalculateWeight(route, stableWeight, n)
     local weight
     if (route.weight) then
@@ -44,6 +69,7 @@ end
 
 -- generate routes with matches, insert a rule before other rules, only support http headers, cookies etc.
 function GenerateRoutesWithMatches(spec, matches, stableService, canaryService, requestHeaderModifier)
+    local stablePort = GetStablePort(spec, stableService, "http")
     for _, match in ipairs(matches) do
         local route = {}
         route["match"] = {}
@@ -110,6 +136,7 @@ function GenerateRoutesWithMatches(spec, matches, stableService, canaryService, 
         else
             route.route[1].destination.host = canaryService
         end
+        route.route[1].destination.port = CopyPort(stablePort)
         table.insert(spec.http, 1, route)
     end
 end
@@ -140,6 +167,10 @@ function GenerateRoutes(spec, stableService, canaryService, stableWeight, canary
         for _, route in ipairs(rule.route) do
             -- update stable service weight
             route.weight = CalculateWeight(route, stableWeight, #rule.route)
+            -- canary routes target the same service port as stable routes
+            if canary.destination.port == nil and GetHost(route) == stableService then
+                canary.destination.port = CopyPort(route.destination.port)
+            end
         end
         table.insert(rule.route, canary)
     end
