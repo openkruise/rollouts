@@ -1,0 +1,111 @@
+rollout:
+  apiVersion: rollouts.kruise.io/v1beta1
+  kind: Rollout
+  metadata:
+    name: rollouts-demo
+  spec:
+    workloadRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: deploy-demo
+    strategy:
+      canary:
+        steps:
+        - matches:
+          - headers:
+            - type: Exact
+              name: user-agent
+              value: pc
+        - traffic: "50%"
+        trafficRoutings:
+        - service: svc-demo
+          customNetworkRefs:
+          - apiVersion: networking.istio.io/v1alpha3
+            kind: VirtualService
+            name: vs-demo
+original:
+  apiVersion: networking.istio.io/v1alpha3
+  kind: VirtualService
+  metadata:
+    name: vs-demo
+  spec:
+    hosts:
+    - "*"
+    gateways:
+    - nginx-gateway
+    http:
+    - route:
+      - destination:
+          host: svc-demo
+          port:
+            number: 81
+    tcp:
+    - route:
+      - destination:
+          host: svc-demo
+          port:
+            number: 3306
+expected:
+  - apiVersion: networking.istio.io/v1alpha3
+    kind: VirtualService
+    metadata:
+      name: vs-demo
+    spec:
+      hosts:
+      - "*"
+      gateways:
+      - nginx-gateway
+      http:
+      - match:
+        - headers:
+            user-agent:
+              exact: pc
+        route:
+        - destination:
+            host: svc-demo-canary
+            port:
+              number: 81
+      - route:
+        - destination:
+            host: svc-demo
+            port:
+              number: 81
+      tcp:
+      - route:
+        - destination:
+            host: svc-demo
+            port:
+              number: 3306
+  - apiVersion: networking.istio.io/v1alpha3
+    kind: VirtualService
+    metadata:
+      name: vs-demo
+    spec:
+      hosts:
+      - "*"
+      gateways:
+      - nginx-gateway
+      http:
+      - route:
+        - destination:
+            host: svc-demo
+            port:
+              number: 81
+          weight: 50
+        - destination:
+            host: svc-demo-canary
+            port:
+              number: 81
+          weight: 50
+      tcp:
+      - route:
+        - destination:
+            host: svc-demo
+            port:
+              number: 3306
+          weight: 50
+        - destination:
+            host: svc-demo-canary
+            port:
+              number: 3306
+          weight: 50
