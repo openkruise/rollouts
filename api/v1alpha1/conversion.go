@@ -44,7 +44,8 @@ func (src *Rollout) ConvertTo(dst conversion.Hub) error {
 		obj.Spec.Strategy = v1beta1.RolloutStrategy{
 			Paused: srcSpec.Strategy.Paused,
 			Canary: &v1beta1.CanaryStrategy{
-				FailureThreshold: srcSpec.Strategy.Canary.FailureThreshold,
+				FailureThreshold:             srcSpec.Strategy.Canary.FailureThreshold,
+				DisableGenerateCanaryService: srcSpec.Strategy.Canary.DisableGenerateCanaryService,
 			},
 		}
 		for _, step := range srcSpec.Strategy.Canary.Steps {
@@ -189,7 +190,8 @@ func (dst *Rollout) ConvertFrom(src conversion.Hub) error {
 			Strategy: RolloutStrategy{
 				Paused: srcV1beta1.Spec.Strategy.Paused,
 				Canary: &CanaryStrategy{
-					FailureThreshold: srcV1beta1.Spec.Strategy.Canary.FailureThreshold,
+					FailureThreshold:             srcV1beta1.Spec.Strategy.Canary.FailureThreshold,
+					DisableGenerateCanaryService: srcV1beta1.Spec.Strategy.Canary.DisableGenerateCanaryService,
 				},
 			},
 			Disabled: srcV1beta1.Spec.Disabled,
