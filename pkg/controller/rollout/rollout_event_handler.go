@@ -33,6 +33,8 @@ import (
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
 )
 
+type typedQueue = workqueue.TypedRateLimitingInterface[reconcile.Request]
+
 var _ handler.EventHandler = &enqueueRequestForWorkload{}
 
 type enqueueRequestForWorkload struct {
@@ -40,22 +42,22 @@ type enqueueRequestForWorkload struct {
 	scheme *runtime.Scheme
 }
 
-func (w *enqueueRequestForWorkload) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Create(ctx context.Context, evt event.TypedCreateEvent[client.Object], q typedQueue) {
 	w.handleEvent(q, evt.Object)
 }
 
-func (w *enqueueRequestForWorkload) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Delete(ctx context.Context, evt event.TypedDeleteEvent[client.Object], q typedQueue) {
 	w.handleEvent(q, evt.Object)
 }
 
-func (w *enqueueRequestForWorkload) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Generic(ctx context.Context, evt event.TypedGenericEvent[client.Object], q typedQueue) {
 }
 
-func (w *enqueueRequestForWorkload) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForWorkload) Update(ctx context.Context, evt event.TypedUpdateEvent[client.Object], q typedQueue) {
 	w.handleEvent(q, evt.ObjectNew)
 }
 
-func (w *enqueueRequestForWorkload) handleEvent(q workqueue.RateLimitingInterface, obj client.Object) {
+func (w *enqueueRequestForWorkload) handleEvent(q typedQueue, obj client.Object) {
 	key := types.NamespacedName{
 		Namespace: obj.GetNamespace(),
 		Name:      obj.GetName(),
@@ -107,20 +109,20 @@ type enqueueRequestForBatchRelease struct {
 	reader client.Reader
 }
 
-func (w *enqueueRequestForBatchRelease) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Create(ctx context.Context, evt event.TypedCreateEvent[client.Object], q typedQueue) {
 }
 
-func (w *enqueueRequestForBatchRelease) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Delete(ctx context.Context, evt event.TypedDeleteEvent[client.Object], q typedQueue) {
 }
 
-func (w *enqueueRequestForBatchRelease) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Generic(ctx context.Context, evt event.TypedGenericEvent[client.Object], q typedQueue) {
 }
 
-func (w *enqueueRequestForBatchRelease) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (w *enqueueRequestForBatchRelease) Update(ctx context.Context, evt event.TypedUpdateEvent[client.Object], q typedQueue) {
 	w.handleEvent(q, evt.ObjectNew)
 }
 
-func (w *enqueueRequestForBatchRelease) handleEvent(q workqueue.RateLimitingInterface, obj client.Object) {
+func (w *enqueueRequestForBatchRelease) handleEvent(q typedQueue, obj client.Object) {
 	klog.Infof("BatchRelease(%s/%s) and reconcile Rollout (%s)", obj.GetNamespace(), obj.GetName(), obj.GetName())
 	nsn := types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}
 	q.Add(reconcile.Request{NamespacedName: nsn})

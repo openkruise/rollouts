@@ -15,11 +15,13 @@ import (
 	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
 
+type typedQueue = workqueue.TypedRateLimitingInterface[reconcile.Request]
+
 type MutatingWebhookEventHandler struct {
 	client.Reader
 }
 
-func (m MutatingWebhookEventHandler) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (m MutatingWebhookEventHandler) Create(ctx context.Context, evt event.TypedCreateEvent[client.Object], q typedQueue) {
 	config, ok := evt.Object.(*admissionregistrationv1.MutatingWebhookConfiguration)
 	if !ok || config == nil || !isKruiseRolloutMutatingConfiguration(config) || config.DeletionTimestamp.IsZero() {
 		return
@@ -27,7 +29,7 @@ func (m MutatingWebhookEventHandler) Create(ctx context.Context, evt event.Creat
 	m.enqueue(q)
 }
 
-func (m MutatingWebhookEventHandler) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (m MutatingWebhookEventHandler) Generic(ctx context.Context, evt event.TypedGenericEvent[client.Object], q typedQueue) {
 	config, ok := evt.Object.(*admissionregistrationv1.MutatingWebhookConfiguration)
 	if !ok || config == nil || !isKruiseRolloutMutatingConfiguration(config) || config.DeletionTimestamp.IsZero() {
 		return
@@ -35,7 +37,7 @@ func (m MutatingWebhookEventHandler) Generic(ctx context.Context, evt event.Gene
 	m.enqueue(q)
 }
 
-func (m MutatingWebhookEventHandler) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (m MutatingWebhookEventHandler) Update(ctx context.Context, evt event.TypedUpdateEvent[client.Object], q typedQueue) {
 	config, ok := evt.ObjectNew.(*admissionregistrationv1.MutatingWebhookConfiguration)
 	if !ok || config == nil || !isKruiseRolloutMutatingConfiguration(config) || config.DeletionTimestamp.IsZero() {
 		return
@@ -43,7 +45,7 @@ func (m MutatingWebhookEventHandler) Update(ctx context.Context, evt event.Updat
 	m.enqueue(q)
 }
 
-func (m MutatingWebhookEventHandler) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (m MutatingWebhookEventHandler) Delete(ctx context.Context, evt event.TypedDeleteEvent[client.Object], q typedQueue) {
 	config, ok := evt.Object.(*admissionregistrationv1.MutatingWebhookConfiguration)
 	if !ok || config == nil || !isKruiseRolloutMutatingConfiguration(config) {
 		return
@@ -51,7 +53,7 @@ func (m MutatingWebhookEventHandler) Delete(ctx context.Context, evt event.Delet
 	m.enqueue(q)
 }
 
-func (m MutatingWebhookEventHandler) enqueue(q workqueue.RateLimitingInterface) {
+func (m MutatingWebhookEventHandler) enqueue(q typedQueue) {
 	deploymentLister := appsv1.DeploymentList{}
 	err := m.List(context.TODO(), &deploymentLister, client.MatchingLabels(map[string]string{v1alpha1.AdvancedDeploymentControlLabel: "true"}))
 	if err != nil {

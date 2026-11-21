@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	utilpointer "k8s.io/utils/pointer"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
@@ -141,7 +142,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				return rules
 			},
 			getRoutes: func() (*int32, []v1beta1.HttpRouteMatch) {
-				iType := gatewayv1beta1.HeaderMatchRegularExpression
+				iType := gatewayv1.HeaderMatchRegularExpression
 				return nil, []v1beta1.HttpRouteMatch{
 					// header
 					{
@@ -173,7 +174,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 			},
 			desiredRules: func() []gatewayv1beta1.HTTPRouteRule {
 				rules := routeDemo.DeepCopy().Spec.Rules
-				iType := gatewayv1beta1.HeaderMatchRegularExpression
+				iType := gatewayv1.HeaderMatchRegularExpression
 				rules = append(rules, gatewayv1beta1.HTTPRouteRule{
 					Matches: []gatewayv1beta1.HTTPRouteMatch{
 						{
@@ -318,7 +319,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				return rules
 			},
 			getRoutes: func() (*int32, []v1beta1.HttpRouteMatch) {
-				iType := gatewayv1beta1.QueryParamMatchRegularExpression
+				iType := gatewayv1.QueryParamMatchRegularExpression
 				return nil, []v1beta1.HttpRouteMatch{
 					// queryparams
 					{
@@ -350,7 +351,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 			},
 			desiredRules: func() []gatewayv1beta1.HTTPRouteRule {
 				rules := routeDemo.DeepCopy().Spec.Rules
-				iType := gatewayv1beta1.QueryParamMatchRegularExpression
+				iType := gatewayv1.QueryParamMatchRegularExpression
 				rules = append(rules, gatewayv1beta1.HTTPRouteRule{
 					Matches: []gatewayv1beta1.HTTPRouteMatch{
 						{
@@ -499,8 +500,8 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				return rules
 			},
 			getRoutes: func() (*int32, []v1beta1.HttpRouteMatch) {
-				iQueryParamType := gatewayv1beta1.QueryParamMatchRegularExpression
-				iHeaderType := gatewayv1beta1.HeaderMatchRegularExpression
+				iQueryParamType := gatewayv1.QueryParamMatchRegularExpression
+				iHeaderType := gatewayv1.HeaderMatchRegularExpression
 				return nil, []v1beta1.HttpRouteMatch{
 					// queryParams + headers
 					{
@@ -531,8 +532,8 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 			},
 			desiredRules: func() []gatewayv1beta1.HTTPRouteRule {
 				rules := routeDemo.DeepCopy().Spec.Rules
-				iQueryParamType := gatewayv1beta1.QueryParamMatchRegularExpression
-				iHeaderType := gatewayv1beta1.HeaderMatchRegularExpression
+				iQueryParamType := gatewayv1.QueryParamMatchRegularExpression
+				iHeaderType := gatewayv1.HeaderMatchRegularExpression
 				rules = append(rules, gatewayv1beta1.HTTPRouteRule{
 					Matches: []gatewayv1beta1.HTTPRouteMatch{
 						{
@@ -658,8 +659,8 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 				return rules
 			},
 			getRoutes: func() (*int32, []v1beta1.HttpRouteMatch) {
-				iQueryParamType := gatewayv1beta1.QueryParamMatchRegularExpression
-				iHeaderType := gatewayv1beta1.HeaderMatchRegularExpression
+				iQueryParamType := gatewayv1.QueryParamMatchRegularExpression
+				iHeaderType := gatewayv1.HeaderMatchRegularExpression
 				return nil, []v1beta1.HttpRouteMatch{
 					// queryParams + headers + path
 					{
@@ -693,8 +694,8 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 			},
 			desiredRules: func() []gatewayv1beta1.HTTPRouteRule {
 				rules := routeDemo.DeepCopy().Spec.Rules
-				iQueryParamType := gatewayv1beta1.QueryParamMatchRegularExpression
-				iHeaderType := gatewayv1beta1.HeaderMatchRegularExpression
+				iQueryParamType := gatewayv1.QueryParamMatchRegularExpression
+				iHeaderType := gatewayv1.HeaderMatchRegularExpression
 				rules = append(rules, gatewayv1beta1.HTTPRouteRule{
 					Matches: []gatewayv1beta1.HTTPRouteMatch{
 						{
@@ -890,7 +891,7 @@ func TestBuildDesiredHTTPRoute(t *testing.T) {
 						},
 					},
 				}
-				iType := gatewayv1beta1.HeaderMatchRegularExpression
+				iType := gatewayv1.HeaderMatchRegularExpression
 				rules = append(rules, gatewayv1beta1.HTTPRouteRule{
 					Matches: []gatewayv1beta1.HTTPRouteMatch{
 						{

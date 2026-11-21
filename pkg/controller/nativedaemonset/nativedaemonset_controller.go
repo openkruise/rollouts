@@ -140,12 +140,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to DaemonSet
-	if err = c.Watch(source.Kind(mgr.GetCache(), &appsv1.DaemonSet{}),
+	if err = c.Watch(source.Kind[client.Object](mgr.GetCache(), &appsv1.DaemonSet{},
 		&handler.EnqueueRequestForObject{},
 		predicate.Funcs{
 			UpdateFunc: updateHandler,
 			CreateFunc: createHandler,
-		}); err != nil {
+		})); err != nil {
 		return err
 	}
 
@@ -203,9 +203,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch pods with a handler that never enqueues
-	return c.Watch(source.Kind(mgr.GetCache(), &corev1.Pod{}),
+	return c.Watch(source.Kind[client.Object](mgr.GetCache(), &corev1.Pod{},
 		&handler.EnqueueRequestForObject{},
-		podPredicate)
+		podPredicate))
 }
 
 // Reconcile reads that state of the cluster for a DaemonSet object and makes changes based on the annotations

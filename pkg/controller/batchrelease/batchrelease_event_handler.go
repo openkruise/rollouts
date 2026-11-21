@@ -56,7 +56,7 @@ type podEventHandler struct {
 	client.Reader
 }
 
-func (p podEventHandler) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (p podEventHandler) Create(ctx context.Context, evt event.TypedCreateEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	pod, ok := evt.Object.(*corev1.Pod)
 	if !ok {
 		return
@@ -64,13 +64,13 @@ func (p podEventHandler) Create(ctx context.Context, evt event.CreateEvent, q wo
 	p.enqueue(pod, q)
 }
 
-func (p podEventHandler) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (p podEventHandler) Generic(ctx context.Context, evt event.TypedGenericEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 }
 
-func (p podEventHandler) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (p podEventHandler) Delete(ctx context.Context, evt event.TypedDeleteEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 }
 
-func (p podEventHandler) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (p podEventHandler) Update(ctx context.Context, evt event.TypedUpdateEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	oldPod, oldOK := evt.ObjectOld.(*corev1.Pod)
 	newPod, newOK := evt.ObjectNew.(*corev1.Pod)
 	if !oldOK || !newOK {
@@ -84,7 +84,7 @@ func (p podEventHandler) Update(ctx context.Context, evt event.UpdateEvent, q wo
 	p.enqueue(newPod, q)
 }
 
-func (p podEventHandler) enqueue(pod *corev1.Pod, q workqueue.RateLimitingInterface) {
+func (p podEventHandler) enqueue(pod *corev1.Pod, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	owner := metav1.GetControllerOfNoCopy(pod)
 	if owner == nil {
 		return
@@ -122,12 +122,12 @@ type workloadEventHandler struct {
 	client.Reader
 }
 
-func (w workloadEventHandler) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (w workloadEventHandler) Create(ctx context.Context, evt event.TypedCreateEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	expectationObserved(evt.Object)
 	w.handleWorkload(q, evt.Object, CreateEventAction)
 }
 
-func (w workloadEventHandler) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (w workloadEventHandler) Update(ctx context.Context, evt event.TypedUpdateEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	var gvk schema.GroupVersionKind
 	switch obj := evt.ObjectNew.(type) {
 	case *kruiseappsv1alpha1.CloneSet:
@@ -175,14 +175,14 @@ func (w workloadEventHandler) Update(ctx context.Context, evt event.UpdateEvent,
 	}
 }
 
-func (w workloadEventHandler) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (w workloadEventHandler) Delete(ctx context.Context, evt event.TypedDeleteEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	w.handleWorkload(q, evt.Object, DeleteEventAction)
 }
 
-func (w workloadEventHandler) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (w workloadEventHandler) Generic(ctx context.Context, evt event.TypedGenericEvent[client.Object], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 }
 
-func (w *workloadEventHandler) handleWorkload(q workqueue.RateLimitingInterface, obj client.Object, action EventAction) {
+func (w *workloadEventHandler) handleWorkload(q workqueue.TypedRateLimitingInterface[reconcile.Request], obj client.Object, action EventAction) {
 	var gvk schema.GroupVersionKind
 	switch o := obj.(type) {
 	case *kruiseappsv1alpha1.CloneSet:

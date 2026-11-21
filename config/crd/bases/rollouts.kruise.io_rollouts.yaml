@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.17.2
   name: rollouts.rollouts.kruise.io
 spec:
   group: rollouts.kruise.io
@@ -164,13 +164,11 @@ spec:
                                             Name is the name of the HTTP Header to be matched. Name matching MUST be
                                             case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
 
-
                                             If multiple entries specify equivalent header names, only the first
                                             entry with an equivalent name MUST be considered for a match. Subsequent
                                             entries with an equivalent header name MUST be ignored. Due to the
                                             case-insensitivity of header names, "foo" and "Foo" are considered
                                             equivalent.
-
 
                                             When a header is repeated in an HTTP request, it is
                                             implementation-specific behavior as to how this is represented.
@@ -186,12 +184,9 @@ spec:
                                           description: |-
                                             Type specifies how to match against the value of the header.
 
-
                                             Support: Core (Exact)
 
-
                                             Support: Implementation-specific (RegularExpression)
-
 
                                             Since RegularExpression HeaderMatchType has implementation-specific
                                             conformance, implementations can support POSIX, PCRE or any other dialects
@@ -238,17 +233,14 @@ spec:
                                 Set overwrites the request with the given header (name, value)
                                 before the action.
 
-
                                 Input:
                                   GET /foo HTTP/1.1
                                   my-header: foo
-
 
                                 requestHeaderModifier:
                                   set:
                                   - name: "my-header"
                                     value: "bar"
-
 
                                 Output:
                                   GET /foo HTTP/1.1
@@ -260,17 +252,14 @@ spec:
                                     before the action. It appends to any existing values associated
                                     with the header name.
 
-
                                     Input:
                                       GET /foo HTTP/1.1
                                       my-header: foo
-
 
                                     Config:
                                       add:
                                       - name: "my-header"
                                         value: "bar,baz"
-
 
                                     Output:
                                       GET /foo HTTP/1.1
@@ -283,7 +272,6 @@ spec:
                                         description: |-
                                           Name is the name of the HTTP Header to be matched. Name matching MUST be
                                           case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-
 
                                           If multiple entries specify equivalent header names, the first entry with
                                           an equivalent name MUST be considered for a match. Subsequent entries
@@ -316,17 +304,14 @@ spec:
                                     names are case-insensitive (see
                                     https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
 
-
                                     Input:
                                       GET /foo HTTP/1.1
                                       my-header1: foo
                                       my-header2: bar
                                       my-header3: baz
 
-
                                     Config:
                                       remove: ["my-header1", "my-header3"]
-
 
                                     Output:
                                       GET /foo HTTP/1.1
@@ -341,17 +326,14 @@ spec:
                                     Set overwrites the request with the given header (name, value)
                                     before the action.
 
-
                                     Input:
                                       GET /foo HTTP/1.1
                                       my-header: foo
-
 
                                     Config:
                                       set:
                                       - name: "my-header"
                                         value: "bar"
-
 
                                     Output:
                                       GET /foo HTTP/1.1
@@ -364,7 +346,6 @@ spec:
                                         description: |-
                                           Name is the name of the HTTP Header to be matched. Name matching MUST be
                                           case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-
 
                                           If multiple entries specify equivalent header names, the first entry with
                                           an equivalent name MUST be considered for a match. Subsequent entries
@@ -688,7 +669,6 @@ spec:
                                 Matches define conditions used for matching incoming HTTP requests to the canary service.
                                 Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
 
-
                                 It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured.
                                 In such cases, Matches takes precedence.
                               items:
@@ -708,13 +688,11 @@ spec:
                                             Name is the name of the HTTP Header to be matched. Name matching MUST be
                                             case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
 
-
                                             If multiple entries specify equivalent header names, only the first
                                             entry with an equivalent name MUST be considered for a match. Subsequent
                                             entries with an equivalent header name MUST be ignored. Due to the
                                             case-insensitivity of header names, "foo" and "Foo" are considered
                                             equivalent.
-
 
                                             When a header is repeated in an HTTP request, it is
                                             implementation-specific behavior as to how this is represented.
@@ -730,12 +708,9 @@ spec:
                                           description: |-
                                             Type specifies how to match against the value of the header.
 
-
                                             Support: Core (Exact)
 
-
                                             Support: Implementation-specific (RegularExpression)
-
 
                                             Since RegularExpression HeaderMatchType has implementation-specific
                                             conformance, implementations can support POSIX, PCRE or any other dialects
@@ -772,9 +747,7 @@ spec:
                                         description: |-
                                           Type specifies how to match against the path Value.
 
-
                                           Support: Core (Exact, PathPrefix)
-
 
                                           Support: Implementation-specific (RegularExpression)
                                         enum:
@@ -858,11 +831,9 @@ spec:
                                             exact string match. (See
                                             https://tools.ietf.org/html/rfc7230#section-2.7.3).
 
-
                                             If multiple entries specify equivalent query param names, only the first
                                             entry with an equivalent name MUST be considered for a match. Subsequent
                                             entries with an equivalent query param name MUST be ignored.
-
 
                                             If a query param is repeated in an HTTP request, the behavior is
                                             purposely left undefined, since different data planes have different
@@ -870,7 +841,6 @@ spec:
                                             match against the first value of the param if the data plane supports it,
                                             as this behavior is expected in other load balancing contexts outside of
                                             the Gateway API.
-
 
                                             Users SHOULD NOT route traffic based on repeated query params to guard
                                             themselves against potential differences in the implementations.
@@ -883,12 +853,9 @@ spec:
                                           description: |-
                                             Type specifies how to match against the value of the query parameter.
 
-
                                             Support: Extended (Exact)
 
-
                                             Support: Implementation-specific (RegularExpression)
-
 
                                             Since RegularExpression QueryParamMatchType has Implementation-specific
                                             conformance, implementations can support POSIX, PCRE or any other
@@ -939,17 +906,14 @@ spec:
                                 Set overwrites the request with the given header (name, value)
                                 before the action.
 
-
                                 Input:
                                   GET /foo HTTP/1.1
                                   my-header: foo
-
 
                                 requestHeaderModifier:
                                   set:
                                   - name: "my-header"
                                     value: "bar"
-
 
                                 Output:
                                   GET /foo HTTP/1.1
@@ -961,17 +925,14 @@ spec:
                                     before the action. It appends to any existing values associated
                                     with the header name.
 
-
                                     Input:
                                       GET /foo HTTP/1.1
                                       my-header: foo
-
 
                                     Config:
                                       add:
                                       - name: "my-header"
                                         value: "bar,baz"
-
 
                                     Output:
                                       GET /foo HTTP/1.1
@@ -984,7 +945,6 @@ spec:
                                         description: |-
                                           Name is the name of the HTTP Header to be matched. Name matching MUST be
                                           case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-
 
                                           If multiple entries specify equivalent header names, the first entry with
                                           an equivalent name MUST be considered for a match. Subsequent entries
@@ -1017,17 +977,14 @@ spec:
                                     names are case-insensitive (see
                                     https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
 
-
                                     Input:
                                       GET /foo HTTP/1.1
                                       my-header1: foo
                                       my-header2: bar
                                       my-header3: baz
 
-
                                     Config:
                                       remove: ["my-header1", "my-header3"]
-
 
                                     Output:
                                       GET /foo HTTP/1.1
@@ -1042,17 +999,14 @@ spec:
                                     Set overwrites the request with the given header (name, value)
                                     before the action.
 
-
                                     Input:
                                       GET /foo HTTP/1.1
                                       my-header: foo
-
 
                                     Config:
                                       set:
                                       - name: "my-header"
                                         value: "bar"
-
 
                                     Output:
                                       GET /foo HTTP/1.1
@@ -1065,7 +1019,6 @@ spec:
                                         description: |-
                                           Name is the name of the HTTP Header to be matched. Name matching MUST be
                                           case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-
 
                                           If multiple entries specify equivalent header names, the first entry with
                                           an equivalent name MUST be considered for a match. Subsequent entries
@@ -1230,7 +1183,6 @@ spec:
                                 Matches define conditions used for matching incoming HTTP requests to the canary service.
                                 Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
 
-
                                 It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured.
                                 In such cases, Matches takes precedence.
                               items:
@@ -1250,13 +1202,11 @@ spec:
                                             Name is the name of the HTTP Header to be matched. Name matching MUST be
                                             case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
 
-
                                             If multiple entries specify equivalent header names, only the first
                                             entry with an equivalent name MUST be considered for a match. Subsequent
                                             entries with an equivalent header name MUST be ignored. Due to the
                                             case-insensitivity of header names, "foo" and "Foo" are considered
                                             equivalent.
-
 
                                             When a header is repeated in an HTTP request, it is
                                             implementation-specific behavior as to how this is represented.
@@ -1272,12 +1222,9 @@ spec:
                                           description: |-
                                             Type specifies how to match against the value of the header.
 
-
                                             Support: Core (Exact)
 
-
                                             Support: Implementation-specific (RegularExpression)
-
 
                                             Since RegularExpression HeaderMatchType has implementation-specific
                                             conformance, implementations can support POSIX, PCRE or any other dialects
@@ -1314,9 +1261,7 @@ spec:
                                         description: |-
                                           Type specifies how to match against the path Value.
 
-
                                           Support: Core (Exact, PathPrefix)
-
 
                                           Support: Implementation-specific (RegularExpression)
                                         enum:
@@ -1400,11 +1345,9 @@ spec:
                                             exact string match. (See
                                             https://tools.ietf.org/html/rfc7230#section-2.7.3).
 
-
                                             If multiple entries specify equivalent query param names, only the first
                                             entry with an equivalent name MUST be considered for a match. Subsequent
                                             entries with an equivalent query param name MUST be ignored.
-
 
                                             If a query param is repeated in an HTTP request, the behavior is
                                             purposely left undefined, since different data planes have different
@@ -1412,7 +1355,6 @@ spec:
                                             match against the first value of the param if the data plane supports it,
                                             as this behavior is expected in other load balancing contexts outside of
                                             the Gateway API.
-
 
                                             Users SHOULD NOT route traffic based on repeated query params to guard
                                             themselves against potential differences in the implementations.
@@ -1425,12 +1367,9 @@ spec:
                                           description: |-
                                             Type specifies how to match against the value of the query parameter.
 
-
                                             Support: Extended (Exact)
 
-
                                             Support: Implementation-specific (RegularExpression)
-
 
                                             Since RegularExpression QueryParamMatchType has Implementation-specific
                                             conformance, implementations can support POSIX, PCRE or any other
@@ -1481,17 +1420,14 @@ spec:
                                 Set overwrites the request with the given header (name, value)
                                 before the action.
 
-
                                 Input:
                                   GET /foo HTTP/1.1
                                   my-header: foo
-
 
                                 requestHeaderModifier:
                                   set:
                                   - name: "my-header"
                                     value: "bar"
-
 
                                 Output:
                                   GET /foo HTTP/1.1
@@ -1503,17 +1439,14 @@ spec:
                                     before the action. It appends to any existing values associated
                                     with the header name.
 
-
                                     Input:
                                       GET /foo HTTP/1.1
                                       my-header: foo
-
 
                                     Config:
                                       add:
                                       - name: "my-header"
                                         value: "bar,baz"
-
 
                                     Output:
                                       GET /foo HTTP/1.1
@@ -1526,7 +1459,6 @@ spec:
                                         description: |-
                                           Name is the name of the HTTP Header to be matched. Name matching MUST be
                                           case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-
 
                                           If multiple entries specify equivalent header names, the first entry with
                                           an equivalent name MUST be considered for a match. Subsequent entries
@@ -1559,17 +1491,14 @@ spec:
                                     names are case-insensitive (see
                                     https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
 
-
                                     Input:
                                       GET /foo HTTP/1.1
                                       my-header1: foo
                                       my-header2: bar
                                       my-header3: baz
 
-
                                     Config:
                                       remove: ["my-header1", "my-header3"]
-
 
                                     Output:
                                       GET /foo HTTP/1.1
@@ -1584,17 +1513,14 @@ spec:
                                     Set overwrites the request with the given header (name, value)
                                     before the action.
 
-
                                     Input:
                                       GET /foo HTTP/1.1
                                       my-header: foo
-
 
                                     Config:
                                       set:
                                       - name: "my-header"
                                         value: "bar"
-
 
                                     Output:
                                       GET /foo HTTP/1.1
@@ -1607,7 +1533,6 @@ spec:
                                         description: |-
                                           Name is the name of the HTTP Header to be matched. Name matching MUST be
                                           case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-
 
                                           If multiple entries specify equivalent header names, the first entry with
                                           an equivalent name MUST be considered for a match. Subsequent entries

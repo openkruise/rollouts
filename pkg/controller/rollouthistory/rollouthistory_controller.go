@@ -41,7 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 var (
@@ -79,11 +79,11 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 	// Watch for changes to rollout
-	if err = c.Watch(source.Kind(mgr.GetCache(), &rolloutv1alpha1.Rollout{}), &enqueueRequestForRollout{}); err != nil {
+	if err = c.Watch(source.Kind[client.Object](mgr.GetCache(), &rolloutv1alpha1.Rollout{}, &enqueueRequestForRollout{})); err != nil {
 		return err
 	}
 	// watch for changes to rolloutHistory
-	if err = c.Watch(source.Kind(mgr.GetCache(), &rolloutv1alpha1.RolloutHistory{}), &enqueueRequestForRolloutHistory{}); err != nil {
+	if err = c.Watch(source.Kind[client.Object](mgr.GetCache(), &rolloutv1alpha1.RolloutHistory{}, &enqueueRequestForRolloutHistory{})); err != nil {
 		return err
 	}
 	return nil
@@ -280,7 +280,7 @@ func (r *RolloutHistoryReconciler) getTrafficRoutingInfo(rollout *rolloutv1alpha
 func (r *RolloutHistoryReconciler) getGateWayInfo(rollout *rolloutv1alpha1.Rollout) (*rolloutv1alpha1.HTTPRouteInfo, error) {
 	// get HTTPRoute
 	gatewayName := *rollout.Spec.Strategy.Canary.TrafficRoutings[0].Gateway.HTTPRouteName
-	HTTPRoute := &v1alpha2.HTTPRoute{}
+	HTTPRoute := &gatewayv1.HTTPRoute{}
 	err := r.Get(context.TODO(), types.NamespacedName{Namespace: rollout.Namespace, Name: gatewayName}, HTTPRoute)
 	if err != nil {
 		return nil, errors.New("initGateway error: HTTPRoute " + gatewayName + " not find")

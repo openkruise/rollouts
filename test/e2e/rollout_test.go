@@ -43,6 +43,7 @@ import (
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	"github.com/openkruise/rollouts/api/v1alpha1"
@@ -1782,7 +1783,7 @@ var _ = SIGDescribe("Rollout", func() {
 			By("Creating Rollout...")
 			rollout := &v1alpha1.Rollout{}
 			Expect(ReadYamlToObject("./test_data/rollout/rollout_canary_base.yaml", rollout)).ToNot(HaveOccurred())
-			headerType := gatewayv1beta1.HeaderMatchRegularExpression
+			headerType := gatewayv1.HeaderMatchRegularExpression
 			replica1 := intstr.FromInt(1)
 			replica2 := intstr.FromInt(2)
 			rollout.Spec.Strategy.Canary.Steps = []v1alpha1.CanaryStep{

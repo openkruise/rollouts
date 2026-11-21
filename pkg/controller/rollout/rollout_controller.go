@@ -179,11 +179,11 @@ func (r *RolloutReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 	// Watch for changes to rollout
-	if err = c.Watch(source.Kind(mgr.GetCache(), &v1beta1.Rollout{}), &handler.EnqueueRequestForObject{}); err != nil {
+	if err = c.Watch(source.Kind[client.Object](mgr.GetCache(), &v1beta1.Rollout{}, &handler.EnqueueRequestForObject{})); err != nil {
 		return err
 	}
 	// Watch for changes to batchRelease
-	if err = c.Watch(source.Kind(mgr.GetCache(), &v1beta1.BatchRelease{}), &enqueueRequestForBatchRelease{reader: mgr.GetCache()}); err != nil {
+	if err = c.Watch(source.Kind[client.Object](mgr.GetCache(), &v1beta1.BatchRelease{}, &enqueueRequestForBatchRelease{reader: mgr.GetCache()})); err != nil {
 		return err
 	}
 	runtimeController = c

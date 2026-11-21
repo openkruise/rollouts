@@ -5,6 +5,42 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods/status
+  - services/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - '*'
   resources:
   - events
@@ -16,15 +52,6 @@ rules:
   - admissionregistration.k8s.io
   resources:
   - mutatingwebhookconfigurations
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - admissionregistration.k8s.io
-  resources:
   - validatingwebhookconfigurations
   verbs:
   - get
@@ -53,17 +80,10 @@ rules:
 - apiGroups:
   - apps
   resources:
-  - daemonsets
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps
-  resources:
   - daemonsets/status
+  - deployments/status
+  - replicasets/status
+  - statefulsets/status
   verbs:
   - get
   - patch
@@ -72,45 +92,7 @@ rules:
   - apps
   resources:
   - deployments
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps
-  resources:
-  - deployments/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - apps
-  resources:
   - replicasets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps
-  resources:
-  - replicasets/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - apps
-  resources:
   - statefulsets
   verbs:
   - create
@@ -122,16 +104,20 @@ rules:
   - watch
 - apiGroups:
   - apps
+  - apps.kruise.io
   resources:
-  - statefulsets/status
+  - daemonsets
   verbs:
   - get
+  - list
   - patch
   - update
+  - watch
 - apiGroups:
   - apps.kruise.io
   resources:
   - clonesets
+  - statefulsets
   verbs:
   - create
   - delete
@@ -144,43 +130,7 @@ rules:
   - apps.kruise.io
   resources:
   - clonesets/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - apps.kruise.io
-  resources:
-  - daemonsets
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps.kruise.io
-  resources:
   - daemonsets/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - apps.kruise.io
-  resources:
-  - statefulsets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps.kruise.io
-  resources:
   - statefulsets/status
   verbs:
   - get
@@ -196,60 +146,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - pods/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - pods/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - services/status
-  verbs:
-  - get
-  - patch
-  - update
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
@@ -305,51 +201,7 @@ rules:
   - rollouts.kruise.io
   resources:
   - batchreleases
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - rollouts.kruise.io
-  resources:
-  - batchreleases/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - rollouts.kruise.io
-  resources:
   - rollouthistories
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - rollouts.kruise.io
-  resources:
-  - rollouthistories/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - rollouts.kruise.io
-  resources:
-  - rollouthistories/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - rollouts.kruise.io
-  resources:
   - rollouts
   verbs:
   - create
@@ -362,16 +214,21 @@ rules:
 - apiGroups:
   - rollouts.kruise.io
   resources:
-  - rollouts/finalizers
+  - batchreleases/status
+  - rollouthistories/status
+  - rollouts/status
+  - trafficroutings/status
   verbs:
+  - get
+  - patch
   - update
 - apiGroups:
   - rollouts.kruise.io
   resources:
-  - rollouts/status
+  - rollouthistories/finalizers
+  - rollouts/finalizers
+  - trafficroutings/finalizers
   verbs:
-  - get
-  - patch
   - update
 - apiGroups:
   - rollouts.kruise.io
@@ -384,20 +241,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - rollouts.kruise.io
-  resources:
-  - trafficroutings/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - rollouts.kruise.io
-  resources:
-  - trafficroutings/status
-  verbs:
-  - get
-  - patch
-  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
