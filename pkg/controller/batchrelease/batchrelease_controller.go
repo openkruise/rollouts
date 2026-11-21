@@ -45,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/openkruise/rollouts/api/v1beta1"
+	brmetrics "github.com/openkruise/rollouts/pkg/controller/batchrelease/metrics"
 	"github.com/openkruise/rollouts/pkg/util"
 )
 
@@ -160,7 +161,7 @@ type BatchReleaseReconciler struct {
 // and what is in the Rollout.Spec
 func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	release := new(v1beta1.BatchRelease)
-	err := r.Get(context.TODO(), req.NamespacedName, release)
+	err := r.Get(ctx, req.NamespacedName, release)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
@@ -201,7 +202,7 @@ func (r *BatchReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// executor start to execute the batch release plan.
 	startTimestamp := time.Now()
-	result, currentStatus, err := r.executor.Do(release)
+	result, currentStatus, err := r.executor.Do(ctx, release)
 	if err != nil {
 		errList = append(errList, field.InternalError(field.NewPath("do-release"), err))
 	}
@@ -266,6 +267,7 @@ func (r *BatchReleaseReconciler) handleFinalizer(release *v1beta1.BatchRelease) 
 	if !release.DeletionTimestamp.IsZero() &&
 		release.Status.Phase == v1beta1.RolloutPhaseCompleted &&
 		controllerutil.ContainsFinalizer(release, ReleaseFinalizer) {
+		cleanupMinReadyMetricsOnFinalizerRemoval(release)
 		err = util.UpdateFinalizer(r.Client, release, util.RemoveFinalizerOpType, ReleaseFinalizer)
 		if client.IgnoreNotFound(err) != nil {
 			return true, err
@@ -282,4 +284,23 @@ func (r *BatchReleaseReconciler) handleFinalizer(release *v1beta1.BatchRelease) 
 	}
 
 	return false, nil
+}
+
+func cleanupMinReadyMetricsOnFinalizerRemoval(release *v1beta1.BatchRelease) {
+	if hasMinReadyStatusCondition(release.Status.Conditions) {
+		brmetrics.DeleteMinReadyMetrics(release)
+	}
+}
+
+func hasMinReadyStatusCondition(conditions []v1beta1.RolloutCondition) bool {
+	for _, condition := range conditions {
+		switch condition.Type {
+		case v1beta1.RolloutConditionStrategyInitialized,
+			v1beta1.RolloutConditionStrategyBatching,
+			v1beta1.RolloutConditionStrategyDegraded,
+			v1beta1.RolloutConditionStrategyFinalized:
+			return true
+		}
+	}
+	return false
 }

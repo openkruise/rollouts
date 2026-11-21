@@ -72,6 +72,7 @@ ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
 test: manifests generate fmt vet envtest ## Run tests.
 	echo $(ENVTEST)
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test -race ./pkg/... -coverprofile raw-cover.out
+	go test -race ./test/integration
 	grep -v "pkg/client" raw-cover.out > cover.out
 
 ##@ Build

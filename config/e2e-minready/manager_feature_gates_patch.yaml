@@ -1,0 +1,14 @@
+# Enables the MinReadySecondsStrategy feature gate in the manager args.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: kruise-rollout
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        args:
+        - --leader-elect
+        - --feature-gates=AdvancedDeployment=true,MinReadySecondsStrategy=true

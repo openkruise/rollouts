@@ -41,6 +41,7 @@ type realBatchControlPlane struct {
 	client.Client
 	record.EventRecorder
 	patcher   labelpatch.LabelPatcher
+	ctx       context.Context
 	release   *v1beta1.BatchRelease
 	newStatus *v1beta1.BatchReleaseStatus
 }
@@ -48,27 +49,82 @@ type realBatchControlPlane struct {
 type NewInterfaceFunc func(cli client.Client, key types.NamespacedName, gvk schema.GroupVersionKind) Interface
 
 // NewControlPlane creates a new release controller with partitioned-style to drive batch release state machine
-func NewControlPlane(f NewInterfaceFunc, cli client.Client, recorder record.EventRecorder, release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus, key types.NamespacedName, gvk schema.GroupVersionKind) *realBatchControlPlane {
-	return &realBatchControlPlane{
+func NewControlPlane(ctx context.Context, f NewInterfaceFunc, cli client.Client, recorder record.EventRecorder, release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus, key types.NamespacedName, gvk schema.GroupVersionKind) *realBatchControlPlane {
+	cp := &realBatchControlPlane{
 		Client:        cli,
 		EventRecorder: recorder,
 		newStatus:     newStatus,
 		Interface:     f(cli, key, gvk),
+		ctx:           nonNilContext(ctx),
 		release:       release.DeepCopy(),
 		patcher:       labelpatch.NewLabelPatcher(cli, klog.KObj(release), release.Spec.ReleasePlan.Batches),
 	}
+	cp.bindStrategyStatus(cp.Interface)
+	return cp
 }
 
-func (rc *realBatchControlPlane) Initialize() error {
-	controller, err := rc.BuildController()
+func nonNilContext(ctx context.Context) context.Context {
+	if ctx != nil {
+		return ctx
+	}
+	return context.Background()
+}
+
+// bindStrategyStatus injects the BatchRelease status/event dependencies into
+// the controller once, at control-plane construction time. Only strategies
+// that implement StrategyStatusBinder (currently the MinReady controller, via
+// MinReadyStatusWriter) receive them; the others keep their nil reporter.
+func (rc *realBatchControlPlane) bindStrategyStatus(controller Interface) {
+	if binder, ok := controller.(StrategyStatusBinder); ok {
+		binder.BindStrategyStatus(rc.release, rc.newStatus, rc.EventRecorder)
+	}
+}
+
+func (rc *realBatchControlPlane) reportOperationFailed(controller Interface, reason string, err error) {
+	if err == nil {
+		return
+	}
+	if controller != nil {
+		if reporter := controller.GetReporter(); reporter != nil {
+			reporter.RecordOperationFailed(reason, err)
+			return
+		}
+	}
+	klog.ErrorS(err, "Partition-style control plane failed", "release", klog.KObj(rc.release), "reason", reason)
+}
+
+func (rc *realBatchControlPlane) failureReason(controller Interface, operation StrategyOperation) string {
+	if controller != nil {
+		if reporter := controller.GetReporter(); reporter != nil {
+			if reason := reporter.FailureReason(operation); reason != "" {
+				return reason
+			}
+		}
+	}
+	return fmt.Sprintf("PartitionStyle%sFailed", operation)
+}
+
+func (rc *realBatchControlPlane) Initialize() (err error) {
+	controller := rc.Interface
+	var reportErr error
+	defer func() {
+		rc.reportOperationFailed(controller, rc.failureReason(controller, StrategyOperationInitialize), reportErr)
+	}()
+
+	controller, err = rc.BuildController()
 	if err != nil {
+		reportErr = err
 		return err
 	}
 
 	// claim workload under our control
-	err = controller.Initialize(rc.release)
+	err = controller.Initialize(rc.ctx, rc.release)
 	if err != nil {
+		reportErr = err
 		return err
+	}
+	if reporter := controller.GetReporter(); reporter != nil {
+		reporter.RecordInitialized()
 	}
 
 	// record revision and replicas
@@ -82,46 +138,79 @@ func (rc *realBatchControlPlane) Initialize() error {
 	if noNeedUpdateReplicas != nil && err == nil {
 		rc.newStatus.CanaryStatus.NoNeedUpdateReplicas = noNeedUpdateReplicas
 	}
+	if err != nil {
+		reportErr = err
+	}
 	return err
 }
 
-func (rc *realBatchControlPlane) UpgradeBatch() error {
-	controller, err := rc.BuildController()
+func (rc *realBatchControlPlane) UpgradeBatch() (err error) {
+	controller := rc.Interface
+	var reportErr error
+	defer func() {
+		rc.reportOperationFailed(controller, rc.failureReason(controller, StrategyOperationBatching), reportErr)
+	}()
+
+	controller, err = rc.BuildController()
 	if err != nil {
+		reportErr = err
 		return err
 	}
 
 	if controller.GetWorkloadInfo().Replicas == 0 {
+		if reporter := controller.GetReporter(); reporter != nil {
+			reporter.RecordZeroReplicaBatching()
+		}
 		return nil
 	}
 
 	err = rc.countAndUpdateNoNeedUpdateReplicas()
 	if err != nil {
+		reportErr = err
 		return err
 	}
 
 	batchContext, err := controller.CalculateBatchContext(rc.release)
 	if err != nil {
+		reportErr = err
 		return err
 	}
 	klog.Infof("BatchRelease %v calculated context when upgrade batch: %s",
 		klog.KObj(rc.release), batchContext.Log())
 
-	err = controller.UpgradeBatch(batchContext)
+	err = controller.UpgradeBatch(rc.ctx, batchContext)
 	if err != nil {
+		reportErr = err
 		return err
 	}
 
-	return rc.patcher.PatchPodBatchLabel(batchContext)
+	if err := rc.patcher.PatchPodBatchLabel(batchContext); err != nil {
+		reportErr = err
+		return err
+	}
+	if reporter := controller.GetReporter(); reporter != nil {
+		reporter.RecordBatchAdvanced()
+	}
+	return nil
 }
 
-func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
-	controller, err := rc.BuildController()
+func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() (err error) {
+	controller := rc.Interface
+	var reportErr error
+	defer func() {
+		rc.reportOperationFailed(controller, rc.failureReason(controller, StrategyOperationBatching), reportErr)
+	}()
+
+	controller, err = rc.BuildController()
 	if err != nil {
+		reportErr = err
 		return err
 	}
 
 	if controller.GetWorkloadInfo().Replicas == 0 {
+		if reporter := controller.GetReporter(); reporter != nil {
+			reporter.RecordZeroReplicaBatchReady()
+		}
 		return nil
 	}
 
@@ -129,23 +218,61 @@ func (rc *realBatchControlPlane) EnsureBatchPodsReadyAndLabeled() error {
 	// the target calculated should be consistent with UpgradeBatch.
 	batchContext, err := controller.CalculateBatchContext(rc.release)
 	if err != nil {
+		reportErr = err
 		return err
 	}
 
 	klog.Infof("BatchRelease %v calculated context when check batch ready: %s",
 		klog.KObj(rc.release), batchContext.Log())
 
-	return batchContext.IsBatchReady()
-}
-
-func (rc *realBatchControlPlane) Finalize() error {
-	controller, err := rc.BuildController()
-	if err != nil {
-		return client.IgnoreNotFound(err)
+	if reconciler, ok := controller.(MinReadyDriftReconciler); ok {
+		if err := reconciler.ReconcileMaxUnavailableDrift(rc.ctx, batchContext); err != nil {
+			reportErr = err
+			return err
+		}
 	}
 
-	// release workload control info and clean up resources if it needs
-	return controller.Finalize(rc.release)
+	if err := batchContext.IsBatchReady(); err != nil {
+		if reporter := controller.GetReporter(); reporter != nil {
+			reporter.ObserveBatchWait()
+		}
+		return err
+	}
+	if reporter := controller.GetReporter(); reporter != nil {
+		reporter.RecordBatchReady()
+	}
+	return nil
+}
+
+func (rc *realBatchControlPlane) Finalize() (err error) {
+	controller := rc.Interface
+	var reportErr error
+	defer func() {
+		rc.reportOperationFailed(controller, rc.failureReason(controller, StrategyOperationFinalize), reportErr)
+	}()
+
+	controller, err = rc.BuildController()
+	if err != nil {
+		if err := client.IgnoreNotFound(err); err != nil {
+			reportErr = err
+			return err
+		}
+		return nil
+	}
+
+	// release workload control info and clean up resources if it needs.
+	// AfterEach / operators may delete the workload before Finalize patches it;
+	// treat NotFound as already cleaned up so the BatchRelease finalizer can drop.
+	if err := controller.Finalize(rc.ctx, rc.release); err != nil {
+		if err := client.IgnoreNotFound(err); err != nil {
+			reportErr = err
+			return err
+		}
+	}
+	if reporter := controller.GetReporter(); reporter != nil {
+		reporter.RecordFinalized()
+	}
+	return nil
 }
 
 func (rc *realBatchControlPlane) SyncWorkloadInformation() (control.WorkloadEventType, *util.WorkloadInfo, error) {
@@ -244,7 +371,7 @@ func (rc *realBatchControlPlane) markNoNeedUpdatePodsIfNeeds() (*int32, error) {
 	for _, pod := range filterPods {
 		clone := util.GetEmptyObjectWithKey(pod)
 		body := fmt.Sprintf(`{"metadata":{"labels":{"%s":"%s"}}}`, util.NoNeedUpdatePodLabel, rolloutID)
-		err = rc.Patch(context.TODO(), clone, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
+		err = rc.Patch(rc.ctx, clone, client.RawPatch(types.StrategicMergePatchType, []byte(body)))
 		if err != nil {
 			klog.Errorf("Failed to patch no-need-update label(%v) to pod %v, err: %v", rolloutID, klog.KObj(pod), err)
 			return &noNeedUpdateReplicas, err

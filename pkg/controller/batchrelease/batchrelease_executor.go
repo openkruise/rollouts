@@ -17,6 +17,7 @@ limitations under the License.
 package batchrelease
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"time"
@@ -45,8 +46,11 @@ import (
 	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/nativedaemonset"
 	"github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/statefulset"
+	deploymentutil "github.com/openkruise/rollouts/pkg/controller/deployment/util"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
 	"github.com/openkruise/rollouts/pkg/util/errors"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 const (
@@ -68,7 +72,7 @@ func NewReleasePlanExecutor(cli client.Client, recorder record.EventRecorder) *E
 }
 
 // Do execute the release plan
-func (r *Executor) Do(release *v1beta1.BatchRelease) (reconcile.Result, *v1beta1.BatchReleaseStatus, error) {
+func (r *Executor) Do(ctx context.Context, release *v1beta1.BatchRelease) (reconcile.Result, *v1beta1.BatchReleaseStatus, error) {
 	klog.InfoS("Starting one round of reconciling release plan",
 		"BatchRelease", client.ObjectKeyFromObject(release),
 		"phase", release.Status.Phase,
@@ -76,7 +80,7 @@ func (r *Executor) Do(release *v1beta1.BatchRelease) (reconcile.Result, *v1beta1
 		"current-batch-state", release.Status.CanaryStatus.CurrentBatchState)
 
 	newStatus := getInitializedStatus(&release.Status)
-	workloadController, err := r.getReleaseController(release, newStatus)
+	workloadController, err := r.getReleaseController(ctx, release, newStatus)
 	if err != nil || workloadController == nil {
 		return reconcile.Result{}, nil, nil
 	}
@@ -194,7 +198,7 @@ func (r *Executor) progressBatches(release *v1beta1.BatchRelease, newStatus *v1b
 }
 
 // GetWorkloadController pick the right workload controller to work on the workload
-func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus) (control.Interface, error) {
+func (r *Executor) getReleaseController(ctx context.Context, release *v1beta1.BatchRelease, newStatus *v1beta1.BatchReleaseStatus) (control.Interface, error) {
 	targetRef := release.Spec.WorkloadRef
 	gvk := schema.FromAPIVersionAndKind(targetRef.APIVersion, targetRef.Kind)
 	if !util.IsSupportedWorkload(gvk) {
@@ -233,26 +237,71 @@ func (r *Executor) getReleaseController(release *v1beta1.BatchRelease, newStatus
 	case v1beta1.PartitionRollingStyle, "":
 		if targetRef.APIVersion == appsv1alpha1.GroupVersion.String() && targetRef.Kind == reflect.TypeOf(appsv1alpha1.DaemonSet{}).Name() {
 			klog.InfoS("Using DaemonSet partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return partitionstyle.NewControlPlane(daemonset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+			return partitionstyle.NewControlPlane(ctx, daemonset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
 		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.DaemonSet{}).Name() {
 			klog.InfoS("Using Native DaemonSet partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return partitionstyle.NewControlPlane(nativedaemonset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+			return partitionstyle.NewControlPlane(ctx, nativedaemonset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
 		if targetRef.APIVersion == appsv1alpha1.GroupVersion.String() && targetRef.Kind == reflect.TypeOf(appsv1alpha1.CloneSet{}).Name() {
 			klog.InfoS("Using CloneSet partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return partitionstyle.NewControlPlane(cloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+			return partitionstyle.NewControlPlane(ctx, cloneset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
 		if targetRef.APIVersion == apps.SchemeGroupVersion.String() && targetRef.Kind == reflect.TypeOf(apps.Deployment{}).Name() {
+			// Route to the MinReady controller when the feature gate is enabled and
+			// the Deployment is not mid-flight under a previously-started Recreate
+			// release, or when the Deployment still carries MinReady original-strategy
+			// annotations. The annotation clause covers the gate being turned off
+			// mid-rollout: the old Recreate-mode controller would not recognize an
+			// inflated RollingUpdate Deployment as under its control, leaving the
+			// workload stuck in a half-initialized state. The Recreate-in-progress
+			// check covers upgrading the controller with the gate enabled: a release
+			// that started under the Recreate strategy must keep using it to finish,
+			// instead of being silently switched to the MinReady mode mid-flight.
+			if r.useMinReadyController(ctx, targetKey) {
+				klog.InfoS("Using Deployment MinReadySeconds partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
+				return partitionstyle.NewControlPlane(ctx, partitiondeployment.NewMinReadyController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+			}
 			klog.InfoS("Using Deployment partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-			return partitionstyle.NewControlPlane(partitiondeployment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+			return partitionstyle.NewControlPlane(ctx, partitiondeployment.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
 		}
 		klog.Info("Partition, but use StatefulSet-Like partition-style release controller for this batch release")
 	}
 
 	// try to use StatefulSet-like rollout controller by default
 	klog.InfoS("Using StatefulSet-Like partition-style release controller for this batch release", "workload name", targetKey.Name, "namespace", targetKey.Namespace)
-	return partitionstyle.NewControlPlane(statefulset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+	return partitionstyle.NewControlPlane(ctx, statefulset.NewController, r.client, r.recorder, release, newStatus, targetKey, gvk), nil
+}
+
+// useMinReadyController reports whether the Deployment should be driven by the
+// MinReadySeconds controller instead of the legacy Recreate-based controller.
+// It returns true when either:
+//
+//  1. the Deployment still carries MinReady original-strategy annotations, i.e.
+//     it was initialized by the MinReady controller and not yet finalized (used
+//     to keep MinReady routing when the feature gate is disabled mid-rollout);
+//  2. the feature gate is enabled and the Deployment is not mid-flight under a
+//     previously-started Recreate release, i.e. it does not carry the
+//     BatchReleaseControlAnnotation with a Recreate strategy and paused=true.
+//     The second clause is the upgrade-compatibility guard: when the controller
+//     is upgraded with the gate enabled while a Recreate-based rollout is still
+//     in progress, the in-progress release must keep using the Recreate
+//     strategy to finish, instead of being switched to MinReady mode.
+//
+// A fetch failure (e.g. NotFound) returns whether the gate is enabled, so
+// routing stays stable on transient errors.
+func (r *Executor) useMinReadyController(ctx context.Context, key types.NamespacedName) bool {
+	deployment := &apps.Deployment{}
+	if err := r.client.Get(ctx, key, deployment); err != nil {
+		return utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy)
+	}
+	if v1beta1.HasMinReadyOriginalAnnotations(deployment.Annotations) {
+		return true
+	}
+	if !utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
+		return false
+	}
+	return !deploymentutil.IsUnderRolloutControl(deployment)
 }
 
 func (r *Executor) moveToNextBatch(release *v1beta1.BatchRelease, status *v1beta1.BatchReleaseStatus) {

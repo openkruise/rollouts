@@ -41,8 +41,10 @@ import (
 
 	appsv1alpha1 "github.com/openkruise/rollouts/api/v1alpha1"
 	appsv1beta1 "github.com/openkruise/rollouts/api/v1beta1"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
 	utilclient "github.com/openkruise/rollouts/pkg/util/client"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 	util2 "github.com/openkruise/rollouts/pkg/webhook/util"
 	"github.com/openkruise/rollouts/pkg/webhook/util/configuration"
 )
@@ -61,6 +63,11 @@ type WorkloadHandler struct {
 }
 
 var _ admission.Handler = &WorkloadHandler{}
+
+const (
+	kubernetesRestartedAtAnnotation       = "kubectl.kubernetes.io/restartedAt"
+	deploymentRedeployTimestampAnnotation = "redeploy-timestamp"
+)
 
 // Handle handles admission requests.
 func (h *WorkloadHandler) Handle(ctx context.Context, req admission.Request) admission.Response {
@@ -234,10 +241,24 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 	} else if rollout == nil || rollout.Spec.Strategy.IsEmptyRelease() {
 		return false, nil
 	}
+	if shouldSkipDeploymentRestart(oldObj, newObj) {
+		klog.InfoS("Deployment restart will be handled by the native Deployment controller", "deployment", klog.KObj(newObj), "rollout", klog.KObj(rollout))
+		return false, nil
+	}
 
 	// in rollout progressing
 	if newObj.Annotations[util.InRolloutProgressingAnnotation] != "" {
 		modified := false
+		if isMinReadySecondsStrategy(rollout, newObj) {
+			if isEffectiveDeploymentRevisionChange(oldObj, newObj) {
+				if err := enrollMinReadyDeploymentWithPrevious(newObj, oldObj); err != nil {
+					klog.Warningf("Skip MinReady continuous enrollment for Deployment(%s/%s): %v", newObj.Namespace, newObj.Name, err)
+					return enforceMinReadyInflation(newObj, oldObj), nil
+				}
+				return true, nil
+			}
+			return enforceMinReadyInflation(newObj, oldObj), nil
+		}
 		strategy := util.GetDeploymentStrategy(newObj)
 		// partition
 		if strings.EqualFold(string(strategy.RollingStyle), string(appsv1alpha1.PartitionRollingStyle)) {
@@ -256,7 +277,7 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 				strategy.RollingUpdate = newObj.Spec.Strategy.RollingUpdate
 				newObj.Spec.Strategy.RollingUpdate = nil
 			}
-			if isEffectiveDeploymentRevisionChange(oldObj, newObj) {
+			if isEffectiveDeploymentRevisionChange(oldObj, newObj) && !isDeploymentRestartOnly(oldObj, newObj) {
 				modified = true
 				strategy.Paused = true
 			}
@@ -324,8 +345,22 @@ func (h *WorkloadHandler) handleDeployment(newObj, oldObj *apps.Deployment) (boo
 		newObj.Labels[appsv1alpha1.DeploymentStableRevisionLabel] = stableRS.Labels[apps.DefaultDeploymentUniqueLabelKey]
 	}
 
-	// need set workload paused = true
-	newObj.Spec.Paused = true
+	if isMinReadySecondsStrategy(rollout, newObj) {
+		// MinReady keeps the native controller running, so it must NOT be paused.
+		// Inflate the strategy synchronously at admission time: this snapshots the
+		// original fields into annotations and sets minReadySeconds/maxUnavailable
+		// so the native controller never observes the user's original budget in the
+		// window between admission and MinReadyControl.Initialize. Continuous
+		// releases refresh user-owned availability annotations before re-inflation.
+		if err := enrollMinReadyDeployment(newObj); err != nil {
+			// Do not block admission; the controller's Initialize will surface a
+			// degraded condition for an unsupported strategy instead.
+			klog.Warningf("Skip MinReady enrollment for Deployment(%s/%s): %v", newObj.Namespace, newObj.Name, err)
+		}
+	} else {
+		// Partition/Recreate style disables the native Deployment controller.
+		newObj.Spec.Paused = true
+	}
 	state := &util.RolloutState{RolloutName: rollout.Name}
 	by, _ := json.Marshal(state)
 	if newObj.Annotations == nil {
@@ -449,6 +484,120 @@ func isEffectiveDeploymentRevisionChange(oldObj, newObj *apps.Deployment) bool {
 		return false
 	}
 	return true
+}
+
+// isMinReadySecondsStrategy reports whether the Deployment should be driven by
+// the MinReadySeconds strategy (keep RollingUpdate, do not pause) instead of
+// the legacy Recreate-style mutation.
+//
+// It only checks Canary because a Rollout cannot declare BlueGreen and Canary at
+// the same time: the validating webhook rejects that combination
+// (pkg/webhook/rollout/validating/rollout_create_update_handler.go,
+// "Canary and BlueGreen cannot both be set"). When the feature gate is disabled
+// mid-rollout, the original MinReady annotations keep this symmetric with the
+// executor's annotation fallback.
+func isMinReadySecondsStrategy(rollout *appsv1beta1.Rollout, deployment *apps.Deployment) bool {
+	if rollout.Spec.Strategy.Canary == nil || rollout.Spec.Strategy.Canary.EnableExtraWorkloadForCanary {
+		return false
+	}
+	if utilfeature.DefaultFeatureGate.Enabled(feature.MinReadySecondsStrategy) {
+		return true
+	}
+	return appsv1beta1.HasMinReadyOriginalAnnotations(deployment.Annotations)
+}
+
+func enforceMinReadyInflation(deployment, previous *apps.Deployment) bool {
+	if !appsv1beta1.HasMinReadyOriginalAnnotations(deployment.Annotations) {
+		return false
+	}
+	modified := false
+	// The MinReady strategy relies on the native RollingUpdate controller staying
+	// active and driven by inflated availability fields. Re-assert the core
+	// invariants here so a GitOps/manual write of Recreate or paused=true is
+	// rejected at admission time rather than only surfacing as a controller-side
+	// degraded condition later.
+	if deployment.Spec.Strategy.Type != apps.RollingUpdateDeploymentStrategyType {
+		deployment.Spec.Strategy.Type = apps.RollingUpdateDeploymentStrategyType
+		modified = true
+	}
+	if deployment.Spec.Paused {
+		deployment.Spec.Paused = false
+		modified = true
+	}
+	if deployment.Spec.Strategy.RollingUpdate == nil {
+		deployment.Spec.Strategy.RollingUpdate = previousMinReadyRollingUpdate(previous)
+		modified = true
+	}
+	// MaxUnavailable is controller-owned after enrollment; resetting a non-nil
+	// value here would roll back the MinReady sliding window advancement.
+	if deployment.Spec.MinReadySeconds != inflatedMinReadySeconds {
+		deployment.Spec.MinReadySeconds = inflatedMinReadySeconds
+		modified = true
+	}
+	if deployment.Spec.ProgressDeadlineSeconds == nil || *deployment.Spec.ProgressDeadlineSeconds != inflatedProgressDeadlineSeconds {
+		progressDeadlineSeconds := inflatedProgressDeadlineSeconds
+		deployment.Spec.ProgressDeadlineSeconds = &progressDeadlineSeconds
+		modified = true
+	}
+	return modified
+}
+
+func previousMinReadyRollingUpdate(previous *apps.Deployment) *apps.RollingUpdateDeployment {
+	maxUnavailable := intstr.FromInt(0)
+	var maxSurge *intstr.IntOrString
+	if previous == nil || previous.Spec.Strategy.RollingUpdate == nil {
+		return &apps.RollingUpdateDeployment{MaxUnavailable: &maxUnavailable}
+	}
+	if previous.Spec.Strategy.RollingUpdate.MaxUnavailable != nil {
+		maxUnavailable = *previous.Spec.Strategy.RollingUpdate.MaxUnavailable
+	}
+	if previous.Spec.Strategy.RollingUpdate.MaxSurge != nil {
+		copied := *previous.Spec.Strategy.RollingUpdate.MaxSurge
+		maxSurge = &copied
+	}
+	return &apps.RollingUpdateDeployment{
+		MaxUnavailable: &maxUnavailable,
+		MaxSurge:       maxSurge,
+	}
+}
+
+// shouldSkipDeploymentRestart reports whether a restart-only update should bypass Rollout enrollment.
+// Restarts during an active Rollout remain under Rollout control.
+func shouldSkipDeploymentRestart(oldObj, newObj *apps.Deployment) bool {
+	return utilfeature.DefaultFeatureGate.Enabled(feature.SkipDeploymentRestart) &&
+		newObj.Annotations[util.InRolloutProgressingAnnotation] == "" &&
+		isDeploymentRestartOnly(oldObj, newObj)
+}
+
+// isDeploymentRestartOnly returns true when the workload update changes no pod template field
+// other than a known restart or redeploy annotation. A simultaneous RolloutID change is an explicit
+// request to start a Rollout and must not be treated as a restart-only update.
+func isDeploymentRestartOnly(oldObj, newObj *apps.Deployment) bool {
+	if oldObj.Annotations[appsv1beta1.RolloutIDLabel] != newObj.Annotations[appsv1beta1.RolloutIDLabel] {
+		return false
+	}
+	restartAnnotationKeys := []string{
+		kubernetesRestartedAtAnnotation,
+		deploymentRedeployTimestampAnnotation,
+	}
+	restartAnnotationChanged := false
+	for _, key := range restartAnnotationKeys {
+		oldValue, oldExists := oldObj.Spec.Template.Annotations[key]
+		newValue, newExists := newObj.Spec.Template.Annotations[key]
+		if oldExists != newExists || oldValue != newValue {
+			restartAnnotationChanged = true
+			break
+		}
+	}
+	if !restartAnnotationChanged {
+		return false
+	}
+	return util.EqualIgnoreSpecifyMetadata(
+		&oldObj.Spec.Template,
+		&newObj.Spec.Template,
+		nil,
+		restartAnnotationKeys,
+	)
 }
 
 func setDeploymentStrategyAnnotation(strategy appsv1alpha1.DeploymentStrategy, d *apps.Deployment) {

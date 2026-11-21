@@ -90,7 +90,7 @@ func SetDefaultDeploymentStrategy(strategy *DeploymentStrategy) {
 	if strategy.RollingUpdate.MaxSurge == nil {
 		// Set MaxSurge as 25% by default
 		maxSurge := intstr.FromString("25%")
-		strategy.RollingUpdate.MaxUnavailable = &maxSurge
+		strategy.RollingUpdate.MaxSurge = &maxSurge
 	}
 
 	// Cannot allow maxSurge==0 && MaxUnavailable==0, otherwise, no pod can be updated when rolling update.

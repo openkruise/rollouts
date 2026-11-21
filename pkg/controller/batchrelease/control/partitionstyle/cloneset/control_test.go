@@ -292,7 +292,7 @@ func TestRealController(t *testing.T) {
 	controller, err := c.BuildController()
 	Expect(err).NotTo(HaveOccurred())
 
-	err = controller.Initialize(release)
+	err = controller.Initialize(context.Background(), release)
 	Expect(err).NotTo(HaveOccurred())
 	fetch := &kruiseappsv1alpha1.CloneSet{}
 	Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())
@@ -303,7 +303,7 @@ func TestRealController(t *testing.T) {
 	for {
 		batchContext, err := controller.CalculateBatchContext(release)
 		Expect(err).NotTo(HaveOccurred())
-		err = controller.UpgradeBatch(batchContext)
+		err = controller.UpgradeBatch(context.Background(), batchContext)
 		fetch = &kruiseappsv1alpha1.CloneSet{}
 		// mock
 		Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())
@@ -316,7 +316,7 @@ func TestRealController(t *testing.T) {
 	Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())
 	Expect(fetch.Spec.UpdateStrategy.Partition.StrVal).Should(Equal("90%"))
 
-	err = controller.Finalize(release)
+	err = controller.Finalize(context.Background(), release)
 	Expect(err).NotTo(HaveOccurred())
 	fetch = &kruiseappsv1alpha1.CloneSet{}
 	Expect(cli.Get(context.TODO(), cloneKey, fetch)).NotTo(HaveOccurred())
@@ -445,7 +445,7 @@ func TestFinalize(t *testing.T) {
 				t.Fatalf("BuildController failed: %s", err.Error())
 			}
 			cs.featureGateFunc()
-			err = c.Finalize(br)
+			err = c.Finalize(context.Background(), br)
 			if err != nil {
 				t.Fatalf("BuildController failed: %s", err.Error())
 			}

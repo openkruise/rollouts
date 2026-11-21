@@ -219,6 +219,18 @@ const (
 	// Terminating Reason
 	TerminatingReasonInTerminating = "InTerminating"
 	TerminatingReasonCompleted     = "Completed"
+
+	// RolloutConditionStrategyInitialized indicates a progressive-delivery strategy
+	// (e.g. MinReadySeconds) has completed initialization. The strategy is
+	// identified by the condition Reason, not the type, so the observability
+	// framework stays strategy-agnostic.
+	RolloutConditionStrategyInitialized RolloutConditionType = "StrategyInitialized"
+	// RolloutConditionStrategyBatching indicates strategy batch processing is active.
+	RolloutConditionStrategyBatching RolloutConditionType = "StrategyBatching"
+	// RolloutConditionStrategyDegraded indicates the strategy hit an explicit blocking error.
+	RolloutConditionStrategyDegraded RolloutConditionType = "StrategyDegraded"
+	// RolloutConditionStrategyFinalized indicates strategy finalization has completed.
+	RolloutConditionStrategyFinalized RolloutConditionType = "StrategyFinalized"
 )
 
 // CanaryStatus status fields that only pertain to the canary rollout

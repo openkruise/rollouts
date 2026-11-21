@@ -47,7 +47,41 @@ const (
 	// MaxInt32: 2147483647, ≈ 68 years
 	MaxProgressSeconds = 1<<31 - 1
 	MaxReadySeconds    = MaxProgressSeconds - 1
+
+	// MinReady default values mirror Kubernetes Deployment defaults for fields
+	// snapshotted before the MinReadySeconds strategy inflates them.
+	MinReadyDefaultProgressDeadlineSeconds int32 = 600
+	MinReadyDefaultMaxUnavailable                = "25%"
+
+	// MinReadyOriginal*Annotation snapshot the user-specified Deployment strategy
+	// fields before the MinReadySeconds strategy inflates them; they are used to
+	// restore the Deployment on finalize. A Deployment carrying any of them is
+	// (still) managed by the MinReady controller, even if the feature gate has
+	// been turned off mid-rollout.
+	MinReadyOriginalMinReadySecondsAnnotation         = "rollouts.kruise.io/original-min-ready-seconds"
+	MinReadyOriginalProgressDeadlineSecondsAnnotation = "rollouts.kruise.io/original-progress-deadline-seconds"
+	MinReadyOriginalMaxUnavailableAnnotation          = "rollouts.kruise.io/original-max-unavailable"
 )
+
+// MinReadyOriginalAnnotations lists all annotations that snapshot the original
+// Deployment strategy fields for the MinReadySeconds strategy.
+var MinReadyOriginalAnnotations = []string{
+	MinReadyOriginalMinReadySecondsAnnotation,
+	MinReadyOriginalProgressDeadlineSecondsAnnotation,
+	MinReadyOriginalMaxUnavailableAnnotation,
+}
+
+// HasMinReadyOriginalAnnotations returns true if the annotations carry any
+// MinReady original-strategy snapshot, i.e. the workload was initialized by
+// the MinReady controller and has not been finalized yet.
+func HasMinReadyOriginalAnnotations(annotations map[string]string) bool {
+	for _, key := range MinReadyOriginalAnnotations {
+		if _, ok := annotations[key]; ok {
+			return true
+		}
+	}
+	return false
+}
 
 // DeploymentStrategy is strategy field for Advanced Deployment
 type DeploymentStrategy struct {
@@ -100,7 +134,7 @@ func SetDefaultDeploymentStrategy(strategy *DeploymentStrategy) {
 	if strategy.RollingUpdate.MaxSurge == nil {
 		// Set MaxSurge as 25% by default
 		maxSurge := intstr.FromString("25%")
-		strategy.RollingUpdate.MaxUnavailable = &maxSurge
+		strategy.RollingUpdate.MaxSurge = &maxSurge
 	}
 
 	// Cannot allow maxSurge==0 && MaxUnavailable==0, otherwise, no pod can be updated when rolling update.

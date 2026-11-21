@@ -341,7 +341,7 @@ func TestRealController(t *testing.T) {
 	controller, err := c.BuildController()
 	Expect(err).NotTo(HaveOccurred())
 
-	err = controller.Initialize(release)
+	err = controller.Initialize(context.Background(), release)
 	Expect(err).NotTo(HaveOccurred())
 
 	fetch := &kruiseappsv1alpha1.DaemonSet{}
@@ -356,7 +356,7 @@ func TestRealController(t *testing.T) {
 	for {
 		batchContext, err := controller.CalculateBatchContext(release)
 		Expect(err).NotTo(HaveOccurred())
-		err = controller.UpgradeBatch(batchContext)
+		err = controller.UpgradeBatch(context.Background(), batchContext)
 		fetch = &kruiseappsv1alpha1.DaemonSet{}
 		// mock
 		Expect(cli.Get(context.TODO(), daemonKey, fetch)).NotTo(HaveOccurred())
@@ -371,7 +371,7 @@ func TestRealController(t *testing.T) {
 	fmt.Println(*fetch.Spec.UpdateStrategy.RollingUpdate.Partition)
 	Expect(*fetch.Spec.UpdateStrategy.RollingUpdate.Partition).Should(Equal(int32(9)))
 
-	err = controller.Finalize(release)
+	err = controller.Finalize(context.Background(), release)
 	Expect(err).NotTo(HaveOccurred())
 	fetch = &kruiseappsv1alpha1.DaemonSet{}
 	Expect(cli.Get(context.TODO(), daemonKey, fetch)).NotTo(HaveOccurred())
