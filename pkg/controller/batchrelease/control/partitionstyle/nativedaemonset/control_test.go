@@ -433,7 +433,7 @@ func TestInitialize(t *testing.T) {
 	controller := NewController(cli, key, gvk)
 	builtController, _ := controller.BuildController()
 
-	err := builtController.Initialize(batchReleaseDemo)
+	err := builtController.Initialize(context.Background(), batchReleaseDemo)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet was updated correctly
@@ -467,7 +467,7 @@ func TestInitializeAlreadyControlled(t *testing.T) {
 	controller := NewController(cli, key, gvk)
 	builtController, _ := controller.BuildController()
 
-	err := builtController.Initialize(batchReleaseDemo)
+	err := builtController.Initialize(context.Background(), batchReleaseDemo)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet was not changed
@@ -497,7 +497,7 @@ func TestInitializeWithRollingUpdateStrategy(t *testing.T) {
 	controller := NewController(cli, key, gvk)
 	builtController, _ := controller.BuildController()
 
-	err := builtController.Initialize(batchReleaseDemo)
+	err := builtController.Initialize(context.Background(), batchReleaseDemo)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet was updated correctly
@@ -540,7 +540,7 @@ func TestInitialize_PatchError(t *testing.T) {
 	rc.object = daemon
 	rc.WorkloadInfo = util.ParseWorkload(daemon)
 
-	err := rc.Initialize(batchReleaseDemo)
+	err := rc.Initialize(context.Background(), batchReleaseDemo)
 	assert.Error(t, err) // Should fail because daemon doesn't exist in client
 }
 
@@ -568,7 +568,7 @@ func TestUpgradeBatchFirstTime(t *testing.T) {
 		Replicas:         5,
 	}
 
-	err := builtController.UpgradeBatch(ctx)
+	err := builtController.UpgradeBatch(context.Background(), ctx)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet has the batch annotations with JSON format
@@ -611,7 +611,7 @@ func TestUpgradeBatchSamePartition(t *testing.T) {
 		Replicas:         5,
 	}
 
-	err := builtController.UpgradeBatch(ctx)
+	err := builtController.UpgradeBatch(context.Background(), ctx)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet annotations remain unchanged (no additional patch call)
@@ -651,7 +651,7 @@ func TestUpgradeBatchDifferentPartition(t *testing.T) {
 		Replicas:         5,
 	}
 
-	err := builtController.UpgradeBatch(ctx)
+	err := builtController.UpgradeBatch(context.Background(), ctx)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet annotations are updated to the new partition
@@ -693,7 +693,7 @@ func TestPatchBatchAnnotations_PatchError(t *testing.T) {
 		UpdateRevision:   "update-revision-123",
 	}
 
-	err := rc.patchBatchAnnotations(ctx)
+	err := rc.patchBatchAnnotations(context.Background(), ctx)
 	assert.Error(t, err) // Should fail because daemon doesn't exist in client
 }
 
@@ -719,7 +719,7 @@ func TestFinalizeWithBatchPartitionNil(t *testing.T) {
 	completedBatchRelease := batchReleaseDemo.DeepCopy()
 	completedBatchRelease.Spec.ReleasePlan.BatchPartition = nil
 
-	err := builtController.Finalize(completedBatchRelease)
+	err := builtController.Finalize(context.Background(), completedBatchRelease)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet was updated correctly
@@ -762,7 +762,7 @@ func TestFinalizeWithOriginalRollingUpdateStrategy(t *testing.T) {
 	completedBatchRelease := batchReleaseDemo.DeepCopy()
 	completedBatchRelease.Spec.ReleasePlan.BatchPartition = nil
 
-	err := builtController.Finalize(completedBatchRelease)
+	err := builtController.Finalize(context.Background(), completedBatchRelease)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet was updated correctly
@@ -807,7 +807,7 @@ func TestFinalizeWithOriginalOnDeleteStrategy(t *testing.T) {
 	completedBatchRelease := batchReleaseDemo.DeepCopy()
 	completedBatchRelease.Spec.ReleasePlan.BatchPartition = nil
 
-	err := builtController.Finalize(completedBatchRelease)
+	err := builtController.Finalize(context.Background(), completedBatchRelease)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet was updated correctly
@@ -852,7 +852,7 @@ func TestFinalizeWithMissingOriginalStrategy(t *testing.T) {
 	completedBatchRelease := batchReleaseDemo.DeepCopy()
 	completedBatchRelease.Spec.ReleasePlan.BatchPartition = nil
 
-	err := builtController.Finalize(completedBatchRelease)
+	err := builtController.Finalize(context.Background(), completedBatchRelease)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet was updated correctly
@@ -896,7 +896,7 @@ func TestFinalizeWithBatchPartitionNotNil(t *testing.T) {
 	batchPartition := int32(1)
 	inProgressBatchRelease.Spec.ReleasePlan.BatchPartition = &batchPartition
 
-	err := builtController.Finalize(inProgressBatchRelease)
+	err := builtController.Finalize(context.Background(), inProgressBatchRelease)
 	assert.NoError(t, err)
 
 	// Verify the DaemonSet was updated correctly
@@ -929,7 +929,7 @@ func TestFinalize_NilObject(t *testing.T) {
 	rc := controller.(*realController)
 	rc.object = nil // Set object to nil
 
-	err := rc.Finalize(batchReleaseDemo)
+	err := rc.Finalize(context.Background(), batchReleaseDemo)
 	assert.NoError(t, err) // Should return without error
 }
 
@@ -953,7 +953,7 @@ func TestFinalize_PatchError(t *testing.T) {
 	rc.object = daemon
 	rc.WorkloadInfo = util.ParseWorkload(daemon)
 
-	err := rc.Finalize(batchReleaseDemo)
+	err := rc.Finalize(context.Background(), batchReleaseDemo)
 	assert.Error(t, err) // Should fail because daemon doesn't exist in client
 }
 

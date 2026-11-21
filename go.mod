@@ -9,6 +9,8 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.36.1
 	github.com/openkruise/kruise-api v1.7.0
+	github.com/prometheus/client_golang v1.19.1
+	github.com/prometheus/client_model v0.6.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64
@@ -57,8 +59,6 @@ require (
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_golang v1.19.1 // indirect
-	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/spf13/cobra v1.8.1 // indirect

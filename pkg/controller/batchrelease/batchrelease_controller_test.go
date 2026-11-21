@@ -21,14 +21,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	kruiseappsv1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
+	dto "github.com/prometheus/client_model/go"
 	apps "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -40,11 +43,16 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	rolloutapi "github.com/openkruise/rollouts/api"
 	"github.com/openkruise/rollouts/api/v1beta1"
+	partitiondeployment "github.com/openkruise/rollouts/pkg/controller/batchrelease/control/partitionstyle/deployment"
+	brmetrics "github.com/openkruise/rollouts/pkg/controller/batchrelease/metrics"
+	"github.com/openkruise/rollouts/pkg/feature"
 	"github.com/openkruise/rollouts/pkg/util"
+	utilfeature "github.com/openkruise/rollouts/pkg/util/feature"
 )
 
 const TIME_LAYOUT = "2006-01-02 15:04:05"
@@ -209,6 +217,7 @@ var (
 func init() {
 	scheme = runtime.NewScheme()
 	apimachineryruntime.Must(apps.AddToScheme(scheme))
+	apimachineryruntime.Must(policyv1.AddToScheme(scheme))
 	apimachineryruntime.Must(rolloutapi.AddToScheme(scheme))
 	apimachineryruntime.Must(kruiseappsv1alpha1.AddToScheme(scheme))
 
@@ -824,6 +833,208 @@ func TestReconcile_Deployment(t *testing.T) {
 	}
 }
 
+func TestExecutorFallsBackToRecreateWhenMinReadyFeatureGateDisabled(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=false")
+	release := releaseDeploy.DeepCopy()
+	release.Spec.ReleasePlan.RollingStyle = v1beta1.PartitionRollingStyle
+	release.Status.Phase = v1beta1.RolloutPhasePreparing
+	deployment := stableDeploy.DeepCopy()
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+
+	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(context.Background(), release, release.Status.DeepCopy())
+	if err != nil {
+		t.Fatalf("getReleaseController failed: %v", err)
+	}
+	if err := controller.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	got := &apps.Deployment{}
+	if err := cli.Get(context.TODO(), client.ObjectKeyFromObject(deployment), got); err != nil {
+		t.Fatalf("Get deployment failed: %v", err)
+	}
+	if got.Spec.Strategy.Type != apps.RecreateDeploymentStrategyType {
+		t.Fatalf("strategy.type = %q, want Recreate fallback when feature gate disabled", got.Spec.Strategy.Type)
+	}
+}
+
+// TestExecutorKeepsInProgressRecreateReleaseWhenMinReadyGateEnabled drives the
+// upgrade-compatibility guarantee: when the rollout controller is upgraded to
+// enable the MinReadySecondsStrategy gate while a Deployment is mid-flight
+// under a previously-started Recreate-based release, the in-progress release
+// must keep using the Recreate strategy to finish, instead of being switched
+// to the MinReady mode.
+func TestExecutorKeepsInProgressRecreateReleaseWhenMinReadyGateEnabled(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	release := releaseDeploy.DeepCopy()
+	release.Spec.ReleasePlan.RollingStyle = v1beta1.PartitionRollingStyle
+	release.Status.Phase = v1beta1.RolloutPhasePreparing
+	deployment := stableDeploy.DeepCopy()
+	// A Deployment already claimed by the legacy Recreate-based controller:
+	// BatchReleaseControlAnnotation is set on stableDeploy, Recreate strategy
+	// and paused=true mark the in-progress release.
+	deployment.Spec.Strategy.Type = apps.RecreateDeploymentStrategyType
+	deployment.Spec.Paused = true
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+
+	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(context.Background(), release, release.Status.DeepCopy())
+	if err != nil {
+		t.Fatalf("getReleaseController failed: %v", err)
+	}
+	if err := controller.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	got := &apps.Deployment{}
+	if err := cli.Get(context.TODO(), client.ObjectKeyFromObject(deployment), got); err != nil {
+		t.Fatalf("Get deployment failed: %v", err)
+	}
+	if got.Spec.Strategy.Type != apps.RecreateDeploymentStrategyType {
+		t.Fatalf("strategy.type = %q, want in-progress Recreate release to stay on Recreate after controller upgrade with MinReady gate enabled", got.Spec.Strategy.Type)
+	}
+}
+
+func TestMinReadyControlPlaneRecordsInitializedConditionAndEvent(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	release := minReadyRelease()
+	deployment := stableDeploy.DeepCopy()
+	deployment.ResourceVersion = "1"
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+	status := release.Status.DeepCopy()
+	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(context.Background(), release, status)
+	if err != nil {
+		t.Fatalf("getReleaseController failed: %v", err)
+	}
+
+	if err := controller.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	assertCondition(t, status, v1beta1.RolloutConditionStrategyInitialized, corev1.ConditionTrue, "MinReadyInitialized")
+	assertRecordedEvent(t, rec, "MinReadyInitialized")
+}
+
+func TestMinReadyControlPlaneAllowsPDBCoexistence(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	release := minReadyRelease()
+	deployment := stableDeploy.DeepCopy()
+	deployment.ResourceVersion = "1"
+	deployment.Spec.Template.Labels = map[string]string{"app": "busybox"}
+	pdb := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{Name: "sample-pdb", Namespace: deployment.Namespace},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "busybox"}},
+		},
+	}
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment, pdb).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+	status := release.Status.DeepCopy()
+	controller, err := NewReleasePlanExecutor(cli, rec).getReleaseController(context.Background(), release, status)
+	if err != nil {
+		t.Fatalf("getReleaseController failed: %v", err)
+	}
+
+	if err := controller.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	assertCondition(t, status, v1beta1.RolloutConditionStrategyInitialized, corev1.ConditionTrue, "MinReadyInitialized")
+}
+
+func BenchmarkRecreateReconcile(b *testing.B) {
+	release := releaseDeploy.DeepCopy()
+	deployment := stableDeploy.DeepCopy()
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+	reconciler := &BatchReleaseReconciler{
+		Client:   cli,
+		recorder: rec,
+		Scheme:   scheme,
+		executor: NewReleasePlanExecutor(cli, rec),
+	}
+	req := reconcile.Request{NamespacedName: client.ObjectKeyFromObject(release)}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = reconciler.Reconcile(context.TODO(), req)
+	}
+}
+
+func BenchmarkMinReadyReconcile(b *testing.B) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+	release := minReadyRelease()
+	deployment := stableDeploy.DeepCopy()
+	deployment.ResourceVersion = "1"
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+	reconciler := &BatchReleaseReconciler{
+		Client:   cli,
+		recorder: rec,
+		Scheme:   scheme,
+		executor: NewReleasePlanExecutor(cli, rec),
+	}
+	req := reconcile.Request{NamespacedName: client.ObjectKeyFromObject(release)}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = reconciler.Reconcile(context.TODO(), req)
+	}
+}
+
+func minReadyRelease() *v1beta1.BatchRelease {
+	release := releaseDeploy.DeepCopy()
+	release.Spec.ReleasePlan.RollingStyle = v1beta1.PartitionRollingStyle
+	release.Status.Phase = v1beta1.RolloutPhasePreparing
+	return release
+}
+
+func assertCondition(t *testing.T, status *v1beta1.BatchReleaseStatus, condType v1beta1.RolloutConditionType, condStatus corev1.ConditionStatus, reason string) {
+	t.Helper()
+	for _, condition := range status.Conditions {
+		if condition.Type != condType {
+			continue
+		}
+		if condition.Status != condStatus || condition.Reason != reason {
+			t.Fatalf("condition %s = %s/%s, want %s/%s", condType, condition.Status, condition.Reason, condStatus, reason)
+		}
+		return
+	}
+	t.Fatalf("condition %s not found in %#v", condType, status.Conditions)
+}
+
+func assertRecordedEvent(t *testing.T, rec *record.FakeRecorder, want string) {
+	t.Helper()
+	select {
+	case event := <-rec.Events:
+		if !strings.Contains(event, want) {
+			t.Fatalf("event = %q, want containing %q", event, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("event containing %q not recorded", want)
+	}
+}
+
 func containers(version string) []corev1.Container {
 	return []corev1.Container{
 		{
@@ -1009,4 +1220,176 @@ func makeStableReplicaSets(deploys ...client.Object) []client.Object {
 func getOldTime() *metav1.Time {
 	time, _ := time.Parse(TIME_LAYOUT, "2018-09-10 00:00:00")
 	return &metav1.Time{Time: time}
+}
+
+// TestMinReadyDeletionReconcileCleanupsMetricsAndRestoresDeployment drives the
+// full BatchReleaseReconciler deletion chain: Reconcile -> handleFinalizer ->
+// executor.Do -> isPlanFinalizing -> signalFinalizing -> Finalize ->
+// RecordFinalized -> DeleteMinReadyMetrics. The pre-existing unit test
+// TestDeleteMinReadyMetricsDeletesLabelValues only covers the metrics helper
+// directly, and TestDeploymentMinReadyControlPlaneDeletionTriggersFinalizeAndMetricsCleanup
+// calls control.Finalize() bypassing the reconciler. This test closes the gap
+// by exercising the real BatchReleaseReconciler.Reconcile path on a deleted
+// root resource.
+func TestMinReadyDeletionReconcileCleanupsMetricsAndRestoresDeployment(t *testing.T) {
+	_ = utilfeature.DefaultMutableFeatureGate.Set(string(feature.MinReadySecondsStrategy) + "=true")
+
+	// Build an inflated Deployment representing mid-rollout state.
+	deployment := stableDeploy.DeepCopy()
+	deployment.ResourceVersion = "1"
+	inflatedDeadline := partitiondeployment.InflatedProgressDeadlineSeconds
+	maxUnavailableZero := intstr.FromInt(0)
+	deployment.Spec.MinReadySeconds = partitiondeployment.InflatedMinReadySeconds
+	deployment.Spec.ProgressDeadlineSeconds = &inflatedDeadline
+	deployment.Spec.Strategy.RollingUpdate.MaxUnavailable = &maxUnavailableZero
+	if deployment.Annotations == nil {
+		deployment.Annotations = map[string]string{}
+	}
+	deployment.Annotations[partitiondeployment.AnnotationOriginalMinReadySeconds] = "5"
+	deployment.Annotations[partitiondeployment.AnnotationOriginalProgressDeadlineSeconds] = "60"
+	deployment.Annotations[partitiondeployment.AnnotationOriginalMaxUnavailable] = "2"
+
+	// BatchRelease being deleted mid-rollout: DeletionTimestamp set, finalizer
+	// present, Phase=Progressing so handleFinalizer can not remove the finalizer
+	// yet and the executor must drive Finalize first.
+	release := minReadyRelease()
+	release.Status.Phase = v1beta1.RolloutPhaseProgressing
+	release.Status.StableRevision = "stable"
+	release.Status.UpdateRevision = "updated"
+	release.Status.CanaryStatus.CurrentBatch = 0
+	release.Status.CanaryStatus.CurrentBatchState = v1beta1.ReadyBatchState
+	release.Status.ObservedWorkloadReplicas = 100
+	now := metav1.Now()
+	release.DeletionTimestamp = &now
+	release.Finalizers = []string{ReleaseFinalizer}
+
+	rec := record.NewFakeRecorder(100)
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(release, deployment).
+		WithStatusSubresource(&v1beta1.BatchRelease{}).
+		Build()
+
+	// Pre-record metrics so we can verify the deletion reconcile chain cleans them up.
+	brmetrics.RecordMinReadyBatch(release, brmetrics.BatchResultSuccess)
+	brmetrics.RecordMinReadyDegraded(release, brmetrics.DegradedReasonControllerError)
+
+	reconciler := &BatchReleaseReconciler{
+		Client:   cli,
+		recorder: rec,
+		Scheme:   scheme,
+		executor: NewReleasePlanExecutor(cli, rec),
+	}
+	req := reconcile.Request{NamespacedName: client.ObjectKeyFromObject(release)}
+
+	// Round 1: isPlanFinalizing (DeletionTimestamp != nil) signals Finalizing;
+	// status changes so the executor requeues before running Finalize.
+	if _, err := reconciler.Reconcile(context.TODO(), req); err != nil {
+		t.Fatalf("Reconcile round 1 failed: %v", err)
+	}
+	// Round 2: executeBatchReleasePlan runs Finalize, restores the Deployment,
+	// records MinReadyFinalized, deletes metrics, transitions Phase=Completed.
+	if _, err := reconciler.Reconcile(context.TODO(), req); err != nil {
+		t.Fatalf("Reconcile round 2 failed: %v", err)
+	}
+
+	// Verify Deployment original fields restored by the full chain.
+	got := &apps.Deployment{}
+	if err := cli.Get(context.TODO(), client.ObjectKeyFromObject(deployment), got); err != nil {
+		t.Fatalf("Get deployment failed: %v", err)
+	}
+	if got.Spec.MinReadySeconds != 5 {
+		t.Fatalf("minReadySeconds = %d, want 5 (original)", got.Spec.MinReadySeconds)
+	}
+	if got.Spec.ProgressDeadlineSeconds == nil || *got.Spec.ProgressDeadlineSeconds != 60 {
+		t.Fatalf("progressDeadlineSeconds = %v, want 60 (original)", got.Spec.ProgressDeadlineSeconds)
+	}
+	if u := got.Spec.Strategy.RollingUpdate.MaxUnavailable; u == nil || u.IntVal != 2 {
+		t.Fatalf("maxUnavailable = %v, want 2 (original)", u)
+	}
+	for _, key := range partitiondeployment.AllOriginalAnnotations {
+		if _, ok := got.Annotations[key]; ok {
+			t.Fatalf("annotation %s still exists after deletion reconcile", key)
+		}
+	}
+
+	// Verify BatchRelease reached Completed with MinReadyFinalized condition.
+	br := &v1beta1.BatchRelease{}
+	if err := cli.Get(context.TODO(), client.ObjectKeyFromObject(release), br); err != nil {
+		t.Fatalf("Get BatchRelease failed: %v", err)
+	}
+	if br.Status.Phase != v1beta1.RolloutPhaseCompleted {
+		t.Fatalf("Phase = %s, want Completed", br.Status.Phase)
+	}
+	found := false
+	for _, cond := range br.Status.Conditions {
+		if cond.Type == v1beta1.RolloutConditionStrategyFinalized &&
+			cond.Status == corev1.ConditionTrue && cond.Reason == "MinReadyFinalized" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("MinReadyFinalized condition not found in %#v", br.Status.Conditions)
+	}
+
+	// Verify metrics cleaned up by the full deletion reconcile chain.
+	assertMinReadyMetricsAbsent(t, release.Name, release.Namespace)
+}
+
+func TestMinReadyFinalizerRemovalCleansMetricsWhenWorkloadAlreadyGone(t *testing.T) {
+	release := minReadyRelease()
+	release.Name = "release-workload-gone"
+	release.Status.Phase = v1beta1.RolloutPhaseCompleted
+	release.Status.Conditions = []v1beta1.RolloutCondition{{
+		Type:   v1beta1.RolloutConditionStrategyBatching,
+		Status: corev1.ConditionTrue,
+		Reason: "MinReadyBatching",
+	}}
+	now := metav1.Now()
+	release.DeletionTimestamp = &now
+	release.Finalizers = []string{ReleaseFinalizer}
+
+	brmetrics.RecordMinReadyBatch(release, brmetrics.BatchResultSuccess)
+	brmetrics.RecordMinReadyDegraded(release, brmetrics.DegradedReasonControllerError)
+
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(release).Build()
+	reconciler := &BatchReleaseReconciler{Client: cli}
+
+	done, err := reconciler.handleFinalizer(release)
+	if err != nil {
+		t.Fatalf("handleFinalizer failed: %v", err)
+	}
+	if !done {
+		t.Fatalf("handleFinalizer done = false, want true")
+	}
+	assertMinReadyMetricsAbsent(t, release.Name, release.Namespace)
+}
+
+func assertMinReadyMetricsAbsent(t *testing.T, name, namespace string) {
+	t.Helper()
+	families, err := metrics.Registry.Gather()
+	if err != nil {
+		t.Fatalf("gather metrics failed: %v", err)
+	}
+	for _, family := range families {
+		for _, metric := range family.GetMetric() {
+			if minReadyMetricHasRelease(metric, name, namespace) {
+				t.Fatalf("metric %s for release %s/%s still exists after deletion reconcile",
+					family.GetName(), namespace, name)
+			}
+		}
+	}
+}
+
+func minReadyMetricHasRelease(metric *dto.Metric, name, namespace string) bool {
+	hasRollout := false
+	hasNamespace := false
+	for _, label := range metric.GetLabel() {
+		if label.GetName() == "rollout" && label.GetValue() == name {
+			hasRollout = true
+		}
+		if label.GetName() == "namespace" && label.GetValue() == namespace {
+			hasNamespace = true
+		}
+	}
+	return hasRollout && hasNamespace
 }

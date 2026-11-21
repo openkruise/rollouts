@@ -1,0 +1,11 @@
+# Overlay used by the MinReadySeconds E2E workflows to enable the
+# MinReadySecondsStrategy feature gate at deploy time, so the workflows do not
+# depend on a positional args index in the manager container spec.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../default
+
+patchesStrategicMerge:
+- manager_feature_gates_patch.yaml

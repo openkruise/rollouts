@@ -214,6 +214,21 @@ func (s *DeploymentPatch) UpdateStrategy(strategy apps.DeploymentStrategy) *Depl
 	return s
 }
 
+func (s *DeploymentPatch) UpdateRecreateStrategy() *DeploymentPatch {
+	switch s.PatchType {
+	case types.StrategicMergePatchType, types.MergePatchType:
+		if _, ok := s.PatchData["spec"]; !ok {
+			s.PatchData["spec"] = make(map[string]interface{})
+		}
+		spec := s.PatchData["spec"].(map[string]interface{})
+		spec["strategy"] = map[string]interface{}{
+			"type":          apps.RecreateDeploymentStrategyType,
+			"rollingUpdate": nil,
+		}
+	}
+	return s
+}
+
 func (s *DeploymentPatch) UpdatePaused(paused bool) *DeploymentPatch {
 	switch s.PatchType {
 	case types.StrategicMergePatchType, types.MergePatchType:

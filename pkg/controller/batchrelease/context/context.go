@@ -97,8 +97,11 @@ func (bc *BatchContext) IsBatchReady() error {
 
 // batchLabelSatisfied return true if the expected batch label has been patched
 func batchLabelSatisfied(pods []*corev1.Pod, rolloutID string, targetCount int32) bool {
-	if rolloutID == "" || len(pods) == 0 {
+	if rolloutID == "" || targetCount <= 0 {
 		return true
+	}
+	if len(pods) == 0 {
+		return false
 	}
 	patchedCount := util.WrappedPodCount(pods, func(pod *corev1.Pod) bool {
 		if !pod.DeletionTimestamp.IsZero() {
