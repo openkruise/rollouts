@@ -157,6 +157,17 @@ func (r *RolloutReconciler) reconcileRolloutProgressing(rollout *v1beta1.Rollout
 			return nil, err
 			// finalizer is finished
 		} else if done {
+			// Clear the canary/blueGreen sub-status: cancellation cleanup is
+			// finished and the workload is back on the stable revision, so the
+			// step-machine fields (CurrentStepIndex, CurrentStepState,
+			// PodTemplateHash, CanaryReplicas, ...) would otherwise remain
+			// frozen at the moment the rollback was triggered (e.g.
+			// "StepPaused" at step 1) for the lifetime of phase=Healthy.
+			// That misleads observers and breaks tooling that gates on
+			// canaryStatus (e.g. `kubectl kruise rollout approve` is a no-op
+			// once phase=Healthy). Mirror the cleanup that
+			// handleContinuousRelease performs for the same reason.
+			newStatus.Clear()
 			progressingStateTransition(newStatus, corev1.ConditionFalse, v1alpha1.ProgressingReasonCompleted, "Rollout progressing has been canceled")
 			setRolloutSucceededCondition(newStatus, corev1.ConditionFalse)
 		} else {
